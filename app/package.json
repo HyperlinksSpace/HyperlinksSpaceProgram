@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "version": "53.0.43",
   "scripts": {
+    "prestart": "npm run db:migrate",
     "build": "expo export -p web",
     "start": "npx concurrently -n expo,bot \"expo start\" \"npx tsx scripts/run-bot-local.ts\"",
     "start:expo": "expo start",
@@ -16,11 +17,14 @@
     "development-builds": "npx eas-cli@latest workflow:run create-development-builds.yml",
     "deploy": "npx eas-cli@latest workflow:run deploy-to-production.yml",
     "bot:local": "npx tsx scripts/run-bot-local.ts",
-    "set-webhook": "npx tsx scripts/set-webhook.ts"
+    "set-webhook": "npx tsx scripts/set-webhook.ts",
+    "db:migrate": "npx tsx scripts/migrate-db.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.2",
+    "@neondatabase/api-client": "^2.7.0",
+    "@neondatabase/serverless": "^1.0.2",
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
