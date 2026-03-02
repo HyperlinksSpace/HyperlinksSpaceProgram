@@ -66,13 +66,18 @@ From this directory (`app/`), deploy the static web build to Vercel production:
 vercel --prod
 ```
 
+<<<<<<< HEAD
 The project is configured so Vercel runs `npx expo export -p web` and serves the `dist/` output. Link the project first with `vercel` if needed.
+=======
+Deploying from `app/` makes this folder the project root, so `api/bot` is deployed and no Root Directory setting is needed. The project is configured so Vercel runs `npx expo export -p web` and serves the `dist/` output. Link the project first with `vercel` if needed.
+>>>>>>> upstream/main
 
 ### Telegram bot (Grammy)
 
 A minimal bot that replies "Hello" is included. It is deployable on Vercel via webhook and runnable locally with getUpdates.
 
 **Vercel (webhook)**  
+<<<<<<< HEAD
 - In Vercel: **Settings → Environment Variables** add `BOT_TOKEN` (or `TELEGRAM_BOT_TOKEN`). Optionally set **`SELF_URL`** to your production URL (e.g. `https://hsbexpo.vercel.app`) so the webhook is set to that domain; otherwise the build uses `VERCEL_URL` (deployment URL). Using `SELF_URL` ensures Telegram POSTs go to your production domain and show in that deployment’s logs.
 - **Webhook is set on deploy:** each build runs `scripts/set-webhook.js` and registers the webhook URL with Telegram.
 - Telegram sends updates to **POST** `/api/bot`; the bot replies "Hello".
@@ -81,12 +86,31 @@ A minimal bot that replies "Hello" is included. It is deployable on Vercel via w
 1. **Vercel dashboard:** open your project → **Deployments** → click the latest deployment → **Functions** tab, or go to **Logs** (Runtime Logs). Trigger the bot (e.g. send /start), then refresh; you should see `[webhook] POST update …` and `[webhook] handled update …` if the function ran.  
 2. **Verify webhook:** open **GET** `https://<your-app>.vercel.app/api/bot` in a browser. You should see `webhook_set: true` and `url: "https://…/api/bot"`. If `webhook_set` is false or missing, set `BOT_TOKEN` in Vercel and redeploy.  
 3. **Telegram:** ensure you’re messaging the correct bot (same token as in Vercel) and that no other app (e.g. local polling) is using that token with a webhook elsewhere.
+=======
+- **Env for deploy:** In Vercel → **Settings → Environment Variables** add **`BOT_TOKEN`** (or `TELEGRAM_BOT_TOKEN`) and **`SELF_URL`** = your production URL (e.g. `https://hsbexpo.vercel.app`). Assign both to **Production** (and to **Build** if your dashboard has that option) so the deploy-step webhook script can run. Without `SELF_URL`, the build uses `VERCEL_URL`, which may not match your production domain.
+- **Webhook on deploy:** Each build runs `scripts/set-webhook.ts` and calls Telegram `setWebhook` with `SELF_URL/api/bot` (or `VERCEL_URL/api/bot`). If the script fails (e.g. missing URL or Telegram error), the build fails so you see the error in the deploy log.
+- Telegram sends updates to **POST** `/api/bot`; the bot replies "Hello".
+
+**Bot works locally but not on Vercel**  
+1. Open **GET** `https://<your-app>.vercel.app/api/bot` in a browser. The JSON shows:
+   - `bot: true` → BOT_TOKEN is set; `bot: false` → add BOT_TOKEN in Vercel → Settings → Environment Variables (Production), then redeploy.
+   - `expected_url` → URL we use for the webhook (from SELF_URL or VERCEL_URL).
+   - `telegram_has` → URL Telegram actually has. It must match your production URL (e.g. `https://hsbexpo.vercel.app/api/bot`). If it’s `(none)` or a different URL, set **SELF_URL** = `https://<your-app>.vercel.app` in Vercel env and redeploy so the build runs set-webhook.ts with that URL.
+   - `webhook_set: true` → last setWebhook call succeeded.
+2. **Root directory:** Only needed if you deploy via Git (auto-deploy from the repo). Then set **Root Directory** to **`app`** in Vercel → Project Settings → General. If you always run `vercel --prod` from inside `app/`, the CLI uses this folder as the project root and you don’t need to set it.
+3. **Logs:** After sending /start, check **Logs** for `[webhook] POST update` and any `[bot]` errors (e.g. handler_error, timeout).
+4. Don’t run the same bot in polling locally while testing the webhook (or Telegram may deliver updates to the wrong place).
+>>>>>>> upstream/main
 
 **Local (getUpdates, no webhook)**  
 - Only `BOT_TOKEN` is required (in env or `.env`).
 - Run the bot in polling mode (do not use the same token with webhook set elsewhere):
   ```bash
+<<<<<<< HEAD
   node scripts/run-bot-local.js
+=======
+  npx tsx scripts/run-bot-local.ts
+>>>>>>> upstream/main
   ```
 - `npm run start` runs both Expo and the bot; or run the bot alone with `npm run bot:local`.
 

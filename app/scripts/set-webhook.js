@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 /**
  * Set Telegram webhook. Run on Vercel during build.
+<<<<<<< HEAD
  * Uses BOT_TOKEN and SELF_URL (production domain, e.g. https://hsbexpo.vercel.app) or else VERCEL_URL.
  * Set SELF_URL in Vercel so the webhook is your production URL; otherwise it uses the deployment URL.
+=======
+ * Uses BOT_TOKEN and SELF_URL (e.g. https://hsbexpo.vercel.app) or VERCEL_URL.
+>>>>>>> upstream/main
  */
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 const baseUrl = (process.env.SELF_URL || '').replace(/\/$/, '') || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
