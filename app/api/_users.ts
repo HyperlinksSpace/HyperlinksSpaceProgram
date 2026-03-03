@@ -27,3 +27,21 @@ export async function upsertUserFromTma(opts: {
           updated_at    = NOW();
   `;
 }
+
+export async function upsertUserFromBot(opts: {
+  telegramUsername: string;
+  locale: string | null;
+}): Promise<void> {
+  const { telegramUsername, locale } = opts;
+  if (!telegramUsername) return;
+
+  await sql`
+    INSERT INTO users (telegram_username, locale, created_at, updated_at, last_login_at)
+    VALUES (${telegramUsername}, ${locale}, NOW(), NOW(), NOW())
+    ON CONFLICT (telegram_username) DO UPDATE
+      SET locale        = EXCLUDED.locale,
+          last_login_at = NOW(),
+          updated_at    = NOW();
+  `;
+}
+

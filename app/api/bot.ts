@@ -1,11 +1,17 @@
 /**
  * Vercel API route: named GET/POST so Telegram webhook POST is handled.
- * Forwards to webhook default handler so both Web Request and Node (req, res) are supported.
+ * Forwards to webhook default handler under api/bot-webhook so that all
+ * serverless logic lives inside the api/ tree (no ../bot imports).
  */
-import webhookHandler from '../bot/webhook';
-import type { NodeReq, NodeRes } from '../bot/webhook';
+import webhookHandler, {
+  type NodeReq,
+  type NodeRes,
+} from './bot-webhook.js';
 
-async function handler(request: Request | NodeReq, context?: NodeRes): Promise<Response | void> {
+async function handler(
+  request: Request | NodeReq,
+  context?: NodeRes,
+): Promise<Response | void> {
   return webhookHandler(request, context);
 }
 
