@@ -1,8 +1,8 @@
 /**
  * User helpers shared by all API routes (and local bot).
- * Lives under api/ so Vercel bundles it with serverless functions.
+ * Lives under api/shared so Vercel bundles it with serverless functions.
  */
-import { sql } from './db.js';
+import { sql } from '../db.js';
 
 export function normalizeUsername(raw: unknown): string {
   if (typeof raw !== 'string') return '';

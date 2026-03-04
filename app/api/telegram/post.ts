@@ -3,7 +3,10 @@
  * Loaded only for POST so GET stays fast.
  */
 import crypto from 'crypto';
-import { normalizeUsername, upsertUserFromTma } from './users.js';
+import {
+  normalizeUsername,
+  upsertUserFromTma,
+} from '../shared/users.js';
 
 const LOG_TAG = '[api/telegram]';
 
@@ -13,7 +16,10 @@ function log(msg: string, detail?: Record<string, unknown>) {
 }
 
 function logErr(msg: string, err: unknown) {
-  console.error(`${LOG_TAG} ${msg}`, err instanceof Error ? err.message : err);
+  console.error(
+    `${LOG_TAG} ${msg}`,
+    err instanceof Error ? err.message : err,
+  );
   if (err instanceof Error && err.stack) console.error(err.stack);
 }
 
@@ -37,9 +43,16 @@ const TELEGRAM_WEBAPP_PUBLIC_KEY_RAW = Buffer.from(
   'e7bf03a2fa4602af4580703d88dda5bb59f32ed8b02a56c187fe7d34caed242d',
   'hex',
 );
-const ED25519_SPKI_HEADER = Buffer.from('302a300506032b6570032100', 'hex');
+const ED25519_SPKI_HEADER = Buffer.from(
+  '302a300506032b6570032100',
+  'hex',
+);
 const TELEGRAM_WEBAPP_PUBLIC_KEY = crypto.createPublicKey({
-  key: Buffer.concat([ED25519_SPKI_HEADER, Buffer.from([0]), TELEGRAM_WEBAPP_PUBLIC_KEY_RAW]),
+  key: Buffer.concat([
+    ED25519_SPKI_HEADER,
+    Buffer.from([0]),
+    TELEGRAM_WEBAPP_PUBLIC_KEY_RAW,
+  ]),
   format: 'der',
   type: 'spki',
 });
@@ -61,7 +74,9 @@ function verifyTelegramWebAppInitData(
       if (!Number.isFinite(authDate)) return null;
       const now = Math.floor(Date.now() / 1000);
       if (authDate > now + 60) return null;
-      if (maxAgeSeconds != null && now - authDate > maxAgeSeconds) return null;
+      if (maxAgeSeconds != null && now - authDate > maxAgeSeconds) {
+        return null;
+      }
     }
 
     const receivedHash = data['hash'];
@@ -70,13 +85,25 @@ function verifyTelegramWebAppInitData(
     if (receivedHash) {
       const dataForHash = { ...data };
       delete dataForHash['hash'];
-      const sorted = Object.keys(dataForHash).sort().map((k) => `${k}=${dataForHash[k]}`).join('\n');
+      const sorted = Object.keys(dataForHash)
+        .sort()
+        .map((k) => `${k}=${dataForHash[k]}`)
+        .join('\n');
       const dataCheckString = Buffer.from(sorted, 'utf8');
-      const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
-      const computedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+      const secretKey = crypto
+        .createHmac('sha256', 'WebAppData')
+        .update(botToken)
+        .digest();
+      const computedHash = crypto
+        .createHmac('sha256', secretKey)
+        .update(dataCheckString)
+        .digest('hex');
       const valid =
         receivedHash.length === computedHash.length &&
-        crypto.timingSafeEqual(Buffer.from(receivedHash, 'hex'), Buffer.from(computedHash, 'hex'));
+        crypto.timingSafeEqual(
+          Buffer.from(receivedHash, 'hex'),
+          Buffer.from(computedHash, 'hex'),
+        );
       if (!valid) return null;
     } else if (receivedSignature) {
       const botId = botToken.split(':')[0];
@@ -84,12 +111,25 @@ function verifyTelegramWebAppInitData(
       const dataForSig = { ...data };
       delete dataForSig['hash'];
       delete dataForSig['signature'];
-      const sorted = Object.keys(dataForSig).sort().map((k) => `${k}=${dataForSig[k]}`).join('\n');
+      const sorted = Object.keys(dataForSig)
+        .sort()
+        .map((k) => `${k}=${dataForSig[k]}`)
+        .join('\n');
       const dataCheckString = `${botId}:WebAppData\n${sorted}`;
-      const base64 = receivedSignature.replace(/-/g, '+').replace(/_/g, '/');
+      const base64 = receivedSignature
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
       const pad = (4 - (base64.length % 4)) % 4;
-      const sigBuffer = Buffer.from(base64 + '='.repeat(pad), 'base64');
-      const ok = crypto.verify(null, Buffer.from(dataCheckString, 'utf8'), TELEGRAM_WEBAPP_PUBLIC_KEY, sigBuffer);
+      const sigBuffer = Buffer.from(
+        base64 + '='.repeat(pad),
+        'base64',
+      );
+      const ok = crypto.verify(
+        null,
+        Buffer.from(dataCheckString, 'utf8'),
+        TELEGRAM_WEBAPP_PUBLIC_KEY,
+        sigBuffer,
+      );
       if (!ok) return null;
     } else return null;
 
@@ -111,19 +151,34 @@ function verifyTelegramWebAppInitData(
 
 /** Get JSON body from Web Request or Node req (Vercel may pass either). */
 async function getBody(
-  request: Request | { json?: () => Promise<unknown>; body?: unknown; on?: (e: string, fn: (c: Buffer) => void) => void }
+  request:
+    | Request
+    | {
+        json?: () => Promise<unknown>;
+        body?: unknown;
+        on?: (e: string, fn: (c: Buffer) => void) => void;
+      },
 ): Promise<unknown> {
-  if (typeof (request as { json?: () => Promise<unknown> }).json === 'function') {
+  if (
+    typeof (request as { json?: () => Promise<unknown> }).json ===
+    'function'
+  ) {
     return (request as Request).json();
   }
-  const req = request as { body?: unknown; on?: (e: string, fn: (c: Buffer) => void) => void };
+  const req = request as {
+    body?: unknown;
+    on?: (e: string, fn: (c: Buffer) => void) => void;
+  };
   if (req.body != null && typeof req.body === 'object') {
     return req.body;
   }
   if (typeof req.on === 'function') {
     const chunks: Buffer[] = [];
     return new Promise<unknown>((resolve, reject) => {
-      (req as NodeJS.ReadableStream).on('data', (c: Buffer) => chunks.push(c));
+      (req as NodeJS.ReadableStream).on(
+        'data',
+        (c: Buffer) => chunks.push(c),
+      );
       (req as NodeJS.ReadableStream).on('end', () => {
         try {
           const raw = Buffer.concat(chunks).toString('utf8');
@@ -138,7 +193,9 @@ async function getBody(
   return null;
 }
 
-export async function handlePost(request: Request | { json?: () => Promise<unknown>; body?: unknown }): Promise<Response> {
+export async function handlePost(
+  request: Request | { json?: () => Promise<unknown>; body?: unknown },
+): Promise<Response> {
   const startMs = Date.now();
   log('post_start', { elapsedMs: 0 });
 
@@ -149,71 +206,124 @@ export async function handlePost(request: Request | { json?: () => Promise<unkno
     log('body_parsed', { elapsedMs: Date.now() - startMs });
   } catch (e) {
     logErr('body_parse_failed', e);
-    return new Response(JSON.stringify({ ok: false, error: 'bad_json' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'bad_json' }),
+      {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
-  const initData = typeof body?.initData === 'string' ? body.initData : '';
+  const initData =
+    typeof body?.initData === 'string' ? body.initData : '';
   if (!initData) {
-    log('reject', { reason: 'missing_initData', elapsedMs: Date.now() - startMs });
-    return new Response(JSON.stringify({ ok: false, error: 'missing_initData' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
+    log('reject', {
+      reason: 'missing_initData',
+      elapsedMs: Date.now() - startMs,
     });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'missing_initData' }),
+      {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
-  log('initData_received', { initDataLength: initData.length, elapsedMs: Date.now() - startMs });
+  log('initData_received', {
+    initDataLength: initData.length,
+    elapsedMs: Date.now() - startMs,
+  });
 
   const botToken = (process.env.BOT_TOKEN || '').trim();
   if (!botToken) {
-    log('reject', { reason: 'bot_token_not_configured', elapsedMs: Date.now() - startMs });
-    return new Response(JSON.stringify({ ok: false, error: 'bot_token_not_configured' }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' },
+    log('reject', {
+      reason: 'bot_token_not_configured',
+      elapsedMs: Date.now() - startMs,
     });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'bot_token_not_configured' }),
+      {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
   const verifyStart = Date.now();
   const verified = verifyTelegramWebAppInitData(initData, botToken);
-  log('verify_done', { ok: !!verified, verifyMs: Date.now() - verifyStart, elapsedMs: Date.now() - startMs });
+  log('verify_done', {
+    ok: !!verified,
+    verifyMs: Date.now() - verifyStart,
+    elapsedMs: Date.now() - startMs,
+  });
 
   if (!verified) {
-    log('reject', { reason: 'invalid_initdata', elapsedMs: Date.now() - startMs });
-    return new Response(JSON.stringify({ ok: false, error: 'invalid_initdata' }), {
-      status: 401,
-      headers: { 'content-type': 'application/json' },
+    log('reject', {
+      reason: 'invalid_initdata',
+      elapsedMs: Date.now() - startMs,
     });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'invalid_initdata' }),
+      {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
   const user: TelegramUserPayload =
-    verified.user && typeof verified.user === 'object' ? (verified.user as TelegramUserPayload) : {};
+    verified.user && typeof verified.user === 'object'
+      ? (verified.user as TelegramUserPayload)
+      : {};
   const telegramUsername = normalizeUsername(user.username);
   if (!telegramUsername) {
-    log('reject', { reason: 'username_required', elapsedMs: Date.now() - startMs });
-    return new Response(JSON.stringify({ ok: false, error: 'username_required' }), {
-      status: 400,
-      headers: { 'content-type': 'application/json' },
+    log('reject', {
+      reason: 'username_required',
+      elapsedMs: Date.now() - startMs,
     });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'username_required' }),
+      {
+        status: 400,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
-  log('username_ok', { telegramUsername, elapsedMs: Date.now() - startMs });
+  log('username_ok', {
+    telegramUsername,
+    elapsedMs: Date.now() - startMs,
+  });
 
-  const locale = typeof user.language_code === 'string' ? user.language_code : null;
+  const locale =
+    typeof user.language_code === 'string'
+      ? user.language_code
+      : null;
   const dbStart = Date.now();
   try {
     await upsertUserFromTma({ telegramUsername, locale });
-    log('db_upsert_done', { dbMs: Date.now() - dbStart, elapsedMs: Date.now() - startMs });
+    log('db_upsert_done', {
+      dbMs: Date.now() - dbStart,
+      elapsedMs: Date.now() - startMs,
+    });
   } catch (e) {
     logErr('db_upsert_failed', e);
-    return new Response(JSON.stringify({ ok: false, error: 'db_error' }), {
-      status: 500,
-      headers: { 'content-type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: 'db_error' }),
+      {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
-  log('success', { telegramUsername, totalMs: Date.now() - startMs });
+  log('success', {
+    telegramUsername,
+    totalMs: Date.now() - startMs,
+  });
   return new Response(
     JSON.stringify({ ok: true, telegram_username: telegramUsername }),
     { status: 200, headers: { 'content-type': 'application/json' } },
   );
 }
+

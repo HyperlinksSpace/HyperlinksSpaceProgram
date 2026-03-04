@@ -12,8 +12,10 @@ function sendViaRes(res: { status: (n: number) => void; setHeader: (k: string, v
 }
 
 /**
- * Thin router: GET returns immediately (no heavy deps). POST loads telegram-post.
- * When Vercel passes (req, res), we must send via res so the client gets the response.
+ * Thin router: GET returns immediately (no heavy deps). POST loads
+ * the heavy handler from ./telegram/post so initData verification and
+ * DB writes stay out of the fast path. When Vercel passes (req, res),
+ * we must send via res so the client gets the response.
  */
 async function handler(
   request: Request,
@@ -37,7 +39,7 @@ async function handler(
     return new Response('Method Not Allowed', { status: 405 });
   }
   try {
-    const { handlePost } = await import('./telegram-post.js');
+    const { handlePost } = await import('./telegram/post.js');
     const response = await handlePost(request);
     if (res) {
       res.status(response.status);

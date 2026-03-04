@@ -1,13 +1,12 @@
 /**
  * Telegram webhook handler for /api/bot (serverless).
  *
- * This file lives under api/ so Vercel bundles it together with the
- * /api/bot function. It contains both the webhook logic and the minimal
- * Grammy bot needed to reply "Hello" and upsert users.
+ * This file lives under api/bot so Vercel bundles it together with the
+ * /api/bot function. It contains the webhook logic and delegates bot
+ * behavior to createBot from ./grammy.
  */
 
-import { Bot, type Context } from 'grammy';
-import { normalizeUsername, upsertUserFromBot } from './users.js';
+import { createBot } from './grammy.js';
 
 interface TelegramUpdate {
   update_id: number;
@@ -50,48 +49,6 @@ async function getWebhookInfo(): Promise<{ url?: string }> {
   } catch {
     return {};
   }
-}
-
-function createBot(token: string): Bot {
-  const bot = new Bot(token);
-
-  async function handleUserUpsert(ctx: Context): Promise<void> {
-    try {
-      const from = ctx.from;
-      if (!from) return;
-
-      const telegramUsername = normalizeUsername(from.username);
-      if (!telegramUsername) return;
-
-      const locale =
-        typeof from.language_code === 'string' ? from.language_code : null;
-
-      await upsertUserFromBot({ telegramUsername, locale });
-    } catch (err) {
-      console.error('[bot] upsert user failed', err);
-    }
-  }
-
-  bot.command('start', async (ctx: Context) => {
-    await handleUserUpsert(ctx);
-    await ctx.reply('Hello');
-  });
-
-  bot.on('message:text', async (ctx: Context) => {
-    await handleUserUpsert(ctx);
-    await ctx.reply('Hello');
-  });
-
-  bot.on('message', async (ctx: Context) => {
-    await handleUserUpsert(ctx);
-    await ctx.reply('Hello');
-  });
-
-  bot.catch((err) => {
-    console.error('[bot]', err);
-  });
-
-  return bot;
 }
 
 export async function handleRequest(request: Request): Promise<Response> {

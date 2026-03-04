@@ -4,7 +4,7 @@
  * Do not run with the same token while webhook is set in production.
  */
 import path from 'path';
-import { createBot } from '../bot/grammy-bot';
+import { createBot } from '../api/bot/grammy';
 
 try {
   const dotenv = require('dotenv');

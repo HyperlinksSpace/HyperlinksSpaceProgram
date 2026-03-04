@@ -5,7 +5,9 @@ const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
   // Fail fast on the server side so misconfiguration is obvious in logs.
-  throw new Error('DATABASE_URL is not set. Configure it in ./app/.env for the current Neon branch.');
+  throw new Error(
+    'DATABASE_URL is not set. Configure it in ./app/.env for the current Neon branch.',
+  );
 }
 
 export const sql = neon(connectionString);
