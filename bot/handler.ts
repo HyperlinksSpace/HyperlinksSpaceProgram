@@ -74,9 +74,10 @@ export async function handleChat(input: HandleChatInput): Promise<HandleChatOutp
   let coffeeDescription: string | undefined;
   let coffeeFacts: string[] = [];
 
-  if (tickerSymbol) {
+  const symbolForLookup = tickerSymbol;
+  if (typeof symbolForLookup === "string" && symbolForLookup.length > 0) {
     try {
-      const coffee = await fetchCoffeeContext(tickerSymbol);
+      const coffee = await fetchCoffeeContext(symbolForLookup);
       if (coffee) {
         usedCoffee = true;
         coffeeName = coffee.name;
@@ -141,4 +142,3 @@ export async function handleChat(input: HandleChatInput): Promise<HandleChatOutp
     },
   };
 }
-
