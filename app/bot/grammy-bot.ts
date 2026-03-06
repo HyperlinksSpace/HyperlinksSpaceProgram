@@ -4,7 +4,7 @@
  */
 import { Bot, type Context } from 'grammy';
 import { normalizeUsername, upsertUserFromBot } from '../server/users';
-import { handleChat } from './handler';
+import { handleChat } from './handler.js';
 
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
