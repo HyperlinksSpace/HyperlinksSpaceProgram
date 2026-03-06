@@ -5,6 +5,6 @@
   "installCommand": "npm install",
   "functions": {
     "api/ping.js": { "maxDuration": 10 },
-    "api/telegram.ts": { "maxDuration": 60 }
+    "api/bot.ts": { "maxDuration": 60 }
   }
 }
