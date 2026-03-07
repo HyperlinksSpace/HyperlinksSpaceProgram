@@ -1,8 +1,11 @@
 /**
  * Telegram webhook handler for /api/bot (serverless).
- * Lives under app/bot; api/bot.ts imports this so Vercel only sees one route.
+ * Flow: user sends a message in Telegram → Telegram POSTs that update here → we return 200 OK
+ * immediately, then process the update in the background (waitUntil) so Telegram does not retry
+ * or hide the user's message. Lives under app/bot; api/bot.ts imports this so Vercel sees one route.
  */
 
+import { waitUntil } from '@vercel/functions';
 import { createBot } from './grammy.js';
 
 interface TelegramUpdate {
@@ -11,6 +14,16 @@ interface TelegramUpdate {
 }
 
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+/** Single bot instance for all webhook requests; created once at module load. */
+const bot = BOT_TOKEN ? createBot(BOT_TOKEN) : null;
+/** Lazy init: run bot.init() once on first use; later requests reuse the same promise. */
+let botInitPromise: Promise<void> | null = null;
+function ensureBotInit(): Promise<void> {
+  if (!bot) return Promise.resolve();
+  if (!botInitPromise) botInitPromise = bot.init();
+  return botInitPromise;
+}
+
 // Vercel production alias (VERCEL_PROJECT_PRODUCTION_URL) or deployment URL (VERCEL_URL).
 const BASE_URL =
   process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -83,38 +96,43 @@ export async function handleRequest(request: Request): Promise<Response> {
   if (method !== 'POST') {
     return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
   }
-  if (!BOT_TOKEN) {
+  if (!BOT_TOKEN || !bot) {
     return jsonResponse({ ok: false, error: 'BOT_TOKEN not set' }, 500);
   }
 
-  let update: TelegramUpdate;
-  try {
-    const body =
-      typeof request.json === 'function'
-        ? await request.json()
-        : (request as unknown as { body?: unknown }).body;
-    update =
-      typeof body === 'string'
-        ? (JSON.parse(body) as TelegramUpdate)
-        : (body as TelegramUpdate);
-  } catch {
-    return jsonResponse({ ok: false, error: 'invalid_body' }, 400);
-  }
-  if (!update || typeof update !== 'object') {
-    return jsonResponse({ ok: false, error: 'invalid_body' }, 400);
-  }
-
-  const updateId = update.update_id;
-  console.log('[webhook] POST update', updateId);
-  const bot = createBot(BOT_TOKEN);
-  try {
-    await bot.init();
-    await bot.handleUpdate(update);
-    console.log('[webhook] handled update', updateId);
-  } catch (err) {
-    console.error('[bot]', err);
-    return jsonResponse({ ok: false, error: 'handler_error' }, 500);
-  }
+  // Return 200 immediately so Telegram does not delay or hide the user's message.
+  // Read body and process update inside waitUntil so the next request is not blocked.
+  waitUntil(
+    (async () => {
+      let update: TelegramUpdate;
+      try {
+        const body =
+          typeof request.json === 'function'
+            ? await request.json()
+            : (request as unknown as { body?: unknown }).body;
+        update =
+          typeof body === 'string'
+            ? (JSON.parse(body) as TelegramUpdate)
+            : (body as TelegramUpdate);
+      } catch {
+        console.error('[webhook] invalid_body');
+        return;
+      }
+      if (!update || typeof update !== 'object') {
+        console.error('[webhook] invalid update');
+        return;
+      }
+      const updateId = update.update_id;
+      console.log('[webhook] POST update', updateId);
+      try {
+        await ensureBotInit();
+        await bot!.handleUpdate(update);
+        console.log('[webhook] handled update', updateId);
+      } catch (err) {
+        console.error('[bot]', err);
+      }
+    })(),
+  );
   return jsonResponse({ ok: true });
 }
 
@@ -165,7 +183,7 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     res.status(405).json({ ok: false, error: 'method_not_allowed' });
     return;
   }
-  if (!BOT_TOKEN) {
+  if (!BOT_TOKEN || !bot) {
     res.status(500).json({ ok: false, error: 'BOT_TOKEN not set' });
     return;
   }
@@ -182,9 +200,8 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     res.status(400).json({ ok: false, error: 'invalid_body' });
     return;
   }
-  const bot = createBot(BOT_TOKEN);
   try {
-    await bot.init();
+    await ensureBotInit();
     await bot.handleUpdate(update);
   } catch (err) {
     console.error('[bot]', err);
