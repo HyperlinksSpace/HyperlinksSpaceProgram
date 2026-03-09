@@ -4,11 +4,13 @@
  * We escape & < > in text; lists stay as newlines (no list tags in Telegram).
  */
 
+/** Escape for Telegram HTML: only &lt; &gt; &amp; &quot; are supported. Unescaped " breaks attribute values (e.g. href). */
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -45,14 +47,28 @@ export function mdToTelegramHtml(md: string): string {
 
 /**
  * Remove unpaired **, __, and ` from HTML (output of mdToTelegramHtml). Use for partial
- * content so the bot never shows raw delimiters; only formatted or plain text.
+ * content so the bot never shows raw delimiters. Skips content inside <pre> and <code>
+ * so we don't strip asterisks/backticks that are part of code.
  */
 export function stripUnpairedMarkdownDelimiters(html: string): string {
   if (typeof html !== "string" || html.length === 0) return html;
-  return html
-    .replace(/\*\*/g, "")
-    .replace(/__/g, "")
-    .replace(/`/g, "");
+  const blocks: string[] = [];
+  const placeholder = (i: number) => `\x00B${i}\x00`;
+  let out = html.replace(/<pre>[\s\S]*?<\/pre>/gi, (m) => {
+    const i = blocks.length;
+    blocks.push(m);
+    return placeholder(i);
+  });
+  out = out.replace(/<code>[\s\S]*?<\/code>/gi, (m) => {
+    const i = blocks.length;
+    blocks.push(m);
+    return placeholder(i);
+  });
+  out = out.replace(/\*\*/g, "").replace(/__/g, "").replace(/`/g, "");
+  for (let i = 0; i < blocks.length; i++) {
+    out = out.split(placeholder(i)).join(blocks[i]);
+  }
+  return out;
 }
 
 /**
@@ -79,4 +95,17 @@ export function closeOpenTelegramHtml(html: string): string {
   if (stack.length === 0) return html;
   const closers = stack.reverse().map((tag) => `</${tag}>`).join("");
   return html + closers;
+}
+
+/**
+ * Truncate HTML to at most maxLen without cutting through a tag, then close any unclosed tags.
+ * Use before sending/edit with parse_mode: "HTML" so Telegram never receives invalid HTML
+ * (avoids reject and fallback to plain text).
+ */
+export function truncateTelegramHtmlSafe(html: string, maxLen: number): string {
+  if (typeof html !== "string" || html.length <= maxLen) return html;
+  const cut = html.slice(0, maxLen);
+  const lastTagEnd = cut.lastIndexOf(">");
+  const safe = lastTagEnd >= 0 ? cut.slice(0, lastTagEnd + 1) : cut;
+  return closeOpenTelegramHtml(safe);
 }

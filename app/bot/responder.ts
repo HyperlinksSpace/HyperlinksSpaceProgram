@@ -3,7 +3,12 @@ import { normalizeSymbol } from "../blockchain/coffee.js";
 import { transmit, transmitStream } from "../ai/transmitter.js";
 import { normalizeUsername } from "../database/users.js";
 import { getMaxTelegramUpdateIdForThread, insertMessage } from "../database/messages.js";
-import { closeOpenTelegramHtml, mdToTelegramHtml, stripUnpairedMarkdownDelimiters } from "./format.js";
+import {
+  closeOpenTelegramHtml,
+  mdToTelegramHtml,
+  stripUnpairedMarkdownDelimiters,
+  truncateTelegramHtmlSafe,
+} from "./format.js";
 
 /** Telegram text message length limit. */
 const MAX_MESSAGE_TEXT_LENGTH = 4096;
@@ -38,12 +43,12 @@ async function sendLongMessage(
   if (chunks.length === 0) return;
   let lastSentId: number | undefined = opts.replyToMessageId;
   for (let i = 0; i < chunks.length; i++) {
-    let formatted = closeOpenTelegramHtml(
-      stripUnpairedMarkdownDelimiters(mdToTelegramHtml(chunks[i])),
+    const formatted = truncateTelegramHtmlSafe(
+      closeOpenTelegramHtml(
+        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(chunks[i])),
+      ),
+      MAX_MESSAGE_TEXT_LENGTH,
     );
-    if (formatted.length > MAX_MESSAGE_TEXT_LENGTH) {
-      formatted = closeOpenTelegramHtml(formatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
-    }
     const partOptions =
       i === 0 && lastSentId === undefined
         ? replyOptionsWithHtml
@@ -209,30 +214,32 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     /** Latest accumulated text from stream; used for interrupted reply and persist. */
     let streamedAccumulated = "";
 
-    /** When turn is interrupted: message already exists (we sent early); optionally final edit, always persist. */
+    /** When turn is interrupted: message already exists (we sent early); optionally final edit, always persist. HTML only (format pipeline is strict). */
     const sendInterruptedReply = async (opts: { sendToChat: boolean }): Promise<void> => {
       const content = streamedAccumulated.trim();
       if (sentMessageId !== null && content.length > 0) {
-        const toEdit = closeOpenTelegramHtml(
-          stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+        const toEdit = truncateTelegramHtmlSafe(
+          closeOpenTelegramHtml(
+            stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+          ),
+          MAX_MESSAGE_TEXT_LENGTH,
         );
         try {
-          await ctx.api.editMessageText(chatId, sentMessageId, toEdit, {
-            parse_mode: "HTML",
-          });
-        } catch {
-          try {
-            await ctx.api.editMessageText(chatId, sentMessageId, content, {});
-          } catch (_) {}
+          await ctx.api.editMessageText(chatId, sentMessageId, toEdit, { parse_mode: "HTML" });
+        } catch (e) {
+          console.error("[bot][edit] interrupted reply", (e as Error)?.message ?? e);
         }
       } else if (opts.sendToChat && content.length > 0) {
-        const toSend = closeOpenTelegramHtml(
-          stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+        const toSend = truncateTelegramHtmlSafe(
+          closeOpenTelegramHtml(
+            stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+          ),
+          MAX_MESSAGE_TEXT_LENGTH,
         );
         try {
           await ctx.reply(toSend, replyOptionsWithHtml);
-        } catch {
-          await ctx.reply(content, replyOptions);
+        } catch (e) {
+          console.error("[bot][reply] interrupted", (e as Error)?.message ?? e);
         }
       } else if (opts.sendToChat && sentMessageId === null) {
         try {
@@ -253,12 +260,12 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     /** One send (first) or edit in flight at a time so we never send multiple messages by race. */
     let sendOrEditQueue = Promise.resolve<void>(undefined);
 
-    /** First call sends a message (claims message_id); later calls edit that message. */
-    const sendOrEditOnce = (formatted: string, rawSlice: string): Promise<void> => {
+    /** First call sends a message (claims message_id); later calls edit that message. HTML only; format pipeline is strict so Telegram accepts it. */
+    const sendOrEditOnce = (formatted: string, _rawSlice: string): Promise<void> => {
       const run = async (): Promise<void> => {
         if (await shouldAbortSend()) return;
         if (isCancelled() || editsDisabled) return;
-        const text = formatted.trim() || "…";
+        const text = truncateTelegramHtmlSafe(formatted.trim() || "…", MAX_MESSAGE_TEXT_LENGTH);
         try {
           if (sentMessageId === null) {
             const sent = await ctx.api.sendMessage(chatId, text, replyOptionsWithHtml);
@@ -268,75 +275,31 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
               streamSentMessageId = id;
             }
           } else {
-            await ctx.api.editMessageText(chatId, sentMessageId, text, {
-              parse_mode: "HTML",
-            });
+            await ctx.api.editMessageText(chatId, sentMessageId, text, { parse_mode: "HTML" });
           }
         } catch (e: unknown) {
           const err = e as { error_code?: number; description?: string; parameters?: { retry_after?: number } };
           if (err?.description?.includes("not modified")) return;
-          const is429 = err?.error_code === 429;
-          if (is429) {
-            const waitMs = (err.parameters?.retry_after ?? 1) * 1000;
-            await new Promise((r) => setTimeout(r, Math.min(waitMs, 2000)));
+          if (err?.error_code === 429) {
+            await new Promise((r) => setTimeout(r, Math.min((err.parameters?.retry_after ?? 1) * 1000, 2000)));
             try {
-              const fallbackText = rawSlice.trim() || "…";
-              const markdownText = toTelegramMarkdown(fallbackText);
               if (sentMessageId === null) {
-                const sent = await ctx.api.sendMessage(chatId, markdownText, {
-                  ...replyOptions,
-                  parse_mode: "Markdown",
-                });
+                const sent = await ctx.api.sendMessage(chatId, text, replyOptionsWithHtml);
                 const id = (sent as { message_id?: number }).message_id;
                 if (typeof id === "number") {
                   sentMessageId = id;
                   streamSentMessageId = id;
                 }
               } else {
-                await ctx.api.editMessageText(chatId, sentMessageId, markdownText, {
-                  parse_mode: "Markdown",
-                });
+                await ctx.api.editMessageText(chatId, sentMessageId, text, { parse_mode: "HTML" });
               }
             } catch (e2) {
-              console.error("[bot][edit]", e2);
+              console.error("[bot][edit] 429 retry failed", (e2 as Error)?.message ?? e2);
               editsDisabled = true;
             }
           } else {
-            try {
-              const fallbackText = rawSlice.trim() || "…";
-              const markdownText = toTelegramMarkdown(fallbackText);
-              if (sentMessageId === null) {
-                const sent = await ctx.api.sendMessage(chatId, markdownText, {
-                  ...replyOptions,
-                  parse_mode: "Markdown",
-                });
-                const id = (sent as { message_id?: number }).message_id;
-                if (typeof id === "number") {
-                  sentMessageId = id;
-                  streamSentMessageId = id;
-                }
-              } else {
-                await ctx.api.editMessageText(chatId, sentMessageId, markdownText, {
-                  parse_mode: "Markdown",
-                });
-              }
-            } catch (_) {
-              try {
-                const fallbackText = rawSlice.trim() || "…";
-                if (sentMessageId === null) {
-                  const sent = await ctx.api.sendMessage(chatId, fallbackText, replyOptions);
-                  const id = (sent as { message_id?: number }).message_id;
-                  if (typeof id === "number") {
-                    sentMessageId = id;
-                    streamSentMessageId = id;
-                  }
-                } else {
-                  await ctx.api.editMessageText(chatId, sentMessageId, fallbackText, {});
-                }
-              } catch (_) {
-                console.error("[bot][edit]", e);
-              }
-            }
+            console.error("[bot][edit] HTML rejected", err?.description ?? (e as Error)?.message ?? e);
+            editsDisabled = true;
           }
         }
       };
@@ -470,23 +433,19 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       chatId !== undefined
     ) {
       const fullSlice = result.output_text.slice(0, MAX_MESSAGE_TEXT_LENGTH);
-      let finalFormatted = closeOpenTelegramHtml(
-        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(fullSlice)),
+      const finalFormatted = truncateTelegramHtmlSafe(
+        closeOpenTelegramHtml(
+          stripUnpairedMarkdownDelimiters(mdToTelegramHtml(fullSlice)),
+        ),
+        MAX_MESSAGE_TEXT_LENGTH,
       );
-      if (finalFormatted.length > MAX_MESSAGE_TEXT_LENGTH) {
-        finalFormatted = closeOpenTelegramHtml(finalFormatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
-      }
       if (finalFormatted.trim()) {
         sendOrEditQueue = sendOrEditQueue.then(async () => {
           try {
-            await ctx.api.editMessageText(chatId, streamSentMessageId!, finalFormatted, {
-              parse_mode: "HTML",
-            });
+            await ctx.api.editMessageText(chatId, streamSentMessageId!, finalFormatted, { parse_mode: "HTML" });
           } catch (e: unknown) {
-            const desc = (e as { description?: string })?.description ?? "";
-            if (!desc.includes("not modified")) {
-              console.error("[bot][edit] final completion edit", (e as Error)?.message ?? e);
-            }
+            if ((e as { description?: string })?.description?.includes("not modified")) return;
+            console.error("[bot][edit] final completion edit", (e as Error)?.message ?? e);
           }
         });
         await sendOrEditQueue;
@@ -567,12 +526,12 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
   if (result.output_text.length <= MAX_MESSAGE_TEXT_LENGTH) {
     const textToFormat = result.output_text;
-    let formatted = closeOpenTelegramHtml(
-      stripUnpairedMarkdownDelimiters(mdToTelegramHtml(textToFormat)),
+    const formatted = truncateTelegramHtmlSafe(
+      closeOpenTelegramHtml(
+        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(textToFormat)),
+      ),
+      MAX_MESSAGE_TEXT_LENGTH,
     );
-    if (formatted.length > MAX_MESSAGE_TEXT_LENGTH) {
-      formatted = closeOpenTelegramHtml(formatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
-    }
     try {
       await ctx.reply(formatted, replyOptionsWithHtml);
     } catch (e) {
