@@ -243,7 +243,7 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
 export async function transmitStream(
   request: AiRequest,
   onDelta: (text: string) => void | Promise<void>,
-  opts?: { isCancelled?: () => boolean },
+  opts?: { isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
 ): Promise<AiResponse> {
   const mode: AiMode = request.mode ?? "chat";
   const thread = request.threadContext;

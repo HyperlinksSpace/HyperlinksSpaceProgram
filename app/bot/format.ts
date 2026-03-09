@@ -42,3 +42,41 @@ export function mdToTelegramHtml(md: string): string {
 
   return out;
 }
+
+/**
+ * Remove unpaired **, __, and ` from HTML (output of mdToTelegramHtml). Use for partial
+ * content so the bot never shows raw delimiters; only formatted or plain text.
+ */
+export function stripUnpairedMarkdownDelimiters(html: string): string {
+  if (typeof html !== "string" || html.length === 0) return html;
+  return html
+    .replace(/\*\*/g, "")
+    .replace(/__/g, "")
+    .replace(/`/g, "");
+}
+
+/**
+ * Append closing tags for any unclosed Telegram HTML tags. Use after mdToTelegramHtml
+ * on partial content so we never send invalid HTML (avoids reject + flicker).
+ */
+export function closeOpenTelegramHtml(html: string): string {
+  if (typeof html !== "string" || html.length === 0) return html;
+  const stack: string[] = [];
+  // Match opening <tag> or <tag ...> and closing </tag> in order (longer names first)
+  const re = new RegExp(
+    "<(?:/(code|pre|a|b|i))>|((code|pre|a|b|i)(?:\\s[^>]*)?)>",
+    "gi",
+  );
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    if (m[1] !== undefined) {
+      const tag = m[1].toLowerCase();
+      if (stack.length > 0 && stack[stack.length - 1] === tag) stack.pop();
+    } else if (m[3] !== undefined) {
+      stack.push(m[3].toLowerCase());
+    }
+  }
+  if (stack.length === 0) return html;
+  const closers = stack.reverse().map((tag) => `</${tag}>`).join("");
+  return html + closers;
+}

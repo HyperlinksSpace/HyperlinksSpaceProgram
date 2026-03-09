@@ -2,15 +2,90 @@ import type { Context } from "grammy";
 import { normalizeSymbol } from "../blockchain/coffee.js";
 import { transmit, transmitStream } from "../ai/transmitter.js";
 import { normalizeUsername } from "../database/users.js";
-import { getMaxTelegramUpdateIdForThread } from "../database/messages.js";
-import { mdToTelegramHtml } from "./format.js";
+import { getMaxTelegramUpdateIdForThread, insertMessage } from "../database/messages.js";
+import { closeOpenTelegramHtml, mdToTelegramHtml, stripUnpairedMarkdownDelimiters } from "./format.js";
 
-const DRAFT_ID = 1;
-const MAX_DRAFT_TEXT_LENGTH = 4096;
-/** Throttle draft updates to avoid Telegram 429 rate limits. */
-const DRAFT_THROTTLE_MS = 500;
-/** If content grew by more than this many chars, send immediately so long tail doesn't stick. */
-const DRAFT_MIN_CHARS_TO_SEND_NOW = 200;
+/** Telegram text message length limit. */
+const MAX_MESSAGE_TEXT_LENGTH = 4096;
+
+/** Split text into chunks of at most maxLen, preferring to break at newlines. */
+function chunkText(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + maxLen, text.length);
+    if (end < text.length) {
+      const lastNewline = text.lastIndexOf("\n", end - 1);
+      if (lastNewline >= start) end = lastNewline + 1;
+    }
+    chunks.push(text.slice(start, end));
+    start = end;
+  }
+  return chunks;
+}
+
+/** Send long text as multiple messages (each ≤ MAX_MESSAGE_TEXT_LENGTH). First chunk replies to replyToMessageId or uses replyOptions; rest reply to previous sent message. */
+async function sendLongMessage(
+  api: Context["api"],
+  chatId: number,
+  fullText: string,
+  replyOptions: { message_thread_id?: number; reply_parameters?: { message_id: number } },
+  replyOptionsWithHtml: { message_thread_id?: number; reply_parameters?: { message_id: number }; parse_mode: "HTML" },
+  opts: { replyToMessageId?: number },
+): Promise<void> {
+  const chunks = chunkText(fullText, MAX_MESSAGE_TEXT_LENGTH);
+  if (chunks.length === 0) return;
+  let lastSentId: number | undefined = opts.replyToMessageId;
+  for (let i = 0; i < chunks.length; i++) {
+    let formatted = closeOpenTelegramHtml(
+      stripUnpairedMarkdownDelimiters(mdToTelegramHtml(chunks[i])),
+    );
+    if (formatted.length > MAX_MESSAGE_TEXT_LENGTH) {
+      formatted = closeOpenTelegramHtml(formatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
+    }
+    const partOptions =
+      i === 0 && lastSentId === undefined
+        ? replyOptionsWithHtml
+        : {
+            ...(replyOptions.message_thread_id !== undefined ? { message_thread_id: replyOptions.message_thread_id } : {}),
+            ...(lastSentId !== undefined ? { reply_parameters: { message_id: lastSentId } } : {}),
+            parse_mode: "HTML" as const,
+          };
+    try {
+      const sent = await api.sendMessage(chatId, formatted, partOptions);
+      const id = (sent as { message_id?: number }).message_id;
+      if (typeof id === "number") lastSentId = id;
+    } catch (e) {
+      console.error("[bot][sendLongMessage]", (e as Error)?.message ?? e);
+      try {
+        const markdown = toTelegramMarkdown(chunks[i]);
+        const sent = await api.sendMessage(chatId, markdown, {
+          ...partOptions,
+          parse_mode: "Markdown",
+        });
+        const id = (sent as { message_id?: number }).message_id;
+        if (typeof id === "number") lastSentId = id;
+      } catch {
+        const sent = await api.sendMessage(chatId, chunks[i], {
+          ...(replyOptions.message_thread_id !== undefined ? { message_thread_id: replyOptions.message_thread_id } : {}),
+          ...(lastSentId !== undefined ? { reply_parameters: { message_id: lastSentId } } : {}),
+        });
+        const id = (sent as { message_id?: number }).message_id;
+        if (typeof id === "number") lastSentId = id;
+      }
+    }
+  }
+}
+
+/** Convert AI-style markdown to Telegram Markdown (* bold, _ italic, ` code) for parse_mode fallback. */
+function toTelegramMarkdown(s: string): string {
+  return s.replace(/\*\*/g, "*");
+}
+/** Throttle editMessageText to avoid Telegram 429 rate limits. */
+const EDIT_THROTTLE_MS = 500;
+/** If content grew by more than this many chars, edit immediately so long tail doesn't stick. */
+const EDIT_MIN_CHARS_TO_SEND_NOW = 20;
 
 /** Track latest generation per chat so newer messages cancel older streams. */
 const chatGenerations = new Map<number, number>();
@@ -61,7 +136,14 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     typeof (ctx.message as { message_thread_id?: number } | undefined)?.message_thread_id === "number"
       ? (ctx.message as { message_thread_id: number }).message_thread_id
       : undefined;
-  const replyOptions = messageThreadId !== undefined ? { message_thread_id: messageThreadId } : undefined;
+  const replyToMessageId =
+    ctx.message && typeof (ctx.message as { message_id?: number }).message_id === "number"
+      ? (ctx.message as { message_id: number }).message_id
+      : undefined;
+  const replyOptions: { message_thread_id?: number; reply_parameters?: { message_id: number } } = {
+    ...(messageThreadId !== undefined ? { message_thread_id: messageThreadId } : {}),
+    ...(replyToMessageId !== undefined ? { reply_parameters: { message_id: replyToMessageId } } : {}),
+  };
   const replyOptionsWithHtml = { ...replyOptions, parse_mode: "HTML" as const };
 
   if (!text) {
@@ -88,6 +170,8 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
   const chatId = ctx.chat?.id;
   const isPrivate = ctx.chat?.type === "private";
   const canStream = isPrivate && typeof chatId === "number";
+  /** When streaming we send one message early then edit it; used to detect streaming path. */
+  let streamSentMessageId: number | null = null;
 
   const numericChatId =
     typeof chatId === "number" ? chatId : undefined;
@@ -112,101 +196,235 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
   };
 
   let result: Awaited<ReturnType<typeof transmit>>;
+  /** Set in streaming path; when cancelled send partial and persist. When aborted by newer message, persist only (no send) to avoid flash. */
+  let interruptedReplyCallback: ((opts: { sendToChat: boolean }) => Promise<void>) | null = null;
 
   if (canStream && chatId !== undefined) {
-    let lastDraft = "";
+    let sentMessageId: number | null = null;
+    let lastEdited = "";
     let lastSendTime = 0;
     let pending: string | null = null;
     let throttleTimer: ReturnType<typeof setTimeout> | null = null;
-    let draftsDisabled = false;
+    let editsDisabled = false;
+    /** Latest accumulated text from stream; used for interrupted reply and persist. */
+    let streamedAccumulated = "";
 
-    const sendDraftOnce = async (slice: string): Promise<void> => {
-      if (await shouldAbortSend()) return;
-      if (isCancelled() || draftsDisabled) return;
-      const formattedSlice = mdToTelegramHtml(slice);
-      const sendDraft = (text: string, opts: Record<string, unknown>) =>
-        ctx.api.sendMessageDraft(chatId, DRAFT_ID, text, opts as Parameters<typeof ctx.api.sendMessageDraft>[3]);
-      try {
-        await sendDraft(formattedSlice, replyOptionsWithHtml);
-      } catch (e: unknown) {
-        const err = e as { error_code?: number; parameters?: { retry_after?: number } };
-        const is429 = err?.error_code === 429;
-        if (is429) {
-          const waitMs = (err.parameters?.retry_after ?? 1) * 1000;
-          await new Promise((r) => setTimeout(r, Math.min(waitMs, 2000)));
+    /** When turn is interrupted: message already exists (we sent early); optionally final edit, always persist. */
+    const sendInterruptedReply = async (opts: { sendToChat: boolean }): Promise<void> => {
+      const content = streamedAccumulated.trim();
+      if (sentMessageId !== null && content.length > 0) {
+        const toEdit = closeOpenTelegramHtml(
+          stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+        );
+        try {
+          await ctx.api.editMessageText(chatId, sentMessageId, toEdit, {
+            parse_mode: "HTML",
+          });
+        } catch {
           try {
-            await sendDraft(formattedSlice, replyOptionsWithHtml);
-          } catch (e2) {
-            console.error("[bot][draft]", e2);
-            draftsDisabled = true;
-          }
-        } else {
-          try {
-            await sendDraft(slice, replyOptions ?? {});
-          } catch (_) {
-            console.error("[bot][draft]", e);
-          }
+            await ctx.api.editMessageText(chatId, sentMessageId, content, {});
+          } catch (_) {}
         }
+      } else if (opts.sendToChat && content.length > 0) {
+        const toSend = closeOpenTelegramHtml(
+          stripUnpairedMarkdownDelimiters(mdToTelegramHtml(content)),
+        );
+        try {
+          await ctx.reply(toSend, replyOptionsWithHtml);
+        } catch {
+          await ctx.reply(content, replyOptions);
+        }
+      } else if (opts.sendToChat && sentMessageId === null) {
+        try {
+          await ctx.reply("…", replyOptions);
+        } catch (_) {}
+      }
+      if (threadContext && content.length > 0) {
+        await insertMessage({
+          user_telegram: threadContext.user_telegram,
+          thread_id: threadContext.thread_id,
+          type: "bot",
+          role: "assistant",
+          content,
+        });
       }
     };
 
-    const flushDraft = async (): Promise<void> => {
+    /** One send (first) or edit in flight at a time so we never send multiple messages by race. */
+    let sendOrEditQueue = Promise.resolve<void>(undefined);
+
+    /** First call sends a message (claims message_id); later calls edit that message. */
+    const sendOrEditOnce = (formatted: string, rawSlice: string): Promise<void> => {
+      const run = async (): Promise<void> => {
+        if (await shouldAbortSend()) return;
+        if (isCancelled() || editsDisabled) return;
+        const text = formatted.trim() || "…";
+        try {
+          if (sentMessageId === null) {
+            const sent = await ctx.api.sendMessage(chatId, text, replyOptionsWithHtml);
+            const id = (sent as { message_id?: number }).message_id;
+            if (typeof id === "number") {
+              sentMessageId = id;
+              streamSentMessageId = id;
+            }
+          } else {
+            await ctx.api.editMessageText(chatId, sentMessageId, text, {
+              parse_mode: "HTML",
+            });
+          }
+        } catch (e: unknown) {
+          const err = e as { error_code?: number; description?: string; parameters?: { retry_after?: number } };
+          if (err?.description?.includes("not modified")) return;
+          const is429 = err?.error_code === 429;
+          if (is429) {
+            const waitMs = (err.parameters?.retry_after ?? 1) * 1000;
+            await new Promise((r) => setTimeout(r, Math.min(waitMs, 2000)));
+            try {
+              const fallbackText = rawSlice.trim() || "…";
+              const markdownText = toTelegramMarkdown(fallbackText);
+              if (sentMessageId === null) {
+                const sent = await ctx.api.sendMessage(chatId, markdownText, {
+                  ...replyOptions,
+                  parse_mode: "Markdown",
+                });
+                const id = (sent as { message_id?: number }).message_id;
+                if (typeof id === "number") {
+                  sentMessageId = id;
+                  streamSentMessageId = id;
+                }
+              } else {
+                await ctx.api.editMessageText(chatId, sentMessageId, markdownText, {
+                  parse_mode: "Markdown",
+                });
+              }
+            } catch (e2) {
+              console.error("[bot][edit]", e2);
+              editsDisabled = true;
+            }
+          } else {
+            try {
+              const fallbackText = rawSlice.trim() || "…";
+              const markdownText = toTelegramMarkdown(fallbackText);
+              if (sentMessageId === null) {
+                const sent = await ctx.api.sendMessage(chatId, markdownText, {
+                  ...replyOptions,
+                  parse_mode: "Markdown",
+                });
+                const id = (sent as { message_id?: number }).message_id;
+                if (typeof id === "number") {
+                  sentMessageId = id;
+                  streamSentMessageId = id;
+                }
+              } else {
+                await ctx.api.editMessageText(chatId, sentMessageId, markdownText, {
+                  parse_mode: "Markdown",
+                });
+              }
+            } catch (_) {
+              try {
+                const fallbackText = rawSlice.trim() || "…";
+                if (sentMessageId === null) {
+                  const sent = await ctx.api.sendMessage(chatId, fallbackText, replyOptions);
+                  const id = (sent as { message_id?: number }).message_id;
+                  if (typeof id === "number") {
+                    sentMessageId = id;
+                    streamSentMessageId = id;
+                  }
+                } else {
+                  await ctx.api.editMessageText(chatId, sentMessageId, fallbackText, {});
+                }
+              } catch (_) {
+                console.error("[bot][edit]", e);
+              }
+            }
+          }
+        }
+      };
+      sendOrEditQueue = sendOrEditQueue.then(() => run());
+      return sendOrEditQueue;
+    };
+
+    const flushEdit = (awaitSend = false): void | Promise<void> => {
       if (isCancelled()) return;
       if (pending === null) return;
       const slice = pending;
       pending = null;
       throttleTimer = null;
-      lastDraft = slice;
+      lastEdited = slice;
       lastSendTime = Date.now();
-      await sendDraftOnce(slice);
+      const formatted = closeOpenTelegramHtml(
+        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(slice)),
+      );
+      if (!formatted.trim() && !slice.trim()) return;
+      const p = sendOrEditOnce(formatted, slice);
+      if (awaitSend) return p;
+      void p;
     };
 
-    const sendDraft = async (accumulated: string): Promise<void> => {
+    const sendOrEdit = (accumulated: string): void => {
+      streamedAccumulated = accumulated;
       if (isCancelled()) return;
-      const slice = accumulated.length > MAX_DRAFT_TEXT_LENGTH
-        ? accumulated.slice(0, MAX_DRAFT_TEXT_LENGTH)
+      const slice = accumulated.length > MAX_MESSAGE_TEXT_LENGTH
+        ? accumulated.slice(0, MAX_MESSAGE_TEXT_LENGTH)
         : accumulated;
-      if (slice === lastDraft) return;
-      if (!slice.trim()) return;
+      if (slice === lastEdited && (sentMessageId !== null || lastEdited !== "")) return;
+      const formatted = closeOpenTelegramHtml(
+        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(slice)),
+      );
+      if (!formatted.trim() && slice.trim()) {
+        lastEdited = slice;
+        return;
+      }
+      if (!slice.trim() && sentMessageId !== null) return;
       const now = Date.now();
       const throttleElapsed = now - lastSendTime;
-      const bigChunk = slice.length - lastDraft.length >= DRAFT_MIN_CHARS_TO_SEND_NOW;
+      const bigChunk = slice.length - lastEdited.length >= EDIT_MIN_CHARS_TO_SEND_NOW;
       const shouldSendNow =
-        throttleElapsed >= DRAFT_THROTTLE_MS || (bigChunk && slice.length > lastDraft.length);
+        sentMessageId === null ||
+        throttleElapsed >= EDIT_THROTTLE_MS ||
+        (bigChunk && slice.length > lastEdited.length);
       if (shouldSendNow) {
-        lastDraft = slice;
+        lastEdited = slice;
         lastSendTime = now;
         pending = null;
         if (throttleTimer) {
           clearTimeout(throttleTimer);
           throttleTimer = null;
         }
-        await sendDraftOnce(slice);
+        void sendOrEditOnce(formatted, slice);
       } else {
         pending = slice;
         if (!throttleTimer) {
           throttleTimer = setTimeout(
-            () => void flushDraft(),
-            DRAFT_THROTTLE_MS - throttleElapsed,
+            () => void flushEdit(),
+            EDIT_THROTTLE_MS - throttleElapsed,
           );
         }
       }
     };
 
+    interruptedReplyCallback = sendInterruptedReply;
+
+    await sendOrEditOnce("…", "…");
     result = await transmitStream(
       { input: text, userId, context, mode, threadContext },
-      sendDraft,
-      { isCancelled },
+      sendOrEdit,
+      {
+        isCancelled,
+        getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
+      },
     );
     if (result.skipped) return;
     if (isCancelled()) {
+      await sendInterruptedReply({ sendToChat: !(await shouldAbortSend()) });
       return;
     }
     if (throttleTimer) {
       clearTimeout(throttleTimer);
       throttleTimer = null;
     }
-    await flushDraft();
+    const finalFlush = flushEdit(true);
+    if (finalFlush) await finalFlush;
 
     if (
       mode === "token_info" &&
@@ -216,7 +434,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       if (isCancelled()) {
         return;
       }
-      lastDraft = "";
+      lastEdited = "";
       result = await transmitStream(
         {
           input: text,
@@ -225,18 +443,54 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
           mode: "chat",
           threadContext: threadContext ? { ...threadContext, skipClaim: true } : undefined,
         },
-        sendDraft,
-        { isCancelled },
+        sendOrEdit,
+        {
+          isCancelled,
+          getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
+        },
       );
       if (result.skipped) return;
       if (isCancelled()) {
+        await sendInterruptedReply({ sendToChat: !(await shouldAbortSend()) });
         return;
       }
       if (throttleTimer) {
         clearTimeout(throttleTimer);
         throttleTimer = null;
       }
-      await flushDraft();
+      const retryFlush = flushEdit(true);
+      if (retryFlush) await retryFlush;
+    }
+    await sendOrEditQueue;
+    // Ensure the streamed message shows the full content: last delta may not be the final snapshot (SDK/stream timing), so do one final edit from result.output_text.
+    if (
+      result.ok &&
+      result.output_text &&
+      streamSentMessageId !== null &&
+      chatId !== undefined
+    ) {
+      const fullSlice = result.output_text.slice(0, MAX_MESSAGE_TEXT_LENGTH);
+      let finalFormatted = closeOpenTelegramHtml(
+        stripUnpairedMarkdownDelimiters(mdToTelegramHtml(fullSlice)),
+      );
+      if (finalFormatted.length > MAX_MESSAGE_TEXT_LENGTH) {
+        finalFormatted = closeOpenTelegramHtml(finalFormatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
+      }
+      if (finalFormatted.trim()) {
+        sendOrEditQueue = sendOrEditQueue.then(async () => {
+          try {
+            await ctx.api.editMessageText(chatId, streamSentMessageId!, finalFormatted, {
+              parse_mode: "HTML",
+            });
+          } catch (e: unknown) {
+            const desc = (e as { description?: string })?.description ?? "";
+            if (!desc.includes("not modified")) {
+              console.error("[bot][edit] final completion edit", (e as Error)?.message ?? e);
+            }
+          }
+        });
+        await sendOrEditQueue;
+      }
     }
   } else {
     result = await transmit({ input: text, userId, context, mode, threadContext });
@@ -266,28 +520,76 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
   if (!result.ok || !result.output_text) {
     if (await shouldAbortSend()) return;
-    if (isCancelled()) {
-      return;
-    }
+    if (isCancelled()) return;
     const errMsg = result.error ?? "AI returned no output.";
     console.error("[bot][ai]", errMsg);
     const message: string =
       mode === "token_info" && result.error
         ? result.error
         : "AI is temporarily unavailable. Please try again in a moment.";
-    await ctx.reply(message, replyOptions);
+    if (streamSentMessageId !== null && chatId !== undefined) {
+      try {
+        await ctx.api.editMessageText(chatId, streamSentMessageId, message, {});
+      } catch {
+        await ctx.reply(message, replyOptions);
+      }
+    } else {
+      await ctx.reply(message, replyOptions);
+    }
     return;
   }
 
-  if (await shouldAbortSend()) return;
-  if (isCancelled()) {
+  if (await shouldAbortSend() && interruptedReplyCallback) {
+    await interruptedReplyCallback({ sendToChat: false });
     return;
   }
-  const formatted = mdToTelegramHtml(result.output_text);
-  try {
-    await ctx.reply(formatted, replyOptionsWithHtml);
-  } catch (e) {
-    // If Telegram rejects (e.g. invalid HTML), send as plain text
-    await ctx.reply(result.output_text, replyOptions);
+  if (await shouldAbortSend()) return;
+  if (isCancelled() && interruptedReplyCallback) {
+    await interruptedReplyCallback({ sendToChat: true });
+    return;
+  }
+  if (isCancelled()) return;
+
+  // Streaming path: first message already has up to 4096. Send overflow as continuation if needed; then we're done.
+  if (streamSentMessageId !== null && chatId !== undefined) {
+    if (result.output_text.length > MAX_MESSAGE_TEXT_LENGTH) {
+      await sendLongMessage(
+        ctx.api,
+        chatId,
+        result.output_text.slice(MAX_MESSAGE_TEXT_LENGTH),
+        replyOptions,
+        replyOptionsWithHtml,
+        { replyToMessageId: streamSentMessageId },
+      );
+    }
+    return;
+  }
+
+  if (result.output_text.length <= MAX_MESSAGE_TEXT_LENGTH) {
+    const textToFormat = result.output_text;
+    let formatted = closeOpenTelegramHtml(
+      stripUnpairedMarkdownDelimiters(mdToTelegramHtml(textToFormat)),
+    );
+    if (formatted.length > MAX_MESSAGE_TEXT_LENGTH) {
+      formatted = closeOpenTelegramHtml(formatted.slice(0, MAX_MESSAGE_TEXT_LENGTH));
+    }
+    try {
+      await ctx.reply(formatted, replyOptionsWithHtml);
+    } catch (e) {
+      console.error("[bot][reply] HTML reply failed", (e as Error)?.message ?? e);
+      try {
+        await ctx.reply(toTelegramMarkdown(textToFormat), { ...replyOptions, parse_mode: "Markdown" });
+      } catch {
+        await ctx.reply(textToFormat, replyOptions);
+      }
+    }
+    return;
+  }
+
+  if (chatId !== undefined) {
+    await sendLongMessage(ctx.api, chatId, result.output_text, replyOptions, replyOptionsWithHtml, {});
+  } else {
+    const textToFormat = result.output_text.slice(0, MAX_MESSAGE_TEXT_LENGTH);
+    await ctx.reply(textToFormat, replyOptions);
   }
 }

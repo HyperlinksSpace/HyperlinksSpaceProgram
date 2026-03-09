@@ -97,7 +97,7 @@ export async function callOpenAiChatStream(
   mode: AiMode,
   params: AiRequestBase,
   onDelta: (text: string) => void | Promise<void>,
-  opts?: { isCancelled?: () => boolean },
+  opts?: { isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
 ): Promise<AiResponseBase> {
   if (!client) {
     return {
@@ -129,14 +129,22 @@ export async function callOpenAiChatStream(
       input: `${prefix}${trimmed}`,
     });
 
-    stream.on("response.output_text.delta", (event: { snapshot?: string }) => {
+    stream.on("response.output_text.delta", async (event: { snapshot?: string }) => {
       if (opts?.isCancelled && opts.isCancelled()) {
         try {
-          // Stop the stream on OpenAI's side to avoid spending more tokens.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (stream as any)?.abort?.();
         } catch {
-          // Ignore abort errors; we just stop processing locally.
+          /* ignore */
+        }
+        return;
+      }
+      if (opts?.getAbortSignal && (await opts.getAbortSignal())) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stream as any)?.abort?.();
+        } catch {
+          /* ignore */
         }
         return;
       }
