@@ -1,7 +1,6 @@
 Mobile: Paste to botbar bug
-Scrolling indicator
 AI options Page
-Icons on mobile
+AI Icon
 Fonts
 Theme with TMA integration
 AI Chat page

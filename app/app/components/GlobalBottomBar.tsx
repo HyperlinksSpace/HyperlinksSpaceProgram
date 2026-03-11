@@ -7,7 +7,7 @@
  * - Last line stays pinned 20px from the bottom while typing
  * - Apply icon is always 25px from the bottom
  */
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputSubmitEditingEventData,
   type TextInputContentSizeChangeEventData,
+  type TextInputScrollEventData,
   type NativeScrollEvent,
   type NativeSyntheticEvent as RnNativeEvent,
 } from "react-native";
@@ -62,6 +63,33 @@ export function GlobalBottomBar() {
   // Height of a hidden mirrored Text used only for shrink detection.
   const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);
   const [scrollY, setScrollY] = useState(0);
+
+  // Web-only: wire up a native scroll listener on the underlying textarea
+  // rendered by TextInput so we can track manual scroll that React Native Web
+  // may not surface via onScroll.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof document === "undefined") return;
+
+    const el = document.querySelector(
+      '[data-ai-input="true"]',
+    ) as HTMLElement | null;
+    if (!el) return;
+
+    const handleScroll = () => {
+      // Debug helper (disabled by default):
+      // console.log("[GlobalBottomBar] dom scrollTop:", (el as any).scrollTop);
+      const y = (el as any).scrollTop;
+      if (typeof y === "number") {
+        setScrollY(y);
+      }
+    };
+
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
   const submit = useCallback(() => {
     triggerHaptic("heavy");
@@ -118,9 +146,25 @@ export function GlobalBottomBar() {
 
   const onScroll = useCallback(
     (e: RnNativeEvent<NativeScrollEvent>) => {
-      setScrollY(e.nativeEvent.contentOffset.y);
+      const y = e.nativeEvent.contentOffset.y;
+      // Debug helper (disabled by default):
+      // console.log("[GlobalBottomBar] outer scrollY:", y);
+      setScrollY(y);
     },
     []
+  );
+
+  const onInputScroll = useCallback(
+    (e: NativeSyntheticEvent<TextInputScrollEventData>) => {
+      // On some platforms (notably web), TextInput's scroll event may not
+      // include a contentOffset; guard against that shape before reading.
+      const offset = (e.nativeEvent as any)?.contentOffset;
+      if (!offset || typeof offset.y !== "number") return;
+      // Debug helper (disabled by default):
+      // console.log("[GlobalBottomBar] input scrollY:", offset.y);
+      setScrollY(offset.y);
+    },
+    [],
   );
 
   // Growth logic: derive line count from measured TextInput content height.
@@ -201,28 +245,37 @@ export function GlobalBottomBar() {
   // Scrollbar maths: mirror Flutter implementation.
   // barHeight: total bar height; viewportHeight: scroll viewport for text.
   const viewportHeight = inputContainerHeight;
-  const showScrollbar = isScrollMode && contentHeight > viewportHeight;
-  const maxScroll = Math.max(contentHeight - viewportHeight, 0);
-  const totalHeight = viewportHeight + maxScroll;
+  // Use the intrinsic content height reported by the TextInput to determine
+  // how much text exists in total. The viewport still corresponds to the
+  // outer ScrollView height (viewportHeight), so the indicator height is the
+  // fraction of total text that is currently visible:
+  //   indicatorHeightRatio = viewportHeight / scrollContentHeight.
+  const scrollContentHeight = contentHeight;
+  const showScrollbar = isScrollMode && scrollContentHeight > viewportHeight;
+  // Scroll range for the outer ScrollView is based on the intrinsic content
+  // height vs. the viewport height.
+  const scrollRange = Math.max(scrollContentHeight - viewportHeight, 0);
   let indicatorHeight = 0;
   let topPosition = 0;
-  if (showScrollbar && maxScroll > 0 && totalHeight > 0) {
+  if (showScrollbar && scrollRange > 0 && scrollContentHeight > 0) {
     const indicatorHeightRatio = Math.min(
       1,
-      Math.max(0, viewportHeight / totalHeight),
+      Math.max(0, viewportHeight / scrollContentHeight),
     );
     indicatorHeight = Math.min(
       barHeight,
       Math.max(0, barHeight * indicatorHeightRatio),
     );
-    const scrollPosition = Math.min(
-      1,
-      Math.max(0, scrollY / maxScroll),
-    );
+    const scrollPosition = Math.min(1, Math.max(0, scrollY / scrollRange));
     const availableSpace = Math.min(
       barHeight,
       Math.max(0, barHeight - indicatorHeight),
     );
+    // Here scrollY/scrollRange (scrollPosition) is 0 when the top of the text
+    // is visible and 1 when the bottom is fully visible. We want the indicator
+    // to be at the top of the bar when at the very top of the content, and at
+    // the bottom of the bar when scrolled to the bottom, so we map
+    // 0 → top, 1 → bottom directly.
     topPosition = Math.min(
       barHeight,
       Math.max(0, scrollPosition * availableSpace),
@@ -266,7 +319,8 @@ export function GlobalBottomBar() {
                     multiline
                     maxLength={4096}
                     onContentSizeChange={onContentSizeChange}
-                    scrollEnabled={false}
+                    scrollEnabled
+                    onScroll={onInputScroll}
                     // @ts-expect-error dataSet is a valid prop on web (used for CSS targeting)
                     dataSet={{ "ai-input": "true" }}
                   />
