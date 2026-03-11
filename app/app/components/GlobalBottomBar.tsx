@@ -10,6 +10,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
   View,
+  Text,
   TextInput,
   Pressable,
   StyleSheet,
@@ -37,7 +38,11 @@ const {
   maxBarHeight: MAX_BAR_HEIGHT,
 } = layout.bottomBar;
 const FONT_SIZE = 15;
-const SCROLL_CONTENT_HEIGHT = MAX_BAR_HEIGHT - 2 * VERTICAL_PADDING; // 140
+// Scroll viewport height when the bar is at its maximum. This is:
+//   MAX_BAR_HEIGHT - topPadding - bottomPadding
+// so with 190px bar and 20px top/bottom padding we get 150px, which matches
+// the Flutter behaviour where the 8th line is half-clipped.
+const SCROLL_CONTENT_HEIGHT = MAX_BAR_HEIGHT - 2 * VERTICAL_PADDING;
 const PREMADE_PROMPTS = [
   "What is the universe?",
   "Tell me about dogs token",
@@ -50,8 +55,12 @@ export function GlobalBottomBar() {
   const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
   // Baseline single-line height reported by the underlying textarea on web.
-  const [baseContentHeight, setBaseContentHeight] = useState<number | null>(null);
+  const [baseContentHeight, setBaseContentHeight] = useState<number | null>(
+    null,
+  );
   const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
+  // Height of a hidden mirrored Text used only for shrink detection.
+  const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);
   const [scrollY, setScrollY] = useState(0);
 
   const submit = useCallback(() => {
@@ -103,6 +112,10 @@ export function GlobalBottomBar() {
     []
   );
 
+  const onChangeText = useCallback((text: string) => {
+    setValue(text);
+  }, []);
+
   const onScroll = useCallback(
     (e: RnNativeEvent<NativeScrollEvent>) => {
       setScrollY(e.nativeEvent.contentOffset.y);
@@ -110,39 +123,51 @@ export function GlobalBottomBar() {
     []
   );
 
-  // Derive visual line count using a baseline height for one line:
-  // - baseContentHeight is captured on first contentSizeChange and represents
-  //   the browser's single-line box (which may be > lineHeight).
-  // - For N lines, the height grows roughly as:
-  //     base + (N - 1) * lineHeight
-  //   so we invert that to estimate N, with a small epsilon to avoid
-  //   under-counting the second line.
-  const visualLines =
-    baseContentHeight == null
-      ? 1
-      : Math.max(
-          1,
-          Math.min(
-            999,
-            1 +
-              Math.floor(
-                Math.max(
-                  0,
-                  (contentHeight - baseContentHeight + LINE_HEIGHT * 0.25) /
-                    LINE_HEIGHT,
-                ),
-              ),
+  // Growth logic: derive line count from measured TextInput content height.
+  const heightBasedLines = React.useMemo(() => {
+    if (baseContentHeight == null) return 1;
+    return Math.max(
+      1,
+      Math.min(
+        999,
+        1 +
+          Math.floor(
+            Math.max(
+              0,
+              (contentHeight - baseContentHeight + LINE_HEIGHT * 0.25) /
+                LINE_HEIGHT,
+            ),
           ),
-        );
+      ),
+    );
+  }, [baseContentHeight, contentHeight]);
 
-  // Dynamically clamp the intrinsic TextInput box to N * lineHeight (20px)
-  // for up to 7 lines on all platforms. From 8+ lines, we cap the intrinsic
-  // height at 7 * 20 = 140px and let the ScrollView + viewport (150px)
-  // handle clipping/scroll. We set minHeight/height/maxHeight to the same
-  // value so RN Web's internal minHeight is fully overridden.
+  // Shrink guard: upper bound on how many lines we should allow when content
+  // shrinks. We use a hidden mirrored Text with identical typography and
+  // width to estimate how many visual lines the current value actually
+  // occupies; this tracks wrapping even without explicit line breaks.
+  const shrinkGuardLines = React.useMemo(() => {
+    if (mirrorHeight == null) return 999;
+    const approxLines = Math.max(1, Math.round(mirrorHeight / LINE_HEIGHT));
+    return Math.max(1, Math.min(999, approxLines));
+  }, [mirrorHeight]);
+
+  // Final visual line count:
+  // - Growing uses the original height-based measurement.
+  // - Shrinking is constrained by the shrink guard so we can't keep more lines
+  //   than the current content can actually occupy.
+  const visualLines = Math.min(heightBasedLines, shrinkGuardLines);
+
+  // Dynamically clamp the intrinsic TextInput box height:
+  // - 1–7 lines: N * lineHeight (20px)
+  // - 8+ lines: cap at 8 * 20 = 160px, while the viewport stays at 150px.
+  //   This mirrors Flutter: on the 8th line the bar is 190px tall, the text
+  //   viewport is 150px, and roughly half of the 8th line is clipped.
+  // We set minHeight/height/maxHeight to the same value so RN Web's internal
+  // minHeight is fully overridden.
   const dynamicHeight = Math.min(
-    MAX_LINES_BEFORE_SCROLL * LINE_HEIGHT, // 7 * 20 = 140
-    visualLines * LINE_HEIGHT,             // 1*20, 2*20, ...
+    (MAX_LINES_BEFORE_SCROLL + 1) * LINE_HEIGHT, // allow up to 8 lines (160px)
+    visualLines * LINE_HEIGHT,                   // 1*20, 2*20, ...
   );
   const inputDynamicStyle = {
     minHeight: dynamicHeight,
@@ -234,7 +259,7 @@ export function GlobalBottomBar() {
                     placeholder="AI & Search"
                     placeholderTextColor="#818181"
                     value={value}
-                    onChangeText={setValue}
+                    onChangeText={onChangeText}
                     onSubmitEditing={onSubmitEditing}
                     returnKeyType="send"
                     blurOnSubmit={false}
@@ -245,6 +270,28 @@ export function GlobalBottomBar() {
                     // @ts-expect-error dataSet is a valid prop on web (used for CSS targeting)
                     dataSet={{ "ai-input": "true" }}
                   />
+                  <Text
+                    style={[
+                      styles.input,
+                      styles.inputWeb,
+                      {
+                        position: "absolute",
+                        opacity: 0,
+                        pointerEvents: "none",
+                        left: 0,
+                        right: 0,
+                      },
+                    ]}
+                    numberOfLines={0}
+                    onLayout={(e) => {
+                      const h = e.nativeEvent.layout.height;
+                      if (Number.isFinite(h) && h > 0) {
+                        setMirrorHeight(h);
+                      }
+                    }}
+                  >
+                    {value || " "}
+                  </Text>
                 </View>
               </ScrollView>
             </View>
