@@ -4,7 +4,7 @@ import { Stack } from "expo-router";
 import { TelegramProvider } from "./components/Telegram";
 import { GlobalLogoBarWithFallback } from "./components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "./components/GlobalBottomBar";
-import { GlobalBottomBarWeb } from "./components/RawTextareaBar";
+import { GlobalBottomBarWeb } from "./components/GlobalBottomBarWeb";
 
 /**
  * Three-block column layout (same as Flutter):

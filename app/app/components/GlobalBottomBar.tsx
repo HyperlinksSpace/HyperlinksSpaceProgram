@@ -20,7 +20,6 @@ import {
   type NativeSyntheticEvent,
   type TextInputSubmitEditingEventData,
   type TextInputContentSizeChangeEventData,
-  type TextInputScrollEventData,
   type NativeScrollEvent,
   type NativeSyntheticEvent as RnNativeEvent,
 } from "react-native";
@@ -40,10 +39,8 @@ const {
   maxBarHeight: MAX_BAR_HEIGHT,
 } = layout.bottomBar;
 const FONT_SIZE = 15;
-// Scroll viewport height when the bar is at its maximum. Since we want the
-// input box itself to fully occupy the bar vertically (no outer gap), this is
-// equal to the max bar height.
-const SCROLL_CONTENT_HEIGHT = MAX_BAR_HEIGHT;
+// Same as web: 20px gap above first line and below last line inside the input.
+const INNER_PADDING = 20;
 const PREMADE_PROMPTS = [
   "What is the universe?",
   "Tell me about dogs token",
@@ -55,10 +52,6 @@ export function GlobalBottomBar() {
   const [value, setValue] = useState("");
   const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
-  // Baseline single-line height reported by the underlying textarea on web.
-  const [baseContentHeight, setBaseContentHeight] = useState<number | null>(
-    null,
-  );
   const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
   // Height of a hidden mirrored Text used for shrink (web) and grow (native when contentSize is unreliable).
   const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);
@@ -87,16 +80,7 @@ export function GlobalBottomBar() {
     const handleScroll = () => {
       const scrollTop = (el as HTMLTextAreaElement).scrollTop;
       if (typeof scrollTop !== "number") return;
-      const contentH = (el as HTMLTextAreaElement).scrollHeight;
-      const clientH = (el as HTMLTextAreaElement).clientHeight;
-      const domRange = contentH - clientH;
-      // Match native: viewport is SCROLL_CONTENT_HEIGHT (150), so scroll range is contentHeight - 150.
-      const targetRange = contentH - SCROLL_CONTENT_HEIGHT;
-      const effectiveY =
-        domRange > 0 && targetRange > 0
-          ? (scrollTop * targetRange) / domRange
-          : scrollTop;
-      setScrollY(effectiveY);
+      setScrollY(scrollTop);
     };
 
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -132,24 +116,7 @@ export function GlobalBottomBar() {
     (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
       const h = e.nativeEvent.contentSize.height;
       if (!Number.isFinite(h)) return;
-      setBaseContentHeight((prev) => (prev == null ? h : prev));
       setContentHeight(h);
-      // Compute how many lines this content represents.
-      const lines = Math.max(1, Math.ceil(h / LINE_HEIGHT));
-      // For 1–7 lines we rely purely on bottom alignment and growing viewport.
-      // Starting from the 9th line we auto-scroll so older lines move under the
-      // top edge while the last line stays at the arrow baseline.
-      if (lines > MAX_LINES_BEFORE_SCROLL + 1) {
-        setTimeout(() => {
-          if (scrollRef.current) {
-            // Scroll so that the bottom of the content sits exactly at the
-            // bottom of the viewport (SCROLL_CONTENT_HEIGHT). This keeps the
-            // last line aligned with the arrow without clipping it.
-            const targetY = Math.max(0, h - SCROLL_CONTENT_HEIGHT);
-            scrollRef.current.scrollTo({ y: targetY, animated: false });
-          }
-        }, 0);
-      }
     },
     []
   );
@@ -161,111 +128,52 @@ export function GlobalBottomBar() {
   const onScroll = useCallback(
     (e: RnNativeEvent<NativeScrollEvent>) => {
       const y = e.nativeEvent.contentOffset.y;
-      // Debug helper (disabled by default):
-      // console.log("[GlobalBottomBar] outer scrollY:", y);
       setScrollY(y);
-    },
-    []
-  );
-
-  const onInputScroll = useCallback(
-    (e: NativeSyntheticEvent<TextInputScrollEventData>) => {
-      // On some platforms (notably web), TextInput's scroll event may not
-      // include a contentOffset; guard against that shape before reading.
-      const offset = (e.nativeEvent as any)?.contentOffset;
-      if (!offset || typeof offset.y !== "number") return;
-      // Debug helper (disabled by default):
-      // console.log("[GlobalBottomBar] input scrollY:", offset.y);
-      setScrollY(offset.y);
     },
     [],
   );
 
-  // Growth logic: derive line count from measured TextInput content height.
-  const heightBasedLines = React.useMemo(() => {
-    if (baseContentHeight == null) return 1;
-    return Math.max(
-      1,
-      Math.min(
-        999,
-        1 +
-          Math.floor(
-            Math.max(
-              0,
-              (contentHeight - baseContentHeight + LINE_HEIGHT * 0.25) /
-                LINE_HEIGHT,
-            ),
-          ),
-      ),
-    );
-  }, [baseContentHeight, contentHeight]);
-
-  // Shrink guard / native driver: we use a hidden mirrored Text with identical
-  // typography (and on native, explicit width from inputAreaWidth) to measure how
-  // many visual lines the current value occupies.
-  const shrinkGuardLines = React.useMemo(() => {
-    if (mirrorHeight == null) return 999;
-    const approxLines = Math.max(1, Math.round(mirrorHeight / LINE_HEIGHT));
-    return Math.max(1, Math.min(999, approxLines));
-  }, [mirrorHeight]);
-
-  // Final visual line count:
-  // - Web: min(heightBasedLines, shrinkGuardLines) so we grow from content size and shrink from mirror.
-  // - Native: mirror drives both grow and shrink (onContentSizeChange is unreliable on iOS); fallback to heightBasedLines when mirror not yet measured.
-  const visualLines =
-    Platform.OS === "web"
-      ? Math.min(heightBasedLines, shrinkGuardLines)
-      : (mirrorHeight != null ? shrinkGuardLines : heightBasedLines);
-
-  // Intrinsic TextInput box height based purely on line count, capped at 8
-  // lines (8 * 20 = 160px).
-  const intrinsicHeight = Math.min(
-    (MAX_LINES_BEFORE_SCROLL + 1) * LINE_HEIGHT,
-    visualLines * LINE_HEIGHT,
+  // Same formula as GlobalBottomBarWeb: base height includes 20px top + bottom gaps.
+  // Mirror is given paddingVertical so mirrorHeight = content with gaps; else contentHeight is text-only from onContentSizeChange.
+  const baseHeight =
+    mirrorHeight != null
+      ? mirrorHeight
+      : contentHeight + INNER_PADDING * 2;
+  const effectiveTextHeight = Math.max(0, baseHeight - INNER_PADDING * 2);
+  const rawLines = Math.max(
+    1,
+    Math.floor(
+      (effectiveTextHeight + LINE_HEIGHT * 0.2) / LINE_HEIGHT,
+    ),
   );
-  // Final dynamic height:
-  // - Minimum 60px (3 lines) so the bar never shrinks below 60.
-  // - Maximum 180px: above that the bar stops growing and we switch to scrolling.
+  const visibleLines = Math.min(rawLines, MAX_LINES_BEFORE_SCROLL);
   const dynamicHeight = Math.max(
     60,
-    Math.min(MAX_BAR_HEIGHT, intrinsicHeight),
+    Math.min(
+      MAX_BAR_HEIGHT,
+      INNER_PADDING * 2 + visibleLines * LINE_HEIGHT,
+    ),
   );
-  const inputDynamicStyle = {
-    minHeight: dynamicHeight,
-    height: dynamicHeight,
-    maxHeight: dynamicHeight,
-  };
 
-  // Bar height directly matches the input height, clamped between 60 and 180.
   const barHeight = dynamicHeight;
-  // Viewport height:
-  // - When bar < max (<= 180): viewport is the same as the input height.
-  // - Once we reach the max (180): viewport fixed at 180 while content can grow.
-  const inputContainerHeight =
-    barHeight < MAX_BAR_HEIGHT ? barHeight : SCROLL_CONTENT_HEIGHT;
-  // Scroll mode (custom scrollbar + auto-scroll) once the bar has reached its
-  // maximum height and the content is taller than the viewport.
-  const isScrollMode = barHeight >= MAX_BAR_HEIGHT && contentHeight > inputContainerHeight;
+  const viewportHeight = barHeight;
+  const contentHeightWithGaps = baseHeight;
+  const scrollRange = Math.max(contentHeightWithGaps - viewportHeight, 0);
+  const isScrollMode =
+    contentHeightWithGaps > viewportHeight && scrollRange > 0;
+  const showScrollbar = isScrollMode;
 
-  // Scrollbar maths: mirror Flutter implementation.
-  // barHeight: total bar height; viewportHeight: scroll viewport for text.
-  const viewportHeight = inputContainerHeight;
-  // Use the intrinsic content height reported by the TextInput to determine
-  // how much text exists in total. The viewport still corresponds to the
-  // outer ScrollView height (viewportHeight), so the indicator height is the
-  // fraction of total text that is currently visible:
-  //   indicatorHeightRatio = viewportHeight / scrollContentHeight.
-  const scrollContentHeight = contentHeight;
-  const showScrollbar = isScrollMode && scrollContentHeight > viewportHeight;
-  // Scroll range for the outer ScrollView is based on the intrinsic content
-  // height vs. the viewport height.
-  const scrollRange = Math.max(scrollContentHeight - viewportHeight, 0);
   let indicatorHeight = 0;
   let topPosition = 0;
-  if (showScrollbar && scrollRange > 0 && scrollContentHeight > 0) {
+  if (
+    showScrollbar &&
+    scrollRange > 0 &&
+    contentHeightWithGaps > 0 &&
+    barHeight != null
+  ) {
     const indicatorHeightRatio = Math.min(
       1,
-      Math.max(0, viewportHeight / scrollContentHeight),
+      Math.max(0, viewportHeight / contentHeightWithGaps),
     );
     indicatorHeight = Math.min(
       barHeight,
@@ -276,16 +184,31 @@ export function GlobalBottomBar() {
       barHeight,
       Math.max(0, barHeight - indicatorHeight),
     );
-    // Here scrollY/scrollRange (scrollPosition) is 0 when the top of the text
-    // is visible and 1 when the bottom is fully visible. We want the indicator
-    // to be at the top of the bar when at the very top of the content, and at
-    // the bottom of the bar when scrolled to the bottom, so we map
-    // 0 → top, 1 → bottom directly.
     topPosition = Math.min(
       barHeight,
       Math.max(0, scrollPosition * availableSpace),
     );
   }
+
+  // When the 7th line first appears (max bar height, no scroll yet), shift
+  // content up by one inner padding so the last visible line aligns with the arrow (same as web).
+  useEffect(() => {
+    if (rawLines === 7 && dynamicHeight >= MAX_BAR_HEIGHT && scrollY === 0) {
+      scrollRef.current?.scrollTo({ y: INNER_PADDING, animated: false });
+    }
+  }, [rawLines, dynamicHeight, scrollY]);
+
+  // Snap the ScrollView to bottom whenever the content becomes taller than
+  // the visible viewport. Using onContentSizeChange ensures the scroll
+  // happens after iOS has laid out the content, so scrollToEnd is effective.
+  const onScrollViewContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      if (h > viewportHeight && scrollRef.current) {
+        scrollRef.current.scrollToEnd({ animated: false });
+      }
+    },
+    [viewportHeight],
+  );
 
   return (
     <View style={[styles.wrapper, { height: barHeight }]}>
@@ -295,7 +218,7 @@ export function GlobalBottomBar() {
           <View style={{ flex: 1 }}>
             <View
               style={{
-                height: inputContainerHeight,
+                height: viewportHeight,
                 justifyContent: "flex-start",
               }}
             >
@@ -305,17 +228,18 @@ export function GlobalBottomBar() {
                 contentContainerStyle={{
                   paddingRight: 6,
                   flexGrow: 1,
-                  justifyContent: "flex-end",
+                  justifyContent: "flex-start",
                 }}
                 onScroll={onScroll}
+                onContentSizeChange={onScrollViewContentSizeChange}
                 scrollEventThrottle={16}
                 showsVerticalScrollIndicator={false}
               >
                 <View
                   style={{
                     flexGrow: 1,
-                    justifyContent: "flex-end",
-                    position: "relative", // for right-side overlay / gutter
+                    justifyContent: "flex-start",
+                    position: "relative",
                   }}
                   onLayout={
                     Platform.OS !== "web"
@@ -328,7 +252,7 @@ export function GlobalBottomBar() {
                 >
                   <TextInput
                     ref={inputRef}
-                    style={[styles.input, styles.inputWeb, inputDynamicStyle]}
+                    style={[styles.input, styles.inputWeb]}
                     placeholder="AI & Search"
                     placeholderTextColor="#818181"
                     value={value}
@@ -339,8 +263,7 @@ export function GlobalBottomBar() {
                     multiline
                     maxLength={4096}
                     onContentSizeChange={onContentSizeChange}
-                    scrollEnabled
-                    onScroll={onInputScroll}
+                    scrollEnabled={false}
                     // @ts-expect-error dataSet is a valid prop on web (used for CSS targeting)
                     dataSet={{ "ai-input": "true" }}
                   />
@@ -370,6 +293,7 @@ export function GlobalBottomBar() {
                         pointerEvents: "none",
                         left: 0,
                         right: 0,
+                        paddingVertical: INNER_PADDING,
                         // On native, give mirror explicit width so it wraps like the input and reports correct height.
                         ...(Platform.OS !== "web" &&
                           inputAreaWidth != null && { width: inputAreaWidth }),
@@ -455,11 +379,8 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FONT_SIZE,
     color: colors.text,
-    // Target 20px visual line height; the outer container + ScrollView
-    // control how much vertical space is available, so we don't fix the
-    // TextInput height explicitly.
     lineHeight: LINE_HEIGHT,
-    paddingVertical: 0,
+    paddingVertical: INNER_PADDING,
     paddingHorizontal: 0,
     borderWidth: 0,
     borderColor: "transparent",
