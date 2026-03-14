@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { init, viewport } from "@tma.js/sdk-react";
+import { init, on, viewport } from "@tma.js/sdk-react";
 import {
   ensureTelegramScript,
   getInitDataString,
@@ -125,6 +125,60 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // outside Mini App (e.g. local dev) — leave defaults
     }
+  }, []);
+
+  // TMA-only: layout height and scroll come from TMA viewport only. When keyboard opens, nothing
+  // changes until TMA sends viewport_changed; then we apply new height in one turn (bindCssVars
+  // updates --tg-viewport-height) and reset scroll. No Visual Viewport — avoids intermediate shifts.
+  useEffect(() => {
+    if (typeof window === "undefined" || !isLikelyInTma()) return;
+
+    // iOS: viewport-fit=cover avoids white gap at bottom when keyboard opens
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (meta) {
+      const c = meta.getAttribute("content") ?? "";
+      if (!c.includes("viewport-fit=cover")) {
+        meta.setAttribute("content", [c, "viewport-fit=cover"].filter(Boolean).join(", "));
+      }
+    }
+
+    function lockScroll() {
+      if (window.scrollY > 0) window.scrollTo(0, 0);
+    }
+    window.addEventListener("scroll", lockScroll, { passive: false });
+
+    let tmaCleanup: (() => void) | null = null;
+    viewport.mount?.().then(() => {
+      try {
+        const unbindCss = viewport.bindCssVars?.();
+        // viewport_changed (height, width?, is_expanded, is_state_stable). Only reset scroll when state is stable.
+        const removeViewportListener = on(
+          "viewport_changed",
+          (payload: {
+            height: number;
+            width?: number;
+            is_expanded?: boolean;
+            is_state_stable?: boolean;
+            isExpanded?: boolean;
+            isStateStable?: boolean;
+          }) => {
+            const stable = payload.is_state_stable ?? payload.isStateStable ?? false;
+            if (stable) window.scrollTo(0, 0);
+          }
+        );
+        tmaCleanup = () => {
+          unbindCss?.();
+          removeViewportListener?.();
+        };
+      } catch {
+        // ignore
+      }
+    });
+
+    return () => {
+      window.removeEventListener("scroll", lockScroll);
+      tmaCleanup?.();
+    };
   }, []);
 
   useEffect(() => {

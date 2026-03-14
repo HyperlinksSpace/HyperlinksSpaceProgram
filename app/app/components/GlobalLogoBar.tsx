@@ -84,6 +84,7 @@ const styles = StyleSheet.create({
   container: {
     width: "100%",
     backgroundColor: "transparent",
+    flexShrink: 0, /* keep header fixed height when keyboard opens (flex layout, no shift) */
   },
   inner: {
     width: "100%",

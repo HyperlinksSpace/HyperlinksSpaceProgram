@@ -1,5 +1,26 @@
 /* Global web-only overrides */
 
+/* Lock the app column to the viewport so the whole block is not scrollable (avoids logo bar jump in TMA when keyboard opens). */
+html {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body {
+  height: var(--tg-viewport-height, 100%);
+  min-height: var(--tg-viewport-height, 100%);
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* TMA: --tg-viewport-height is set and updated by TMA SDK viewport.bindCssVars() on viewport_changed only. */
+#root,
+[data-expo-root] {
+  height: var(--tg-viewport-height, 100%);
+  min-height: var(--tg-viewport-height, 100%);
+  overflow: hidden;
+}
+
 /* Hide native textarea scrollbars (React Native Web TextInput) while keeping scroll behaviour. */
 textarea {
   -ms-overflow-style: none; /* IE and Edge */

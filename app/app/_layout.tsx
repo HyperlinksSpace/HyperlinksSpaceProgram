@@ -52,6 +52,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     flexDirection: "column",
+    overflow: "hidden",
   },
   main: {
     flex: 1,

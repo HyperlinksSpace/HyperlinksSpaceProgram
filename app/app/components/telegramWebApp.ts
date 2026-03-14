@@ -14,6 +14,7 @@ export type TelegramWebApp = {
   expand?: () => void;
   setHeaderColor?: (color: string) => void;
   setupSwipeBehavior?: (opts: { allow_vertical_swipe?: boolean }) => void;
+  disableVerticalSwipes?: () => void;
   isFullscreen?: boolean;
   HapticFeedback?: { impactOccurred?: (style: string) => void };
   [k: string]: unknown;
@@ -147,6 +148,7 @@ export function readyAndExpand(): void {
     app.setHeaderColor?.("#000000");
     const opts = { allow_vertical_swipe: false };
     app.setupSwipeBehavior?.(opts);
+    app.disableVerticalSwipes?.(); // legacy API; setupSwipeBehavior is preferred
   } catch {
     // ignore
   }
