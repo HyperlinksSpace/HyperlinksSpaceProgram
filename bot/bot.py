@@ -51,6 +51,7 @@ _lang_switch_locks: dict[tuple[int, int], asyncio.Lock] = {}
 _lang_switch_last_tap: dict[tuple[int, int], float] = {}
 _http_runner: web.AppRunner | None = None
 LANG_SWITCH_DEBOUNCE_SECONDS = 0.5
+DEFAULT_THINKING_TEXT = "Thinking..."
 
 
 def _mask_secret(value: str, visible: int = 4) -> str:
@@ -106,6 +107,26 @@ def build_language_keyboard(message_id: int) -> InlineKeyboardMarkup:
         InlineKeyboardButton("RU", callback_data=f"lang:ru:{message_id}")
     ]]
     return InlineKeyboardMarkup(keyboard)
+
+
+def build_typing_indicator_frames(base_text: str) -> list[str]:
+    """Convert a static thinking label into a simple rotating dot animation."""
+    normalized = (base_text or "").strip() or DEFAULT_THINKING_TEXT
+    stem = normalized.rstrip()
+    stem_without_dots = stem.rstrip(".…").rstrip()
+    if stem_without_dots:
+        stem = stem_without_dots
+    return [f"{stem}.", f"{stem}..", f"{stem}..."]
+
+
+def get_initial_typing_indicator_text(lang: str) -> str:
+    return build_typing_indicator_frames(THINKING_TEXT.get(lang, THINKING_TEXT["en"]))[0]
+
+
+def truncate_telegram_text(text: str, max_length: int = 4096) -> str:
+    if len(text) > max_length:
+        return text[:max_length - 3] + "..."
+    return text
 
 
 def build_app_launch_url() -> str | None:
@@ -833,7 +854,14 @@ async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int, telegram_id: int):
+async def stream_ai_response(
+    messages: list,
+    bot,
+    chat_id: int,
+    message_id: int,
+    telegram_id: int,
+    thinking_text: str | None = None,
+):
     """
     Stream AI response and edit message as chunks arrive
     messages: List of message dicts with 'role' and 'content' (AI backend ChatMessage format)
@@ -847,15 +875,64 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
     accumulated_text = ""
     last_edit_time = asyncio.get_event_loop().time()
     edit_interval = float(os.getenv("EDIT_INTERVAL_SECONDS", "1"))
-    last_sent_text = ""  # Track last sent text to avoid "message not modified" errors
+    typing_interval = float(os.getenv("THINKING_ANIMATION_INTERVAL_SECONDS", "0.35"))
+    typing_frames = build_typing_indicator_frames(thinking_text or DEFAULT_THINKING_TEXT)
+    last_sent_text = (thinking_text or "").strip()
+    first_response_sent = False
     current_message_id = message_id
     key = (chat_id, message_id)
     tracked_keys = {key}
     cancel_event = asyncio.Event()
+    typing_stop_event = asyncio.Event()
     _stream_cancel_events[key] = cancel_event
     current_task = asyncio.current_task()
     if current_task:
         _active_stream_tasks.setdefault(key, current_task)
+    message_edit_lock = asyncio.Lock()
+    typing_task: asyncio.Task | None = None
+
+    async def stop_typing_indicator():
+        nonlocal typing_task
+        if typing_stop_event.is_set():
+            return
+        typing_stop_event.set()
+        if typing_task and not typing_task.done():
+            typing_task.cancel()
+            try:
+                await typing_task
+            except asyncio.CancelledError:
+                pass
+
+    async def animate_typing_indicator():
+        nonlocal last_sent_text
+        if not typing_frames or typing_interval <= 0:
+            return
+        frame_index = 1 if last_sent_text == typing_frames[0] and len(typing_frames) > 1 else 0
+        try:
+            while not cancel_event.is_set() and not typing_stop_event.is_set():
+                await asyncio.sleep(typing_interval)
+                if cancel_event.is_set() or typing_stop_event.is_set():
+                    return
+                next_text = typing_frames[frame_index % len(typing_frames)]
+                frame_index += 1
+                if next_text == last_sent_text:
+                    continue
+                try:
+                    async with message_edit_lock:
+                        if cancel_event.is_set() or typing_stop_event.is_set():
+                            return
+                        await bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=current_message_id,
+                            text=next_text,
+                            reply_markup=build_language_keyboard(current_message_id),
+                        )
+                        last_sent_text = next_text
+                except TelegramError as e:
+                    if "not modified" not in str(e).lower():
+                        print(f"Warning: Could not animate typing indicator for message {current_message_id}: {e}")
+        except asyncio.CancelledError:
+            raise
 
     async def edit_or_fallback_send(text: str):
         nonlocal current_message_id, last_sent_text, tracked_keys
@@ -864,15 +941,16 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
         if cancel_event.is_set():
             return
         try:
-            kwargs = {
-                "chat_id": chat_id,
-                "message_id": current_message_id,
-                "text": text,
-                "reply_markup": build_language_keyboard(current_message_id),
-            }
-            await bot.edit_message_text(**kwargs)
-            last_sent_text = text
-            return
+            async with message_edit_lock:
+                kwargs = {
+                    "chat_id": chat_id,
+                    "message_id": current_message_id,
+                    "text": text,
+                    "reply_markup": build_language_keyboard(current_message_id),
+                }
+                await bot.edit_message_text(**kwargs)
+                last_sent_text = text
+                return
         except TelegramError as e:
             if "not modified" in str(e).lower():
                 return
@@ -898,6 +976,9 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
             last_sent_text = text
         except TelegramError as e:
             print(f"Warning: Could not send fallback message: {e}")
+
+    if typing_frames and typing_interval > 0:
+        typing_task = asyncio.create_task(animate_typing_indicator())
     
     try:
         async with stream_chat(messages=messages, api_key=api_key, timeout_s=60.0) as (ai_backend_url, response):
@@ -920,6 +1001,7 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
                     "[AI_BACKEND_ERROR] "
                     f"ai_backend_url={ai_backend_url} key_source={key_source} key_preview={_mask_secret(api_key)}"
                 )
+                await stop_typing_indicator()
                 await edit_or_fallback_send(f"AI backend error (status {status_code}). Please try again.")
                 return
             
@@ -934,6 +1016,7 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
                             log_timing("First AI chunk received", stream_start)
                         if "error" in data:
                             error_text = f"Error: {data['error']}"
+                            await stop_typing_indicator()
                             await edit_or_fallback_send(error_text)
                             return
                         
@@ -942,17 +1025,20 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
                             accumulated_text += data["token"]
                         elif "response" in data:
                             accumulated_text = data["response"]
+
+                        display_text = truncate_telegram_text(accumulated_text)
+                        if display_text and not first_response_sent:
+                            await stop_typing_indicator()
+                            await edit_or_fallback_send(display_text)
+                            last_edit_time = asyncio.get_event_loop().time()
+                            first_response_sent = True
+                            typing_task = None
                         
                         # Edit message periodically to avoid rate limits.
                         current_time = asyncio.get_event_loop().time()
                         if current_time - last_edit_time >= edit_interval:
                             if cancel_event.is_set():
                                 return
-                            max_response_length = 4096
-                            if len(accumulated_text) > max_response_length:
-                                display_text = accumulated_text[:max_response_length - 3] + "..."
-                            else:
-                                display_text = accumulated_text
                             if display_text and display_text != last_sent_text:
                                 await edit_or_fallback_send(display_text)
                                 last_edit_time = current_time
@@ -963,17 +1049,14 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
                         continue
                 
             # Final edit with complete response as-is from backend
-            max_response_length = 4096
-            if len(accumulated_text) > max_response_length:
-                response_text = accumulated_text[:max_response_length - 3] + "..."
-            else:
-                response_text = accumulated_text
+            response_text = truncate_telegram_text(accumulated_text)
             if cancel_event.is_set():
                 return
             final_text = response_text
             if cancel_event.is_set():
                 return
             
+            await stop_typing_indicator()
             await edit_or_fallback_send(final_text)
             log_timing("Stream complete -> final edit sent", stream_start)
             
@@ -986,20 +1069,24 @@ async def stream_ai_response(messages: list, bot, chat_id: int, message_id: int,
                 await edit_or_fallback_send(no_response_text)
     except httpx.TimeoutException:
         error_text = "Sorry, the AI took too long to respond. Please try again."
+        await stop_typing_indicator()
         await edit_or_fallback_send(error_text)
     except httpx.RequestError as e:
         error_text = (
             f"Sorry, I couldn't connect to the AI service at {ai_backend_url}. "
             f"Error: {str(e)}"
         )
+        await stop_typing_indicator()
         await edit_or_fallback_send(error_text)
     except asyncio.CancelledError:
         print(f"Stream cancelled for message {message_id}")
         raise
     except Exception as e:
         error_text = f"Sorry, an error occurred: {str(e)}"
+        await stop_typing_indicator()
         await edit_or_fallback_send(error_text)
     finally:
+        await stop_typing_indicator()
         for tracked_key in list(tracked_keys):
             if _stream_cancel_events.get(tracked_key) is cancel_event:
                 _stream_cancel_events.pop(tracked_key, None)
@@ -1056,8 +1143,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     asyncio.create_task(save_message(telegram_id, "user", message_text))
     
     # Send initial thinking message with immediate keyboard, then bind callback_data to the real message_id.
+    thinking_text = get_initial_typing_indicator_text(message_lang)
     sent_message = await update.message.reply_text(
-        THINKING_TEXT.get(message_lang, THINKING_TEXT["en"]),
+        thinking_text,
         reply_markup=build_language_keyboard(0),
     )
     try:
@@ -1078,7 +1166,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.bot,
         sent_message.chat_id,
         sent_message.message_id,
-        telegram_id
+        telegram_id,
+        thinking_text=thinking_text,
     ))
     _active_stream_tasks[(sent_message.chat_id, sent_message.message_id)] = stream_task
     log_timing("Stream task created", timing_checkpoint)
@@ -1141,7 +1230,7 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
         async with lock:
             await cancel_stream(chat_id, target_message_id)
 
-            thinking_text = THINKING_TEXT.get(lang, THINKING_TEXT["en"])
+            thinking_text = get_initial_typing_indicator_text(lang)
             active_message_id = target_message_id
             try:
                 await context.bot.edit_message_text(
@@ -1207,7 +1296,8 @@ async def handle_language_callback(update: Update, context: ContextTypes.DEFAULT
                 context.bot,
                 chat_id,
                 active_message_id,
-                telegram_id
+                telegram_id,
+                thinking_text=thinking_text,
             ))
             _active_stream_tasks[(chat_id, active_message_id)] = stream_task
     finally:
