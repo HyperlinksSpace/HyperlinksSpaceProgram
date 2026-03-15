@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net } = require("electron");
+const { app, BrowserWindow, Menu, protocol, net } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
@@ -12,9 +12,9 @@ protocol.registerSchemesAsPrivileged([
 function log(msg) {
   try {
     const logPath = path.join(app.getPath("userData"), "main.log");
-    const line = `[${new Date().toISOString()}] ${msg}\n`;
-    fs.appendFileSync(logPath, line);
-    console.error(line.trim());
+    const line = `[${new Date().toISOString()}] ${msg}`;
+    fs.appendFileSync(logPath, line + "\n");
+    console.error(line);
   } catch (_) {}
 }
 
@@ -55,11 +55,20 @@ function createWindow() {
     log(`did-fail-load: code=${code} ${errMsg} ${url}`);
   });
 
+  mainWindow.webContents.on("did-start-loading", (_, url) => {
+    if (!isDev && url && (url.endsWith("/index.html") || url.includes("/index.html"))) {
+      const root = url.replace(/\/index\.html.*$/, "/");
+      if (root !== url) {
+        mainWindow.loadURL(root);
+      }
+    }
+  });
+
   if (isDev) {
     mainWindow.loadURL("http://localhost:8081");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadURL("app://./index.html");
+    mainWindow.loadURL("app://./");
   }
 
   mainWindow.on("closed", () => {
@@ -74,6 +83,7 @@ process.on("uncaughtException", (err) => {
 });
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null); // We can enable standart app menu by deteng this line
   if (!isDev) {
     const appPath = app.getAppPath();
     const distPath = path.join(appPath, "dist");

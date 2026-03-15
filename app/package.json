@@ -27,25 +27,33 @@
     "bot:local": "npx tsx scripts/run-bot-local.ts",
     "set-webhook": "npx tsx scripts/set-webhook.ts",
     "db:migrate": "npx tsx scripts/migrate-db.ts",
-    "build:win": "npm run build && electron-builder --win",
+    "build:win": "node windows/build-with-progress.cjs",
+    "build:win:raw": "npm run build && electron-builder --win && node windows/cleanup.cjs",
+    "pack:win": "node windows/build-with-progress.cjs --pack",
+    "pack:win:raw": "electron-builder --win && node windows/cleanup.cjs",
     "build:win:dir": "npm run build && electron-builder --win --config.win.target=dir",
-    "build:win:verbose": "npm run build && cross-env DEBUG=electron-builder electron-builder --win"
+    "build:win:verbose": "node windows/build-with-progress.cjs --verbose"
   },
   "build": {
     "appId": "com.sraibaby.app",
-    "productName": "app",
+    "productName": "Hyperlinks Space App Installation",
     "asar": false,
     "extraMetadata": {
-      "main": "windows.cjs"
+      "main": "windows/build.cjs"
     },
     "files": [
       "dist/**/*",
-      "windows.cjs",
+      "windows/**",
       "assets/icon.ico"
     ],
     "win": {
       "icon": "assets/icon.ico",
-      "target": [{ "target": "portable", "arch": ["x64"] }]
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "artifactName": "HyperlinksSpaceAppInstaller.${ext}",
+      "shortcutName": "Hyperlinks Space App",
+      "include": "windows/installer.nsh"
     },
     "directories": {
       "output": "release"

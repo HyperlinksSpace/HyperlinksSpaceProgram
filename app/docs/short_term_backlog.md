@@ -1,6 +1,7 @@
 Reload on input focusing
 Theme with TMA integration
 Mobile: Paste to botbar bug
+check file's formats and folders structure
 AI options Page
 AI Icon
 Fonts

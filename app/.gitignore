@@ -8,6 +8,7 @@ node_modules/
 dist/
 web-build/
 release/
+releases/
 expo-env.d.ts
 
 # Native
@@ -21,6 +22,9 @@ expo-env.d.ts
 
 # Metro
 .metro-health-check*
+
+# local reference (do not commit)
+build_ref.md
 
 # debug
 npm-debug.*
