@@ -3,17 +3,10 @@
  * Run: npx tsx scripts/run-bot-local.ts  (or npm run bot:local)
  * Do not run with the same token while webhook is set in production.
  */
-import path from 'path';
 import { createBot } from '../bot/grammy';
+import { loadEnv } from './load-env';
 
-try {
-  const dotenv = require('dotenv');
-  const cwd = process.cwd();
-  dotenv.config({ path: path.join(cwd, '.env') });
-  dotenv.config({ path: path.join(cwd, 'app', '.env') });
-} catch {
-  // dotenv optional
-}
+loadEnv();
 
 const token = (process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '').trim();
 if (!token) {

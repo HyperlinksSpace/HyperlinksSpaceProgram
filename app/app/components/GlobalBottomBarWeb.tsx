@@ -6,7 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { colors, layout, icons } from "../theme";
+import { layout, icons, useColors } from "../theme";
 
 const { maxContentWidth } = layout;
 const {
@@ -21,7 +21,9 @@ const INNER_PADDING = 20; // gap above first line and below last line
 const MAX_INPUT_HEIGHT = (MAX_LINES_BEFORE_SCROLL + 1) * LINE_HEIGHT; // 8 lines = 160 (text-only height)
 
 export function GlobalBottomBarWeb() {
+  const colors = useColors();
   const [value, setValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [domScrollRange, setDomScrollRange] = useState(0);
   const [contentHeight, setContentHeight] = useState(LINE_HEIGHT);
@@ -31,22 +33,29 @@ export function GlobalBottomBarWeb() {
   const domMirrorRef = useRef<HTMLDivElement | null>(null);
 
   // Hide native scrollbar for the textarea (same as we try for the main bar).
+  // Recreate the style tag whenever the primary color changes so the
+  // placeholder color follows the current theme.
   useEffect(() => {
     const styleId = "global-bottom-bar-web-style";
-    if (typeof document === "undefined" || document.getElementById(styleId)) return;
+    if (typeof document === "undefined") return;
+
+    const existing = document.getElementById(styleId);
+    if (existing) existing.remove();
+
     const styleEl = document.createElement("style");
     styleEl.id = styleId;
     styleEl.textContent = `
       [data-global-bottom-bar-web] {
         -ms-overflow-style: none;
         scrollbar-width: none;
+        background-color: transparent !important;
       }
       [data-global-bottom-bar-web]::-webkit-scrollbar {
         width: 0;
         height: 0;
       }
       [data-global-bottom-bar-web]::placeholder {
-        color: ${colors.text};
+        color: ${colors.primary};
         opacity: 1;
       }
     `;
@@ -54,7 +63,7 @@ export function GlobalBottomBarWeb() {
     return () => {
       document.getElementById(styleId)?.remove();
     };
-  }, []);
+  }, [colors.primary]);
 
   const measureAndResize = useCallback(() => {
     const el = textareaRef.current;
@@ -244,8 +253,8 @@ export function GlobalBottomBarWeb() {
   }, [value]);
 
   return (
-    <View style={styles.wrapper}>
-      <View style={styles.block}>
+    <View style={[styles.wrapper, { backgroundColor: colors.background }]}>
+      <View style={[styles.block, { backgroundColor: colors.background }]}>
         <View style={[styles.row, { height: rowHeight }]}>
           <View style={styles.inputWrap}>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
@@ -254,6 +263,8 @@ export function GlobalBottomBarWeb() {
               data-global-bottom-bar-web
               value={value}
               onInput={handleInput}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
               rows={1}
               style={{
                 width: "100%",
@@ -272,20 +283,20 @@ export function GlobalBottomBarWeb() {
                 resize: "none",
                 border: "none",
                 outline: "none",
-                color: colors.text,
+                color: colors.primary,
                 backgroundColor: "transparent",
-                caretColor: colors.text,
+                caretColor: colors.primary,
                 // Allow scroll exactly when content exceeds the visible viewport height.
                 overflow: contentHeightWithGaps > viewportHeight ? "auto" : "hidden",
               }}
-              placeholder="AI and search"
+              placeholder={isFocused ? "" : "AI and search"}
             />
           </View>
           <Pressable style={styles.arrowWrap} onPress={handleSend} accessibilityRole="button" accessibilityLabel="Send">
             <Svg width={icons.apply.width} height={icons.apply.height} viewBox="0 0 15 10">
               <Path
                 d="M1 5H10M6 1L10 5L6 9"
-                stroke={colors.text}
+                stroke={colors.primary}
                 strokeWidth={1.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -296,7 +307,12 @@ export function GlobalBottomBarWeb() {
       </View>
       {showScrollbar && indicatorHeight > 0 && barHeight != null && (
         <View style={[styles.scrollbarContainer, { height: barHeight }]}>
-          <View style={[styles.scrollbarIndicator, { height: indicatorHeight, marginTop: topPosition }]} />
+          <View
+            style={[
+              styles.scrollbarIndicator,
+              { height: indicatorHeight, marginTop: topPosition, backgroundColor: colors.secondary },
+            ]}
+          />
         </View>
       )}
     </View>
@@ -318,7 +334,6 @@ const styles = StyleSheet.create({
     // No vertical gap outside the input; the textarea occupies the full bar height.
     paddingTop: 0,
     paddingBottom: 0,
-    backgroundColor: colors.background,
   },
   row: {
     flexDirection: "row",
@@ -350,6 +365,5 @@ const styles = StyleSheet.create({
   },
   scrollbarIndicator: {
     width: 1,
-    backgroundColor: colors.scrollbar,
   },
 });

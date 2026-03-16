@@ -26,7 +26,7 @@ import {
 import { useRouter } from "expo-router";
 import { useTelegram } from "./Telegram";
 import Svg, { Path } from "react-native-svg";
-import { colors, layout, icons } from "../theme";
+import { layout, icons, useColors } from "../theme";
 
 const { maxContentWidth } = layout;
 const {
@@ -49,7 +49,9 @@ const PREMADE_PROMPTS = [
 export function GlobalBottomBar() {
   const router = useRouter();
   const { triggerHaptic } = useTelegram();
+  const colors = useColors();
   const [value, setValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
   const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
@@ -211,8 +213,8 @@ export function GlobalBottomBar() {
   );
 
   return (
-    <View style={[styles.wrapper, { height: barHeight }]}>
-      <View style={[styles.container, { height: barHeight }]}>
+    <View style={[styles.wrapper, { height: barHeight, backgroundColor: colors.background }]}>
+      <View style={[styles.container, { height: barHeight, backgroundColor: colors.background }]}>
         <View style={styles.inner}>
           <View style={styles.row}>
           <View style={{ flex: 1 }}>
@@ -252,9 +254,9 @@ export function GlobalBottomBar() {
                 >
                   <TextInput
                     ref={inputRef}
-                    style={[styles.input, styles.inputWeb]}
-                    placeholder="AI & Search"
-                    placeholderTextColor="#818181"
+                    style={[styles.input, styles.inputWeb, { color: colors.primary }]}
+                    placeholder={isFocused ? "" : "AI & Search"}
+                    placeholderTextColor={colors.primary}
                     value={value}
                     onChangeText={onChangeText}
                     onSubmitEditing={onSubmitEditing}
@@ -264,6 +266,8 @@ export function GlobalBottomBar() {
                     maxLength={4096}
                     onContentSizeChange={onContentSizeChange}
                     scrollEnabled={false}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
                     // @ts-expect-error dataSet is a valid prop on web (used for CSS targeting)
                     dataSet={{ "ai-input": "true" }}
                   />
@@ -326,7 +330,7 @@ export function GlobalBottomBar() {
             >
               <Path
                 d="M1 5H10M6 1L10 5L6 9"
-                stroke={colors.text}
+                stroke={colors.primary}
                 strokeWidth={1.5}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -341,7 +345,11 @@ export function GlobalBottomBar() {
           <View
             style={[
               styles.scrollbarIndicator,
-              { height: indicatorHeight, marginTop: topPosition },
+              {
+                height: indicatorHeight,
+                marginTop: topPosition,
+                backgroundColor: colors.secondary,
+              },
             ]}
           />
         </View>
@@ -361,9 +369,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: maxContentWidth,
     alignSelf: "center",
-    backgroundColor: colors.background,
-    // Remove vertical gap outside the input; the input box itself occupies the
-    // full bar height.
+    // backgroundColor is applied dynamically via useColors()
     paddingVertical: 0,
     paddingHorizontal: HORIZONTAL_PADDING,
   },
@@ -378,7 +384,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: FONT_SIZE,
-    color: colors.text,
+    color: "#000000",
     lineHeight: LINE_HEIGHT,
     paddingVertical: INNER_PADDING,
     paddingHorizontal: 0,
@@ -416,6 +422,5 @@ const styles = StyleSheet.create({
   },
   scrollbarIndicator: {
     width: 1,
-    backgroundColor: colors.scrollbar,
   },
 });

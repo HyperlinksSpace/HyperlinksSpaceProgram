@@ -7,7 +7,6 @@ node_modules/
 .expo/
 dist/
 web-build/
-release/
 releases/
 expo-env.d.ts
 
@@ -43,5 +42,7 @@ yarn-error.*
 *.tsbuildinfo
 
 app-example
+
+.vercel
 
 .vercel

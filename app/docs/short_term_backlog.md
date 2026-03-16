@@ -1,7 +1,9 @@
-Reload on input focusing
-Theme with TMA integration
-Mobile: Paste to botbar bug
+Theme with Web / TMA customization
+Fonts
+Favicon
 check file's formats and folders structure
+Typing in the middle of the text on large inputting
+Mobile: Paste to botbar bug
 AI options Page
 AI Icon
 Fonts

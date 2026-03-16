@@ -4,6 +4,7 @@ import {
   ensureTelegramScript,
   getInitDataString,
   getStartParam,
+  getInitialThemeParams,
   isAvailable,
   readyAndExpand,
   triggerHaptic as triggerHapticImpl,
@@ -58,6 +59,8 @@ export type TelegramContextValue = {
   telegramUsername: string | null;
   error: string | null;
   isInTelegram: boolean;
+  /** "dark" | "light" per Telegram theme; dark is default/fallback. */
+  colorScheme: "dark" | "light";
   triggerHaptic: (style: string) => void;
   safeAreaInsetTop: number;
   contentSafeAreaInsetTop: number;
@@ -88,6 +91,7 @@ const defaultContext: TelegramContextValue = {
   telegramUsername: null,
   error: null,
   isInTelegram: false,
+  colorScheme: "dark",
   triggerHaptic: () => {},
   safeAreaInsetTop: 0,
   contentSafeAreaInsetTop: 0,
@@ -113,6 +117,24 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [safeAreaInsetTop, setSafeAreaInsetTop] = useState(0);
   const [contentSafeAreaInsetTop, setContentSafeAreaInsetTop] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(true);
+  const [colorScheme, setColorScheme] = useState<"dark" | "light">("dark");
+
+  function classifyThemeFromBgColor(bgColor: string | undefined | null): "dark" | "light" {
+    if (!bgColor || typeof bgColor !== "string") return "dark";
+    const m = bgColor.match(/^#([0-9a-fA-F]{6})$/);
+    if (!m) return "dark";
+    const hex = m[1];
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    // Perceptual luminance approximation; threshold picked to clearly separate Telegram dark vs light palettes.
+    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const scheme = luminance < 128 ? "dark" : "light";
+    // Debug log to see classification in TMA console
+    // eslint-disable-next-line no-console
+    console.log("[TMA theme] classify", { bgColor, luminance, scheme });
+    return scheme;
+  }
 
   useEffect(() => {
     if (!isLikelyInTma()) return;
@@ -127,9 +149,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // TMA-only: layout height and scroll come from TMA viewport only. When keyboard opens, nothing
-  // changes until TMA sends viewport_changed; then we apply new height in one turn (bindCssVars
-  // updates --tg-viewport-height) and reset scroll. No Visual Viewport — avoids intermediate shifts.
+  // TMA-only: layout height and scroll come from TMA. When keyboard opens,
+  // nothing changes until TMA sends viewport_changed; theme updates are
+  // handled via useThemeParams above.
   useEffect(() => {
     if (typeof window === "undefined" || !isLikelyInTma()) return;
 
@@ -166,6 +188,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
             if (stable) window.scrollTo(0, 0);
           }
         );
+
         tmaCleanup = () => {
           unbindCss?.();
           removeViewportListener?.();
@@ -265,6 +288,19 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     function runTmaFlow(): () => void {
       readyAndExpand();
+
+      // Initial theme: try WebApp.themeParams or tgWebAppThemeParams launch param.
+      try {
+        const tp = getInitialThemeParams();
+        const bg =
+          tp?.bg_color ?? tp?.secondary_bg_color ?? tp?.section_bg_color;
+        // eslint-disable-next-line no-console
+        console.log("[TMA theme] initial themeParams", tp, "bg:", bg);
+        setColorScheme(classifyThemeFromBgColor(bg));
+      } catch {
+        // ignore; keep default "dark"
+      }
+
       let initDataStr = getInitDataString();
       if (initDataStr) {
         registerWithBackend(initDataStr);
@@ -315,6 +351,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     telegramUsername,
     error,
     isInTelegram,
+    colorScheme,
     triggerHaptic: triggerHapticImpl,
     safeAreaInsetTop,
     contentSafeAreaInsetTop,

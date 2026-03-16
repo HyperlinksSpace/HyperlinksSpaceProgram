@@ -1,4 +1,13 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+
+// Local-only: try to load .env / .env.local when running tools like db:migrate.
+// In Vercel Lambdas these files don't exist, so these calls are harmless no-ops.
+const cwd = process.cwd();
+dotenv.config({ path: path.join(cwd, ".env") });
+dotenv.config({ path: path.join(cwd, "app", ".env") });
+dotenv.config({ path: path.join(cwd, ".env.local") });
+dotenv.config({ path: path.join(cwd, "app", ".env.local") });
 import { neon } from "@neondatabase/serverless";
 
 const connectionString = process.env.DATABASE_URL;

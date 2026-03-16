@@ -10,6 +10,7 @@ export type TelegramWebApp = {
   initData?: string;
   initDataUnsafe?: { user?: { id?: number; username?: string; [k: string]: unknown } };
   platform?: string;
+  themeParams?: Record<string, string>;
   ready?: () => void;
   expand?: () => void;
   setHeaderColor?: (color: string) => void;
@@ -120,6 +121,30 @@ export function getPlatform(): string | null {
   const app = getWebApp();
   const p = app?.platform;
   return typeof p === "string" ? p : null;
+}
+
+export type ThemeParams = Record<string, string>;
+
+export function getThemeParamsFromLaunch(): ThemeParams | null {
+  const params = getLaunchParamsFromHash();
+  const raw = params?.get("tgWebAppThemeParams");
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as ThemeParams) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getThemeParamsFromWebApp(): ThemeParams | null {
+  const app = getWebApp();
+  const tp = app?.themeParams;
+  return tp && typeof tp === "object" ? (tp as ThemeParams) : null;
+}
+
+export function getInitialThemeParams(): ThemeParams | null {
+  return getThemeParamsFromWebApp() ?? getThemeParamsFromLaunch();
 }
 
 export function getIsFullscreen(): boolean {
