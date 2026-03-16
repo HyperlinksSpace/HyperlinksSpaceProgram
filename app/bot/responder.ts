@@ -329,6 +329,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     };
 
     const sendOrEdit = (accumulated: string): void => {
+      clearInterval(typingInterval);
       streamedAccumulated = accumulated;
       if (isCancelled()) return;
       const slice = accumulated.length > MAX_MESSAGE_TEXT_LENGTH
@@ -372,7 +373,19 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
     interruptedReplyCallback = sendInterruptedReply;
 
-    await sendOrEditOnce("…", "…");
+    // Start with rotating typing indicator instead of static "…"
+    const typingFrames = ["\\", "/", "-", "|"];
+    let typingIndex = 0;
+
+    await sendOrEditOnce(typingFrames[typingIndex], typingFrames[typingIndex]);
+
+    const typingInterval = setInterval(() => {
+      if (sentMessageId === null) return;
+      typingIndex = (typingIndex + 1) % typingFrames.length;
+      ctx.api
+        .editMessageText(chatId, sentMessageId, typingFrames[typingIndex])
+        .catch(() => {});
+    }, 300);
     result = await transmitStream(
       { input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION },
       sendOrEdit,
