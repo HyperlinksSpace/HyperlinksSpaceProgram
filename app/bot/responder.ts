@@ -263,6 +263,15 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
     /** One send (first) or edit in flight at a time so we never send multiple messages by race. */
     let sendOrEditQueue = Promise.resolve<void>(undefined);
+    const typingFrames = ["%", "#", "@", "+", "@", "#"];
+    let typingIndex = 0;
+    let typingInterval: ReturnType<typeof setInterval> | null = null;
+
+    const stopTypingSpinner = (): void => {
+      if (!typingInterval) return;
+      clearInterval(typingInterval);
+      typingInterval = null;
+    };
 
     /** First call sends a message (claims message_id); later calls edit that message. HTML only; format pipeline is strict so Telegram accepts it. */
     const sendOrEditOnce = (formatted: string, _rawSlice: string): Promise<void> => {
@@ -329,7 +338,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     };
 
     const sendOrEdit = (accumulated: string): void => {
-      clearInterval(typingInterval);
+      stopTypingSpinner();
       streamedAccumulated = accumulated;
       if (isCancelled()) return;
       const slice = accumulated.length > MAX_MESSAGE_TEXT_LENGTH
@@ -373,29 +382,42 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
     interruptedReplyCallback = sendInterruptedReply;
 
-    // Start with rotating typing indicator instead of static "…"
-    const typingFrames = ["\\", "/", "-", "|"];
-    let typingIndex = 0;
-
     await sendOrEditOnce(typingFrames[typingIndex], typingFrames[typingIndex]);
 
-    const typingInterval = setInterval(() => {
+    typingInterval = setInterval(() => {
       if (sentMessageId === null) return;
       typingIndex = (typingIndex + 1) % typingFrames.length;
       ctx.api
         .editMessageText(chatId, sentMessageId, typingFrames[typingIndex])
         .catch(() => {});
     }, 300);
-    result = await transmitStream(
-      { input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION },
-      sendOrEdit,
-      {
-        isCancelled,
-        getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
-      },
-    );
-    if (result.skipped) return;
+    try {
+      result = await transmitStream(
+        { input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION },
+        sendOrEdit,
+        {
+          isCancelled,
+          getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
+        },
+      );
+    } catch (e) {
+      const errMsg = (e as Error)?.message ?? "AI streaming failed unexpectedly.";
+      console.error("[bot][stream]", errMsg);
+      result = {
+        ok: false,
+        provider: "openai",
+        mode,
+        error: errMsg,
+      };
+    } finally {
+      stopTypingSpinner();
+    }
+    if (result.skipped) {
+      stopTypingSpinner();
+      return;
+    }
     if (isCancelled()) {
+      stopTypingSpinner();
       await sendInterruptedReply({ sendToChat: !(await shouldAbortSend()) });
       return;
     }
@@ -412,26 +434,44 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       result.error?.includes("temporarily unavailable")
     ) {
       if (isCancelled()) {
+        stopTypingSpinner();
         return;
       }
       lastEdited = "";
-      result = await transmitStream(
-        {
-          input: text,
-          userId,
-          context,
+      try {
+        result = await transmitStream(
+          {
+            input: text,
+            userId,
+            context,
+            mode: "chat",
+            threadContext: threadContext ? { ...threadContext, skipClaim: true } : undefined,
+            instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
+          },
+          sendOrEdit,
+          {
+            isCancelled,
+            getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
+          },
+        );
+      } catch (e) {
+        const errMsg = (e as Error)?.message ?? "AI fallback streaming failed unexpectedly.";
+        console.error("[bot][stream][fallback]", errMsg);
+        result = {
+          ok: false,
+          provider: "openai",
           mode: "chat",
-          threadContext: threadContext ? { ...threadContext, skipClaim: true } : undefined,
-          instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
-        },
-        sendOrEdit,
-        {
-          isCancelled,
-          getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
-        },
-      );
-      if (result.skipped) return;
+          error: errMsg,
+        };
+      } finally {
+        stopTypingSpinner();
+      }
+      if (result.skipped) {
+        stopTypingSpinner();
+        return;
+      }
       if (isCancelled()) {
+        stopTypingSpinner();
         await sendInterruptedReply({ sendToChat: !(await shouldAbortSend()) });
         return;
       }
