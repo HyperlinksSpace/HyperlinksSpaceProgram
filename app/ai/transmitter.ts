@@ -245,15 +245,23 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
 export async function transmitStream(
   request: AiRequest,
   onDelta: (text: string) => void | Promise<void>,
-  opts?: { isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
+  opts?: { signal?: AbortSignal; isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
 ): Promise<AiResponse> {
   const mode: AiMode = request.mode ?? "chat";
   const thread = request.threadContext;
+  const ensureNotAborted = (): void => {
+    if (opts?.signal?.aborted) {
+      throw new Error("aborted");
+    }
+  };
+
+  ensureNotAborted();
 
   if (thread && !thread.skipClaim) {
     const skipped = await claimUserMessage(thread, request.input);
     if (skipped) return skipped;
   }
+  ensureNotAborted();
 
   if (mode === "token_info") {
     const tokenResult = await (async () => {
@@ -322,6 +330,7 @@ export async function transmitStream(
       onDelta,
       opts,
     );
+    ensureNotAborted();
 
     if (result.ok && result.output_text && thread) {
       await persistAssistantMessage(thread, result.output_text);
@@ -359,6 +368,7 @@ export async function transmitStream(
     onDelta,
     opts,
   );
+  ensureNotAborted();
 
   if (result.ok && result.output_text && thread) {
     await persistAssistantMessage(thread, result.output_text);

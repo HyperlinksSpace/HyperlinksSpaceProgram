@@ -1,10 +1,10 @@
 import "../global.css";
 import { View, StyleSheet, Platform, KeyboardAvoidingView } from "react-native";
 import { Stack } from "expo-router";
-import { TelegramProvider } from "./components/Telegram";
-import { GlobalLogoBarWithFallback } from "./components/GlobalLogoBarWithFallback";
-import { GlobalBottomBar } from "./components/GlobalBottomBar";
-import { GlobalBottomBarWeb } from "./components/GlobalBottomBarWeb";
+import { TelegramProvider } from "./_components/Telegram";
+import { GlobalLogoBarWithFallback } from "./_components/GlobalLogoBarWithFallback";
+import { GlobalBottomBar } from "./_components/GlobalBottomBar";
+import { GlobalBottomBarWeb } from "./_components/GlobalBottomBarWeb";
 
 /**
  * Three-block column layout (same as Flutter):

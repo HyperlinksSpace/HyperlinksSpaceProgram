@@ -87,6 +87,28 @@ File: `app/bot/responder.ts`
 
 Together with the per-chat queue in the webhook (see 2.2.3), replies for the same chat are serialized so Reply A is sent before we start Prompt B; within that, the generation counter ensures the latest prompt wins and in-flight streams are cancelled.
 
+## Hard Cancellation (Latest Prompt Wins)
+
+Each thread maintains a single active `AbortController`. The key is:
+- `bot:${user_telegram}:${thread_id}` when we have thread context
+- fallback `chat:${chatId}` when thread context is not available
+
+When a new message arrives:
+- The previous controller (if any) is aborted immediately.
+- The OpenAI stream is terminated via `stream.abort()` (signal listener in `openai.ts`).
+- All edit loops and spinners stop instantly in `responder.ts` (guarded by `signal.aborted`).
+- No further Telegram edits are sent for the cancelled response.
+
+This ensures:
+- Deterministic behavior within a thread
+- No overlapping edits
+- Fast user feedback
+
+Why this matters:
+- Clarity: cancellation is explicit and easy to reason about.
+- System understanding: a single cancellation authority per thread reduces ambiguity.
+- Maintainability: code + docs align, so changes stay trusted.
+
 #### 2.2.2 Streaming and overflow (multi-message)
 
 - We use a **single streaming segment** for the first 4096 characters:

@@ -100,7 +100,7 @@ export async function callOpenAiChatStream(
   mode: AiMode,
   params: AiRequestBase,
   onDelta: (text: string) => void | Promise<void>,
-  opts?: { isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
+  opts?: { signal?: AbortSignal; isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
 ): Promise<AiResponseBase> {
   if (!client) {
     return {
@@ -126,30 +126,40 @@ export async function callOpenAiChatStream(
       ? "You are a blockchain and token analyst. Answer clearly and briefly.\n\n"
       : "";
 
+  let onAbort: (() => void) | null = null;
   try {
     const stream = client.responses.stream({
       model: "gpt-5.2",
       ...(params.instructions ? { instructions: params.instructions } : {}),
       input: `${prefix}${trimmed}`,
     });
+    onAbort = (): void => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (stream as any)?.abort?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    if (opts?.signal) {
+      if (opts.signal.aborted) {
+        onAbort();
+      } else {
+        opts.signal.addEventListener("abort", onAbort);
+      }
+    }
 
     stream.on("response.output_text.delta", async (event: { snapshot?: string }) => {
+      if (opts?.signal?.aborted) {
+        onAbort();
+        return;
+      }
       if (opts?.isCancelled && opts.isCancelled()) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (stream as any)?.abort?.();
-        } catch {
-          /* ignore */
-        }
+        onAbort();
         return;
       }
       if (opts?.getAbortSignal && (await opts.getAbortSignal())) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (stream as any)?.abort?.();
-        } catch {
-          /* ignore */
-        }
+        onAbort();
         return;
       }
       const text = event?.snapshot ?? "";
@@ -198,5 +208,9 @@ export async function callOpenAiChatStream(
       mode,
       error: message,
     };
+  } finally {
+    if (opts?.signal && onAbort) {
+      opts.signal.removeEventListener("abort", onAbort);
+    }
   }
 }

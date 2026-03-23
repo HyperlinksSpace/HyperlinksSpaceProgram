@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { useTelegram } from "./components/Telegram";
+import { useTelegram } from "./_components/Telegram";
 
 export default function Index() {
   const { status, telegramUsername, error, debug } = useTelegram();
@@ -99,4 +99,3 @@ export default function Index() {
     </View>
   );
 }
-

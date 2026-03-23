@@ -98,6 +98,8 @@ const EDIT_MIN_CHARS_TO_SEND_NOW = 20;
 
 /** Track latest generation per chat so newer messages cancel older streams. */
 const chatGenerations = new Map<number, number>();
+/** Track active stream abort controllers per thread key. */
+const activeControllers = new Map<string, AbortController>();
 
 type BotSourceContext = {
   source: "bot";
@@ -184,6 +186,25 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
   const numericChatId =
     typeof chatId === "number" ? chatId : undefined;
+  const threadKey =
+    threadContext
+      ? `bot:${threadContext.user_telegram}:${threadContext.thread_id}`
+      : numericChatId !== undefined
+        ? `chat:${numericChatId}`
+        : null;
+  const abortController = new AbortController();
+  if (threadKey) {
+    const prev = activeControllers.get(threadKey);
+    if (prev) {
+      console.log("[cancel] aborting previous stream", { threadKey });
+      prev.abort();
+    }
+    abortController.signal.addEventListener("abort", () => {
+      console.log("[cancel] stream aborted", { threadKey });
+    });
+    activeControllers.set(threadKey, abortController);
+  }
+  try {
   let generation = 0;
   if (numericChatId !== undefined) {
     const prev = chatGenerations.get(numericChatId) ?? 0;
@@ -221,6 +242,18 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     /** When turn is interrupted: message already exists (we sent early); optionally final edit, always persist. HTML only (format pipeline is strict). */
     const sendInterruptedReply = async (opts: { sendToChat: boolean }): Promise<void> => {
       const content = streamedAccumulated.trim();
+      if (abortController.signal.aborted) {
+        if (threadContext && content.length > 0) {
+          await insertMessage({
+            user_telegram: threadContext.user_telegram,
+            thread_id: threadContext.thread_id,
+            type: "bot",
+            role: "assistant",
+            content,
+          });
+        }
+        return;
+      }
       if (sentMessageId !== null && content.length > 0) {
         const toEdit = truncateTelegramHtmlSafe(
           closeOpenTelegramHtml(
@@ -276,6 +309,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     /** First call sends a message (claims message_id); later calls edit that message. HTML only; format pipeline is strict so Telegram accepts it. */
     const sendOrEditOnce = (formatted: string, _rawSlice: string): Promise<void> => {
       const run = async (): Promise<void> => {
+        if (abortController.signal.aborted) return;
         if (await shouldAbortSend()) return;
         if (isCancelled() || editsDisabled) return;
         const text = truncateTelegramHtmlSafe(formatted.trim() || "…", MAX_MESSAGE_TEXT_LENGTH);
@@ -321,6 +355,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     };
 
     const flushEdit = (awaitSend = false): void | Promise<void> => {
+      if (abortController.signal.aborted) return;
       if (isCancelled()) return;
       if (pending === null) return;
       const slice = pending;
@@ -340,6 +375,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     const sendOrEdit = (accumulated: string): void => {
       stopTypingSpinner();
       streamedAccumulated = accumulated;
+      if (abortController.signal.aborted) return;
       if (isCancelled()) return;
       const slice = accumulated.length > MAX_MESSAGE_TEXT_LENGTH
         ? accumulated.slice(0, MAX_MESSAGE_TEXT_LENGTH)
@@ -386,6 +422,10 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
 
     typingInterval = setInterval(() => {
       if (sentMessageId === null) return;
+      if (abortController.signal.aborted) {
+        stopTypingSpinner();
+        return;
+      }
       typingIndex = (typingIndex + 1) % typingFrames.length;
       ctx.api
         .editMessageText(chatId, sentMessageId, typingFrames[typingIndex])
@@ -396,6 +436,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         { input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION },
         sendOrEdit,
         {
+          signal: abortController.signal,
           isCancelled,
           getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
         },
@@ -450,6 +491,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
           },
           sendOrEdit,
           {
+            signal: abortController.signal,
             isCancelled,
             getAbortSignal: async () => (await shouldAbortSend()) || isCancelled(),
           },
@@ -499,6 +541,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       );
       if (finalFormatted.trim()) {
         sendOrEditQueue = sendOrEditQueue.then(async () => {
+          if (abortController.signal.aborted) return;
           try {
             await ctx.api.editMessageText(chatId, streamSentMessageId!, finalFormatted, { parse_mode: "HTML" });
           } catch (e: unknown) {
@@ -553,6 +596,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         ? result.error
         : "AI is temporarily unavailable. Please try again in a moment.";
     if (streamSentMessageId !== null && chatId !== undefined) {
+      if (abortController.signal.aborted) return;
       try {
         await ctx.api.editMessageText(chatId, streamSentMessageId, message, {});
       } catch {
@@ -616,5 +660,10 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
   } else {
     const textToFormat = result.output_text.slice(0, MAX_MESSAGE_TEXT_LENGTH);
     await ctx.reply(textToFormat, replyOptions);
+  }
+  } finally {
+    if (threadKey && activeControllers.get(threadKey) === abortController) {
+      activeControllers.delete(threadKey);
+    }
   }
 }
