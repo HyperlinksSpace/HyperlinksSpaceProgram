@@ -126,40 +126,58 @@ export async function callOpenAiChatStream(
       ? "You are a blockchain and token analyst. Answer clearly and briefly.\n\n"
       : "";
 
-  let onAbort: (() => void) | null = null;
   try {
     const stream = client.responses.stream({
       model: "gpt-5.2",
       ...(params.instructions ? { instructions: params.instructions } : {}),
       input: `${prefix}${trimmed}`,
     });
-    onAbort = (): void => {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (stream as any)?.abort?.();
-      } catch {
-        /* ignore */
-      }
-    };
     if (opts?.signal) {
       if (opts.signal.aborted) {
-        onAbort();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stream as any).abort?.();
+        } catch {
+          /* ignore */
+        }
       } else {
-        opts.signal.addEventListener("abort", onAbort);
+        opts.signal?.addEventListener("abort", () => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (stream as any).abort?.();
+          } catch {
+            /* ignore */
+          }
+        });
       }
     }
 
     stream.on("response.output_text.delta", async (event: { snapshot?: string }) => {
       if (opts?.signal?.aborted) {
-        onAbort();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stream as any).abort?.();
+        } catch {
+          /* ignore */
+        }
         return;
       }
       if (opts?.isCancelled && opts.isCancelled()) {
-        onAbort();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stream as any).abort?.();
+        } catch {
+          /* ignore */
+        }
         return;
       }
       if (opts?.getAbortSignal && (await opts.getAbortSignal())) {
-        onAbort();
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (stream as any).abort?.();
+        } catch {
+          /* ignore */
+        }
         return;
       }
       const text = event?.snapshot ?? "";

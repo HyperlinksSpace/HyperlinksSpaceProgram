@@ -36,8 +36,26 @@ function getChatIdFromUpdate(update: TelegramUpdate): number | undefined {
   return undefined;
 }
 
-/** Per-chat tail promise: next update for this chat waits for the previous handler to finish. */
-const chatQueue = new Map<number, Promise<void>>();
+/** Per-thread tail promise: next update for this thread waits for the previous handler to finish. */
+const threadQueue = new Map<string, Promise<void>>();
+
+function getThreadKey(update: TelegramUpdate): string | undefined {
+  const chatId = getChatIdFromUpdate(update);
+  if (!chatId) return;
+
+  const userId =
+    update.message?.from?.id ??
+    update.callback_query?.from?.id;
+
+  const threadId =
+    update.message?.message_thread_id ??
+    update.callback_query?.message?.message_thread_id ??
+    0;
+
+  if (!userId) return;
+
+  return `${userId}:${chatId}:${threadId}`;
+}
 
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 /** Single bot instance for all webhook requests; created once at module load. */
@@ -151,8 +169,8 @@ export async function handleRequest(request: Request): Promise<Response> {
   // in waitUntil so we don't block the response on AI/DB.
   // Serialize per chat so Reply A is always sent before we start processing Prompt B.
   const updateId = update.update_id;
-  const chatId = getChatIdFromUpdate(update);
-  const prev = chatId !== undefined ? chatQueue.get(chatId) : undefined;
+  const threadKey = getThreadKey(update);
+  const prev = threadKey ? threadQueue.get(threadKey) : undefined;
   const work = (prev ?? Promise.resolve())
     .then(() => ensureBotInit())
     .then(() => bot!.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]))
@@ -163,8 +181,8 @@ export async function handleRequest(request: Request): Promise<Response> {
       console.error('[bot]', err);
     });
   const tail = work.then(() => {}, () => {});
-  if (chatId !== undefined) {
-    chatQueue.set(chatId, tail);
+  if (threadKey) {
+    threadQueue.set(threadKey, tail);
   }
   waitUntil(work);
   return jsonResponse({ ok: true });
@@ -236,12 +254,12 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
   }
   try {
     await ensureBotInit();
-    const chatIdLegacy = getChatIdFromUpdate(update);
-    const prevLegacy = chatIdLegacy !== undefined ? chatQueue.get(chatIdLegacy) : undefined;
+    const threadKeyLegacy = getThreadKey(update);
+    const prevLegacy = threadKeyLegacy ? threadQueue.get(threadKeyLegacy) : undefined;
     await (prevLegacy ?? Promise.resolve());
     await bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]);
-    if (chatIdLegacy !== undefined) {
-      chatQueue.set(chatIdLegacy, Promise.resolve());
+    if (threadKeyLegacy) {
+      threadQueue.set(threadKeyLegacy, Promise.resolve());
     }
   } catch (err) {
     console.error('[bot]', err);
