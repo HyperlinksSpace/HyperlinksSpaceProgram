@@ -1,4 +1,5 @@
 File's formats and folders structure<br>
+Fix relaese appearing on Electron build<br>
 Windows instant update<br>
 Bottom bar refactor<br>
 Username loaded without intermediate state<br>
