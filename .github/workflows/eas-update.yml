@@ -18,17 +18,20 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      # Quieter deprecation noise for actions running on older Node until defaults switch to 24.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     defaults:
       run:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -47,16 +50,24 @@ jobs:
           fi
           echo "branch=$target_branch" >> "$GITHUB_OUTPUT"
 
-      - name: Publish OTA update
+      - name: Verify Expo auth
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${EXPO_TOKEN:-}" ]]; then
-            echo "EXPO_TOKEN secret is required."
+            echo "::error::Add repository secret EXPO_TOKEN (Expo dashboard → Access tokens)."
             exit 1
           fi
+          npx eas-cli@latest whoami
+
+      - name: Publish OTA update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
           npx eas-cli@latest update \
             --non-interactive \
             --branch "${{ steps.target.outputs.branch }}" \
