@@ -60,7 +60,7 @@ export default function Index() {
         }}
       >
         <Text style={{ fontWeight: "600", marginBottom: 8 }}>
-          HyperlinksSpace Wallet (dev)
+          Hyperlinks Space App
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12 }}>
           Running outside Telegram Mini App. Telegram registration is skipped.
