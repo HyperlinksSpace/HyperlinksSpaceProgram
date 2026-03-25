@@ -2,6 +2,13 @@
 
 This doc describes the Windows Electron build and install flow and how to speed them up and improve them.
 
+Exe creating example:
+
+```
+cd /d C:\1\1\1\1\1\HyperlinksSpaceBot\app
+npm run build:win:verbose
+```
+
 ---
 
 ## 1. Build process
