@@ -2,8 +2,9 @@ const fs = require("fs");
 const path = require("path");
 
 const appDir = path.join(__dirname, "..");
-const releaseDir = path.join(appDir, "release");
 const releasesDir = path.join(appDir, "releases");
+const legacyReleaseDir = path.join(appDir, "release");
+const artifactsDir = path.join(releasesDir, "artifacts");
 
 // build_MMDDYYYY_HHMM
 const now = new Date();
@@ -32,7 +33,7 @@ function moveIfExists(src, dest) {
   if (!fs.existsSync(src)) return false;
   try {
     fs.renameSync(src, dest);
-    console.log("Moved:", path.relative(releaseDir, src));
+    console.log("Moved:", path.relative(artifactsDir, src));
     return true;
   } catch (e) {
     try {
@@ -44,7 +45,7 @@ function moveIfExists(src, dest) {
         fs.copyFileSync(src, dest);
         fs.unlinkSync(src);
       }
-      console.log("Moved (copy+delete):", path.relative(releaseDir, src));
+      console.log("Moved (copy+delete):", path.relative(artifactsDir, src));
       return true;
     } catch (e2) {
       console.warn("Could not move", src, e2.message);
@@ -53,9 +54,9 @@ function moveIfExists(src, dest) {
   }
 }
 
-const exeSrc = path.join(releaseDir, exeName);
+const exeSrc = path.join(artifactsDir, exeName);
 if (!fs.existsSync(exeSrc)) {
-  console.warn("No installer found in release/. Run electron-builder first.");
+  console.warn("No installer found in releases/artifacts/. Run electron-builder first.");
   process.exit(1);
 }
 
@@ -68,17 +69,20 @@ moveIfExists(exeSrc, exeDest);
 
 // Move optional/debug artifacts into dev/
 for (const name of devArtifacts) {
-  const src = path.join(releaseDir, name);
+  const src = path.join(artifactsDir, name);
   const dest = path.join(devDir, name);
   moveIfExists(src, dest);
 }
 
-// Remove leftover empty release dir if possible (ignore errors)
+// Remove electron-builder staging artifacts so only `releases/` remains.
 try {
-  const left = fs.readdirSync(releaseDir);
-  if (left.length === 0) {
-    fs.rmdirSync(releaseDir);
-    console.log("Removed empty release/");
+  if (fs.existsSync(legacyReleaseDir)) {
+    fs.rmSync(legacyReleaseDir, { recursive: true, force: true });
+    console.log("Removed release/ (legacy)");
+  }
+  if (fs.existsSync(artifactsDir)) {
+    fs.rmSync(artifactsDir, { recursive: true, force: true });
+    console.log("Removed releases/artifacts/");
   }
 } catch (_) {}
 

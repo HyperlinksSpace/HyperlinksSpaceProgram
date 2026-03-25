@@ -1,4 +1,3 @@
-File's formats and folders structure<br>
 Fix relaese appearing on Electron build<br>
 Windows instant update<br>
 Bottom bar refactor<br>
@@ -16,6 +15,7 @@ AI responce checkup in bot (message interruption on new prompt)<br>
 Typing in the middle of the text on large inputting<br>
 
 To think about:<br>
+File's formats and folders structure<br>
 Selection and pointing text detalization<br>
     on word tapping places at the end of the word<br>
     zoom-in cursor placing on long tap<br>
