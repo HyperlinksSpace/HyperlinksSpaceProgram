@@ -1,3 +1,4 @@
+Run as administrator<br>
 Update flow<br>
 Win App Fullscreen Open<br>
 Bottom bar refactor<br>
