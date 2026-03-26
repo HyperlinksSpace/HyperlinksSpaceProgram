@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu, protocol, net, dialog, Notification } = require("electron");
+const { app, BrowserWindow, Menu, protocol, net, dialog, Notification, ipcMain } = require("electron");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
@@ -6,6 +7,11 @@ const { pathToFileURL } = require("url");
 const isDev = process.env.NODE_ENV === "development";
 const updaterMenuApi = {
   checkNow: null,
+};
+const updateDialogState = {
+  window: null,
+  installEnabled: false,
+  ipcBound: false,
 };
 
 function resolveNotificationIcon() {
@@ -44,12 +50,93 @@ function setupAutoUpdater() {
   try {
     const { autoUpdater } = require("electron-updater");
     let manualCheckInProgress = false;
+    let manualDownloadInProgress = false;
 
     const showUpdateMessage = async (title, message) => {
       try {
         const win = BrowserWindow.getAllWindows()[0];
         await dialog.showMessageBox(win || null, { type: "info", title, message });
       } catch (_) {}
+    };
+    const openOrFocusUpdateDialog = () => {
+      if (updateDialogState.window && !updateDialogState.window.isDestroyed()) {
+        updateDialogState.window.show();
+        updateDialogState.window.focus();
+        return;
+      }
+      updateDialogState.window = new BrowserWindow({
+        width: 420,
+        height: 210,
+        title: "Updater",
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        show: false,
+        autoHideMenuBar: true,
+        parent: BrowserWindow.getAllWindows()[0] || undefined,
+        modal: false,
+        webPreferences: { nodeIntegration: true, contextIsolation: false },
+      });
+      const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;padding:16px;background:#fff;color:#111;">
+<div id="t" style="font-size:14px;margin-bottom:10px;">Checking for updates...</div>
+<div style="height:14px;background:#eee;border-radius:7px;overflow:hidden;margin-bottom:12px;"><div id="b" style="height:100%;width:0%;background:#2ea043;"></div></div>
+<div style="display:flex;gap:8px;justify-content:flex-end;">
+  <button id="install" disabled style="padding:6px 12px;">Install update</button>
+  <button id="close" style="padding:6px 12px;">Close</button>
+</div>
+<script>
+  const { ipcRenderer } = require('electron');
+  document.getElementById('install').addEventListener('click', () => ipcRenderer.send('updater-install-click'));
+  document.getElementById('close').addEventListener('click', () => window.close());
+</script>
+</body></html>`;
+      updateDialogState.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      updateDialogState.window.once("ready-to-show", () => {
+        if (updateDialogState.window && !updateDialogState.window.isDestroyed()) updateDialogState.window.show();
+      });
+      updateDialogState.window.on("closed", () => {
+        updateDialogState.window = null;
+      });
+    };
+    const updateDialogUi = ({ text, percent, installEnabled }) => {
+      if (!updateDialogState.window || updateDialogState.window.isDestroyed()) return;
+      const safe = Math.max(0, Math.min(100, Math.round(percent)));
+      updateDialogState.installEnabled = Boolean(installEnabled);
+      const js = `
+        const t = document.getElementById('t');
+        const b = document.getElementById('b');
+        const i = document.getElementById('install');
+        if (t) t.textContent = ${JSON.stringify(text)};
+        if (b) b.style.width = '${safe}%';
+        if (i) i.disabled = ${installEnabled ? "false" : "true"};
+      `;
+      updateDialogState.window.webContents.executeJavaScript(js).catch(() => {});
+    };
+    const closeUpdateDialog = () => {
+      if (updateDialogState.window && !updateDialogState.window.isDestroyed()) updateDialogState.window.close();
+      updateDialogState.window = null;
+      updateDialogState.installEnabled = false;
+    };
+    if (!updateDialogState.ipcBound) {
+      updateDialogState.ipcBound = true;
+      ipcMain.on("updater-install-click", () => {
+        if (updateDialogState.installEnabled) requestInstallNow();
+      });
+    }
+    const scheduleHiddenRelaunchFallback = () => {
+      try {
+        const exePath = app.getPath("exe").replace(/'/g, "''");
+        const relaunchScript = `$exe='${exePath}'; Start-Sleep -Seconds 60; if (Test-Path $exe) { Start-Process -FilePath $exe }`;
+        const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", relaunchScript], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        child.unref();
+        log("[updater] hidden relaunch fallback scheduled");
+      } catch (e) {
+        log(`[updater] relaunch fallback schedule failed: ${e?.message || e}`);
+      }
     };
     autoUpdater.logger = {
       info: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
@@ -68,6 +155,7 @@ function setupAutoUpdater() {
     const requestInstallNow = () => {
       installRequested = true;
       log("[updater] user accepted update install");
+      closeUpdateDialog();
 
       // Ensure renderers release file locks before NSIS starts uninstall/install.
       for (const win of BrowserWindow.getAllWindows()) {
@@ -79,6 +167,7 @@ function setupAutoUpdater() {
 
       try {
         // Interactive mode shows NSIS progress/update UI to the user.
+        scheduleHiddenRelaunchFallback();
         log("[updater] invoking quitAndInstall(isSilent=false, isForceRunAfter=false)");
         autoUpdater.quitAndInstall(false, false);
       } catch (e) {
@@ -90,31 +179,13 @@ function setupAutoUpdater() {
 
     autoUpdater.on("update-downloaded", () => {
       log("[updater] update-downloaded");
-      if (Notification.isSupported()) {
-        const icon = resolveNotificationIcon();
-        const note = new Notification({
-          title: "Update ready",
-          body: "A new version was downloaded. Click to restart and install.",
-          icon,
-          silent: false,
-        });
-        note.on("click", requestInstallNow);
-        note.show();
-        return;
-      }
-
-      dialog
-        .showMessageBox({
-          type: "info",
-          title: "Update ready",
-          message: "A new version was downloaded. Restart now to install? The app will close first.",
-          buttons: ["Restart and install", "Later"],
-          defaultId: 0,
-          cancelId: 1,
-        })
-        .then(({ response }) => {
-          if (response === 0) requestInstallNow();
-        });
+      manualDownloadInProgress = false;
+      openOrFocusUpdateDialog();
+      updateDialogUi({
+        text: "Update is ready. Click Install update.",
+        percent: 100,
+        installEnabled: true,
+      });
     });
 
     autoUpdater.on("checking-for-update", () => {
@@ -128,9 +199,16 @@ function setupAutoUpdater() {
       log(`[updater] update-available version=${info?.version || "unknown"}`);
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
+        manualDownloadInProgress = true;
+        openOrFocusUpdateDialog();
+        updateDialogUi({
+          text: `Downloading version ${info?.version || "new"}... 0%`,
+          percent: 0,
+          installEnabled: false,
+        });
         void showUpdateMessage(
           "Update found",
-          `Version ${info?.version || "new"} is available and downloading in background.`
+          `Version ${info?.version || "new"} is available. Download progress is shown in a separate window.`
         );
       }
     });
@@ -139,14 +217,27 @@ function setupAutoUpdater() {
       log("[updater] update-not-available");
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
+        manualDownloadInProgress = false;
+        closeUpdateDialog();
         void showUpdateMessage("No updates", "You are already on the latest version.");
       }
+    });
+    autoUpdater.on("download-progress", (progress) => {
+      if (!manualDownloadInProgress) return;
+      const pct = progress?.percent ?? 0;
+      updateDialogUi({
+        text: `Downloading update... ${Math.max(0, Math.min(100, Math.round(pct)))}%`,
+        percent: pct,
+        installEnabled: false,
+      });
     });
 
     autoUpdater.on("error", (err) => {
       log(`[updater] error: ${err?.message || String(err)}`);
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
+        manualDownloadInProgress = false;
+        closeUpdateDialog();
         void showUpdateMessage("Update check failed", err?.message || String(err));
       }
     });
@@ -155,9 +246,13 @@ function setupAutoUpdater() {
       try {
         log("[updater] manual check requested from menu");
         manualCheckInProgress = true;
+        manualDownloadInProgress = false;
+        closeUpdateDialog();
         await autoUpdater.checkForUpdates();
       } catch (e) {
         manualCheckInProgress = false;
+        manualDownloadInProgress = false;
+        closeUpdateDialog();
         await showUpdateMessage("Update check failed", e?.message || String(e));
       }
     };
