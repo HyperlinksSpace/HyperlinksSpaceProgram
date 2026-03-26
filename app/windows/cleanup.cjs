@@ -25,15 +25,22 @@ const buildName =
 const buildDir = path.join(releasesDir, buildName);
 const devDir = path.join(buildDir, "dev");
 
-const exeName = "HyperlinksSpaceAppInstaller.exe";
 /** Required for electron-updater (GitHub) — must be uploaded next to the installer on each release. */
 const latestYmlName = "latest.yml";
 const devArtifacts = [
   "win-unpacked",
   "builder-debug.yml",
   "builder-effective-config.yaml",
-  "HyperlinksSpaceAppInstaller.exe.blockmap",
 ];
+
+function pickInstallerName() {
+  const files = fs.readdirSync(artifactsDir);
+  const candidates = files.filter((f) => /^HyperlinksSpaceAppInstaller(?:_\d{8}_\d{4})?\.exe$/i.test(f));
+  if (candidates.length === 0) return null;
+  // Prefer timestamped file if both legacy/static and stamped files exist.
+  candidates.sort((a, b) => b.length - a.length || a.localeCompare(b));
+  return candidates[0];
+}
 
 function moveIfExists(src, dest) {
   if (!fs.existsSync(src)) return false;
@@ -60,11 +67,12 @@ function moveIfExists(src, dest) {
   }
 }
 
-const exeSrc = path.join(artifactsDir, exeName);
-if (!fs.existsSync(exeSrc)) {
+const exeName = pickInstallerName();
+if (!exeName) {
   console.warn("No installer found in releases/artifacts/. Run electron-builder first.");
   process.exit(1);
 }
+const exeSrc = path.join(artifactsDir, exeName);
 
 // Create releases/build_MMDDYYYY_HHMM and dev folder
 fs.mkdirSync(devDir, { recursive: true });
@@ -83,6 +91,7 @@ if (!moveIfExists(latestSrc, latestDest)) {
 function writeLatestYmlForExe(exePath, ymlPath) {
   const pkg = JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8"));
   const version = String(pkg.version ?? "0.0.0");
+  const exeFileName = path.basename(exePath);
   const buf = fs.readFileSync(exePath);
   const sha512 = crypto.createHash("sha512").update(buf).digest("base64");
   const size = buf.length;
@@ -90,10 +99,10 @@ function writeLatestYmlForExe(exePath, ymlPath) {
   const yml =
     `version: ${version}\n` +
     `files:\n` +
-    `  - url: ${exeName}\n` +
+    `  - url: ${exeFileName}\n` +
     `    sha512: ${sha512}\n` +
     `    size: ${size}\n` +
-    `path: ${exeName}\n` +
+    `path: ${exeFileName}\n` +
     `sha512: ${sha512}\n` +
     `releaseDate: '${releaseDate}'\n`;
   fs.writeFileSync(ymlPath, yml, "utf8");
@@ -110,6 +119,8 @@ for (const name of devArtifacts) {
   const dest = path.join(devDir, name);
   moveIfExists(src, dest);
 }
+const blockmapName = `${exeName}.blockmap`;
+moveIfExists(path.join(artifactsDir, blockmapName), path.join(devDir, blockmapName));
 
 // Remove electron-builder staging artifacts so only `releases/` remains.
 try {
