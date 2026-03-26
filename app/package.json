@@ -68,7 +68,7 @@
       "guid": "5e1f4a8d-9c64-4e6a-a7d1-2a2fd2f01b0f",
       "oneClick": true,
       "perMachine": false,
-      "allowElevation": false,
+      "allowElevation": true,
       "allowToChangeInstallationDirectory": false
     },
     "directories": {
