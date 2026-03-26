@@ -5,6 +5,9 @@ const fs = require("fs");
 const { pathToFileURL } = require("url");
 
 const isDev = process.env.NODE_ENV === "development";
+const updaterMenuApi = {
+  checkNow: null,
+};
 
 function resolveNotificationIcon() {
   const candidates = [
@@ -41,6 +44,14 @@ function setupAutoUpdater() {
   if (isDev || !app.isPackaged) return;
   try {
     const { autoUpdater } = require("electron-updater");
+    let manualCheckInProgress = false;
+
+    const showUpdateMessage = async (title, message) => {
+      try {
+        const win = BrowserWindow.getAllWindows()[0];
+        await dialog.showMessageBox(win || null, { type: "info", title, message });
+      } catch (_) {}
+    };
     autoUpdater.logger = {
       info: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
       warn: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
@@ -123,6 +134,46 @@ function setupAutoUpdater() {
         });
     });
 
+    autoUpdater.on("checking-for-update", () => {
+      if (manualCheckInProgress) {
+        log("[updater] manual check started");
+      }
+    });
+
+    autoUpdater.on("update-available", (info) => {
+      if (manualCheckInProgress) {
+        manualCheckInProgress = false;
+        void showUpdateMessage(
+          "Update found",
+          `Version ${info?.version || "new"} is available and downloading in background.`
+        );
+      }
+    });
+
+    autoUpdater.on("update-not-available", () => {
+      if (manualCheckInProgress) {
+        manualCheckInProgress = false;
+        void showUpdateMessage("No updates", "You are already on the latest version.");
+      }
+    });
+
+    autoUpdater.on("error", (err) => {
+      if (manualCheckInProgress) {
+        manualCheckInProgress = false;
+        void showUpdateMessage("Update check failed", err?.message || String(err));
+      }
+    });
+
+    updaterMenuApi.checkNow = async () => {
+      try {
+        manualCheckInProgress = true;
+        await autoUpdater.checkForUpdates();
+      } catch (e) {
+        manualCheckInProgress = false;
+        await showUpdateMessage("Update check failed", e?.message || String(e));
+      }
+    };
+
     app.on("before-quit", () => {
       if (installRequested) {
         log("[updater] before-quit for update install");
@@ -138,8 +189,8 @@ function setupAutoUpdater() {
     // 1) On startup (each app launch)
     markAndCheck();
 
-    // 2) While running: every 6 hours
-    const periodicMs = 1 * 60 * 60 * 1000;
+    // 2) While running: every 1 minute (temporary aggressive polling)
+    const periodicMs = 1 * 60 * 1000;
     setInterval(markAndCheck, periodicMs);
 
     // 3) When user brings the app back to foreground (throttled: at most once per 30 min)
@@ -152,6 +203,52 @@ function setupAutoUpdater() {
   } catch (e) {
     log(`autoUpdater failed: ${e?.message || e}`);
   }
+}
+
+function setupAppMenu() {
+  const template = [
+    {
+      label: "File",
+      submenu: [{ role: "quit", label: "Exit" }],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [{ role: "reload" }, { role: "togglefullscreen" }],
+    },
+    {
+      label: "Updates",
+      submenu: [
+        {
+          label: "Check for updates now",
+          click: () => {
+            if (typeof updaterMenuApi.checkNow === "function") {
+              void updaterMenuApi.checkNow();
+            } else {
+              void dialog.showMessageBox({
+                type: "info",
+                title: "Updates unavailable",
+                message: "Updater is not available in development mode.",
+              });
+            }
+          },
+        },
+      ],
+    },
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -240,7 +337,7 @@ app.whenReady().then(() => {
   if (process.platform === "win32") {
     app.setAppUserModelId("com.sraibaby.app");
   }
-  Menu.setApplicationMenu(null); // We can enable standart app menu by deteng this line
+  setupAppMenu();
   if (!isDev) {
     const appPath = app.getAppPath();
     const distPath = path.join(appPath, "dist");
