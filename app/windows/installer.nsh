@@ -1,4 +1,8 @@
 ; Custom NSIS: window title only (no " Setup" suffix).
+; Workaround for intermittent NSIS self-update/uninstall failures reported by
+; multiple electron-builder users on some Windows machines.
+CRCCheck off
+
 !macro customHeader
   Caption "${PRODUCT_NAME}"
 !macroend
