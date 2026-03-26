@@ -48,6 +48,8 @@ function setupAutoUpdater() {
     };
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    // Explicit for Windows silent installs: relaunch app after installer completes.
+    autoUpdater.autoRunAppAfterInstall = true;
 
     let installRequested = false;
 
@@ -63,17 +65,14 @@ function setupAutoUpdater() {
         } catch (_) {}
       }
 
-      // Keep this delay explicit: Windows AV/scanners can hold the exe briefly after close.
-      setTimeout(() => {
-        try {
-          // Silent update avoids full NSIS wizard-looking reinstall UI.
-          autoUpdater.quitAndInstall(true, true);
-        } catch (e) {
-          log(`quitAndInstall failed: ${e?.message || e}`);
-          // Fallback path: app quit still applies update because autoInstallOnAppQuit=true.
-          app.quit();
-        }
-      }, 2500);
+      try {
+        // Silent update avoids full NSIS wizard-looking reinstall UI.
+        autoUpdater.quitAndInstall(true, true);
+      } catch (e) {
+        log(`quitAndInstall failed: ${e?.message || e}`);
+        // Fallback path: app quit still applies update because autoInstallOnAppQuit=true.
+        app.quit();
+      }
     };
 
     autoUpdater.on("update-downloaded", () => {
