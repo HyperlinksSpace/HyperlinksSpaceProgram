@@ -47,11 +47,12 @@ function setupAutoUpdater() {
         })
         .then(({ response }) => {
           if (response === 0) {
-            // NSIS must see the app fully exit before the installer overwrites files. Immediate
-            // quitAndInstall can race; a short delay reduces "cannot be closed" / uninstall errors.
+            // NSIS must see the app fully exit before the installer overwrites files. A short delay
+            // reduces races. Use silent install: quitAndInstall(false, *) runs the full NSIS UI, which
+            // looks like uninstall/reinstall; silent + --force-run is the normal seamless update path.
             setTimeout(() => {
               try {
-                autoUpdater.quitAndInstall(false, true);
+                autoUpdater.quitAndInstall(true, true);
               } catch (e) {
                 log(`quitAndInstall failed: ${e?.message || e}`);
               }

@@ -1,6 +1,4 @@
 Update flow<br>
-Fix relaese appearing on Electron build<br>
-Windows instant update<br>
 Bottom bar refactor<br>
 Username loaded without intermediate state<br>
 AI options page<br>
@@ -9,8 +7,6 @@ AI chat page<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Demo state<br>
 readme.md<br>
-
-
 
 Issues:<br>
 Several chats async streaming<br>
