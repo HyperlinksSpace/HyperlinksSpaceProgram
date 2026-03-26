@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, protocol, net, dialog, Notification } = require("electron");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
@@ -53,6 +54,23 @@ function setupAutoUpdater() {
 
     let installRequested = false;
 
+    function scheduleRelaunchFallback() {
+      try {
+        const exePath = app.getPath("exe");
+        // Interactive installer may not relaunch on some machines; schedule a delayed reopen.
+        const relaunchCmd = `ping 127.0.0.1 -n 26 > nul && start "" "${exePath}"`;
+        const child = spawn(process.env.ComSpec || "cmd.exe", ["/c", relaunchCmd], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        child.unref();
+        log("[updater] scheduled relaunch fallback");
+      } catch (e) {
+        log(`[updater] relaunch fallback schedule failed: ${e?.message || e}`);
+      }
+    }
+
     const requestInstallNow = () => {
       installRequested = true;
       log("[updater] user accepted update install");
@@ -67,6 +85,7 @@ function setupAutoUpdater() {
 
       try {
         // Interactive mode shows NSIS progress/update UI to the user.
+        scheduleRelaunchFallback();
         autoUpdater.quitAndInstall(false, false);
       } catch (e) {
         log(`quitAndInstall failed: ${e?.message || e}`);
