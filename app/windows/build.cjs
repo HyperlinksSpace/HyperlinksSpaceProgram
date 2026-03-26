@@ -66,8 +66,10 @@ function setupAutoUpdater() {
       }
 
       try {
-        // Silent update avoids full NSIS wizard-looking reinstall UI.
-        autoUpdater.quitAndInstall(true, true);
+        // Use interactive install so Windows can show update progress UI.
+        // isForceRunAfter is only relevant for silent mode, but we keep it
+        // for compatibility if mode toggles again in the future.
+        autoUpdater.quitAndInstall(false, true);
       } catch (e) {
         log(`quitAndInstall failed: ${e?.message || e}`);
         // Fallback path: app quit still applies update because autoInstallOnAppQuit=true.
