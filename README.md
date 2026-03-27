@@ -1,6 +1,17 @@
-*Special note: now temporarily main development is in [`./app`](./app) folder. After refactor it'll be in root.*
+*Special note: now temporarily main development is in [`./app`](./app) folder. After refactor it'll be in root. Root contents used for prompting and demo only.*
 
-**HyperlinksSpaceBot** is a Telegram Mini App for the TON ecosystem: a wallet-style UI (Feed, Swap, Trade, Send, Get, Apps, Coins) plus an AI assistant in the bottom app bar and telegram bot that answers questions using RAG-grounded token and project data (e.g. `$DOGS`, `$TON`). The monorepo includes a Flutter web frontend, a Python Telegram bot with HTTP API (gateway and “Run app” entry point), an AI chat backend (FastAPI), and a RAG service for token/project retrieval from sources like swap.coffee. The AI backend uses Ollama or OpenAI for generation. Run locally with `start.sh`, or deploy bot, AI, and RAG to Railway and the frontend to Vercel.
+**`./app` structure (active development area):**
+- `app` - Expo/React Telegram Mini App client (web/mobile screens, navigation, UI logic).
+- `bot` - TypeScript Telegram bot service and runtime entrypoints.
+- `database` - database startup/migration/service scripts.
+- `ai` - AI assistant service logic and model integration points.
+- `api` - backend API handlers and server-side endpoints.
+- `blockchain` - TON/blockchain interaction logic and related helpers.
+- `telegram` - Telegram-specific integration utilities and adapters.
+- `windows` - Electron desktop shell, NSIS installer config, and auto-update flow.
+- `scripts` - developer/ops scripts (local run, migration, release helpers).
+- `docs` - project and operational documentation.
+- `assets` - static assets used by app, installer, and branding.
 
 ## How to fork and contribute?
 
