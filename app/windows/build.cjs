@@ -84,8 +84,9 @@ function setupAutoUpdater() {
       return 0;
     };
 
-    const UPDATER_COMPACT_H = 150;
-    const UPDATER_EXPANDED_H = 270;
+    // Tight chrome: content + padding only (title bar is extra OS chrome).
+    const UPDATER_COMPACT_H = 128;
+    const UPDATER_EXPANDED_H = 198;
 
     const openOrFocusUpdateDialog = () => {
       if (updateDialogState.window && !updateDialogState.window.isDestroyed()) {
@@ -96,6 +97,7 @@ function setupAutoUpdater() {
       updateDialogState.window = new BrowserWindow({
         width: 420,
         height: UPDATER_COMPACT_H,
+        useContentSize: true,
         title: "Updater",
         resizable: false,
         minimizable: false,
@@ -106,17 +108,16 @@ function setupAutoUpdater() {
         modal: false,
         webPreferences: { nodeIntegration: true, contextIsolation: false },
       });
-      const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;padding:16px;background:#111;color:#eee;margin:0;">
-<div id="cv" style="font-size:12px;color:#aaa;margin-bottom:8px;">Current version: ${currentVersionHtml}</div>
-<div id="t" style="font-size:14px;margin-bottom:10px;line-height:1.35;">Checking for updates...</div>
-<div id="progressWrap" style="display:none;margin-bottom:12px;">
+      const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;box-sizing:border-box;padding:12px 14px 10px;background:#111;color:#eee;margin:0;">
+<div id="cv" style="font-size:12px;color:#aaa;margin-bottom:6px;">Current version: ${currentVersionHtml}</div>
+<div id="t" style="font-size:14px;margin-bottom:8px;line-height:1.35;">Checking for updates...</div>
+<div id="progressWrap" style="display:none;margin-bottom:8px;">
   <div style="height:14px;background:#333;border-radius:7px;overflow:hidden;">
     <div id="b" style="height:100%;width:0%;background:#2ea043;"></div>
   </div>
 </div>
-<div id="actionsWrap" style="display:none;flex-direction:row;gap:8px;justify-content:flex-end;">
-  <button id="install" disabled style="padding:6px 12px;">Install update</button>
-  <button id="close" style="padding:6px 12px;">Close</button>
+<div id="actionsWrap" style="display:none;flex-direction:row;justify-content:flex-end;">
+  <button id="install" disabled style="padding:5px 10px;">Install update</button>
 </div>
 <script>
   const { ipcRenderer } = require('electron');
@@ -134,7 +135,6 @@ function setupAutoUpdater() {
   }
   ipcRenderer.on('updater-ui', (_e, data) => applyUpdaterUi(data));
   document.getElementById('install').addEventListener('click', () => ipcRenderer.send('updater-install-click'));
-  document.getElementById('close').addEventListener('click', () => window.close());
 </script>
 </body></html>`;
       updateDialogState.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
@@ -150,7 +150,7 @@ function setupAutoUpdater() {
      * @param {string} opts.text
      * @param {number} [opts.percent]
      * @param {boolean} [opts.showProgress]
-     * @param {boolean} [opts.showActions] Install + Close (when false: version + text only; dismiss via window X)
+     * @param {boolean} [opts.showActions] Install button row (when false: version + text only; dismiss via title bar X)
      * @param {boolean} [opts.installEnabled]
      */
     const updateDialogUi = ({ text, percent = 0, showProgress = false, showActions = false, installEnabled = false }) => {
