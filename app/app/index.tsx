@@ -63,7 +63,7 @@ export default function Index() {
           Hyperlinks Space App
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12 }}>
-          Outside TMA, authentication abandoned.
+          Outside Telegram, authentication abandoned.
         </Text>
         <View style={{ marginTop: 8, padding: 8, backgroundColor: "#f0f0f0", borderRadius: 8, alignSelf: "stretch" }}>
           <Text style={{ fontSize: 12, fontWeight: "600" }}>Debug</Text>
