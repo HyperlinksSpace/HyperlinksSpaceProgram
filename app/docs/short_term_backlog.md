@@ -1,3 +1,4 @@
+Fix slow reload on update
 Installation logs
 Installer repeated run (overwriting, force the installer to close and open the app if running)
 System menu bottom border
