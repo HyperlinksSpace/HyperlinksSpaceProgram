@@ -60,7 +60,7 @@ export default function Index() {
         }}
       >
         <Text style={{ fontWeight: "600", marginBottom: 8 }}>
-          Hyperlinks Space App
+          Hyperlinks Space Program
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12 }}>
           Outside Telegram, authentication abandoned.
