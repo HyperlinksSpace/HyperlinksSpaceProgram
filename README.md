@@ -32,6 +32,15 @@ git checkout -b new-branch-for-an-update
 git switch -c new-branch-for-an-update
 ```
 
+3. Make a commit
+
+```
+git add . # Stage changes on this branch
+git commit -m "Describe your change" # Commit on this branch
+```
+
+You can as well address unassigned issues if any.
+
 3. After making a commit, make a pull request, gh tool will already know the upstream remote
 
 ```
@@ -48,9 +57,4 @@ git push origin main # Keep your fork main in sync too
 git switch -c new-branch-for-next-update # Create and switch to a new feature branch
 ```
 
-After editing files in the new branch:
-
-```
-git add . # Stage changes on this branch
-git commit -m "Describe your change" # Commit on this branch
-```
+**Move in loops starting from the step 3.**
