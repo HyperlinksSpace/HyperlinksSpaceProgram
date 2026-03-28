@@ -18,6 +18,52 @@ const { pathToFileURL } = require("url");
 const UPDATE_GITHUB_OWNER = "HyperlinksSpace";
 const UPDATE_GITHUB_REPO = "HyperlinksSpaceBot";
 const ZIP_LATEST_YML = "zip-latest.yml";
+/** Same pattern as package.json build.win.artifactName for the zip target. */
+const WIN_PORTABLE_ZIP_PREFIX = "HyperlinksSpaceApp_";
+const LATEST_YML = "latest.yml";
+
+/**
+ * Prefer zip-latest.yml (has sha512 for the zip). If missing (404), use latest.yml + inferred zip name.
+ * @returns {{ version: string, fileName: string, sha512: string | null, source: string }}
+ */
+async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
+  const zipLatestUrl = githubLatestAssetUrl(ZIP_LATEST_YML);
+  const zlRes = await netFetch(zipLatestUrl);
+  if (zlRes.ok) {
+    const text = await zlRes.text();
+    const meta = parseSimpleUpdateYml(text);
+    if (meta.version && meta.fileName && meta.sha512) {
+      if (compareSemverLike(meta.version, currentVersion) <= 0) {
+        throw new Error("zip-latest.yml version is not newer than current app");
+      }
+      return { version: meta.version, fileName: meta.fileName, sha512: meta.sha512, source: "zip-latest.yml" };
+    }
+    log("[updater] zip-latest.yml incomplete; falling back to latest.yml + inferred zip name");
+  } else {
+    log(`[updater] zip-latest.yml HTTP ${zlRes.status} — using latest.yml and inferred HyperlinksSpaceApp_<version>.zip`);
+  }
+
+  const lyUrl = githubLatestAssetUrl(LATEST_YML);
+  const lyRes = await netFetch(lyUrl);
+  if (!lyRes.ok) {
+    throw new Error(`latest.yml HTTP ${lyRes.status} (need a GitHub release with latest.yml)`);
+  }
+  const lyText = await lyRes.text();
+  const ly = parseSimpleUpdateYml(lyText);
+  if (!ly.version) {
+    throw new Error("latest.yml has no version");
+  }
+  if (compareSemverLike(ly.version, currentVersion) <= 0) {
+    throw new Error("latest.yml version is not newer than current app");
+  }
+  const fileName = `${WIN_PORTABLE_ZIP_PREFIX}${ly.version}.zip`;
+  return {
+    version: ly.version,
+    fileName,
+    sha512: null,
+    source: "latest.yml+inferred",
+  };
+}
 
 function compareSemverLike(a, b) {
   const pa = String(a || "0")
@@ -441,20 +487,11 @@ function setupAutoUpdater() {
         });
       };
       try {
-        const ymlUrl = githubLatestAssetUrl(ZIP_LATEST_YML);
-        const ymlRes = await net.fetch(ymlUrl);
-        if (!ymlRes.ok) throw new Error(`zip-latest.yml HTTP ${ymlRes.status}`);
-        const ymlText = await ymlRes.text();
-        const meta = parseSimpleUpdateYml(ymlText);
-        if (!meta.version || !meta.fileName || !meta.sha512) {
-          throw new Error("invalid zip-latest.yml");
-        }
-        if (compareSemverLike(meta.version, currentVersion) <= 0) {
-          throw new Error("zip manifest is not newer than current app");
-        }
+        const meta = await resolveWindowsZipSidecarMeta((u) => net.fetch(u), currentVersion);
         if (meta.version !== remoteV) {
-          log(`[updater] zip-latest version ${meta.version} vs feed ${remoteV} (using zip manifest)`);
+          log(`[updater] sidecar version ${meta.version} vs feed ${remoteV} (using sidecar manifest)`);
         }
+        log(`[updater] sidecar source: ${meta.source} → ${meta.fileName}`);
 
         // One bar: download + verify + unpack = "prepare" until Update is enabled.
         const PROGRESS_DOWNLOAD_CAP = 72;
@@ -487,8 +524,14 @@ function setupAutoUpdater() {
 
         pushUi({ text: "Verifying update…", percent: PROGRESS_DOWNLOAD_CAP + 2 });
 
-        const hash = sha512Base64OfFile(zipPath);
-        if (hash !== meta.sha512) throw new Error("zip sha512 mismatch");
+        if (meta.sha512) {
+          const hash = sha512Base64OfFile(zipPath);
+          if (hash !== meta.sha512) throw new Error("zip sha512 mismatch");
+        } else {
+          log(
+            "[updater] no sha512 manifest for zip (optional: add zip-latest.yml from cleanup for integrity check)",
+          );
+        }
 
         pushUi({ text: "Installing update (unpacking files)…", percent: PROGRESS_DOWNLOAD_CAP + 8 });
 
@@ -521,14 +564,14 @@ function setupAutoUpdater() {
       } catch (e) {
         log(`[updater] versions sidecar failed: ${e?.message || e}`);
         log(
-          "[updater] Publish zip-latest.yml + HyperlinksSpaceApp_<version>.zip next to latest.yml on the latest GitHub release (see cleanup build output).",
+          `[updater] Ensure latest GitHub release includes latest.yml, ${WIN_PORTABLE_ZIP_PREFIX}<version>.zip (zip build), and optionally zip-latest.yml from cleanup for sha512.`,
         );
         zipStagingContentPath = null;
         zipReadyVersion = null;
         manualDownloadInProgress = false;
         const hint =
-          `Sidecar update failed: ${e?.message || String(e)}. ` +
-          `Add zip-latest.yml and the app zip from your build to https://github.com/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases/latest`;
+          `Update prepare failed: ${e?.message || String(e)}. ` +
+          `Publish the Windows zip (${WIN_PORTABLE_ZIP_PREFIX}<version>.zip) on https://github.com/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases/latest — latest.yml is enough; add zip-latest.yml from cleanup for checksum verification.`;
         if (uiActive) {
           openOrFocusUpdateDialog();
           updateDialogUi({
