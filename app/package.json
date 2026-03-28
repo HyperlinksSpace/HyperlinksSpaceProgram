@@ -8,7 +8,7 @@
     "url": "https://github.com/HyperlinksSpace/HyperlinksSpaceBot.git"
   },
   "main": "expo-router/entry",
-  "version": "53.0.1298",
+  "version": "53.0.1299",
   "type": "module",
   "engines": {
     "node": ">=18 <=22"
@@ -108,7 +108,7 @@
     "@react-navigation/native": "^7.1.6",
     "@swap-coffee/sdk": "^1.5.4",
     "@tma.js/sdk-react": "^3.0.16",
-    "adm-zip": "^0.5.16",
+    "extract-zip": "^2.0.1",
     "electron-updater": "^6.8.3",
     "expo": "~54.0.0",
     "expo-blur": "~15.0.8",

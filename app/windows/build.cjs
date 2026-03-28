@@ -608,9 +608,10 @@ function setupAutoUpdater() {
 
         pushUi({ text: "Installing update (unpacking files)…", percent: PROGRESS_DOWNLOAD_CAP + 8 });
 
-        const AdmZip = require("adm-zip");
-        const zip = new AdmZip(zipPath);
-        zip.extractAllTo(extractDir, true);
+        // adm-zip calls chmod while extracting; on Windows that can throw ENOENT for app.asar paths.
+        // extract-zip (yauzl) matches Electron's tooling and avoids that failure mode.
+        const extractZip = require("extract-zip");
+        await extractZip(zipPath, { dir: extractDir });
 
         pushUi({ text: "Finalizing…", percent: 98 });
 
