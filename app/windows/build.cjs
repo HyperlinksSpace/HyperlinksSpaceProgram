@@ -42,11 +42,46 @@ function isTransientGithubUpdateError(err) {
   return false;
 }
 
+/** Ring buffer for the updater dialog (last lines only). */
+const UPDATER_DIALOG_LOG_MAX = 120;
+const updaterDialogLogBuffer = [];
+
+/** Set in setupAutoUpdater: sends a fully formatted log line (with ISO time) to the dialog. */
+let updaterLogToDialog = null;
+
+function appendUpdaterDialogLogLine(messageBody) {
+  const line = `[${new Date().toISOString()}] ${messageBody}`;
+  updaterDialogLogBuffer.push(line);
+  if (updaterDialogLogBuffer.length > UPDATER_DIALOG_LOG_MAX) {
+    updaterDialogLogBuffer.splice(0, updaterDialogLogBuffer.length - UPDATER_DIALOG_LOG_MAX);
+  }
+  try {
+    updaterLogToDialog?.(line);
+  } catch (_) {}
+}
+
+/** Structured lines in userData/main.log and updater dialog: `[updater:tag] message` */
+function logUpdater(tag, msg) {
+  const body = `[updater:${tag}] ${msg}`;
+  log(body);
+  appendUpdaterDialogLogLine(body);
+}
+
+function safeJson(obj, maxLen = 800) {
+  try {
+    const s = JSON.stringify(obj);
+    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s;
+  } catch (_) {
+    return String(obj);
+  }
+}
+
 /**
  * Prefer zip-latest.yml (has sha512 for the zip). If missing (404), use latest.yml + inferred zip name.
  * @returns {{ version: string, fileName: string, sha512: string | null, source: string }}
  */
 async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
+  logUpdater("meta", `resolve sidecar manifests (current=${currentVersion})`);
   const zipLatestUrl = githubLatestAssetUrl(ZIP_LATEST_YML);
   const zlRes = await netFetch(zipLatestUrl);
   if (zlRes.ok) {
@@ -56,6 +91,7 @@ async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
       if (compareSemverLike(meta.version, currentVersion) <= 0) {
         throw new Error("zip-latest.yml version is not newer than current app");
       }
+      logUpdater("meta", `using zip-latest.yml version=${meta.version} file=${meta.fileName}`);
       return { version: meta.version, fileName: meta.fileName, sha512: meta.sha512, source: "zip-latest.yml" };
     }
     log("[updater] zip-latest.yml incomplete; falling back to latest.yml + inferred zip name");
@@ -77,6 +113,7 @@ async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
     throw new Error("latest.yml version is not newer than current app");
   }
   const fileName = `${WIN_PORTABLE_ZIP_PREFIX}${ly.version}.zip`;
+  logUpdater("meta", `using latest.yml+inferred version=${ly.version} file=${fileName}`);
   return {
     version: ly.version,
     fileName,
@@ -134,6 +171,10 @@ const GITHUB_API_HEADERS = {
  * @returns {Promise<string|null>} browser_download_url or null
  */
 async function fetchPortableZipBrowserUrlFromGitHubApi(netFetch, version, preferredFileName) {
+  logUpdater(
+    "github-api",
+    `resolve zip URL via API (version=${version} preferred=${preferredFileName})`,
+  );
   const apiUrl = `https://api.github.com/repos/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases/latest`;
   const res = await netFetch(apiUrl, { headers: GITHUB_API_HEADERS });
   if (!res.ok) {
@@ -155,6 +196,7 @@ async function fetchPortableZipBrowserUrlFromGitHubApi(netFetch, version, prefer
   const exact = candidates.find((a) => a.name === preferredFileName);
   if (exact?.browser_download_url) {
     log(`[updater] GitHub API: exact zip match ${exact.name}`);
+    logUpdater("github-api", `picked exact asset url=${exact.browser_download_url.slice(0, 120)}…`);
     return exact.browser_download_url;
   }
 
@@ -162,6 +204,7 @@ async function fetchPortableZipBrowserUrlFromGitHubApi(netFetch, version, prefer
   const withVersion = candidates.filter((a) => a.name.includes(verLoose));
   if (withVersion.length === 1 && withVersion[0].browser_download_url) {
     log(`[updater] GitHub API: single zip matching version ${verLoose}: ${withVersion[0].name}`);
+    logUpdater("github-api", `picked version-match url=${withVersion[0].browser_download_url.slice(0, 120)}…`);
     return withVersion[0].browser_download_url;
   }
 
@@ -173,11 +216,13 @@ async function fetchPortableZipBrowserUrlFromGitHubApi(netFetch, version, prefer
   );
   if (prefixed?.browser_download_url) {
     log(`[updater] GitHub API: portable-like zip ${prefixed.name}`);
+    logUpdater("github-api", `picked portable-like url=${prefixed.browser_download_url.slice(0, 120)}…`);
     return prefixed.browser_download_url;
   }
 
   if (candidates.length === 1 && candidates[0].browser_download_url) {
     log(`[updater] GitHub API: only zip on release: ${candidates[0].name}`);
+    logUpdater("github-api", `picked sole zip url=${candidates[0].browser_download_url.slice(0, 120)}…`);
     return candidates[0].browser_download_url;
   }
 
@@ -188,6 +233,8 @@ async function fetchPortableZipBrowserUrlFromGitHubApi(netFetch, version, prefer
 }
 
 async function downloadToFile(netFetch, url, destPath, onProgress) {
+  logUpdater("download", `start → ${destPath}`);
+  logUpdater("download", `GET ${url.length > 200 ? `${url.slice(0, 200)}…` : url}`);
   const res = await netFetch(url);
   if (!res.ok) {
     throw new Error(`Download failed ${res.status} ${url}`);
@@ -198,6 +245,7 @@ async function downloadToFile(netFetch, url, destPath, onProgress) {
     const buf = Buffer.from(await res.arrayBuffer());
     if (onProgress) onProgress(buf.length, total || buf.length);
     fs.writeFileSync(destPath, buf);
+    logUpdater("download", `done bytes=${buf.length} (buffer path) → ${destPath}`);
     return;
   }
   const ws = fs.createWriteStream(destPath);
@@ -219,6 +267,109 @@ async function downloadToFile(netFetch, url, destPath, onProgress) {
       ws.end((err) => (err ? reject(err) : resolve()));
     });
   }
+  let sizeOnDisk = received;
+  try {
+    sizeOnDisk = fs.statSync(destPath).size;
+  } catch (_) {}
+  logUpdater("download", `done bytes=${sizeOnDisk} streamed=${received} totalHdr=${total || "?"} → ${destPath}`);
+}
+
+/**
+ * Unpack portable app .zip. On Windows, prefer system tar.exe (native I/O; avoids long
+ * apparent stalls streaming huge files through Node). Fall back to extract-zip.
+ * Pulse callback keeps the updater UI moving during large single-file writes (e.g. app.asar).
+ */
+async function extractPortableZipToDir(zipPath, extractDir, logFn, pulse, unpackLo, unpackHi) {
+  const runExtractZip = async () => {
+    logUpdater("extract", `extract-zip (yauzl) → ${extractDir}`);
+    const extractZip = require("extract-zip");
+    let unpackEntryCount = 0;
+    let unpackLastName = "";
+    const pulseUnpack = () => {
+      const span = unpackHi - unpackLo;
+      const bump = Math.min(span, 4 + Math.floor(unpackEntryCount / 30));
+      pulse({
+        text:
+          unpackEntryCount > 0
+            ? `Unpacking… ${unpackEntryCount} items${unpackLastName ? ` — ${unpackLastName.slice(-56)}` : ""}`
+            : "Unpacking… starting",
+        percent: Math.min(unpackHi, unpackLo + bump),
+      });
+    };
+    const unpackHeartbeat = setInterval(pulseUnpack, 2800);
+    const t0 = Date.now();
+    logFn(`[updater] extract-zip begin → ${extractDir}`);
+    try {
+      await extractZip(zipPath, {
+        dir: extractDir,
+        onEntry: (entry) => {
+          unpackEntryCount += 1;
+          unpackLastName = entry.fileName || "";
+          if (unpackEntryCount <= 4 || unpackEntryCount % 40 === 0) {
+            setImmediate(() => pulseUnpack());
+          }
+        },
+      });
+    } finally {
+      clearInterval(unpackHeartbeat);
+    }
+    logFn(`[updater] extract-zip done in ${Date.now() - t0}ms (${unpackEntryCount} entries)`);
+  };
+
+  if (process.platform === "win32") {
+    const tarExe = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe");
+    if (fs.existsSync(tarExe)) {
+      logUpdater("extract", `try system tar first ${tarExe}`);
+      try {
+        const t0 = Date.now();
+        logFn(`[updater] extracting with ${tarExe}`);
+        const hb = setInterval(() => {
+          pulse({
+            text: "Unpacking… (system archiver, large files can take a minute)",
+            percent: Math.min(unpackHi, unpackLo + 8),
+          });
+        }, 2800);
+        try {
+          await new Promise((resolve, reject) => {
+            const child = spawn(tarExe, ["-xf", zipPath, "-C", extractDir], {
+              windowsHide: true,
+              stdio: ["ignore", "ignore", "pipe"],
+            });
+            logUpdater(
+              "extract",
+              `system tar pid=${child.pid} cmd=tar -xf <zip> -C <extractDir> zip=${path.basename(zipPath)}`,
+            );
+            let errBuf = "";
+            child.stderr?.on("data", (d) => {
+              errBuf += d.toString();
+            });
+            child.on("error", reject);
+            child.on("close", (code) => {
+              logUpdater("extract", `system tar pid=${child.pid} exit=${code}`);
+              if (code === 0) resolve();
+              else reject(new Error(`tar.exe exited ${code}${errBuf ? `: ${errBuf.slice(-500)}` : ""}`));
+            });
+          });
+        } finally {
+          clearInterval(hb);
+        }
+        logFn(`[updater] system tar done in ${Date.now() - t0}ms`);
+        return;
+      } catch (e) {
+        logFn(`[updater] system tar failed (${e?.message || e}); clearing partial extract, retrying with extract-zip`);
+        try {
+          fs.rmSync(extractDir, { recursive: true, force: true });
+        } catch (_) {}
+        fs.mkdirSync(extractDir, { recursive: true });
+      }
+    } else {
+      logUpdater("extract", `tar.exe not present (${tarExe}) → extract-zip`);
+    }
+  } else {
+    logUpdater("extract", "non-Windows → extract-zip only");
+  }
+
+  await runExtractZip();
 }
 
 function sha512Base64OfFile(filePath) {
@@ -253,6 +404,7 @@ function scheduleVersionsFolderCleanup() {
   const current = app.getVersion();
   setTimeout(() => {
     try {
+      logUpdater("cleanup", `versions folder sweep (current=${current})`);
       const sweep = (versionsRoot, label) => {
         if (!fs.existsSync(versionsRoot)) return;
         for (const name of fs.readdirSync(versionsRoot)) {
@@ -334,9 +486,18 @@ function setupAutoUpdater() {
       let lastErr;
       for (let i = 0; i < attempts; i++) {
         try {
-          return await autoUpdater.checkForUpdates();
+          logUpdater("check", `checkForUpdates attempt ${i + 1}/${attempts}`);
+          const result = await autoUpdater.checkForUpdates();
+          const u = result?.updateInfo ?? result;
+          logUpdater(
+            "check",
+            `checkForUpdates ok version=${u?.version ?? "?"} release=${u?.releaseDate ?? "?"} ` +
+              `downloadURL=${u?.downloadUrl ?? u?.path ?? "?"}`,
+          );
+          return result;
         } catch (e) {
           lastErr = e;
+          logUpdater("check", `checkForUpdates error attempt ${i + 1}: ${e?.message || e}`);
           if (!isTransientGithubUpdateError(e) || i === attempts - 1) throw e;
           const delayMs = 1500 * 2 ** i;
           log(
@@ -372,13 +533,36 @@ function setupAutoUpdater() {
     };
 
     // Tight chrome: content + padding only (title bar is extra OS chrome).
-    const UPDATER_COMPACT_H = 128;
-    const UPDATER_EXPANDED_H = 198;
+    const UPDATER_LOG_PANEL = 108;
+    const UPDATER_COMPACT_H = 128 + UPDATER_LOG_PANEL;
+    const UPDATER_EXPANDED_H = 198 + UPDATER_LOG_PANEL;
+
+    const sendUpdaterLogInitToDialog = () => {
+      const w = updateDialogState.window;
+      if (!w || w.isDestroyed()) return;
+      try {
+        w.webContents.send("updater-log-init", updaterDialogLogBuffer.slice());
+      } catch (_) {}
+    };
+
+    updaterLogToDialog = (line) => {
+      const w = updateDialogState.window;
+      if (!w || w.isDestroyed()) return;
+      const wc = w.webContents;
+      const send = () => {
+        try {
+          wc.send("updater-log", line);
+        } catch (_) {}
+      };
+      if (wc.isLoading()) wc.once("did-finish-load", send);
+      else send();
+    };
 
     const openOrFocusUpdateDialog = () => {
       if (updateDialogState.window && !updateDialogState.window.isDestroyed()) {
         updateDialogState.window.show();
         updateDialogState.window.focus();
+        sendUpdaterLogInitToDialog();
         return;
       }
       updateDialogState.window = new BrowserWindow({
@@ -403,6 +587,10 @@ function setupAutoUpdater() {
     <div id="b" style="height:100%;width:0%;background:#2ea043;"></div>
   </div>
 </div>
+<div id="logWrap" style="margin-bottom:8px;">
+  <div style="font-size:10px;color:#888;margin-bottom:4px;">Activity log</div>
+  <pre id="log" style="margin:0;max-height:${UPDATER_LOG_PANEL - 18}px;overflow-y:auto;overflow-x:auto;background:#0d0d0d;border:1px solid #333;border-radius:4px;padding:6px 8px;font:11px/1.35 Consolas,\"Cascadia Mono\",monospace;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;"></pre>
+</div>
 <div id="actionsWrap" style="display:none;flex-direction:row;justify-content:flex-end;">
   <button id="install" disabled style="padding:5px 10px;">Update</button>
 </div>
@@ -420,11 +608,29 @@ function setupAutoUpdater() {
     if (b) b.style.width = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0))) + '%';
     if (i) i.disabled = !data.installEnabled;
   }
+  function appendLogLine(line) {
+    const el = document.getElementById('log');
+    if (!el) return;
+    el.textContent += (el.textContent ? '\\n' : '') + line;
+    const parts = el.textContent.split('\\n');
+    if (parts.length > 220) el.textContent = parts.slice(-220).join('\\n');
+    el.scrollTop = el.scrollHeight;
+  }
   ipcRenderer.on('updater-ui', (_e, data) => applyUpdaterUi(data));
+  ipcRenderer.on('updater-log-init', (_e, lines) => {
+    const el = document.getElementById('log');
+    if (!el) return;
+    el.textContent = Array.isArray(lines) ? lines.join('\\n') : '';
+    el.scrollTop = el.scrollHeight;
+  });
+  ipcRenderer.on('updater-log', (_e, line) => appendLogLine(typeof line === 'string' ? line : String(line)));
   document.getElementById('install').addEventListener('click', () => ipcRenderer.send('updater-install-click'));
 </script>
 </body></html>`;
       updateDialogState.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      updateDialogState.window.webContents.once("did-finish-load", () => {
+        sendUpdaterLogInitToDialog();
+      });
       updateDialogState.window.once("ready-to-show", () => {
         if (updateDialogState.window && !updateDialogState.window.isDestroyed()) updateDialogState.window.show();
       });
@@ -481,11 +687,16 @@ function setupAutoUpdater() {
         if (updateDialogState.installEnabled) requestInstallNow();
       });
     }
+    const logUpdaterChannel = (m) => {
+      const body = `[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`;
+      log(body);
+      appendUpdaterDialogLogLine(body);
+    };
     autoUpdater.logger = {
-      info: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
-      warn: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
-      error: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
-      debug: (m) => log(`[updater] ${typeof m === "string" ? m : JSON.stringify(m)}`),
+      info: logUpdaterChannel,
+      warn: logUpdaterChannel,
+      error: logUpdaterChannel,
+      debug: logUpdaterChannel,
     };
 
     const useWinVersionsSidecar = process.platform === "win32";
@@ -499,6 +710,11 @@ function setupAutoUpdater() {
     autoUpdater.autoRunAppAfterInstall = true;
     log(
       `[updater] initialized (github, winVersions=${useWinVersionsSidecar}, autoDownload=${autoUpdater.autoDownload})`,
+    );
+    logUpdater(
+      "init",
+      `repo=${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO} app=${currentVersion} platform=${process.platform} ` +
+        `winZipSidecar=${useWinVersionsSidecar} autoDownload=${autoUpdater.autoDownload} autoInstallOnQuit=${autoUpdater.autoInstallOnAppQuit}`,
     );
 
     let installRequested = false;
@@ -531,7 +747,11 @@ function setupAutoUpdater() {
 
     const restoreVersionsStagingFromDisk = () => {
       const root = getVersionsStagingRoot();
-      if (!fs.existsSync(root)) return;
+      logUpdater("staging", `restore scan root=${root}`);
+      if (!fs.existsSync(root)) {
+        logUpdater("staging", "restore skip (root missing)");
+        return;
+      }
       const exeBase = path.basename(process.execPath);
       let bestVer = null;
       let bestContent = null;
@@ -558,23 +778,41 @@ function setupAutoUpdater() {
         zipReadyVersion = bestVer;
         zipStagingContentPath = bestContent;
         log(`[updater] restored staging from disk: ${bestVer} -> ${bestContent}`);
+        logUpdater("staging", `restore picked version=${bestVer} contentRoot=${bestContent}`);
+      } else {
+        logUpdater("staging", "restore no valid staged build found");
       }
     };
 
     restoreVersionsStagingFromDisk();
 
     const tryBeginVersionsPrepare = async (info, opts) => {
-      if (!useWinVersionsSidecar) return;
       const remoteV = info?.version;
-      if (!remoteV || compareSemverLike(remoteV, currentVersion) <= 0) return;
-      if (zipPrepareInFlight) return;
+      logUpdater(
+        "prepare",
+        `tryBeginVersionsPrepare enter remote=${remoteV || "?"} feed=${safeJson(info)} opts=${safeJson(opts)}`,
+      );
+      if (!useWinVersionsSidecar) {
+        logUpdater("prepare", "skip (not Windows zip sidecar mode)");
+        return;
+      }
+      if (!remoteV || compareSemverLike(remoteV, currentVersion) <= 0) {
+        logUpdater("prepare", `skip (no remote or not newer remote=${remoteV} current=${currentVersion})`);
+        return;
+      }
+      if (zipPrepareInFlight) {
+        logUpdater("prepare", "skip (zipPrepareInFlight)");
+        return;
+      }
       const exeBase = path.basename(process.execPath);
       if (zipReadyVersion === remoteV && zipStagingContentPath && stagingHasMainExe(zipStagingContentPath)) {
+        logUpdater("prepare", `skip (already staged ${remoteV})`);
         syncZipReadyUi(remoteV);
         manualDownloadInProgress = false;
         return;
       }
       zipPrepareInFlight = true;
+      logUpdater("prepare", `start pipeline → ${remoteV} exeBase=${exeBase}`);
       const uiManual = Boolean(opts?.uiManual);
       const uiActive =
         uiManual || (updateDialogState.window && !updateDialogState.window.isDestroyed());
@@ -603,6 +841,7 @@ function setupAutoUpdater() {
         const versionsRoot = getVersionsStagingRoot();
         const versionDir = path.join(versionsRoot, meta.version);
         const extractDir = path.join(versionDir, "extract");
+        logUpdater("prepare", `paths versionDir=${versionDir} extractDir=${extractDir}`);
         try {
           fs.rmSync(versionDir, { recursive: true, force: true });
         } catch (_) {}
@@ -610,6 +849,7 @@ function setupAutoUpdater() {
 
         const zipPath = path.join(versionDir, meta.fileName);
         const primaryZipUrl = githubLatestAssetUrl(meta.fileName);
+        logUpdater("prepare", `download primaryURL asset=${meta.fileName}`);
         const onZipProgress = (received, total) => {
           const dl = total > 0 ? received / total : 0;
           const dlPct = total > 0 ? Math.round(100 * dl) : 0;
@@ -631,40 +871,48 @@ function setupAutoUpdater() {
           );
           if (!altUrl) throw e;
           log(`[updater] primary zip 404; downloading from GitHub API URL`);
+          logUpdater("prepare", `download fallbackURL (API) → ${altUrl.length > 160 ? `${altUrl.slice(0, 160)}…` : altUrl}`);
           await downloadToFile((u) => net.fetch(u), altUrl, zipPath, onZipProgress);
         }
 
         pushUi({ text: "Verifying update…", percent: PROGRESS_DOWNLOAD_CAP + 2 });
 
         if (meta.sha512) {
+          logUpdater("verify", "sha512 check (zip-latest)");
           const hash = sha512Base64OfFile(zipPath);
           if (hash !== meta.sha512) throw new Error("zip sha512 mismatch");
+          logUpdater("verify", "sha512 ok");
         } else {
           log(
             "[updater] no sha512 manifest for zip (optional: add zip-latest.yml from cleanup for integrity check)",
           );
         }
 
-        pushUi({ text: "Installing update (unpacking files)…", percent: PROGRESS_DOWNLOAD_CAP + 8 });
+        const UNPACK_PROGRESS_LO = PROGRESS_DOWNLOAD_CAP + 8;
+        const UNPACK_PROGRESS_HI = 97;
+        pushUi({
+          text: "Installing update (unpacking files)…",
+          percent: UNPACK_PROGRESS_LO,
+        });
 
-        // adm-zip calls chmod while extracting; on Windows that can throw ENOENT for app.asar paths.
-        // extract-zip (yauzl) matches Electron's tooling and avoids that failure mode.
-        const extractZip = require("extract-zip");
-        await extractZip(zipPath, { dir: extractDir });
+        await extractPortableZipToDir(zipPath, extractDir, log, pushUi, UNPACK_PROGRESS_LO, UNPACK_PROGRESS_HI);
 
         pushUi({ text: "Finalizing…", percent: 98 });
 
         const contentRoot = resolveZipAppContentRoot(extractDir, exeBase);
         if (!contentRoot) throw new Error("extracted update has no app executable");
+        logUpdater("prepare", `resolveZipAppContentRoot ok contentRoot=${contentRoot}`);
 
         try {
           fs.unlinkSync(zipPath);
         } catch (_) {}
+        logUpdater("prepare", `removed cached zip ${zipPath}`);
 
         zipStagingContentPath = contentRoot;
         zipReadyVersion = meta.version;
         manualDownloadInProgress = false;
         log(`[updater] staged update at ${contentRoot}`);
+        logUpdater("prepare", `COMPLETE readyVersion=${meta.version} staging=${contentRoot}`);
         syncZipReadyUi(meta.version);
         if (!uiActive && process.platform === "win32" && Notification.isSupported()) {
           try {
@@ -675,6 +923,7 @@ function setupAutoUpdater() {
           } catch (_) {}
         }
       } catch (e) {
+        logUpdater("prepare", `FAILED ${e?.message || e}`);
         log(`[updater] versions sidecar failed: ${e?.message || e}`);
         log(
           `[updater] Ensure latest GitHub release includes latest.yml, ${WIN_PORTABLE_ZIP_PREFIX}<version>.zip (zip build), and optionally zip-latest.yml from cleanup for sha512.`,
@@ -697,12 +946,17 @@ function setupAutoUpdater() {
         }
       } finally {
         zipPrepareInFlight = false;
+        logUpdater("prepare", "zipPrepareInFlight=false");
       }
     };
 
     const applyVersionsStagedUpdate = () => {
       const installDir = path.dirname(process.execPath);
       const exeName = path.basename(process.execPath);
+      logUpdater(
+        "apply",
+        `applyVersionsStagedUpdate installDir=${installDir} exe=${exeName} staging=${zipStagingContentPath} version=${zipReadyVersion} pid=${process.pid}`,
+      );
       const planPath = path.join(app.getPath("temp"), `hsp-update-plan-${Date.now()}.json`);
       const stagingVersionDirToRemove = zipReadyVersion
         ? path.join(getVersionsStagingRoot(), zipReadyVersion)
@@ -716,6 +970,7 @@ function setupAutoUpdater() {
         stagingVersionDirToRemove,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan), "utf8");
+      logUpdater("apply", `wrote plan ${planPath} ${safeJson(plan)}`);
 
       const ps1Path = path.join(app.getPath("temp"), `hsp-apply-versions-${Date.now()}.ps1`);
       const ps1Body = [
@@ -747,11 +1002,16 @@ function setupAutoUpdater() {
         "",
       ].join("\r\n");
       fs.writeFileSync(ps1Path, ps1Body, "utf8");
+      logUpdater("apply", `wrote ps1 ${ps1Path}`);
 
       const child = spawn(
         "powershell.exe",
         ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-PlanPath", planPath],
         { detached: true, stdio: "ignore", windowsHide: true },
+      );
+      logUpdater(
+        "apply",
+        `spawn powershell pid=${child.pid} detached=true (robocopy staging → installDir, then relaunch exe)`,
       );
       child.unref();
       if (!child.pid) {
@@ -769,11 +1029,16 @@ function setupAutoUpdater() {
     const requestInstallNow = () => {
       installRequested = true;
       log("[updater] user accepted update install");
+      logUpdater("ipc", "requestInstallNow (Update button)");
       closeUpdateDialog();
 
       suppressQuitForUpdateInstall = true;
 
       const useVersionsApply = canApplyVersionsStaging();
+      logUpdater(
+        "ipc",
+        `requestInstallNow useVersionsApply=${useVersionsApply} zipReady=${zipReadyVersion} path=${zipStagingContentPath}`,
+      );
 
       if (useVersionsApply) {
         try {
@@ -795,6 +1060,7 @@ function setupAutoUpdater() {
             win.destroy();
           } catch (_) {}
         }
+        logUpdater("ipc", "requestInstallNow app.quit after staging apply spawn");
         app.quit();
         return;
       }
@@ -802,6 +1068,7 @@ function setupAutoUpdater() {
       // Windows packaged: only the staged-zip path — never launch the NSIS wizard from this button.
       if (useWinVersionsSidecar) {
         suppressQuitForUpdateInstall = false;
+        logUpdater("ipc", "requestInstallNow blocked: no staged zip build ready");
         log(
           `[updater] Update click ignored: no staged build (ready=${zipReadyVersion} path=${zipStagingContentPath})`,
         );
@@ -844,10 +1111,12 @@ function setupAutoUpdater() {
 
     autoUpdater.on("update-downloaded", () => {
       log("[updater] update-downloaded");
+      logUpdater("event", "update-downloaded (NSIS installer file ready on disk)");
       manualDownloadInProgress = false;
       // Windows uses zip sidecar only; ignore NSIS installer download for in-app UX.
       if (useWinVersionsSidecar) {
         log("[updater] update-downloaded: ignored on Windows (NSIS not used for Update button)");
+        logUpdater("event", "update-downloaded ignored (Windows uses zip sidecar only)");
         return;
       }
       openOrFocusUpdateDialog();
@@ -862,6 +1131,7 @@ function setupAutoUpdater() {
 
     autoUpdater.on("checking-for-update", () => {
       log("[updater] checking-for-update");
+      logUpdater("event", `checking-for-update manual=${manualCheckInProgress}`);
       if (manualCheckInProgress) {
         log("[updater] manual check started");
       }
@@ -869,6 +1139,7 @@ function setupAutoUpdater() {
 
     autoUpdater.on("update-available", (info) => {
       log(`[updater] update-available version=${info?.version || "unknown"}`);
+      logUpdater("event", `update-available ${safeJson({ version: info?.version, path: info?.path })}`);
       const wasManual = manualCheckInProgress;
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
@@ -891,6 +1162,7 @@ function setupAutoUpdater() {
 
     autoUpdater.on("update-not-available", () => {
       log("[updater] update-not-available");
+      logUpdater("event", `update-not-available current=${currentVersion}`);
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
         manualDownloadInProgress = false;
@@ -927,8 +1199,10 @@ function setupAutoUpdater() {
     autoUpdater.on("error", (err) => {
       log(`[updater] error: ${err?.message || String(err)}`);
       if (updaterCheckRetrying && isTransientGithubUpdateError(err)) {
+        logUpdater("event", `error suppressed (retry) ${err?.message || err}`);
         return;
       }
+      logUpdater("event", `error manualCheck=${manualCheckInProgress} download=${manualDownloadInProgress} ${err?.message || err}`);
       if (manualCheckInProgress || manualDownloadInProgress) {
         manualCheckInProgress = false;
         manualDownloadInProgress = false;
@@ -946,6 +1220,7 @@ function setupAutoUpdater() {
     updaterMenuApi.checkNow = async () => {
       try {
         log("[updater] manual check requested from menu");
+        logUpdater("ipc", "checkNow from menu");
         downloadProgressLoggedSample = false;
         if (
           useWinVersionsSidecar &&
@@ -953,6 +1228,7 @@ function setupAutoUpdater() {
           zipStagingContentPath &&
           stagingHasMainExe(zipStagingContentPath)
         ) {
+          logUpdater("ipc", `checkNow short-circuit already staged ${zipReadyVersion}`);
           openOrFocusUpdateDialog();
           syncZipReadyUi(zipReadyVersion);
           return;
@@ -1000,12 +1276,14 @@ function setupAutoUpdater() {
     const markAndCheck = () => {
       lastCheckAt = Date.now();
       log("[updater] scheduled checkForUpdates()");
+      logUpdater("schedule", "periodic/startup checkForUpdates");
       void (async () => {
         updaterCheckRetrying = true;
         try {
           await checkForUpdatesWithRetry();
         } catch (e) {
           log(`[updater] checkForUpdates failed after retries: ${e?.message || e}`);
+          logUpdater("schedule", `check failed after retries: ${e?.message || e}`);
         } finally {
           updaterCheckRetrying = false;
         }
@@ -1024,6 +1302,7 @@ function setupAutoUpdater() {
     app.on("browser-window-focus", () => {
       if (Date.now() - lastCheckAt < minFocusGapMs) return;
       log("[updater] check (window focus)");
+      logUpdater("schedule", "window focus → checkForUpdates");
       markAndCheck();
     });
 
