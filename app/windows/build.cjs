@@ -249,7 +249,7 @@ function setupAutoUpdater() {
   </div>
 </div>
 <div id="actionsWrap" style="display:none;flex-direction:row;justify-content:flex-end;">
-  <button id="install" disabled style="padding:5px 10px;">Install update</button>
+  <button id="install" disabled style="padding:5px 10px;">Update</button>
 </div>
 <script>
   const { ipcRenderer } = require('electron');
@@ -282,7 +282,7 @@ function setupAutoUpdater() {
      * @param {string} opts.text
      * @param {number} [opts.percent]
      * @param {boolean} [opts.showProgress]
-     * @param {boolean} [opts.showActions] Install button row (when false: version + text only; dismiss via title bar X)
+     * @param {boolean} [opts.showActions] Update button row (when false: version + text only; dismiss via title bar X)
      * @param {boolean} [opts.installEnabled]
      */
     const updateDialogUi = ({ text, percent = 0, showProgress = false, showActions = false, installEnabled = false }) => {
@@ -351,12 +351,25 @@ function setupAutoUpdater() {
     const syncZipReadyUi = (v) => {
       if (!updateDialogState.window || updateDialogState.window.isDestroyed()) return;
       updateDialogUi({
-        text: `Update ${v} is ready (under versions/). Click Install update.`,
+        text: `Update ${v} is ready (under versions/). Click Update.`,
         percent: 100,
         showProgress: true,
         showActions: true,
         installEnabled: true,
       });
+    };
+
+    const stagingHasMainExe = (stagingDir) => {
+      const exeBase = path.basename(process.execPath);
+      const direct = path.join(stagingDir, exeBase);
+      if (fs.existsSync(direct)) return true;
+      if (process.platform !== "win32") return false;
+      try {
+        const want = exeBase.toLowerCase();
+        return fs.readdirSync(stagingDir).some((n) => n.toLowerCase() === want);
+      } catch (_) {
+        return false;
+      }
     };
 
     const tryBeginVersionsPrepare = async (info, opts) => {
@@ -366,11 +379,7 @@ function setupAutoUpdater() {
       if (zipPrepareInFlight) return;
       const installDir = path.dirname(process.execPath);
       const exeBase = path.basename(process.execPath);
-      if (
-        zipReadyVersion === remoteV &&
-        zipStagingContentPath &&
-        fs.existsSync(path.join(zipStagingContentPath, exeBase))
-      ) {
+      if (zipReadyVersion === remoteV && zipStagingContentPath && stagingHasMainExe(zipStagingContentPath)) {
         syncZipReadyUi(remoteV);
         manualDownloadInProgress = false;
         return;
@@ -457,7 +466,7 @@ function setupAutoUpdater() {
           try {
             new Notification({
               title: "Hyperlinks Space App",
-              body: `Update ${meta.version} is ready. Open Updates → Check for updates to install.`,
+              body: `Update ${meta.version} is ready. Open Updates → Check for updates.`,
             }).show();
           } catch (_) {}
         }
@@ -542,6 +551,13 @@ function setupAutoUpdater() {
       }
     };
 
+    /** True when versions/ staging is ready; preferred over NSIS even if installer also downloaded. */
+    const canApplyVersionsStaging = () => {
+      if (!useWinVersionsSidecar || !zipStagingContentPath || !zipReadyVersion) return false;
+      if (compareSemverLike(zipReadyVersion, currentVersion) <= 0) return false;
+      return stagingHasMainExe(zipStagingContentPath);
+    };
+
     const requestInstallNow = () => {
       installRequested = true;
       log("[updater] user accepted update install");
@@ -549,13 +565,12 @@ function setupAutoUpdater() {
 
       suppressQuitForUpdateInstall = true;
 
-      const exeBase = path.basename(process.execPath);
-      const useVersionsApply =
-        useWinVersionsSidecar &&
-        zipStagingContentPath &&
-        zipReadyVersion &&
-        !installUsesNsisFallback &&
-        fs.existsSync(path.join(zipStagingContentPath, exeBase));
+      const useVersionsApply = canApplyVersionsStaging();
+      if (!useVersionsApply && useWinVersionsSidecar) {
+        log(
+          `[updater] NSIS path: no valid versions staging (ready=${zipReadyVersion} staging=${zipStagingContentPath} nsisFallback=${installUsesNsisFallback})`,
+        );
+      }
 
       if (useVersionsApply) {
         try {
@@ -607,10 +622,15 @@ function setupAutoUpdater() {
     autoUpdater.on("update-downloaded", () => {
       log("[updater] update-downloaded");
       manualDownloadInProgress = false;
+      // Do not prefer NSIS over versions/ staging when both exist (download can finish after staging).
+      if (canApplyVersionsStaging()) {
+        log("[updater] update-downloaded: keeping versions staging path (ignoring NSIS for apply)");
+        return;
+      }
       installUsesNsisFallback = true;
       openOrFocusUpdateDialog();
       updateDialogUi({
-        text: "Update is ready. Click Install update.",
+        text: "Update is ready. Click Update.",
         percent: 100,
         showProgress: true,
         showActions: true,
@@ -701,12 +721,11 @@ function setupAutoUpdater() {
       try {
         log("[updater] manual check requested from menu");
         downloadProgressLoggedSample = false;
-        const exeBase = path.basename(process.execPath);
         if (
           useWinVersionsSidecar &&
           zipReadyVersion &&
           zipStagingContentPath &&
-          fs.existsSync(path.join(zipStagingContentPath, exeBase))
+          stagingHasMainExe(zipStagingContentPath)
         ) {
           openOrFocusUpdateDialog();
           syncZipReadyUi(zipReadyVersion);
