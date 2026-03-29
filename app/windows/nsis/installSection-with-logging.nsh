@@ -1,6 +1,9 @@
 ; Fork of app-builder-lib/templates/nsis/installSection.nsh (electron-builder).
 ; Only change: show installation details (file list / status) like the in-app updater log,
 ; instead of SetDetailsPrint none which hides all output.
+;
+; Must live under windows/nsis/ (not windows/) so !addincludedir does not shadow
+; electron-builder's include/installer.nsh with windows/installer.nsh.
 
 !include installer.nsh
 

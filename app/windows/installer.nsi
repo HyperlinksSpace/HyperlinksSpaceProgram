@@ -14,9 +14,10 @@ Var oldMenuDirectory
 !include "multiUser.nsh"
 !include "allowOnlyOneInstallerInstance.nsh"
 
-; Resolve project windows\ next to this script (avoid mixed D:\path\app/windows\... in one !include).
+; Only windows/nsis — NOT windows/, or installer.nsh here shadows electron-builder's
+; include/installer.nsh and breaks installApplicationFiles (malformed File command).
 !ifdef PROJECT_DIR
-  !addincludedir "${PROJECT_DIR}/windows"
+  !addincludedir "${PROJECT_DIR}/windows/nsis"
 !endif
 
 !ifdef BUILD_UNINSTALLER
