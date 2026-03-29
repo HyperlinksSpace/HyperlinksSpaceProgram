@@ -14,6 +14,11 @@
 ; multiple electron-builder users on some Windows machines.
 CRCCheck off
 
+; FileFunc.nsh before any macro that uses ${GetTime} (this include is merged ahead of installer.nsi).
+; Encoding: electron-builder invokes makensis with -INPUTCHARSET UTF8 — keep this file UTF-8. Cyrillic in
+; string literals: if a viewer/tool misreads the script, try UTF-8 with BOM; ASCII-only log lines avoid that.
+!include "FileFunc.nsh"
+
 ; electron-builder defines BUILD_RESOURCES_DIR (absolute path to directories.buildResources). Push it onto
 ; the include stack here so common.nsh / installSection.nsh resolve from windows/ even if NSIS stdin/cwd
 ; search order would otherwise pick templates/nsis/*.nsh first.
@@ -21,6 +26,9 @@ CRCCheck off
   !error "HSP NSIS: BUILD_RESOURCES_DIR missing (electron-builder should define it)."
 !endif
 !addincludedir "${BUILD_RESOURCES_DIR}"
+
+; Timestamped lines in %TEMP%\HyperlinksSpaceUpdater.log (FileWrite — no NSIS logging build / LogSet).
+Var HspLogFile
 
 ; InstFiles log: (1) windows/common.nsh — ShowInstDetails show after stock common (compile-time).
 ; (2) Here — ShowInstDetails show again immediately before MUI_PAGE_INSTFILES (assistedInstaller.nsh).
@@ -40,10 +48,21 @@ Function HspInstFilesShow
 FunctionEnd
 !endif
 
+; Single copy in script — safe labels (macro bodies cannot use unique labels per expansion).
+Function HspEnsureUpdaterLogPath
+  StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
+hspSetLogPath:
+  StrCpy $HspLogFile "$TEMP\HyperlinksSpaceUpdater.log"
+hspLogPathDone:
+FunctionEnd
+
 !macro HspAppendUpdaterLog TEXT
-  FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
-  FileWrite $0 "${TEXT}$\r$\n"
-  FileClose $0
+  Call HspEnsureUpdaterLogPath
+  ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
+  ; FileFunc GetTime (local): $R0=day $R1=month $R2=year $R3=weekday name (unused) $R4:$R5:$R6=time
+  FileOpen $R9 "$HspLogFile" a
+  FileWrite $R9 "[$R2-$R1-$R0 $R4:$R5:$R6] ${TEXT}$\r$\n"
+  FileClose $R9
 !macroend
 
 !macro customHeader

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Updater</title>
+  </head>
+  <body
+    style="
+      font-family: Segoe UI, Arial, sans-serif;
+      box-sizing: border-box;
+      padding: 12px 14px 10px;
+      background: #111;
+      color: #eee;
+      margin: 0;
+    "
+  >
+    <div id="cv" style="font-size: 12px; color: #aaa; margin-bottom: 6px"></div>
+    <div id="t" style="font-size: 14px; margin-bottom: 8px; line-height: 1.35">Checking for updates...</div>
+    <div id="progressWrap" style="display: none; margin-bottom: 8px">
+      <div style="height: 14px; background: #333; border-radius: 7px; overflow: hidden">
+        <div id="b" style="height: 100%; width: 0%; background: #2ea043"></div>
+      </div>
+    </div>
+    <div id="logWrap" style="margin-bottom: 8px">
+      <div style="font-size: 10px; color: #888; margin-bottom: 4px">Activity log</div>
+      <pre
+        id="log"
+        style="
+          margin: 0;
+          max-height: 90px;
+          overflow-y: auto;
+          overflow-x: auto;
+          background: #0d0d0d;
+          border: 1px solid #333;
+          border-radius: 4px;
+          padding: 6px 8px;
+          font: 11px/1.35 Consolas, 'Cascadia Mono', monospace;
+          color: #c9d1d9;
+          white-space: pre-wrap;
+          word-break: break-all;
+        "
+      ></pre>
+    </div>
+    <div id="actionsWrap" style="display: none; flex-direction: row; justify-content: flex-end">
+      <button id="install" disabled style="padding: 5px 10px">Update</button>
+    </div>
+    <script>
+      (function () {
+        try {
+          const { ipcRenderer } = require("electron");
+          function applyUpdaterUi(data) {
+            const t = document.getElementById("t");
+            const progressWrap = document.getElementById("progressWrap");
+            const actionsWrap = document.getElementById("actionsWrap");
+            const b = document.getElementById("b");
+            const i = document.getElementById("install");
+            if (t) t.textContent = data.text;
+            if (progressWrap) progressWrap.style.display = data.showProgress ? "block" : "none";
+            if (actionsWrap) actionsWrap.style.display = data.showActions ? "flex" : "none";
+            if (b) b.style.width = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0))) + "%";
+            if (i) i.disabled = !data.installEnabled;
+          }
+          function appendLogLine(line) {
+            const el = document.getElementById("log");
+            if (!el) return;
+            el.textContent += (el.textContent ? "\n" : "") + line;
+            const parts = el.textContent.split("\n");
+            if (parts.length > 220) el.textContent = parts.slice(-220).join("\n");
+            el.scrollTop = el.scrollHeight;
+          }
+          ipcRenderer.on("updater-ui", (_e, data) => applyUpdaterUi(data));
+          ipcRenderer.on("updater-log-init", (_e, lines) => {
+            const el = document.getElementById("log");
+            if (!el) return;
+            el.textContent = Array.isArray(lines) ? lines.join("\n") : "";
+            el.scrollTop = el.scrollHeight;
+          });
+          ipcRenderer.on("updater-log", (_e, line) =>
+            appendLogLine(typeof line === "string" ? line : String(line)),
+          );
+          const installBtn = document.getElementById("install");
+          if (installBtn) {
+            installBtn.addEventListener("click", () => {
+              ipcRenderer.send("updater-install-click");
+            });
+          } else {
+            ipcRenderer.send("updater-renderer-error", "install button #install missing");
+          }
+        } catch (err) {
+          try {
+            require("electron").ipcRenderer.send("updater-renderer-error", String(err && err.message ? err.message : err));
+          } catch (_) {}
+        }
+      })();
+    </script>
+  </body>
+</html>

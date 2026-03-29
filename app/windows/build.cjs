@@ -616,10 +616,7 @@ function setupAutoUpdater() {
       throw lastErr;
     };
     const currentVersion = app.getVersion();
-    const currentVersionHtml = String(currentVersion)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/"/g, "&quot;");
+    const applyUserLogPath = path.join(app.getPath("userData"), "hsp-update-apply.log");
 
     /** Prefer transferred/total when known; Windows often keeps percent at 0 until late. */
     const progressPercent = (progress) => {
@@ -688,58 +685,19 @@ function setupAutoUpdater() {
         autoHideMenuBar: true,
         parent: BrowserWindow.getAllWindows()[0] || undefined,
         modal: false,
-        webPreferences: { nodeIntegration: true, contextIsolation: false },
+        webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false },
       });
-      const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;box-sizing:border-box;padding:12px 14px 10px;background:#111;color:#eee;margin:0;">
-<div id="cv" style="font-size:12px;color:#aaa;margin-bottom:6px;">Current version: ${currentVersionHtml}</div>
-<div id="t" style="font-size:14px;margin-bottom:8px;line-height:1.35;">Checking for updates...</div>
-<div id="progressWrap" style="display:none;margin-bottom:8px;">
-  <div style="height:14px;background:#333;border-radius:7px;overflow:hidden;">
-    <div id="b" style="height:100%;width:0%;background:#2ea043;"></div>
-  </div>
-</div>
-<div id="logWrap" style="margin-bottom:8px;">
-  <div style="font-size:10px;color:#888;margin-bottom:4px;">Activity log</div>
-  <pre id="log" style="margin:0;max-height:${UPDATER_LOG_PANEL - 18}px;overflow-y:auto;overflow-x:auto;background:#0d0d0d;border:1px solid #333;border-radius:4px;padding:6px 8px;font:11px/1.35 Consolas,\"Cascadia Mono\",monospace;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;"></pre>
-</div>
-<div id="actionsWrap" style="display:none;flex-direction:row;justify-content:flex-end;">
-  <button id="install" disabled style="padding:5px 10px;">Update</button>
-</div>
-<script>
-  const { ipcRenderer } = require('electron');
-  function applyUpdaterUi(data) {
-    const t = document.getElementById('t');
-    const progressWrap = document.getElementById('progressWrap');
-    const actionsWrap = document.getElementById('actionsWrap');
-    const b = document.getElementById('b');
-    const i = document.getElementById('install');
-    if (t) t.textContent = data.text;
-    if (progressWrap) progressWrap.style.display = data.showProgress ? 'block' : 'none';
-    if (actionsWrap) actionsWrap.style.display = data.showActions ? 'flex' : 'none';
-    if (b) b.style.width = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0))) + '%';
-    if (i) i.disabled = !data.installEnabled;
-  }
-  function appendLogLine(line) {
-    const el = document.getElementById('log');
-    if (!el) return;
-    el.textContent += (el.textContent ? '\\n' : '') + line;
-    const parts = el.textContent.split('\\n');
-    if (parts.length > 220) el.textContent = parts.slice(-220).join('\\n');
-    el.scrollTop = el.scrollHeight;
-  }
-  ipcRenderer.on('updater-ui', (_e, data) => applyUpdaterUi(data));
-  ipcRenderer.on('updater-log-init', (_e, lines) => {
-    const el = document.getElementById('log');
-    if (!el) return;
-    el.textContent = Array.isArray(lines) ? lines.join('\\n') : '';
-    el.scrollTop = el.scrollHeight;
-  });
-  ipcRenderer.on('updater-log', (_e, line) => appendLogLine(typeof line === 'string' ? line : String(line)));
-  document.getElementById('install').addEventListener('click', () => ipcRenderer.send('updater-install-click'));
-</script>
-</body></html>`;
-      updateDialogState.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      const updaterHtmlPath = path.join(__dirname, "updater-dialog.html");
+      if (!fs.existsSync(updaterHtmlPath)) {
+        log(`[updater] FATAL: updater-dialog.html missing at ${updaterHtmlPath}`);
+      }
+      updateDialogState.window.loadFile(updaterHtmlPath);
       updateDialogState.window.webContents.once("did-finish-load", () => {
+        const w = updateDialogState.window;
+        if (!w || w.isDestroyed()) return;
+        const wc = w.webContents;
+        const cvText = `Current version: ${currentVersion}`;
+        wc.executeJavaScript(`document.getElementById('cv').textContent = ${JSON.stringify(cvText)}`).catch(() => {});
         sendUpdaterLogInitToDialog();
         refreshUpdaterDialogIfStagedReady();
       });
@@ -800,6 +758,9 @@ function setupAutoUpdater() {
       ipcMain.on("updater-install-click", () => {
         logUpdater("ipc", "updater-install-click received");
         requestInstallNow();
+      });
+      ipcMain.on("updater-renderer-error", (_e, msg) => {
+        log(`[updater] renderer: ${typeof msg === "string" ? msg : String(msg)}`);
       });
     }
     const logUpdaterChannel = (m) => {
@@ -930,6 +891,9 @@ function setupAutoUpdater() {
       const exeBase = path.basename(process.execPath);
       if (zipReadyVersion === remoteV && zipStagingContentPath && stagingHasMainExe(zipStagingContentPath)) {
         logUpdater("prepare", `skip (already staged ${remoteV})`);
+        if (!updateDialogState.window || updateDialogState.window.isDestroyed()) {
+          openOrFocusUpdateDialog();
+        }
         syncZipReadyUi(remoteV);
         manualDownloadInProgress = false;
         return;
@@ -1039,6 +1003,10 @@ function setupAutoUpdater() {
         manualDownloadInProgress = false;
         log(`[updater] staged update at ${contentRoot}`);
         logUpdater("prepare", `COMPLETE readyVersion=${meta.version} staging=${contentRoot}`);
+        // syncZipReadyUi needs an open dialog; background checks used uiActive=false and would skip UI.
+        if (!uiActive) {
+          openOrFocusUpdateDialog();
+        }
         syncZipReadyUi(meta.version);
         if (!uiActive && process.platform === "win32" && Notification.isSupported()) {
           try {
@@ -1092,7 +1060,7 @@ function setupAutoUpdater() {
       const appRoot = getWindowsAppRootFromExecPath(execPath);
       const useVersionedLayout =
         process.platform === "win32" && path.basename(installDir).toLowerCase() === "current";
-      const applyLogPath = path.join(app.getPath("userData"), "hsp-update-apply.log");
+      const applyLogPath = applyUserLogPath;
       logUpdater(
         "apply",
         `applyVersionsStagedUpdate installDir=${installDir} appRoot=${appRoot} versioned=${useVersionedLayout} exe=${exeName} staging=${zipStagingContentPath} version=${zipReadyVersion} pid=${process.pid}`,
@@ -1257,6 +1225,14 @@ function setupAutoUpdater() {
     };
 
     const requestInstallNow = () => {
+      try {
+        fs.appendFileSync(
+          applyUserLogPath,
+          `[${new Date().toISOString()}] [main] requestInstallNow (Update button clicked)\n`,
+          "utf8",
+        );
+      } catch (_) {}
+
       installRequested = true;
       log("[updater] user accepted update install");
       logUpdater("ipc", "requestInstallNow (Update button)");
@@ -1264,6 +1240,11 @@ function setupAutoUpdater() {
       suppressQuitForUpdateInstall = true;
 
       const useVersionsApply = canApplyVersionsStaging();
+      const semverNewer =
+        zipReadyVersion && compareSemverLike(zipReadyVersion, currentVersion) > 0;
+      const exeOk =
+        Boolean(zipStagingContentPath) &&
+        stagingHasMainExe(zipStagingContentPath);
       logUpdater(
         "ipc",
         `requestInstallNow useVersionsApply=${useVersionsApply} zipReady=${zipReadyVersion} path=${zipStagingContentPath}`,
@@ -1302,13 +1283,28 @@ function setupAutoUpdater() {
         log(
           `[updater] Update click ignored: no staged build (ready=${zipReadyVersion} path=${zipStagingContentPath})`,
         );
-        void dialog.showMessageBox({
+        try {
+          fs.appendFileSync(
+            applyUserLogPath,
+            `[${new Date().toISOString()}] [main] blocked: cannot apply zip staging ` +
+              `(readyVer=${zipReadyVersion} stagingPath=${zipStagingContentPath} ` +
+              `semverNewer=${Boolean(semverNewer)} exeOk=${Boolean(exeOk)} current=${currentVersion})\n`,
+            "utf8",
+          );
+        } catch (_) {}
+        const dlgParent =
+          updateDialogState.window && !updateDialogState.window.isDestroyed()
+            ? updateDialogState.window
+            : BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || undefined;
+        const boxOpts = {
           type: "info",
           title: "Hyperlinks Space App",
           message:
             "The quick update is not ready yet. Keep the app open until download and unpack finish, or ensure the latest GitHub release includes zip-latest.yml and HyperlinksSpaceApp_<version>.zip from your Windows build (cleanup folder).",
           buttons: ["OK"],
-        });
+        };
+        if (dlgParent) void dialog.showMessageBox(dlgParent, boxOpts);
+        else void dialog.showMessageBox(boxOpts);
         return;
       }
 
