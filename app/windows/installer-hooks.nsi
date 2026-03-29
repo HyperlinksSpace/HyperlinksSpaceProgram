@@ -14,34 +14,9 @@
 ; multiple electron-builder users on some Windows machines.
 CRCCheck off
 
-; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately *before* MUI_PAGE_INSTFILES.
-; common.nsh sets ShowInstDetails nevershow; customHeader runs *after* assistedInstaller, so
-; ShowInstDetails show there is too late for page layout. Emit ShowInstDetails show here.
-; Root cause (NSIS Source/exehead/Ui.c InstProc WM_INITDIALOG): ShowInstDetails nevershow sets
-; CH_FLAGS_DETAILS_NEVERSHOW so the ListView (IDC_LIST1 / dlg 1016) is never ShowWindow'd, the
-; "Show details" control is hidden and insthwndbutton is cleared — no UI path to open the log.
-; SetDetailsView toggles exehead globals insthwnd/insthwndbutton; under MUI that can miss the
-; real child HWND. Mirror MUI InstFiles SHOW: FindWindow inner #32770, GetDlgItem 1016 then
-; ShowWindow SW_SHOWNA (8); hide 1027. SetDetailsView + SetDetailsPrint still help DetailPrint.
-; Omit when BUILD_UNINSTALLER: the uninstaller pass has no installer InstFiles page; an unreferenced
-; Function triggers NSIS warning 6010 and electron-builder fails (warnings as errors).
-!ifndef BUILD_UNINSTALLER
-!macro customPageAfterChangeDir
-  ShowInstDetails show
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
-!macroend
-
-Function HspInstFilesShow
-  ; Match installSection: do not gate on ${Silent} here.
-  FindWindow $0 "#32770" "" $HWNDPARENT
-  GetDlgItem $1 $0 1016
-  GetDlgItem $2 $0 1027
-  ShowWindow $2 0
-  ShowWindow $1 8
-  SetDetailsView show
-  SetDetailsPrint both
-FunctionEnd
-!endif
+; InstFiles log visibility: fixed at compile time via windows/common.nsh shadowing stock common.nsh
+; (ShowInstDetails show after Include). Wiki LogText/LogSet macros are file logging and need an NSIS
+; special build; on-screen lines use DetailPrint + ShowInstDetails.
 
 !macro HspAppendUpdaterLog TEXT
   FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
@@ -51,7 +26,7 @@ FunctionEnd
 
 !macro customHeader
   Caption "${PRODUCT_NAME}"
-  ; common.nsh forces nevershow; restore after so the InstFiles page can show a live log (like the updater).
+  ; Belt-and-suspenders if an older common.nsh without the shadow is ever used.
   ShowInstDetails show
   !ifdef BUILD_UNINSTALLER
     ShowUninstDetails show
