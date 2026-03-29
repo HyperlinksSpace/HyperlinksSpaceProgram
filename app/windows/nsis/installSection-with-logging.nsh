@@ -14,7 +14,15 @@ ${IfNot} ${Silent}
   SetDetailsPrint both
 ${endif}
 
-StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+; Installed layout: $INSTDIR\versions\<VERSION>\* and $INSTDIR\current → junction to that folder.
+; For upgrade checks, prefer an existing versioned or legacy flat exe.
+${If} ${FileExists} "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
+  StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
+${ElseIf} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+  StrCpy $appExe "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+${Else}
+  StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
+${EndIf}
 
 # must be called before uninstallOldVersion
 !insertmacro setLinkVars
@@ -65,13 +73,19 @@ ${if} $installMode == "all"
   !insertmacro handleUninstallResult HKEY_CURRENT_USER
 ${endIf}
 
-SetOutPath $INSTDIR
+CreateDirectory "$INSTDIR\versions"
+SetOutPath "$INSTDIR\versions\${VERSION}"
 
 !ifdef UNINSTALLER_ICON
   File /oname=uninstallerIcon.ico "${UNINSTALLER_ICON}"
 !endif
 
 !insertmacro installApplicationFiles
+; Directory junction so shortcuts and the updater always use …\current\<exe>
+IfFileExists "$INSTDIR\current" 0 +2
+  ExecWait '"cmd.exe" /c if exist "$INSTDIR\current" rmdir "$INSTDIR\current"'
+ExecWait '"cmd.exe" /c mklink /J "$INSTDIR\current" "$INSTDIR\versions\${VERSION}"'
+StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
 !insertmacro registryAddInstallInfo
 !insertmacro addStartMenuLink $keepShortcuts
 !insertmacro addDesktopLink $keepShortcuts
@@ -79,7 +93,7 @@ SetOutPath $INSTDIR
 ${if} ${FileExists} "$newStartMenuLink"
   StrCpy $launchLink "$newStartMenuLink"
 ${else}
-  StrCpy $launchLink "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+  StrCpy $launchLink "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
 ${endIf}
 
 !ifmacrodef registerFileAssociations

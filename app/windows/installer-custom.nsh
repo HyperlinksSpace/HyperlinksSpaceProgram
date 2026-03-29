@@ -61,8 +61,8 @@ CRCCheck off
   !insertmacro _TraceLog "[installer] customInstall start"
   SetOverwrite on
   ; Ensure the app is relaunched after install/update completes.
-  IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 +2
-  ExecShell "open" "$INSTDIR\${PRODUCT_FILENAME}.exe"
+  IfFileExists "$INSTDIR\current\${PRODUCT_FILENAME}.exe" 0 +2
+  ExecShell "open" "$INSTDIR\current\${PRODUCT_FILENAME}.exe"
   DetailPrint "[installer] customInstall complete"
   !insertmacro _TraceLog "[installer] customInstall complete"
 !macroend
@@ -70,6 +70,9 @@ CRCCheck off
 !macro customUnInstall
   DetailPrint "[uninstaller] customUnInstall start"
   !insertmacro _TraceLog "[uninstaller] customUnInstall start"
+  ; Remove …\current junction before RMDir /r $INSTDIR so uninstall does not follow the link.
+  IfFileExists "$INSTDIR\current" 0 +2
+    ExecWait '"cmd.exe" /c if exist "$INSTDIR\current" rmdir "$INSTDIR\current"'
   DetailPrint "[uninstaller] customUnInstall complete"
   !insertmacro _TraceLog "[uninstaller] customUnInstall complete"
 !macroend

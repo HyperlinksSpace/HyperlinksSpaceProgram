@@ -139,6 +139,18 @@ function compareSemverLike(a, b) {
   return 0;
 }
 
+/**
+ * NSIS install: INSTDIR\versions\<semver>\… plus INSTDIR\current → junction (exe is …\current\<name>.exe).
+ * Legacy installs: exe lives directly in the install folder (no `current`). Returns the app root (parent of `current`, or the folder that contains the exe for legacy).
+ */
+function getWindowsAppRootFromExecPath(execPath) {
+  const dir = path.dirname(execPath);
+  if (path.basename(dir).toLowerCase() === "current") {
+    return path.dirname(dir);
+  }
+  return dir;
+}
+
 function parseSimpleUpdateYml(text) {
   const versionM = text.match(/^version:\s*(.+)$/m);
   const version = versionM ? versionM[1].trim() : null;
@@ -476,7 +488,7 @@ function scheduleVersionsFolderCleanup() {
         }
       };
       sweep(path.join(app.getPath("userData"), "pending-update-versions"), "userData");
-      sweep(path.join(path.dirname(process.execPath), "versions"), "legacy installDir");
+      sweep(path.join(getWindowsAppRootFromExecPath(process.execPath), "versions"), "installDir versions");
     } catch (e) {
       log(`[updater] versions cleanup: ${e?.message || e}`);
     }
@@ -1029,18 +1041,25 @@ function setupAutoUpdater() {
     };
 
     const applyVersionsStagedUpdate = () => {
-      const installDir = path.dirname(process.execPath);
-      const exeName = path.basename(process.execPath);
+      const execPath = process.execPath;
+      const installDir = path.dirname(execPath);
+      const exeName = path.basename(execPath);
+      const appRoot = getWindowsAppRootFromExecPath(execPath);
+      const useVersionedLayout =
+        process.platform === "win32" && path.basename(installDir).toLowerCase() === "current";
       const applyLogPath = path.join(app.getPath("userData"), "hsp-update-apply.log");
       logUpdater(
         "apply",
-        `applyVersionsStagedUpdate installDir=${installDir} exe=${exeName} staging=${zipStagingContentPath} version=${zipReadyVersion} pid=${process.pid}`,
+        `applyVersionsStagedUpdate installDir=${installDir} appRoot=${appRoot} versioned=${useVersionedLayout} exe=${exeName} staging=${zipStagingContentPath} version=${zipReadyVersion} pid=${process.pid}`,
       );
       logUpdater("apply", `helper log (next run): ${applyLogPath}`);
       const planPath = path.join(app.getPath("temp"), `hsp-update-plan-${Date.now()}.json`);
       const stagingVersionDirToRemove = zipReadyVersion
         ? path.join(getVersionsStagingRoot(), zipReadyVersion)
         : null;
+      const targetVersionDir =
+        useVersionedLayout && zipReadyVersion ? path.join(appRoot, "versions", zipReadyVersion) : null;
+      const currentLink = useVersionedLayout ? path.join(appRoot, "current") : null;
       const plan = {
         stagingContent: zipStagingContentPath,
         installDir,
@@ -1049,20 +1068,29 @@ function setupAutoUpdater() {
         appliedVersion: zipReadyVersion,
         stagingVersionDirToRemove,
         logPath: applyLogPath,
+        useVersionedLayout,
+        appRoot,
+        targetVersionDir,
+        currentLink,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan), "utf8");
       logUpdater("apply", `wrote plan ${planPath} ${safeJson(plan)}`);
 
       const ps1Path = path.join(app.getPath("temp"), `hsp-apply-versions-${Date.now()}.ps1`);
       /**
-       * Short settle after PID exit (handles + mutex), then MT robocopy. Total time is still
-       * dominated by bytes copied; true sub-second is only possible with a different strategy
-       * (e.g. versioned install dir + junction swap, or launch from staging).
+       * After PID exit: short settle (handles + mutex). Versioned layout: robocopy to
+       * versions\<ver>, then replace the `current` junction (fast); flat layout: robocopy in place.
+       * Override: HSP_UPDATE_SETTLE_MS (ms, 0–5000). Default 100ms when versioned, 400ms when flat.
        */
-      const settleMs = Math.min(
-        5000,
-        Math.max(0, parseInt(process.env.HSP_UPDATE_SETTLE_MS || "400", 10) || 400),
-      );
+      const defaultSettle = useVersionedLayout ? 100 : 400;
+      const rawSettle = process.env.HSP_UPDATE_SETTLE_MS;
+      let settleMs;
+      if (rawSettle !== undefined && rawSettle !== "") {
+        const p = parseInt(rawSettle, 10);
+        settleMs = Math.min(5000, Math.max(0, Number.isFinite(p) ? p : defaultSettle));
+      } else {
+        settleMs = Math.min(5000, Math.max(0, defaultSettle));
+      }
       const ps1Body = [
         "param([string]$PlanPath)",
         '$ErrorActionPreference = "Stop"',
@@ -1074,15 +1102,22 @@ function setupAutoUpdater() {
         '  Add-Content -LiteralPath $LogFile -Value ("[$ts] " + $m) -Encoding UTF8',
         "}",
         "try {",
-        '  Write-ApplyLog "apply start waitPid=$($plan.waitPid) exe=$($plan.exeName) settleMs=$settleMs"',
+        '  Write-ApplyLog "apply start waitPid=$($plan.waitPid) exe=$($plan.exeName) settleMs=$settleMs versioned=$($plan.useVersionedLayout)"',
         "  $deadline = (Get-Date).AddSeconds(120)",
         "  while ((Get-Process -Id $plan.waitPid -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {",
         "    Start-Sleep -Milliseconds 50",
         "  }",
-        `  Write-ApplyLog "parent process ended (or timeout); settle delay ${settleMs}ms (override with env HSP_UPDATE_SETTLE_MS)"`,
+        `  Write-ApplyLog "parent process ended (or timeout); settle delay ${settleMs}ms (HSP_UPDATE_SETTLE_MS)"`,
         "  if ($settleMs -gt 0) { Start-Sleep -Milliseconds $settleMs }",
         "  $src = $plan.stagingContent",
-        "  $dst = $plan.installDir",
+        "  if ($plan.useVersionedLayout) {",
+        "    $dst = $plan.targetVersionDir",
+        "    $null = New-Item -ItemType Directory -Force -LiteralPath $dst",
+        '    Write-ApplyLog "robocopy target (versioned): $dst"',
+        "  } else {",
+        "    $dst = $plan.installDir",
+        '    Write-ApplyLog "robocopy target (flat): $dst"',
+        "  }",
         '  Write-ApplyLog "robocopy/copy from $src to $dst"',
         "  Get-ChildItem -LiteralPath $src -Force | ForEach-Object {",
         "    if ($_.Name -ne 'versions') {",
@@ -1097,14 +1132,29 @@ function setupAutoUpdater() {
         "      }",
         "    }",
         "  }",
+        "  if ($plan.useVersionedLayout) {",
+        "    if (Test-Path -LiteralPath $plan.currentLink) {",
+        "      $rj = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'rmdir', $plan.currentLink) -Wait -PassThru -NoNewWindow",
+        '      Write-ApplyLog ("rmdir old current junction exit=" + $rj.ExitCode)',
+        "    }",
+        "    $mk = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'mklink', '/J', $plan.currentLink, $plan.targetVersionDir) -Wait -PassThru -NoNewWindow",
+        "    if ($mk.ExitCode -ne 0) { throw \"mklink /J failed exit $($mk.ExitCode)\" }",
+        '    Write-ApplyLog ("junction: $($plan.currentLink) -> $($plan.targetVersionDir)")',
+        "  }",
         "  if ($plan.stagingVersionDirToRemove -and (Test-Path -LiteralPath $plan.stagingVersionDirToRemove)) {",
         "    Remove-Item -LiteralPath $plan.stagingVersionDirToRemove -Recurse -Force",
         '    Write-ApplyLog "removed staging dir"',
         "  }",
-        "  $exePath = Join-Path $dst $plan.exeName",
-        '  Write-ApplyLog "relaunch $exePath"',
+        "  if ($plan.useVersionedLayout) {",
+        "    $exePath = Join-Path $plan.currentLink $plan.exeName",
+        "    $workDir = $plan.currentLink",
+        "  } else {",
+        "    $exePath = Join-Path $dst $plan.exeName",
+        "    $workDir = $dst",
+        "  }",
+        '  Write-ApplyLog "relaunch $exePath (wd=$workDir)"',
         "  if (-not (Test-Path -LiteralPath $exePath)) { throw \"main exe missing after apply: $exePath\" }",
-        "  Start-Process -FilePath $exePath -WorkingDirectory $dst",
+        "  Start-Process -FilePath $exePath -WorkingDirectory $workDir",
         '  Write-ApplyLog "Start-Process returned (GUI may take a moment)"',
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
         '  Write-ApplyLog "apply done"',

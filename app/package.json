@@ -81,8 +81,7 @@
     "nsis": {
       "artifactName": "HyperlinksSpaceAppInstaller_${env.BUILD_STAMP}.${ext}",
       "shortcutName": "Hyperlinks Space App",
-      "include": "windows/installer-custom.nsh",
-      "script": "windows/installer.nsi",
+      "include": "windows/installer.nsi",
       "guid": "5e1f4a8d-9c64-4e6a-a7d1-2a2fd2f01b0f",
       "oneClick": false,
       "runAfterFinish": false,

@@ -1,143 +1,80 @@
-; Thin fork of app-builder-lib/templates/nsis/installer.nsi (electron-builder).
-; Change: include project installSection-with-logging.nsh so the wizard shows file/extraction
-; details (SetDetailsPrint both) instead of the stock section that hides all output.
+; NSIS hooks included by electron-builder (package.json build.nsis.include).
+; Must NOT be named installer.nsh — that name shadows templates/nsis/include/installer.nsh when
+; installSection.nsh does !include installer.nsh.
+;
+; Do not set build.nsis.script to a fork of installer.nsi: electron-builder then skips the
+; uninstaller prebuild and never defines UNINSTALLER_OUT_FILE, which breaks installApplicationFiles
+; (empty File source). Use the default template plus this file and build/installSection.nsh.
+;
+; Window title only (no " Setup" suffix).
+; Workaround for intermittent NSIS self-update/uninstall failures reported by
+; multiple electron-builder users on some Windows machines.
+CRCCheck off
 
-Var newStartMenuLink
-Var oldStartMenuLink
-Var newDesktopLink
-Var oldDesktopLink
-Var oldShortcutName
-Var oldMenuDirectory
+!macro _TraceLog TEXT
+  FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
+  FileWrite $0 "${TEXT}$\r$\n"
+  FileClose $0
+!macroend
 
-!include "common.nsh"
-!include "MUI2.nsh"
-!include "multiUser.nsh"
-!include "allowOnlyOneInstallerInstance.nsh"
-
-; Only windows/nsis — NOT windows/. Project hooks must be installer-custom.nsh, not
-; installer.nsh, or !include installer.nsh in the section below resolves to the wrong file.
-!ifdef PROJECT_DIR
-  !addincludedir "${PROJECT_DIR}/windows/nsis"
-!endif
-
-!ifdef BUILD_UNINSTALLER
-  !ifmacrodef customUnInstallSection
-    !define MUI_COMPONENTSPAGE_NODESC
-    !insertmacro MUI_UNPAGE_COMPONENTS
-  !endif
-!endif
-
-!ifdef INSTALL_MODE_PER_ALL_USERS
+!macro customHeader
+  Caption "${PRODUCT_NAME}"
+  ; common.nsh forces nevershow; restore after so the InstFiles page can show a live log (like the updater).
+  ShowInstDetails show
   !ifdef BUILD_UNINSTALLER
-    RequestExecutionLevel user
-  !else
-    RequestExecutionLevel admin
+    ShowUninstDetails show
   !endif
-!else
-  RequestExecutionLevel user
-!endif
+!macroend
 
-!ifdef BUILD_UNINSTALLER
-  SilentInstall silent
-!else
-  Var appExe
-  Var launchLink
-!endif
+; Override process check to use quoted SYSTEMROOT-based tool paths.
+; This matches a community workaround for path handling inconsistencies.
+!macro customCheckAppRunning
+  !define SYSTEMROOT "$%SYSTEMROOT%"
+  ; electron-builder defines PRODUCT_FILENAME (process image name without ".exe").
+  ; Use it instead of the undefined electron-builder internal file var.
+  nsExec::Exec '"${SYSTEMROOT}\System32\cmd.exe" /c tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${PRODUCT_FILENAME}.exe" /FO csv | "${SYSTEMROOT}\System32\find.exe" "${PRODUCT_FILENAME}.exe"'
+  Pop $R0
+!macroend
 
-!ifdef ONE_CLICK
-  !include "oneClick.nsh"
-!else
-  !include "assistedInstaller.nsh"
-!endif
+; One-time migration workaround for installations stuck in uninstall error state (: 2).
+; Keeps install in current-user mode and bypasses stale uninstall command strings.
+!macro customInit
+  DetailPrint "[installer] customInit start"
+  !insertmacro _TraceLog "[installer] customInit start"
+  SetRegView 64
+  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
+  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
+  SetRegView 32
+  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
+  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
+  DetailPrint "[installer] customInit complete"
+  !insertmacro _TraceLog "[installer] customInit complete"
+!macroend
 
-!insertmacro addLangs
+!macro customInstallMode
+  DetailPrint "[installer] customInstallMode force current-user"
+  !insertmacro _TraceLog "[installer] customInstallMode force current-user"
+  StrCpy $isForceCurrentInstall "1"
+!macroend
 
-!ifmacrodef customHeader
-  !insertmacro customHeader
-!endif
+!macro customInstall
+  DetailPrint "[installer] customInstall start"
+  !insertmacro _TraceLog "[installer] customInstall start"
+  SetOverwrite on
+  ; Ensure the app is relaunched after install/update completes.
+  IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 +2
+  ExecShell "open" "$INSTDIR\${PRODUCT_FILENAME}.exe"
+  DetailPrint "[installer] customInstall complete"
+  !insertmacro _TraceLog "[installer] customInstall complete"
+!macroend
 
-Function .onInit
-  Call setInstallSectionSpaceRequired
-
-  SetOutPath $INSTDIR
-  ${LogSet} on
-
-  !ifmacrodef preInit
-    !insertmacro preInit
-  !endif
-
-  !ifdef DISPLAY_LANG_SELECTOR
-    !insertmacro MUI_LANGDLL_DISPLAY
-  !endif
-
-  !ifdef BUILD_UNINSTALLER
-    WriteUninstaller "${UNINSTALLER_OUT_FILE}"
-    !insertmacro quitSuccess
-  !else
-    !insertmacro check64BitAndSetRegView
-
-    !ifdef ONE_CLICK
-      !insertmacro ALLOW_ONLY_ONE_INSTALLER_INSTANCE
-    !else
-      ${IfNot} ${UAC_IsInnerInstance}
-        !insertmacro ALLOW_ONLY_ONE_INSTALLER_INSTANCE
-      ${EndIf}
-    !endif
-
-    !insertmacro initMultiUser
-
-    !ifmacrodef customInit
-      !insertmacro customInit
-    !endif
-
-    !ifmacrodef addLicenseFiles
-      InitPluginsDir
-      !insertmacro addLicenseFiles
-    !endif
-  !endif
-FunctionEnd
-
-!ifndef BUILD_UNINSTALLER
-  !include "installUtil.nsh"
-!endif
-
-Section "install" INSTALL_SECTION_ID
-  !ifndef BUILD_UNINSTALLER
-    # If we're running a silent upgrade of a per-machine installation, elevate so extracting the new app will succeed.
-    # For a non-silent install, the elevation will be triggered when the install mode is selected in the UI,
-    # but that won't be executed when silent.
-    !ifndef INSTALL_MODE_PER_ALL_USERS
-      !ifndef ONE_CLICK
-          ${if} $hasPerMachineInstallation == "1" # set in onInit by initMultiUser
-          ${andIf} ${Silent}
-            ${ifNot} ${UAC_IsAdmin}
-              ShowWindow $HWNDPARENT ${SW_HIDE}
-              !insertmacro UAC_RunElevated
-              ${Switch} $0
-                ${Case} 0
-                  ${Break}
-                ${Case} 1223 ;user aborted
-                  ${Break}
-                ${Default}
-                  MessageBox mb_IconStop|mb_TopMost|mb_SetForeground "Unable to elevate, error $0"
-                  ${Break}
-              ${EndSwitch}
-              Quit
-            ${else}
-              !insertmacro setInstallModePerAllUsers
-            ${endIf}
-          ${endIf}
-      !endif
-    !endif
-    ; Stock: !include "installSection.nsh"
-    !include "installSection-with-logging.nsh"
-  !endif
-SectionEnd
-
-Function setInstallSectionSpaceRequired
-  !insertmacro setSpaceRequired ${INSTALL_SECTION_ID}
-FunctionEnd
-
-!ifdef BUILD_UNINSTALLER
-  !include "uninstaller.nsh"
-!endif
+!macro customUnInstall
+  DetailPrint "[uninstaller] customUnInstall start"
+  !insertmacro _TraceLog "[uninstaller] customUnInstall start"
+  DetailPrint "[uninstaller] customUnInstall complete"
+  !insertmacro _TraceLog "[uninstaller] customUnInstall complete"
+!macroend
