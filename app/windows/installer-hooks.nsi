@@ -16,9 +16,9 @@ CRCCheck off
 
 ; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately *before* MUI_PAGE_INSTFILES.
 ; common.nsh sets ShowInstDetails nevershow; customHeader runs *after* assistedInstaller, so
-; ShowInstDetails show there is too late — the InstFiles page is already generated hidden (only the
-; stub line / progress text shows). Emit ShowInstDetails show here so the details list exists.
-; Hook SHOW for runtime SetDetailsPrint (belt-and-suspenders).
+; ShowInstDetails show there is too late for page layout. Emit ShowInstDetails show here.
+; On the InstFiles SHOW callback also call SetDetailsView show — that is what actually expands the
+; detail log at runtime (SetDetailsPrint alone does not; see NSIS Reference/SetDetailsView).
 ; Omit when BUILD_UNINSTALLER: the uninstaller pass has no installer InstFiles page; an unreferenced
 ; Function triggers NSIS warning 6010 and electron-builder fails (warnings as errors).
 !ifndef BUILD_UNINSTALLER
@@ -29,6 +29,7 @@ CRCCheck off
 
 Function HspInstFilesShow
   ; Match installSection: do not gate on ${Silent} here.
+  SetDetailsView show
   SetDetailsPrint both
 FunctionEnd
 !endif
