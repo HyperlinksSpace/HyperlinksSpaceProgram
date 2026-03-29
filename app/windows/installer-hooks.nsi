@@ -25,11 +25,9 @@ CRCCheck off
 !macroend
 
 Function HspInstFilesShow
+  ; Do not DetailPrint here: this runs when the InstFiles page is shown and would crowd out the
+  ; step-by-step lines from installSection.nsh. Those lines describe each phase (7-Zip has no per-file stream).
   SetDetailsPrint both
-  ; 7-Zip-backed installs do not stream per-file lines into this list (unlike classic File commands).
-  DetailPrint "Installing — extracting the application package (7-Zip)."
-  DetailPrint "Individual file names are not shown during extraction; this is expected."
-  DetailPrint "Please wait — this step may take a minute on slower disks."
 FunctionEnd
 !endif
 
