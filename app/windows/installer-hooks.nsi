@@ -14,18 +14,21 @@
 ; multiple electron-builder users on some Windows machines.
 CRCCheck off
 
-; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately before MUI_PAGE_INSTFILES.
-; Hook SHOW only (not PRE) so we do not override electron-builder's instFilesPre when
-; allowToChangeInstallationDirectory is true. Runtime SetDetailsPrint fixes empty InstFiles log.
+; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately *before* MUI_PAGE_INSTFILES.
+; common.nsh sets ShowInstDetails nevershow; customHeader runs *after* assistedInstaller, so
+; ShowInstDetails show there is too late — the InstFiles page is already generated hidden (only the
+; stub line / progress text shows). Emit ShowInstDetails show here so the details list exists.
+; Hook SHOW for runtime SetDetailsPrint (belt-and-suspenders).
 ; Omit when BUILD_UNINSTALLER: the uninstaller pass has no installer InstFiles page; an unreferenced
 ; Function triggers NSIS warning 6010 and electron-builder fails (warnings as errors).
 !ifndef BUILD_UNINSTALLER
 !macro customPageAfterChangeDir
+  ShowInstDetails show
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
 !macroend
 
 Function HspInstFilesShow
-  ; Match installSection: do not gate on ${Silent} here. Only ensure details are enabled; steps come from the section.
+  ; Match installSection: do not gate on ${Silent} here.
   SetDetailsPrint both
 FunctionEnd
 !endif

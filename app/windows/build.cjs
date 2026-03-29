@@ -1116,9 +1116,10 @@ function setupAutoUpdater() {
         settleMs = Math.min(5000, Math.max(0, defaultSettle));
       }
       const ps1Body = [
+        "param([string]$PlanPath)",
         '$ErrorActionPreference = "Stop"',
-        "$PlanPath = $env:HSP_UPDATE_PLAN",
-        'if (-not $PlanPath) { throw "HSP_UPDATE_PLAN environment variable is missing" }',
+        "if (-not $PlanPath) { $PlanPath = $env:HSP_UPDATE_PLAN }",
+        'if (-not $PlanPath) { throw "Plan path missing (pass -PlanPath to this script or set HSP_UPDATE_PLAN)" }',
         "$plan = Get-Content -LiteralPath $PlanPath -Encoding UTF8 -Raw | ConvertFrom-Json",
         "$LogFile = $plan.logPath",
         `$settleMs = ${settleMs}`,
@@ -1183,7 +1184,9 @@ function setupAutoUpdater() {
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
         '  Write-ApplyLog "apply done"',
         "} catch {",
-        '  Write-ApplyLog ("FATAL: " + $_.Exception.Message)',
+        '  $err = "FATAL: " + $_.Exception.Message',
+        "  if ($LogFile) { try { Write-ApplyLog $err } catch {} }",
+        "  elseif ($plan -and $plan.logPath) { try { Add-Content -LiteralPath $plan.logPath -Value (\"[\" + (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ') + \"] \" + $err) -Encoding UTF8 } catch {} }",
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
         "  exit 1",
         "}",
@@ -1203,15 +1206,19 @@ function setupAutoUpdater() {
       const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
       const psExe = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 
-      const child = spawn(psExe, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path], {
-        env: { ...process.env, HSP_UPDATE_PLAN: planPath },
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      });
+      const child = spawn(
+        psExe,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-PlanPath", planPath],
+        {
+          env: { ...process.env, HSP_UPDATE_PLAN: planPath },
+          detached: true,
+          stdio: "ignore",
+          windowsHide: true,
+        },
+      );
       logUpdater(
         "apply",
-        `spawn ${psExe} pid=${child.pid} detached=true env HSP_UPDATE_PLAN (robocopy staging → installDir, then relaunch exe)`,
+        `spawn ${psExe} pid=${child.pid} detached=true -PlanPath + HSP_UPDATE_PLAN (robocopy / junction, relaunch)`,
       );
       child.unref();
       if (!child.pid) {
