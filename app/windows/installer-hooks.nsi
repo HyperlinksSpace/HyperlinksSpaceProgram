@@ -26,7 +26,10 @@ CRCCheck off
 
 Function HspInstFilesShow
   SetDetailsPrint both
-  DetailPrint "Installation in progress..."
+  ; 7-Zip-backed installs do not stream per-file lines into this list (unlike classic File commands).
+  DetailPrint "Installing — extracting the application package (7-Zip)."
+  DetailPrint "Individual file names are not shown during extraction; this is expected."
+  DetailPrint "Please wait — this step may take a minute on slower disks."
 FunctionEnd
 !endif
 

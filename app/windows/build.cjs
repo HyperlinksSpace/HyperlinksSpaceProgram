@@ -27,7 +27,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** GitHub sometimes returns 502 HTML (Unicorn) or other gateway errors; worth retrying. */
+/** GitHub / Electron net layer: transient errors worth retrying (backoff in checkForUpdatesWithRetry). */
 function isTransientGithubUpdateError(err) {
   if (!err) return false;
   const code = err.statusCode ?? err.status;
@@ -38,6 +38,9 @@ function isTransientGithubUpdateError(err) {
       msg,
     )
   )
+    return true;
+  // Electron reports URL loader failures as net::ERR_* (not Node ECONNRESET).
+  if (/net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_TIMED_OUT|net::ERR_NETWORK_CHANGED/i.test(msg))
     return true;
   return false;
 }
@@ -1134,11 +1137,10 @@ function setupAutoUpdater() {
         "  }",
         "  if ($plan.useVersionedLayout) {",
         "    if (Test-Path -LiteralPath $plan.currentLink) {",
-        "      $rj = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'rmdir', $plan.currentLink) -Wait -PassThru -NoNewWindow",
-        '      Write-ApplyLog ("rmdir old current junction exit=" + $rj.ExitCode)',
+        "      Remove-Item -LiteralPath $plan.currentLink -Force",
+        '      Write-ApplyLog ("removed old current junction/link")',
         "    }",
-        "    $mk = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'mklink', '/J', $plan.currentLink, $plan.targetVersionDir) -Wait -PassThru -NoNewWindow",
-        "    if ($mk.ExitCode -ne 0) { throw \"mklink /J failed exit $($mk.ExitCode)\" }",
+        "    $null = New-Item -ItemType Junction -Path $plan.currentLink -Target $plan.targetVersionDir",
         '    Write-ApplyLog ("junction: $($plan.currentLink) -> $($plan.targetVersionDir)")',
         "  }",
         "  if ($plan.stagingVersionDirToRemove -and (Test-Path -LiteralPath $plan.stagingVersionDirToRemove)) {",
