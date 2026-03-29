@@ -414,6 +414,25 @@ function sha512Base64OfFile(filePath) {
   return hash.digest("base64");
 }
 
+/**
+ * Portable zip may ship HyperlinksSpaceApp.exe while the installed NSIS exe is "Hyperlinks Space App.exe".
+ * Must match resolveZipAppContentRoot / apply relaunch candidates.
+ */
+function winStagingDirHasMainExe(stagingDir, exeBaseName) {
+  const alt = new Set([
+    exeBaseName,
+    "Hyperlinks Space App.exe",
+    "HyperlinksSpaceApp.exe",
+  ]);
+  for (const name of alt) {
+    const p = path.join(stagingDir, name);
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) return true;
+    } catch (_) {}
+  }
+  return false;
+}
+
 function resolveZipAppContentRoot(extractDir, exeBaseName) {
   const direct = path.join(extractDir, exeBaseName);
   if (fs.existsSync(direct)) return extractDir;
@@ -807,9 +826,11 @@ function setupAutoUpdater() {
 
     const stagingHasMainExe = (stagingDir) => {
       const exeBase = path.basename(process.execPath);
+      if (process.platform === "win32") {
+        return winStagingDirHasMainExe(stagingDir, exeBase);
+      }
       const direct = path.join(stagingDir, exeBase);
       if (fs.existsSync(direct)) return true;
-      if (process.platform !== "win32") return false;
       try {
         const want = exeBase.toLowerCase();
         return fs.readdirSync(stagingDir).some((n) => n.toLowerCase() === want);
@@ -1095,8 +1116,9 @@ function setupAutoUpdater() {
         settleMs = Math.min(5000, Math.max(0, defaultSettle));
       }
       const ps1Body = [
-        "param([string]$PlanPath)",
         '$ErrorActionPreference = "Stop"',
+        "$PlanPath = $env:HSP_UPDATE_PLAN",
+        'if (-not $PlanPath) { throw "HSP_UPDATE_PLAN environment variable is missing" }',
         "$plan = Get-Content -LiteralPath $PlanPath -Encoding UTF8 -Raw | ConvertFrom-Json",
         "$LogFile = $plan.logPath",
         `$settleMs = ${settleMs}`,
@@ -1147,15 +1169,15 @@ function setupAutoUpdater() {
         "    Remove-Item -LiteralPath $plan.stagingVersionDirToRemove -Recurse -Force",
         '    Write-ApplyLog "removed staging dir"',
         "  }",
-        "  if ($plan.useVersionedLayout) {",
-        "    $exePath = Join-Path $plan.currentLink $plan.exeName",
-        "    $workDir = $plan.currentLink",
-        "  } else {",
-        "    $exePath = Join-Path $dst $plan.exeName",
-        "    $workDir = $dst",
+        "  $workDir = if ($plan.useVersionedLayout) { $plan.currentLink } else { $dst }",
+        '  $candidates = @($plan.exeName, "Hyperlinks Space App.exe", "HyperlinksSpaceApp.exe") | Select-Object -Unique',
+        "  $exePath = $null",
+        "  foreach ($c in $candidates) {",
+        "    $tryExe = Join-Path $workDir $c",
+        "    if (Test-Path -LiteralPath $tryExe) { $exePath = $tryExe; Write-ApplyLog (\"picked exe: \" + $c); break }",
         "  }",
-        '  Write-ApplyLog "relaunch $exePath (wd=$workDir)"',
-        "  if (-not (Test-Path -LiteralPath $exePath)) { throw \"main exe missing after apply: $exePath\" }",
+        "  if (-not $exePath) { throw (\"main exe missing after apply under \" + $workDir + \" (tried \" + ($candidates -join \", \") + \")\") }",
+        '  Write-ApplyLog ("relaunch " + $exePath + " (wd=" + $workDir + ")")',
         "  Start-Process -FilePath $exePath -WorkingDirectory $workDir",
         '  Write-ApplyLog "Start-Process returned (GUI may take a moment)"',
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
@@ -1170,14 +1192,26 @@ function setupAutoUpdater() {
       fs.writeFileSync(ps1Path, ps1Body, "utf8");
       logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs}`);
 
-      const child = spawn(
-        "powershell.exe",
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-PlanPath", planPath],
-        { detached: true, stdio: "ignore", windowsHide: true },
-      );
+      try {
+        fs.appendFileSync(
+          applyLogPath,
+          `[${new Date().toISOString()}] [main] spawning apply ps1=${ps1Path} plan=${planPath}\n`,
+          "utf8",
+        );
+      } catch (_) {}
+
+      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+      const psExe = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+
+      const child = spawn(psExe, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path], {
+        env: { ...process.env, HSP_UPDATE_PLAN: planPath },
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      });
       logUpdater(
         "apply",
-        `spawn powershell pid=${child.pid} detached=true (robocopy staging → installDir, then relaunch exe)`,
+        `spawn ${psExe} pid=${child.pid} detached=true env HSP_UPDATE_PLAN (robocopy staging → installDir, then relaunch exe)`,
       );
       child.unref();
       if (!child.pid) {

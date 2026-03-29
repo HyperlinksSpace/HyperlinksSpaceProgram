@@ -15,8 +15,8 @@ ${IfNot} ${Silent}
   SetDetailsPrint both
   ; 7-Zip extraction does not stream filenames into the NSIS list (unlike File commands).
   ; Explicit DetailPrint lines are required for any visible log during install.
-  DetailPrint "Step 1/10 — Preparing ${PRODUCT_NAME} ${VERSION}..."
-${endif}
+  DetailPrint "Step 1/10 - Preparing ${PRODUCT_NAME} ${VERSION}..."
+${EndIf}
 
 ; Installed layout: $INSTDIR\versions\<VERSION>\* and $INSTDIR\current → junction to that folder.
 ; For upgrade checks, prefer an existing versioned or legacy flat exe.
@@ -32,7 +32,7 @@ ${EndIf}
 !insertmacro setLinkVars
 
 ${IfNot} ${Silent}
-  DetailPrint "Step 2/10 — Checking that ${PRODUCT_NAME} is not running..."
+  DetailPrint "Step 2/10 - Checking that ${PRODUCT_NAME} is not running..."
 ${EndIf}
 
 !ifdef ONE_CLICK
@@ -53,12 +53,12 @@ ${EndIf}
 
     StrCpy $1 $hwndparent
 		System::Call 'user32::ShutdownBlockReasonCreate(${SYSTYPE_PTR}r1, w "$(installing)")'
-  ${endif}
+  ${EndIf}
   !insertmacro CHECK_APP_RUNNING
 !else
   ${ifNot} ${UAC_IsInnerInstance}
     !insertmacro CHECK_APP_RUNNING
-  ${endif}
+  ${EndIf}
 !endif
 
 Var /GLOBAL keepShortcuts
@@ -71,10 +71,10 @@ ${if} $isTryToKeepShortcuts == "true"
   ${andIf} ${FileExists} "$appExe"
     StrCpy $keepShortcuts "true"
   ${endIf}
-${endif}
+${EndIf}
 
 ${IfNot} ${Silent}
-  DetailPrint "Step 3/10 — Checking for a previous installation and uninstalling the old build if needed..."
+  DetailPrint "Step 3/10 - Checking for a previous installation and uninstalling the old build if needed..."
 ${EndIf}
 !insertmacro uninstallOldVersion SHELL_CONTEXT
 !insertmacro handleUninstallResult SHELL_CONTEXT
@@ -85,7 +85,7 @@ ${if} $installMode == "all"
 ${endIf}
 
 ${IfNot} ${Silent}
-  DetailPrint "Step 4/10 — Creating versioned install folder versions\${VERSION}..."
+  DetailPrint "Step 4/10 - Creating versioned install folder versions\${VERSION}..."
 ${EndIf}
 CreateDirectory "$INSTDIR\versions"
 SetOutPath "$INSTDIR\versions\${VERSION}"
@@ -95,12 +95,12 @@ SetOutPath "$INSTDIR\versions\${VERSION}"
 !endif
 
 ${IfNot} ${Silent}
-  DetailPrint "Step 5/10 — Extracting application package with 7-Zip (longest step; file names are not listed)..."
+  DetailPrint "Step 5/10 - Extracting application package with 7-Zip (longest step; file names are not listed)..."
 ${EndIf}
 !insertmacro installApplicationFiles
 ${IfNot} ${Silent}
-  DetailPrint "Step 6/10 — Extraction finished."
-  DetailPrint "Step 7/10 — Pointing 'current' at versions\${VERSION} (directory junction)..."
+  DetailPrint "Step 6/10 - Extraction finished."
+  DetailPrint "Step 7/10 - Pointing 'current' at versions\${VERSION} (directory junction)..."
 ${EndIf}
 ; Directory junction so shortcuts and the updater always use …\current\<exe>
 IfFileExists "$INSTDIR\current" hspRemoveOldCurrent hspMklinkCurrent
@@ -118,11 +118,11 @@ nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c mklink /J "$INSTDIR\current" "$INSTDIR\v
 Pop $R9
 StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
 ${IfNot} ${Silent}
-  DetailPrint "Step 8/10 — Writing install location and Add/Remove Programs registry entries..."
+  DetailPrint "Step 8/10 - Writing install location and Add/Remove Programs registry entries..."
 ${EndIf}
 !insertmacro registryAddInstallInfo
 ${IfNot} ${Silent}
-  DetailPrint "Step 9/10 — Creating Start Menu and desktop shortcuts..."
+  DetailPrint "Step 9/10 - Creating Start Menu and desktop shortcuts..."
 ${EndIf}
 !insertmacro addStartMenuLink $keepShortcuts
 !insertmacro addDesktopLink $keepShortcuts
@@ -142,7 +142,7 @@ ${endIf}
 
 !ifmacrodef customInstall
   ${IfNot} ${Silent}
-    DetailPrint "Step 10/10 — Running final install hooks..."
+    DetailPrint "Step 10/10 - Running final install hooks..."
   ${EndIf}
   !insertmacro customInstall
 !endif

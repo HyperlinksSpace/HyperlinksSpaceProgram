@@ -25,9 +25,9 @@ CRCCheck off
 !macroend
 
 Function HspInstFilesShow
-  ; Do not DetailPrint here: this runs when the InstFiles page is shown and would crowd out the
-  ; step-by-step lines from installSection.nsh. Those lines describe each phase (7-Zip has no per-file stream).
   SetDetailsPrint both
+  ; Short header so the list is never empty before installSection DetailPrint runs (ASCII only for NSIS Unicode builds).
+  DetailPrint "Installation in progress - see steps below."
 FunctionEnd
 !endif
 
