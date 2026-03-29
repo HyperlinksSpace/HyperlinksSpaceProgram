@@ -28,7 +28,7 @@ CRCCheck off
 !addincludedir "${BUILD_RESOURCES_DIR}"
 
 ; Timestamped lines in %TEMP%\HyperlinksSpaceUpdater.log (FileWrite — no NSIS logging build / LogSet).
-Var HspLogFile
+; Uninstaller prebuild (BUILD_UNINSTALLER): Call may only target un.* functions; use Var un.* for log path.
 
 ; InstFiles log: (1) windows/common.nsh — ShowInstDetails show after stock common (compile-time).
 ; (2) Here — ShowInstDetails show again immediately before MUI_PAGE_INSTFILES (assistedInstaller.nsh).
@@ -46,9 +46,8 @@ Function HspInstFilesShow
   SetDetailsView show
   SetDetailsPrint both
 FunctionEnd
-!endif
 
-; Single copy in script — safe labels (macro bodies cannot use unique labels per expansion).
+Var HspLogFile
 Function HspEnsureUpdaterLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
 hspSetLogPath:
@@ -64,6 +63,25 @@ FunctionEnd
   FileWrite $R9 "[$R2-$R1-$R0 $R4:$R5:$R6] ${TEXT}$\r$\n"
   FileClose $R9
 !macroend
+!endif
+
+!ifdef BUILD_UNINSTALLER
+Var un.HspLogFile
+Function un.HspEnsureUpdaterLogPath
+  StrCmp $un.HspLogFile "" hspUnSetLogPath hspUnLogPathDone
+hspUnSetLogPath:
+  StrCpy $un.HspLogFile "$TEMP\HyperlinksSpaceUpdater.log"
+hspUnLogPathDone:
+FunctionEnd
+
+!macro HspAppendUpdaterLog TEXT
+  Call un.HspEnsureUpdaterLogPath
+  ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
+  FileOpen $R9 "$un.HspLogFile" a
+  FileWrite $R9 "[$R2-$R1-$R0 $R4:$R5:$R6] ${TEXT}$\r$\n"
+  FileClose $R9
+!macroend
+!endif
 
 !macro customHeader
   Caption "${PRODUCT_NAME}"
