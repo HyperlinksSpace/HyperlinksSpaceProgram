@@ -17,6 +17,9 @@ CRCCheck off
 ; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately before MUI_PAGE_INSTFILES.
 ; Hook SHOW only (not PRE) so we do not override electron-builder's instFilesPre when
 ; allowToChangeInstallationDirectory is true. Runtime SetDetailsPrint fixes empty InstFiles log.
+; Omit when BUILD_UNINSTALLER: the uninstaller pass has no installer InstFiles page; an unreferenced
+; Function triggers NSIS warning 6010 and electron-builder fails (warnings as errors).
+!ifndef BUILD_UNINSTALLER
 !macro customPageAfterChangeDir
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
 !macroend
@@ -25,6 +28,7 @@ Function HspInstFilesShow
   SetDetailsPrint both
   DetailPrint "Installation in progress..."
 FunctionEnd
+!endif
 
 !macro HspAppendUpdaterLog TEXT
   FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
