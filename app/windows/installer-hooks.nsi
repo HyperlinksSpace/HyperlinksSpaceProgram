@@ -14,9 +14,23 @@
 ; multiple electron-builder users on some Windows machines.
 CRCCheck off
 
-; InstFiles log visibility: fixed at compile time via windows/common.nsh shadowing stock common.nsh
-; (ShowInstDetails show after Include). Wiki LogText/LogSet macros are file logging and need an NSIS
-; special build; on-screen lines use DetailPrint + ShowInstDetails.
+; InstFiles log: (1) windows/common.nsh — ShowInstDetails show after stock common (compile-time).
+; (2) Here — ShowInstDetails show again immediately before MUI_PAGE_INSTFILES (assistedInstaller.nsh).
+; (3) HspInstFilesShow — SetDetailsView show + SetDetailsPrint both on MUI InstFiles SHOW (runtime;
+;    MUI2 Pages/InstallFiles.nsh documents DetailPrint + visibility; exehead update_status_text skips the
+;    list if the details view state is wrong). Wiki LogText/LogSet = file logging (special NSIS build).
+
+!ifndef BUILD_UNINSTALLER
+!macro customPageAfterChangeDir
+  ShowInstDetails show
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
+!macroend
+
+Function HspInstFilesShow
+  SetDetailsView show
+  SetDetailsPrint both
+FunctionEnd
+!endif
 
 !macro HspAppendUpdaterLog TEXT
   FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
@@ -45,6 +59,8 @@ CRCCheck off
 
 ; One-time migration workaround for installations stuck in uninstall error state (: 2).
 ; Keeps install in current-user mode and bypasses stale uninstall command strings.
+; DetailPrint in .onInit runs before the InstFiles page exists (insthwnd not set) — lines do not appear
+; in the Installing list; use HspAppendUpdaterLog or MessageBox for debug there if needed.
 !macro customInit
   DetailPrint "[installer] customInit start"
   !insertmacro HspAppendUpdaterLog "[installer] customInit start"
@@ -63,12 +79,18 @@ CRCCheck off
 !macroend
 
 !macro customInstallMode
+  ; Stack Overflow / electron-builder: DetailPrint needs SetDetailsPrint both if something turned list output off.
+  SetDetailsPrint both
+  SetDetailsView show
   DetailPrint "[installer] customInstallMode force current-user"
   !insertmacro HspAppendUpdaterLog "[installer] customInstallMode force current-user"
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
 !macro customInstall
+  ; electron-builder calls this after other install steps; Anders (NSIS): builder may leave SetDetailsPrint off.
+  SetDetailsPrint both
+  SetDetailsView show
   DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall start"
   SetOverwrite on
@@ -80,6 +102,8 @@ CRCCheck off
 !macroend
 
 !macro customUnInstall
+  SetDetailsPrint both
+  SetDetailsView show
   DetailPrint "[uninstaller] customUnInstall start"
   !insertmacro HspAppendUpdaterLog "[uninstaller] customUnInstall start"
   DetailPrint "[uninstaller] customUnInstall complete"

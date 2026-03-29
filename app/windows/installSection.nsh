@@ -14,6 +14,7 @@ InitPluginsDir
 ; Do not wrap DetailPrint in ${IfNot} ${Silent}: on some builds ${Silent} evaluates in a way that
 ; skips all section DetailPrint lines while the InstFiles SHOW hook still runs (only one line visible).
 SetDetailsPrint both
+SetDetailsView show
 ; 7-Zip extraction does not stream filenames into the NSIS list (unlike File commands).
 DetailPrint "Step 1/10 - Preparing ${PRODUCT_NAME} ${VERSION}..."
 
@@ -88,6 +89,9 @@ SetOutPath "$INSTDIR\versions\${VERSION}"
 !endif
 
 DetailPrint "Step 5/10 - Extracting application package with 7-Zip (longest step; file names are not listed)..."
+; File extraction toggles status_update around compressed reads; restore list output before 7-Zip.
+SetDetailsPrint both
+SetDetailsView show
 !insertmacro installApplicationFiles
 DetailPrint "Step 6/10 - Extraction finished."
 DetailPrint "Step 7/10 - Pointing 'current' at versions\${VERSION} (directory junction)..."
@@ -121,6 +125,9 @@ ${endIf}
 
 !ifmacrodef customInstall
   DetailPrint "Step 10/10 - Running final install hooks..."
+  ; So customInstall's DetailPrint always hits the list (electron-builder / NSIS SO notes).
+  SetDetailsPrint both
+  SetDetailsView show
   !insertmacro customInstall
 !endif
 
