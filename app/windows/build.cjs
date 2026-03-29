@@ -79,6 +79,27 @@ function safeJson(obj, maxLen = 800) {
   }
 }
 
+/** Escape for a PowerShell single-quoted literal (only ' is doubled). */
+function escapePsSingleQuotedPath(p) {
+  return String(p).replace(/'/g, "''");
+}
+
+/**
+ * Detached `powershell -File script.ps1 -PlanPath ...` often drops or misparses args on Windows.
+ * Use a short UTF-16LE -EncodedCommand that writes %TEMP%\\hsp-apply-trace.log then invokes the script.
+ */
+function buildWindowsApplyLauncherCommand(ps1Path, planPath) {
+  const qPs1 = escapePsSingleQuotedPath(ps1Path);
+  const qPlan = escapePsSingleQuotedPath(planPath);
+  return (
+    `$ErrorActionPreference='Stop';` +
+    `try{$t=Join-Path $env:TEMP 'hsp-apply-trace.log';` +
+    `$ts=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ');` +
+    `Add-Content -LiteralPath $t -Encoding UTF8 -Value ('['+$ts+'] launcher start pid='+$PID)}catch{};` +
+    `& '${qPs1}' -PlanPath '${qPlan}'`
+  );
+}
+
 /**
  * Prefer zip-latest.yml (has sha512 for the zip). If missing (404), use latest.yml + inferred zip name.
  * @returns {{ version: string, fileName: string, sha512: string | null, source: string }}
@@ -1198,17 +1219,19 @@ function setupAutoUpdater() {
       try {
         fs.appendFileSync(
           applyLogPath,
-          `[${new Date().toISOString()}] [main] spawning apply ps1=${ps1Path} plan=${planPath}\n`,
+          `[${new Date().toISOString()}] [main] spawning apply encodedLauncher=1 ps1=${ps1Path} plan=${planPath} trace=%TEMP%\\hsp-apply-trace.log\n`,
           "utf8",
         );
       } catch (_) {}
 
       const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
       const psExe = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      const launcherPs = buildWindowsApplyLauncherCommand(ps1Path, planPath);
+      const encodedLauncher = Buffer.from(launcherPs, "utf16le").toString("base64");
 
       const child = spawn(
         psExe,
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-PlanPath", planPath],
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodedLauncher],
         {
           env: { ...process.env, HSP_UPDATE_PLAN: planPath },
           detached: true,
@@ -1218,7 +1241,7 @@ function setupAutoUpdater() {
       );
       logUpdater(
         "apply",
-        `spawn ${psExe} pid=${child.pid} detached=true -PlanPath + HSP_UPDATE_PLAN (robocopy / junction, relaunch)`,
+        `spawn ${psExe} pid=${child.pid} detached=true -EncodedCommand launcher→-File ps1 (trace %TEMP%\\hsp-apply-trace.log)`,
       );
       child.unref();
       if (!child.pid) {
