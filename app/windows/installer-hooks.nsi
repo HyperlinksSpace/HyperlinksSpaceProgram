@@ -14,6 +14,18 @@
 ; multiple electron-builder users on some Windows machines.
 CRCCheck off
 
+; assistedInstaller.nsh runs !ifmacrodef customPageAfterChangeDir immediately before MUI_PAGE_INSTFILES.
+; Hook SHOW only (not PRE) so we do not override electron-builder's instFilesPre when
+; allowToChangeInstallationDirectory is true. Runtime SetDetailsPrint fixes empty InstFiles log.
+!macro customPageAfterChangeDir
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
+!macroend
+
+Function HspInstFilesShow
+  SetDetailsPrint both
+  DetailPrint "Installation in progress..."
+FunctionEnd
+
 !macro HspAppendUpdaterLog TEXT
   FileOpen $0 "$TEMP\HyperlinksSpaceUpdater.log" a
   FileWrite $0 "${TEXT}$\r$\n"

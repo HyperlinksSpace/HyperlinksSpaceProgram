@@ -91,7 +91,7 @@ SetOutPath "$INSTDIR\versions\${VERSION}"
 !endif
 
 ${IfNot} ${Silent}
-  DetailPrint "Extracting application package (7-Zip) — this step may take a while..."
+  DetailPrint "Extracting application package (7-Zip) - this step may take a while..."
 ${EndIf}
 !insertmacro installApplicationFiles
 ${IfNot} ${Silent}
