@@ -154,6 +154,14 @@ export async function callOpenAiChatStream(
         /* ignore */
       }
     };
+    let cancelLogged = false;
+    const hardAbort = (reason: string): void => {
+      if (!cancelLogged) {
+        cancelLogged = true;
+        console.log("[STREAM] aborted immediately:", reason);
+      }
+      abortStream();
+    };
     onAbort = (): void => {
       abortStream();
     };
@@ -163,15 +171,16 @@ export async function callOpenAiChatStream(
 
     stream.on("response.output_text.delta", async (event: { snapshot?: string }) => {
       if (opts?.abortSignal?.aborted) {
-        abortStream();
+        hardAbort("abortSignal");
         return;
       }
       if (opts?.isCancelled && opts.isCancelled()) {
-        abortStream();
+        hardAbort("isCancelled");
         return;
       }
       if (opts?.getAbortSignal && (await opts.getAbortSignal())) {
-        abortStream();
+        console.log("[STREAM] stale generation");
+        hardAbort("getAbortSignal");
         return;
       }
       const text = event?.snapshot ?? "";

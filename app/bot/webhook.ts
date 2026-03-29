@@ -75,6 +75,7 @@ async function getWebhookInfo(): Promise<{ url?: string }> {
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
+  console.log("🔥 LOCAL WEBHOOK HIT", new Date().toISOString());
   const method = request.method;
   console.log('[webhook]', method, new Date().toISOString());
 
@@ -209,14 +210,14 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     res.status(400).json({ ok: false, error: 'invalid_body' });
     return;
   }
-  try {
-    await ensureBotInit();
-    await bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]);
-  } catch (err) {
-    console.error('[bot]', err);
-    res.status(500).json({ ok: false, error: 'handler_error' });
-    return;
-  }
+  void ensureBotInit()
+    .then(() => bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]))
+    .then(() => {
+      console.log('[webhook] handled update', update.update_id);
+    })
+    .catch((err) => {
+      console.error('[bot]', err);
+    });
   res.status(200).json({ ok: true });
 }
 
