@@ -1,5 +1,5 @@
 # Build Windows installer on CI (no .exe committed to git), publish GitHub Release, notify /api/releases.
-name: Windows release (CI build)
+name: .exe build
 
 on:
   workflow_dispatch:
@@ -47,30 +47,31 @@ jobs:
       - name: Build Windows installer
         run: npm run build:win
 
-      # cleanup.cjs writes installer + latest.yml + portable zip + zip-latest.yml under releases/<build_id>/.
-      # Then we stage them under releases/electron/<build_id>/ to keep release technologies separated.
+      # cleanup.cjs writes releases/builder/<build_id>/ (installer at root; zip + yml in dev/).
+      # Stage flat copies under releases/electron/<build_id>/ for GitHub upload.
       - name: Locate electron-builder artifacts and stage under releases/electron
         id: artifact
         run: |
           set -euo pipefail
           rid="${{ steps.meta.outputs.release_id }}"
-          src_dir="releases/$rid"
+          src_dir="releases/builder/$rid"
+          dev_dir="$src_dir/dev"
           stage_dir="releases/electron/$rid"
           mkdir -p "$stage_dir"
           exe="$(ls -1 "$src_dir"/HyperlinksSpaceAppInstaller_*.exe 2>/dev/null | head -n 1 || true)"
           if [[ -z "$exe" || ! -f "$exe" ]]; then
             echo "Expected timestamped installer in $src_dir (set RELEASE_BUILD_ID=$rid)."
-            find releases -maxdepth 5 -type f 2>/dev/null || true
+            find releases -maxdepth 6 -type f 2>/dev/null || true
             exit 1
           fi
-          zip="$(ls -1 "$src_dir"/HyperlinksSpaceApp_*.zip 2>/dev/null | head -n 1 || true)"
+          zip="$(ls -1 "$dev_dir"/HyperlinksSpaceApp_*.zip 2>/dev/null | head -n 1 || true)"
           if [[ -z "$zip" || ! -f "$zip" ]]; then
-            echo "Portable zip HyperlinksSpaceApp_<version>.zip is required for in-app updates (electron-builder zip target + cleanup)."
-            find "$src_dir" -maxdepth 1 -type f 2>/dev/null || true
+            echo "Portable zip HyperlinksSpaceApp_<version>.zip is required in $dev_dir (electron-builder zip target + cleanup)."
+            find "$dev_dir" -maxdepth 1 -type f 2>/dev/null || true
             exit 1
           fi
-          yml="$(dirname "$exe")/latest.yml"
-          zip_yml="$(dirname "$zip")/zip-latest.yml"
+          yml="$dev_dir/latest.yml"
+          zip_yml="$dev_dir/zip-latest.yml"
           if [[ ! -f "$yml" ]]; then
             echo "latest.yml missing next to installer — electron-updater needs it on the GitHub Release."
             exit 1

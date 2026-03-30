@@ -6,17 +6,16 @@
  */
 const { spawn } = require("child_process");
 const path = require("path");
+const { resolveBuildLayout, ensureCleanEbOutput } = require("./build-layout.cjs");
 
 const appDir = path.join(__dirname, "..");
 const isPack = process.argv.includes("--pack");
 const isVerbose = process.argv.includes("--verbose");
 
-function pad2(n) {
-  return String(n).padStart(2, "0");
-}
+const ebCli = require.resolve("electron-builder/cli.js");
 
-function makeBuildStamp(d = new Date()) {
-  return `${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${d.getFullYear()}_${pad2(d.getHours())}${pad2(d.getMinutes())}`;
+function relForConfig(p) {
+  return path.relative(appDir, p).split(path.sep).join("/");
 }
 
 // 7z step: electron-builder runs 7za with -bd (no progress output), so we estimate by time.
@@ -51,17 +50,16 @@ function stopProgressBar(finalPct = 100) {
   }
 }
 
-function run(command, args, opts) {
+function run(command, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, ...(opts?.env || {}) };
+    const { pipeOutput: usePipe, env: optsEnv, shell = true } = opts;
+    const env = { ...process.env, ...(optsEnv || {}) };
     if (isVerbose) env.DEBUG = "electron-builder";
-    const usePipe = opts && opts.pipeOutput;
     const child = spawn(command, args, {
       cwd: appDir,
       env,
       stdio: usePipe ? ["inherit", "pipe", "pipe"] : "inherit",
-      shell: true,
-      ...opts,
+      shell,
     });
     if (!usePipe) {
       child.on("close", (code) => {
@@ -95,20 +93,31 @@ function run(command, args, opts) {
 
 (async () => {
   try {
-    const buildStamp = process.env.BUILD_STAMP || makeBuildStamp();
     if (!isPack) {
       console.log("Running: npm run build\n");
       await run("npm", ["run", "build"], { stdio: "inherit" });
     }
+    const layout = resolveBuildLayout(appDir);
+    ensureCleanEbOutput(layout.ebOutputDir);
+    const outArg = `--config.directories.output=${relForConfig(layout.ebOutputDir)}`;
+    const ebEnv = {
+      ...process.env,
+      BUILD_STAMP: layout.buildStamp,
+      RELEASE_BUILD_ID: layout.buildName,
+      HSP_EB_OUTPUT: relForConfig(layout.ebOutputDir),
+    };
+    if (isVerbose) ebEnv.DEBUG = "electron-builder";
     // Never publish from this script: CI has no GH_TOKEN unless set, and releases are created via gh workflow + cleanup (latest.yml).
-    console.log(`\nBuild stamp: ${buildStamp}`);
+    console.log(`\nBuild: ${layout.buildName}  stamp: ${layout.buildStamp}`);
+    console.log(`Output: ${relForConfig(layout.ebOutputDir)}`);
     console.log("Running: electron-builder --win --publish never\n");
-    await run("npx", ["electron-builder", "--win", "--publish", "never"], {
+    await run(process.execPath, [ebCli, "--win", "--publish", "never", outArg], {
       pipeOutput: true,
-      env: { BUILD_STAMP: buildStamp },
+      env: ebEnv,
+      shell: false,
     });
     console.log("\nRunning: windows/cleanup.cjs\n");
-    await run("node", [path.join(__dirname, "cleanup.cjs")]);
+    await run("node", [path.join(__dirname, "cleanup.cjs")], { env: ebEnv });
   } catch (e) {
     stopProgressBar();
     process.exit(1);

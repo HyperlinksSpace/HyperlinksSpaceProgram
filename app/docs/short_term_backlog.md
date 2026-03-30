@@ -1,3 +1,5 @@
+Installation: logs, launch on install
+Updater: instant reload
 Fluent installer progress bar
 Updater text area style
 Logs on installation

@@ -40,7 +40,7 @@ Implication:
 
 For binary-only updates:
 
-1. `app/releases/build_MMDDYYYY_HHMM/` changes.
+1. `app/releases/builder/build_MMDDYYYY_HHMM/` (or Forge under `app/releases/forge/...`) changes.
 2. GitHub workflow dedupes and creates Release if new.
 3. Workflow calls `POST /api/releases` webhook.
 4. Backend notifies clients that binary update is available.
@@ -178,7 +178,7 @@ From `app/`:
 
 ### Publish binary update
 
-1. Create `app/releases/build_MMDDYYYY_HHMM/` with installer files.
+1. Create `app/releases/builder/build_MMDDYYYY_HHMM/` with installer at root and supporting files under `dev/`.
 2. Push changes.
 3. Workflow creates (or skips duplicate) GitHub Release and calls `/api/releases`.
 

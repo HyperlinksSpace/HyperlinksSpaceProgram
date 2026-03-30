@@ -5,14 +5,14 @@ This doc describes the Windows Electron build and install flow and how to speed 
 Exe creating example:
 
 ```
-cd /d C:\1\1\1\1\1\HyperlinksSpaceBot\app
+cd /d C:\1\1\1\1\1\HyperlinksSpaceProgram\app
 npm run build:win:verbose
 ```
 
 Exe bash run example:
 
 ```
-powershell -NoProfile -Command "Start-Process -FilePath 'C:/1/1/1/1/1/HyperlinksSpaceBot/app/releases/build_03252026_1449/HyperlinksSpaceAppInstaller.exe'"
+powershell -NoProfile -Command "Start-Process -FilePath 'C:/1/1/1/1/1/HyperlinksSpaceBot/app/releases/builder/build_03252026_1449/HyperlinksSpaceAppInstaller_03252026_1449.exe'"
 ```
 
 ---
@@ -25,9 +25,9 @@ powershell -NoProfile -Command "Start-Process -FilePath 'C:/1/1/1/1/1/Hyperlinks
 
 1. **Expo web export** – `npm run build` → `expo export -p web`. Metro bundles the app and writes static files to `dist/`. Usually the slowest step (tens of seconds).
 2. **Electron pack** – `electron-builder --win`. Rebuilds native deps (if any), packages the app, builds the NSIS installer. Downloads (Electron, NSIS, winCodeSign) are cached after first run.
-3. **Clean** – `node windows/cleanup.cjs`. Moves artifacts into `releases/build_MMDDYYYY_HHMM/` (installer at root, optional files in `dev/`).
+3. **Clean** – `node windows/cleanup.cjs`. Moves artifacts into `releases/builder/build_MMDDYYYY_HHMM/` (installer only at root; zip, yml, unpacked, and other artifacts under `dev/`).
 
-**Output:** `releases/build_<date>_<time>/HyperlinksSpaceAppInstaller.exe` and optionally `dev/` (win-unpacked, blockmap, builder-debug.yml, builder-effective-config.yaml).
+**Output:** `releases/builder/build_<date>_<time>/HyperlinksSpaceAppInstaller_<stamp>.exe` at root and `dev/` (portable zip, latest.yml, zip-latest.yml, win-unpacked, blockmap, builder-debug.yml, builder-effective-config.yaml).
 
 ### How to make the build faster
 
@@ -72,7 +72,7 @@ User runs **`HyperlinksSpaceAppInstaller.exe`**. NSIS extracts the app (e.g. to 
 | **Auto-updates** | Add `electron-updater` (or similar) and serve updates over HTTPS so users get patches without reinstalling. |
 | **CI/CD** | In CI, cache `node_modules`, `.expo`, Metro cache, and `electron-builder` cache to make repeated builds much faster. |
 | **Developer Mode (Windows)** | If you build on Windows and use exe editing (icon, etc.), Developer Mode avoids symlink errors during the winCodeSign step. |
-| **Structured releases** | `windows/cleanup.cjs` puts each build in `releases/build_<date>_<time>/` with the installer at root and optional artifacts in `dev/`. |
+| **Structured releases** | `windows/cleanup.cjs` puts each build in `releases/builder/build_<date>_<time>/` with the installer at root and all other artifacts in `dev/`. |
 
 ---
 
@@ -89,7 +89,7 @@ User runs **`HyperlinksSpaceAppInstaller.exe`**. NSIS extracts the app (e.g. to 
 
 ## 5. File layout after build
 
-- **After `build:win` or `pack:win`:** `app/releases/build_MMDDYYYY_HHMM/HyperlinksSpaceAppInstaller.exe` and `app/releases/build_MMDDYYYY_HHMM/dev/` (win-unpacked, blockmap, builder-debug.yml, builder-effective-config.yaml).
+- **After `build:win` or `pack:win`:** `app/releases/builder/build_MMDDYYYY_HHMM/HyperlinksSpaceAppInstaller_<stamp>.exe` and `app/releases/builder/build_MMDDYYYY_HHMM/dev/` (portable zip, yml, win-unpacked, blockmap, builder-debug.yml, builder-effective-config.yaml).
 - **After `build:win:dir`:** `app/release/win-unpacked/` (run `app.exe` from there).
 - **Build inputs:** `dist/` (Expo export), `windows/` (build.cjs, app-shell.html, preload-log.cjs), `assets/icon.ico`, and files listed under `build.files` in `package.json`.
 

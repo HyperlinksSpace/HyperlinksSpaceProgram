@@ -1,5 +1,5 @@
 # Build Windows installer with Electron Forge on CI, publish GitHub Release, notify /api/releases.
-name: Windows release (Forge CI build)
+name: forge .exe build
 
 on:
   workflow_dispatch:
@@ -45,108 +45,58 @@ jobs:
 
       - name: Build Forge Windows artifacts
         env:
-          # Принудительно отключаем публикацию для electron-builder внутри Forge
           ELECTRON_PUBLISH: never
-          # Дополнительная заглушка: передаем пустой конфиг публикаций в формате JSON
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run make:win:forge
 
-      - name: Locate Forge artifacts and normalize names
+      # forge-cleanup writes releases/forge/<build_id>_forge/ (installer at root; zip + yml in dev/).
+      # Stage flat copies under releases/electron/<build_id>_forge/ for GitHub upload.
+      - name: Locate Forge artifacts and stage under releases/electron
         id: artifact
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-
           rid="${{ steps.meta.outputs.release_id }}"
-          stage_dir="releases/$rid"
+          src_dir="releases/forge/$rid"
+          dev_dir="$src_dir/dev"
+          stage_dir="releases/electron/$rid"
           mkdir -p "$stage_dir"
 
-          forge_root="releases/forge/artifacts"
-          if [[ ! -d "$forge_root" ]]; then
-            echo "Forge output folder not found: $forge_root"
-            exit 1
-          fi
-
-          # Collect outputs under Forge make folders.
-          exes=( "$forge_root"/**/make/**/*.exe )
-          zips=( "$forge_root"/**/make/**/*.zip )
-          ymls=( "$forge_root"/**/make/**/latest.yml )
-          zip_ymls=( "$forge_root"/**/make/**/zip-latest.yml )
-
-          # Pick installer exe (prefer names that look like setup/installer).
-          exe=""
-          for f in "${exes[@]}"; do
-            b="$(basename "$f")"
-            lb="${b,,}"
-            if [[ "$lb" == *setup*.exe || "$lb" == *installer*.exe ]]; then
-              exe="$f"
-              break
-            fi
-          done
-          if [[ -z "$exe" && ${#exes[@]} -gt 0 ]]; then
-            exe="${exes[0]}"
-          fi
+          exe="$(ls -1 "$src_dir"/HyperlinksSpaceAppInstaller_*.exe 2>/dev/null | head -n 1 || true)"
           if [[ -z "$exe" || ! -f "$exe" ]]; then
-            echo "No Forge Windows installer .exe found under $forge_root/**/make/"
+            echo "Expected timestamped installer in $src_dir (forge-cleanup; set RELEASE_BUILD_ID=$rid)."
+            find releases -maxdepth 6 -type f 2>/dev/null || true
             exit 1
           fi
-
-          # Prefer portable zip if present.
-          zip=""
-          if [[ ${#zips[@]} -gt 0 ]]; then
-            zip="${zips[0]}"
+          zip="$(ls -1 "$dev_dir"/HyperlinksSpaceApp_*.zip 2>/dev/null | head -n 1 || true)"
+          if [[ -z "$zip" || ! -f "$zip" ]]; then
+            echo "Portable zip required in $dev_dir (Forge zip maker + forge-cleanup)."
+            find "$dev_dir" -maxdepth 1 -type f 2>/dev/null || true
+            exit 1
           fi
-
-          yml=""
-          if [[ ${#ymls[@]} -gt 0 ]]; then
-            yml="${ymls[0]}"
+          yml="$dev_dir/latest.yml"
+          zip_yml="$dev_dir/zip-latest.yml"
+          if [[ ! -f "$yml" ]]; then
+            echo "latest.yml missing next to installer — electron-updater needs it on the GitHub Release."
+            exit 1
           fi
-
-          zip_yml=""
-          if [[ ${#zip_ymls[@]} -gt 0 ]]; then
-            zip_yml="${zip_ymls[0]}"
-          fi
-
-          stamp="${rid#build_}"
-          stamp="${stamp%_forge}"
-
-          exe_name="HyperlinksSpaceAppInstaller_${stamp}_forge.exe"
+          exe_name="$(basename "$exe")"
+          zip_name="$(basename "$zip")"
           exe_out="$stage_dir/$exe_name"
+          zip_out="$stage_dir/$zip_name"
+          yml_out="$stage_dir/latest.yml"
+          zip_yml_out="$stage_dir/zip-latest.yml"
           cp "$exe" "$exe_out"
-
-          zip_name=""
-          zip_out=""
-          if [[ -n "$zip" && -f "$zip" ]]; then
-            base_zip="$(basename "$zip")"
-            zip_name="${base_zip%.zip}_forge.zip"
-            zip_out="$stage_dir/$zip_name"
-            cp "$zip" "$zip_out"
-          fi
-
-          yml_name=""
-          yml_out=""
-          if [[ -n "$yml" && -f "$yml" ]]; then
-            yml_name="latest_forge.yml"
-            yml_out="$stage_dir/$yml_name"
-            cp "$yml" "$yml_out"
-          fi
-
-          zip_yml_name=""
-          zip_yml_out=""
-          if [[ -n "$zip_yml" && -f "$zip_yml" ]]; then
-            zip_yml_name="zip-latest_forge.yml"
-            zip_yml_out="$stage_dir/$zip_yml_name"
+          cp "$zip" "$zip_out"
+          cp "$yml" "$yml_out"
+          if [[ -f "$zip_yml" ]]; then
             cp "$zip_yml" "$zip_yml_out"
           fi
-
           echo "exe_path=$exe_out" >> "$GITHUB_OUTPUT"
           echo "exe_name=$exe_name" >> "$GITHUB_OUTPUT"
           echo "zip_path=$zip_out" >> "$GITHUB_OUTPUT"
           echo "zip_name=$zip_name" >> "$GITHUB_OUTPUT"
           echo "yml_path=$yml_out" >> "$GITHUB_OUTPUT"
-          echo "yml_name=$yml_name" >> "$GITHUB_OUTPUT"
           echo "zip_yml_path=$zip_yml_out" >> "$GITHUB_OUTPUT"
-          echo "zip_yml_name=$zip_yml_name" >> "$GITHUB_OUTPUT"
           echo "release_id=$rid" >> "$GITHUB_OUTPUT"
 
       - name: Check if GitHub release already exists
@@ -163,6 +113,56 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Preflight checks and artifact summary
+        if: steps.exists.outputs.exists != 'true'
+        id: preflight
+        run: |
+          set -euo pipefail
+          rid="${{ steps.artifact.outputs.release_id }}"
+          exe="${{ steps.artifact.outputs.exe_path }}"
+          zip="${{ steps.artifact.outputs.zip_path }}"
+          yml="${{ steps.artifact.outputs.yml_path }}"
+          zip_yml="${{ steps.artifact.outputs.zip_yml_path }}"
+          stage_dir="releases/electron/$rid"
+
+          [[ -d "$stage_dir" ]] || { echo "Stage dir missing: $stage_dir"; exit 1; }
+          [[ -f "$exe" ]] || { echo "Installer missing: $exe"; exit 1; }
+          [[ -f "$zip" ]] || { echo "Portable zip missing: $zip"; exit 1; }
+          [[ -f "$yml" ]] || { echo "latest.yml missing: $yml"; exit 1; }
+
+          exe_name="$(basename "$exe")"
+          zip_name="$(basename "$zip")"
+          yml_name="$(basename "$yml")"
+
+          [[ "$exe_name" == HyperlinksSpaceAppInstaller_*.exe ]] || {
+            echo "Unexpected installer name: $exe_name"; exit 1;
+          }
+          [[ "$zip_name" == HyperlinksSpaceApp_*.zip ]] || {
+            echo "Unexpected zip name: $zip_name"; exit 1;
+          }
+          [[ "$yml_name" == "latest.yml" ]] || {
+            echo "Unexpected yml name: $yml_name"; exit 1;
+          }
+
+          app_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceApp_(.+)\.zip$/\1/')"
+          if [[ -z "$app_version" || "$app_version" == "$zip_name" ]]; then
+            app_version="unknown"
+          fi
+          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
+
+          echo "Preflight OK (Forge):"
+          echo "  release_id: $rid"
+          echo "  app_version: $app_version"
+          echo "  stage_dir: $stage_dir"
+          echo "  installer: $exe"
+          echo "  portable_zip: $zip"
+          echo "  latest_yml: $yml"
+          if [[ -n "$zip_yml" && -f "$zip_yml" ]]; then
+            echo "  zip_latest_yml: $zip_yml"
+          else
+            echo "  zip_latest_yml: (missing, optional)"
+          fi
+
       - name: Create GitHub release and upload Forge artifacts
         if: steps.exists.outputs.exists != 'true'
         id: create
@@ -175,27 +175,18 @@ jobs:
           zip="${{ steps.artifact.outputs.zip_path }}"
           yml="${{ steps.artifact.outputs.yml_path }}"
           zip_yml="${{ steps.artifact.outputs.zip_yml_path }}"
-
-          if [[ ! -f "$exe" ]]; then
-            echo "Installer artifact missing: $exe"
-            exit 1
-          fi
-
-          upload=( "$exe" )
-          if [[ -n "$yml" && -f "$yml" ]]; then
-            upload+=( "$yml" )
-          fi
-          if [[ -n "$zip" && -f "$zip" ]]; then
-            upload+=( "$zip" )
-          fi
-          if [[ -n "$zip_yml" && -f "$zip_yml" ]]; then
+          upload=( "$exe" "$yml" "$zip" )
+          if [[ -f "$zip_yml" ]]; then
             upload+=( "$zip_yml" )
+          else
+            echo "Warning: zip-latest.yml missing (forge-cleanup should generate it when zip exists)."
           fi
-
+          echo "Publishing release $rid (app_version=${{ steps.preflight.outputs.app_version }})"
+          printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
             --title "$rid" \
-            --notes "Windows Forge build on GitHub Actions. Assets are Forge artifacts normalized with _forge suffix."
+            --notes "Windows Forge build on GitHub Actions (workflow run ${{ github.run_id }}). Same asset names as electron-builder; tag ends with _forge."
           release_url="https://github.com/${{ github.repository }}/releases/tag/$rid"
           echo "release_url=$release_url" >> "$GITHUB_OUTPUT"
 
@@ -230,7 +221,23 @@ jobs:
           export ASSET_URL="$asset_url"
           payload="$(python3 -c "import json, os; print(json.dumps({'release_id': os.environ['RELEASE_ID'], 'published_at': os.environ['PUBLISHED_AT'], 'platform': 'windows', 'assets': [{'name': os.environ['EXE_NAME'], 'url': os.environ['ASSET_URL']}], 'github_release_url': os.environ['RELEASE_URL']}))")"
           if [[ -n "${WEBHOOK_TOKEN:-}" ]]; then
-            curl -X POST -H "Content-Type: application/json" -H "Authorization: Bearer ${WEBHOOK_TOKEN}" -d "$payload" "$webhook_url"
+            curl --fail --show-error --silent \
+              -X POST "$webhook_url" \
+              -H "Content-Type: application/json" \
+              -H "x-release-token: $WEBHOOK_TOKEN" \
+              --data "$payload"
           else
-            curl -X POST -H "Content-Type: application/json" -d "$payload" "$webhook_url"
+            curl --fail --show-error --silent \
+              -X POST "$webhook_url" \
+              -H "Content-Type: application/json" \
+              --data "$payload"
+          fi
+
+      - name: Summary
+        working-directory: ${{ github.workspace }}
+        run: |
+          if [[ "${{ steps.exists.outputs.exists }}" == "true" ]]; then
+            echo "Skipped: release already exists for ${{ steps.artifact.outputs.release_id }}."
+          else
+            echo "Published ${{ steps.artifact.outputs.release_id }} (${{ steps.artifact.outputs.exe_path }})"
           fi

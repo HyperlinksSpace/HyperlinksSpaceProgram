@@ -13,6 +13,9 @@
   "engines": {
     "node": ">=18 <=22"
   },
+  "config": {
+    "forge": "./windows/forge/forge.config.js"
+  },
   "scripts": {
     "prestart": "npm run db:migrate",
     "build": "expo export -p web",
@@ -32,13 +35,13 @@
     "set-webhook": "npx tsx scripts/set-webhook.ts",
     "db:migrate": "npx tsx scripts/migrate-db.ts",
     "build:win": "node windows/build-with-progress.cjs",
-    "build:win:raw": "npm run build && electron-builder --win --publish never && node windows/cleanup.cjs",
+    "build:win:raw": "npm run build && node windows/run-win-electron-builder.cjs",
     "pack:win": "node windows/build-with-progress.cjs --pack",
-    "pack:win:raw": "electron-builder --win --publish never && node windows/cleanup.cjs",
+    "pack:win:raw": "node windows/run-win-electron-builder.cjs",
     "build:win:dir": "npm run build && electron-builder --win --publish never --config.win.target=dir",
     "build:win:verbose": "node windows/build-with-progress.cjs --verbose",
-    "make:win:forge": "npm run build && node forge/make-with-stamp.cjs",
-    "make:win:forge:verbose": "npm run build && node forge/make-with-stamp.cjs --verbose",
+    "make:win:forge": "npm run build && node windows/forge/make-with-stamp.cjs",
+    "make:win:forge:verbose": "npm run build && node windows/forge/make-with-stamp.cjs --verbose",
     "version:bump": "npm version patch --no-git-tag-version",
     "version:bump-minor": "npm version minor --no-git-tag-version",
     "version:bump-major": "npm version major --no-git-tag-version"
@@ -86,7 +89,7 @@
       "include": "installer-hooks.nsi",
       "guid": "5e1f4a8d-9c64-4e6a-a7d1-2a2fd2f01b0f",
       "oneClick": false,
-      "runAfterFinish": false,
+      "runAfterFinish": true,
       "perMachine": false,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": false

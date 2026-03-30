@@ -12,7 +12,7 @@ This document defines the production plan for release detection, deduped GitHub 
 ## Source of Truth
 
 - The **GitHub Release tag** is the release identity (`release_id`), for example `build_03252026_1929`.
-- Locally and in CI, `windows/cleanup.cjs` places the installer under `app/releases/build_MMDDYYYY_HHMM/HyperlinksSpaceAppInstaller.exe`. In CI, set `RELEASE_BUILD_ID` to pin the folder/tag, or omit it to use the timestamp from build time.
+- Locally and in CI, `windows/cleanup.cjs` places the installer under `app/releases/builder/build_MMDDYYYY_HHMM/HyperlinksSpaceAppInstaller_<stamp>.exe` (other files under `dev/`). In CI, set `RELEASE_BUILD_ID` to pin the folder/tag, or omit it to use the timestamp from build time.
 
 ## When You Must Make a New Installer Release
 
@@ -61,7 +61,7 @@ on:
 ## Dedupe Rules (No Duplicate Releases)
 
 1. Run `npm run build:win` (optionally with `RELEASE_BUILD_ID` so the output folder matches the intended tag).
-2. Resolve `release_id` from the workflow input or from `releases/build_*/HyperlinksSpaceAppInstaller.exe`.
+2. Resolve `release_id` from the workflow input or from `releases/builder/build_*/HyperlinksSpaceAppInstaller_*.exe`.
 3. Check whether GitHub Release/tag already exists for that `release_id`.
 4. If it exists:
    - Exit successfully (`0`)
@@ -180,7 +180,7 @@ Client behavior:
 
 ## Acceptance Criteria
 
-- A new `app/releases/build_.../` folder produces exactly one GitHub Release.
+- A new `app/releases/builder/build_.../` folder produces exactly one GitHub Release.
 - Re-running workflow for the same `release_id` does not create duplicates.
 - Webhook is called only for newly created releases.
 - `POST /api/releases` rejects unauthorized requests.

@@ -2,7 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appDir = path.resolve(__dirname, "..");
+// This file lives at app/windows/forge/ — app root is two levels up.
+const appDir = path.resolve(__dirname, "..", "..");
 
 const ICON_PATH = path.join(appDir, "assets", "icon.ico");
 // `@electron/packager` expects `main` relative to `packagerConfig.dir`.
@@ -77,7 +78,7 @@ export default {
   },
   packagerConfig: {
     dir: appDir,
-    name: "Hyperlinks Space App",
+    name: "Hyperlinks Space Program",
     appBundleId: "com.sraibaby.app",
     icon: ICON_PATH,
     // electron-packager reads this as the main process entry.
@@ -94,8 +95,8 @@ export default {
       name: "@felixrieseberg/electron-forge-maker-nsis",
       platforms: ["win32"],
       config: {
-        // No custom NSIS scripting here yet; this intentionally starts with a
-        // working stock NSIS installer so you can validate the Forge pipeline.
+        // Launch app after install completes (same behavior as electron-builder).
+        runAfterFinish: true,
       },
     },
     {
@@ -105,4 +106,3 @@ export default {
     },
   ],
 };
-

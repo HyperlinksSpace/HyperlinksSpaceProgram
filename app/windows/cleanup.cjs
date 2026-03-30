@@ -1,11 +1,21 @@
+/**
+ * Final layout under releases/builder/<build_id>/:
+ *   HyperlinksSpaceAppInstaller_<stamp>.exe   (root — only distributable at top level)
+ *   dev/                                      (all other build artifacts)
+ * Staging (eb-output or releases/artifacts) is removed after this script runs.
+ */
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { RELEASE_BUILD_DEV_DIRNAME } = require("./build-layout.cjs");
 
 const appDir = path.join(__dirname, "..");
 const releasesDir = path.join(appDir, "releases");
 const legacyReleaseDir = path.join(appDir, "release");
-const artifactsDir = path.join(releasesDir, "artifacts");
+/** Per-build electron-builder staging (set by run-win-electron-builder / build-with-progress); else legacy global. */
+const artifactsDir = process.env.HSP_EB_OUTPUT?.trim()
+  ? path.resolve(appDir, process.env.HSP_EB_OUTPUT.trim())
+  : path.join(releasesDir, "artifacts");
 
 // build_MMDDYYYY_HHMM — optional override for CI (must match build_* pattern)
 const now = new Date();
@@ -22,8 +32,9 @@ const defaultBuildName =
 const buildName =
   envBuildId && /^build_\d{8}_\d{4}$/.test(envBuildId) ? envBuildId : defaultBuildName;
 
-const buildDir = path.join(releasesDir, buildName);
-const devDir = path.join(buildDir, "dev");
+// releases/builder/build_MMDDYYYY_HHMM — installer only at root; everything else under dev/
+const buildDir = path.join(releasesDir, "builder", buildName);
+const devDir = path.join(buildDir, RELEASE_BUILD_DEV_DIRNAME);
 
 /** Required for electron-updater (GitHub) — must be uploaded next to the installer on each release. */
 const latestYmlName = "latest.yml";
@@ -76,24 +87,48 @@ function moveIfExists(src, dest) {
   }
 }
 
+/** Anything electron-builder left behind (zip blockmaps, nsis temps, etc.) → dev/ */
+function moveRemainingStagingToDev() {
+  if (!fs.existsSync(artifactsDir)) return;
+  let names;
+  try {
+    names = fs.readdirSync(artifactsDir);
+  } catch (_) {
+    return;
+  }
+  for (const name of names) {
+    const src = path.join(artifactsDir, name);
+    const dest = path.join(devDir, name);
+    if (!fs.existsSync(src)) continue;
+    try {
+      if (fs.existsSync(dest)) {
+        fs.rmSync(dest, { recursive: true, force: true });
+      }
+    } catch (e) {
+      console.warn("Could not clear dev target", dest, e?.message || e);
+      continue;
+    }
+    moveIfExists(src, dest);
+  }
+}
+
 const exeName = pickInstallerName();
 if (!exeName) {
-  console.warn("No installer found in releases/artifacts/. Run electron-builder first.");
+  console.warn(`No installer in ${path.relative(appDir, artifactsDir)}/. Run electron-builder first.`);
   process.exit(1);
 }
 const exeSrc = path.join(artifactsDir, exeName);
 
-// Create releases/build_MMDDYYYY_HHMM and dev folder
 fs.mkdirSync(devDir, { recursive: true });
 
-// Move installer to build folder root
+// Installer at build folder root only
 const exeDest = path.join(buildDir, exeName);
 moveIfExists(exeSrc, exeDest);
 
 const latestSrc = path.join(artifactsDir, latestYmlName);
-const latestDest = path.join(buildDir, latestYmlName);
+const latestDest = path.join(devDir, latestYmlName);
 if (!moveIfExists(latestSrc, latestDest)) {
-  console.warn("No latest.yml in releases/artifacts/ — generating one for electron-updater.");
+  console.warn(`No latest.yml in ${path.relative(appDir, artifactsDir)}/ — generating one for electron-updater.`);
 }
 
 /** NSIS update metadata; electron-builder sometimes omits this unless publishing. */
@@ -123,8 +158,8 @@ if (fs.existsSync(exeDest) && !fs.existsSync(latestDest)) {
 }
 
 const zipName = pickZipName();
-const zipDest = zipName ? path.join(buildDir, zipName) : null;
-const zipLatestDest = path.join(buildDir, zipLatestYmlName);
+const zipDest = zipName ? path.join(devDir, zipName) : null;
+const zipLatestDest = path.join(devDir, zipLatestYmlName);
 if (zipName) {
   moveIfExists(path.join(artifactsDir, zipName), zipDest);
 }
@@ -141,7 +176,9 @@ for (const name of devArtifacts) {
 const blockmapName = `${exeName}.blockmap`;
 moveIfExists(path.join(artifactsDir, blockmapName), path.join(devDir, blockmapName));
 
-// Remove electron-builder staging artifacts so only `releases/` remains.
+moveRemainingStagingToDev();
+
+// Remove electron-builder staging (eb-output or legacy releases/artifacts).
 try {
   if (fs.existsSync(legacyReleaseDir)) {
     fs.rmSync(legacyReleaseDir, { recursive: true, force: true });
@@ -149,8 +186,9 @@ try {
   }
   if (fs.existsSync(artifactsDir)) {
     fs.rmSync(artifactsDir, { recursive: true, force: true });
-    console.log("Removed releases/artifacts/");
+    const label = process.env.HSP_EB_OUTPUT?.trim() ? "eb-output" : "releases/artifacts";
+    console.log(`Removed ${label}/`);
   }
 } catch (_) {}
 
-console.log("Output:", path.join(releasesDir, buildName));
+console.log("Output:", path.join("releases", "builder", buildName));
