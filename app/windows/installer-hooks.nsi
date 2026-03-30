@@ -85,9 +85,25 @@ FunctionEnd
   !insertmacro HspAppendUpdaterLog "${MSG}"
 !macroend
 
+; Append one line to the temp log; message body must be in $R8 (timestamp added here). Used when the text includes runtime $variables.
+Function HspAppendUpdaterLogVar
+  Call HspEnsureUpdaterLogPath
+  ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
+  StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
+  FileOpen $HspLogHandle "$HspLogFile" a
+  FileWrite $HspLogHandle $R7
+  FileWrite $HspLogHandle $R8
+  FileWrite $HspLogHandle "$\r$\n"
+  FileClose $HspLogHandle
+FunctionEnd
+
 Var HspFinishLogEdit
 
-; Load %TEMP%\HyperlinksSpaceUpdater.log into $R8 (size-capped for NSIS string limits).
+; Load %TEMP%\HyperlinksSpaceUpdater.log into $R8. Show the *tail* (last HSP_LOG_TAIL_LINES lines) if the file is long;
+; cap total size near NSIS string limits (~8k TCHAR) for SetWindowText on the finish page.
+!define HSP_LOG_TAIL_LINES 1200
+!define HSP_LOG_MAX_CHARS 7800
+
 Function HspFinishPageReadLog
   Call HspEnsureUpdaterLogPath
   IfFileExists "$HspLogFile" hspFinishLogExists hspFinishLogMissing
@@ -95,22 +111,55 @@ hspFinishLogMissing:
   StrCpy $R8 "No installation log file was found.$\r$\n"
   Return
 hspFinishLogExists:
-  StrCpy $R8 ""
-  StrCpy $R3 "0"
+  ; Pass 1: count lines (for tail selection).
+  StrCpy $R3 0
   FileOpen $R0 "$HspLogFile" r
-  FileRead $R0 $1
-  IfErrors hspFinishLogClose
-hspFinishLogLoop:
-  IntCmp $R3 400 hspFinishLogTrunc 0 0
-  StrLen $2 $R8
-  IntCmp $2 6800 hspFinishLogTrunc 0 0
-  StrCpy $R8 "$R8$1$\r$\n"
-  IntOp $R3 $R3 + 1
-  FileRead $R0 $1
-  IfErrors hspFinishLogClose hspFinishLogLoop
-hspFinishLogTrunc:
-  StrCpy $R8 "$R8$\r$\n... (truncated)"
-hspFinishLogClose:
+  hspFinishCountLoop:
+    FileRead $R0 $1
+    IfErrors hspFinishCountDone
+    IntOp $R3 $R3 + 1
+    Goto hspFinishCountLoop
+  hspFinishCountDone:
+  FileClose $R0
+
+  ; If line count > HSP_LOG_TAIL_LINES, skip leading lines so the finish page shows the *latest* entries.
+  IntCmp $R3 ${HSP_LOG_TAIL_LINES} hspFinishEq hspFinishLt hspFinishGt
+  hspFinishLt:
+    StrCpy $R2 0
+    StrCpy $R5 0
+    Goto hspFinishBuild
+  hspFinishEq:
+    StrCpy $R2 0
+    StrCpy $R5 0
+    Goto hspFinishBuild
+  hspFinishGt:
+    IntOp $R2 $R3 - ${HSP_LOG_TAIL_LINES}
+    StrCpy $R5 $R2
+
+  hspFinishBuild:
+  StrCpy $R8 ""
+  IntCmp $R5 0 hspFinishSkipPrefix
+  StrCpy $R8 "... ($R5 earlier lines not shown)$\r$\n"
+  hspFinishSkipPrefix:
+  FileOpen $R0 "$HspLogFile" r
+  hspFinishLineLoop:
+    FileRead $R0 $1
+    IfErrors hspFinishReadDone
+    IntCmp $R2 0 hspFinishAppendLine
+    IntOp $R2 $R2 - 1
+    Goto hspFinishLineLoop
+  hspFinishAppendLine:
+    StrLen $4 $R8
+    StrLen $6 $1
+    IntOp $7 $4 + $6
+    IntOp $7 $7 + 2
+    IntCmp $7 ${HSP_LOG_MAX_CHARS} hspFinishDoAppend hspFinishDoAppend hspFinishCharCap
+  hspFinishDoAppend:
+    StrCpy $R8 "$R8$1$\r$\n"
+    Goto hspFinishLineLoop
+  hspFinishCharCap:
+    StrCpy $R8 "$R8$\r$\n... (truncated to ${HSP_LOG_MAX_CHARS} chars for display)"
+  hspFinishReadDone:
   FileClose $R0
   Return
 FunctionEnd
