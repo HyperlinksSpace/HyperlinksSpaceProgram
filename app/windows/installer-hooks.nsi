@@ -48,6 +48,7 @@ Function HspInstFilesShow
 FunctionEnd
 
 Var HspLogFile
+Var HspLogHandle
 Function HspEnsureUpdaterLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
 hspSetLogPath:
@@ -55,18 +56,32 @@ hspSetLogPath:
 hspLogPathDone:
 FunctionEnd
 
+; Append in three writes: avoids one huge FileWrite string mixing $R0-$R6, colons, and runtime $VAR\path
+; (NSIS recommends ${INSTDIR}\file when a path follows a variable; mixed literals have misparsed before).
 !macro HspAppendUpdaterLog TEXT
   Call HspEnsureUpdaterLogPath
   ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
   ; FileFunc GetTime (local): $R0=day $R1=month $R2=year $R3=weekday name (unused) $R4:$R5:$R6=time
-  FileOpen $R9 "$HspLogFile" a
-  FileWrite $R9 "[$R2-$R1-$R0 $R4:$R5:$R6] ${TEXT}$\r$\n"
-  FileClose $R9
+  StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
+  FileOpen $HspLogHandle "$HspLogFile" a
+  FileWrite $HspLogHandle $R7
+  FileWrite $HspLogHandle "${TEXT}"
+  FileWrite $HspLogHandle "$\r$\n"
+  FileClose $HspLogHandle
+!macroend
+
+; Re-assert list mode + mirror to HyperlinksSpaceUpdater.log (debug when MUI listbox stays empty).
+!macro HspInstallDetailPrint MSG
+  SetDetailsPrint listonly
+  SetDetailsView show
+  DetailPrint "${MSG}"
+  !insertmacro HspAppendUpdaterLog "${MSG}"
 !macroend
 !endif
 
 !ifdef BUILD_UNINSTALLER
 Var un.HspLogFile
+Var un.HspLogHandle
 Function un.HspEnsureUpdaterLogPath
   StrCmp $un.HspLogFile "" hspUnSetLogPath hspUnLogPathDone
 hspUnSetLogPath:
@@ -77,9 +92,12 @@ FunctionEnd
 !macro HspAppendUpdaterLog TEXT
   Call un.HspEnsureUpdaterLogPath
   ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
-  FileOpen $R9 "$un.HspLogFile" a
-  FileWrite $R9 "[$R2-$R1-$R0 $R4:$R5:$R6] ${TEXT}$\r$\n"
-  FileClose $R9
+  StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
+  FileOpen $un.HspLogHandle "$un.HspLogFile" a
+  FileWrite $un.HspLogHandle $R7
+  FileWrite $un.HspLogHandle "${TEXT}"
+  FileWrite $un.HspLogHandle "$\r$\n"
+  FileClose $un.HspLogHandle
 !macroend
 !endif
 

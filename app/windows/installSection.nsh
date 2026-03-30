@@ -1,6 +1,6 @@
 ; Fork of app-builder-lib/templates/nsis/installSection.nsh (electron-builder).
-; Only change: show installation details (SetDetailsPrint both) instead of none, plus
-; versioned install layout under $INSTDIR\versions\<VERSION> and current junction.
+; Debug: if the Installing list stays empty, open %TEMP%\HyperlinksSpaceUpdater.log — HspInstallDetailPrint
+; mirrors each milestone there (proves NSIS ran the line even when the UI list does not repaint).
 ;
 ; Source lives here (not app/build/). package.json sets directories.buildResources to
 ; "windows" so NSIS resolves this file before templates/nsis/installSection.nsh.
@@ -13,11 +13,8 @@ InitPluginsDir
 
 ; Do not wrap DetailPrint in ${IfNot} ${Silent}: on some builds ${Silent} evaluates in a way that
 ; skips all section DetailPrint lines while the InstFiles SHOW hook still runs (only one line visible).
-; listonly: send DetailPrint into the white list (MUI2 often leaves the list empty with "both" alone).
-SetDetailsPrint listonly
-SetDetailsView show
 ; 7-Zip extraction does not stream filenames into the NSIS list (unlike File commands).
-DetailPrint "Step 1/10 - Preparing ${PRODUCT_NAME} ${VERSION}..."
+!insertmacro HspInstallDetailPrint "Step 1/10 - Preparing ${PRODUCT_NAME} ${VERSION}..."
 
 ; Installed layout: $INSTDIR\versions\<VERSION>\* and $INSTDIR\current → junction to that folder.
 ; For upgrade checks, prefer an existing versioned or legacy flat exe.
@@ -32,7 +29,7 @@ ${EndIf}
 # must be called before uninstallOldVersion
 !insertmacro setLinkVars
 
-DetailPrint "Step 2/10 - Checking that ${PRODUCT_NAME} is not running..."
+!insertmacro HspInstallDetailPrint "Step 2/10 - Checking that ${PRODUCT_NAME} is not running..."
 
 !ifdef ONE_CLICK
   !ifdef HEADER_ICO
@@ -72,7 +69,7 @@ ${if} $isTryToKeepShortcuts == "true"
   ${endIf}
 ${EndIf}
 
-DetailPrint "Step 3/10 - Checking for a previous installation and uninstalling the old build if needed..."
+!insertmacro HspInstallDetailPrint "Step 3/10 - Checking for a previous installation and uninstalling the old build if needed..."
 !insertmacro uninstallOldVersion SHELL_CONTEXT
 !insertmacro handleUninstallResult SHELL_CONTEXT
 
@@ -81,7 +78,7 @@ ${if} $installMode == "all"
   !insertmacro handleUninstallResult HKEY_CURRENT_USER
 ${endIf}
 
-DetailPrint "Step 4/10 - Creating versioned install folder versions\${VERSION}..."
+!insertmacro HspInstallDetailPrint "Step 4/10 - Creating versioned install folder versions\${VERSION}..."
 CreateDirectory "$INSTDIR\versions"
 SetOutPath "$INSTDIR\versions\${VERSION}"
 
@@ -89,27 +86,24 @@ SetOutPath "$INSTDIR\versions\${VERSION}"
   File /oname=uninstallerIcon.ico "${UNINSTALLER_ICON}"
 !endif
 
-DetailPrint "Step 5/10 - Extracting application package with 7-Zip (longest step; file names are not listed)..."
-; File extraction toggles status_update around compressed reads; keep listbox as the log target.
-SetDetailsPrint listonly
-SetDetailsView show
+!insertmacro HspInstallDetailPrint "Step 5/10 - Extracting application package with 7-Zip (longest step; file names are not listed)..."
 !insertmacro installApplicationFiles
-DetailPrint "Step 6/10 - Extraction finished."
-DetailPrint "Step 7/10 - Pointing 'current' at versions\${VERSION} (directory junction)..."
+!insertmacro HspInstallDetailPrint "Step 6/10 - Extraction finished."
+!insertmacro HspInstallDetailPrint "Step 7/10 - Pointing 'current' at versions\${VERSION} (directory junction)..."
 ; Directory junction so shortcuts and the updater always use …\current\<exe>
 IfFileExists "$INSTDIR\current" hspRemoveOldCurrent hspMklinkCurrent
 hspRemoveOldCurrent:
-  DetailPrint "  (removing existing junction or folder: $INSTDIR\current)"
+  !insertmacro HspInstallDetailPrint "  (removing existing junction or folder: ${INSTDIR}\current)"
   nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c rmdir "$INSTDIR\current"'
   Pop $R9
 hspMklinkCurrent:
-DetailPrint "  (creating junction: current -> versions\${VERSION})"
+!insertmacro HspInstallDetailPrint "  (creating junction: current -> versions\${VERSION})"
 nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c mklink /J "$INSTDIR\current" "$INSTDIR\versions\${VERSION}"'
 Pop $R9
 StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
-DetailPrint "Step 8/10 - Writing install location and Add/Remove Programs registry entries..."
+!insertmacro HspInstallDetailPrint "Step 8/10 - Writing install location and Add/Remove Programs registry entries..."
 !insertmacro registryAddInstallInfo
-DetailPrint "Step 9/10 - Creating Start Menu and desktop shortcuts..."
+!insertmacro HspInstallDetailPrint "Step 9/10 - Creating Start Menu and desktop shortcuts..."
 !insertmacro addStartMenuLink $keepShortcuts
 !insertmacro addDesktopLink $keepShortcuts
 
@@ -120,13 +114,12 @@ ${else}
 ${endIf}
 
 !ifmacrodef registerFileAssociations
-  DetailPrint "Registering file associations..."
+  !insertmacro HspInstallDetailPrint "Registering file associations..."
   !insertmacro registerFileAssociations
 !endif
 
 !ifmacrodef customInstall
-  DetailPrint "Step 10/10 - Running final install hooks..."
-  ; So customInstall's DetailPrint targets the listbox.
+  !insertmacro HspInstallDetailPrint "Step 10/10 - Running final install hooks..."
   SetDetailsPrint listonly
   SetDetailsView show
   !insertmacro customInstall
