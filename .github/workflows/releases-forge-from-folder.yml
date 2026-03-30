@@ -49,8 +49,12 @@ jobs:
           set -euo pipefail
           rm -rf "releases/forge/artifacts" "releases/forge/${{ steps.meta.outputs.release_id }}"
 
-      - name: Build Forge Windows artifacts
-        run: npm run make:win:forge
+          - name: Build Forge Windows artifacts
+        # Добавляем env здесь, чтобы Forge не пытался сам сделать Release на GitHub
+          env:
+            ELECTRON_PUBLISH: never
+          run: npm run make:win:forge
+  
 
       - name: Locate Forge artifacts deterministically and normalize names
         id: artifact
