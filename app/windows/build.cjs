@@ -925,8 +925,16 @@ function setupAutoUpdater() {
       const uiManual = Boolean(opts?.uiManual);
       const uiActive =
         uiManual || (updateDialogState.window && !updateDialogState.window.isDestroyed());
+      /** Tar heartbeat uses unpackLo+8 while extract-zip uses unpackLo+bump — without this the bar can drop (e.g. 88% → 84%). */
+      let prepareProgressCeiling = 0;
       const pushUi = (partial) => {
         if (!uiActive) return;
+        const raw = partial.percent;
+        const next =
+          typeof raw === "number" && !Number.isNaN(raw)
+            ? Math.max(prepareProgressCeiling, Math.round(raw))
+            : prepareProgressCeiling;
+        prepareProgressCeiling = next;
         updateDialogUi({
           showProgress: true,
           showActions: true,
@@ -934,6 +942,7 @@ function setupAutoUpdater() {
           percent: 0,
           text: "",
           ...partial,
+          percent: next,
         });
       };
       let versionsPrepareOk = false;

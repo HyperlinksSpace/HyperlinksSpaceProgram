@@ -118,10 +118,11 @@ Function HspFinishPageShow
   hspFinishReadLoop:
     FileRead $R0 $1
     IfErrors hspFinishFileDone
+    ; Move caret to end, then EM_REPLACESEL — lParam must be UTF-16 (use w r2, not t r2) or most inserts fail.
     System::Call "user32::SendMessageW(i r9, i 0x000E, i 0, i 0) i.r4"
     System::Call "user32::SendMessageW(i r9, i 0xB1, i r4, i r4)"
     StrCpy $2 "$1$\r$\n"
-    System::Call "user32::SendMessageW(i r9, i 0xC2, i 1, t r2)"
+    System::Call "user32::SendMessageW(i r9, i 0xC2, i 1, w r2)"
     Goto hspFinishReadLoop
   hspFinishFileDone:
   FileClose $R0
@@ -129,10 +130,12 @@ Function HspFinishPageShow
 FunctionEnd
 
 Function HspFinishPageLeave
-  StrCmp $HspFinishLogEdit "" +4
+  ; +3 skips only the three destroy lines when there is no edit handle.
+  StrCmp $HspFinishLogEdit "" +3
   StrCpy $0 $HspFinishLogEdit
   System::Call "user32::DestroyWindow(i r0)"
   StrCpy $HspFinishLogEdit ""
+  ; App is started from customInstall with SW_SHOWNOACTIVATE so it does not steal focus from this Finish page.
 FunctionEnd
 
 ; Replaces stock assistedInstaller.nsh finish block: optional Run + MUI_PAGE_FINISH with log viewer.
@@ -233,9 +236,9 @@ FunctionEnd
   DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall start"
   SetOverwrite on
-  ; Ensure the app is relaunched after install/update completes.
+  ; Start the app as soon as files are installed; SW_SHOWNOACTIVATE (4) avoids activating the app window so the Finish page + log stay usable.
   IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 +2
-  ExecShell "open" "$INSTDIR\${PRODUCT_FILENAME}.exe"
+  ExecShell "open" "$INSTDIR\${PRODUCT_FILENAME}.exe" "" 4
   DetailPrint "[installer] customInstall complete"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall complete"
 !macroend
