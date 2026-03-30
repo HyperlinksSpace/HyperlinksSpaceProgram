@@ -229,6 +229,11 @@ FunctionEnd
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
+; NSIS 3.0.x ExecShell only accepts SW_SHOW* names, not a numeric nShowCmd — use ShellExecuteW for SW_SHOWNOACTIVATE (4).
+Function HspShellOpenExeNoActivate
+  System::Call "shell32::ShellExecuteW(i 0, w \"open\", w \"$INSTDIR\${PRODUCT_FILENAME}.exe\", w \"\", w \"$INSTDIR\", i 4) i.r0"
+FunctionEnd
+
 !macro customInstall
   ; electron-builder calls this after other install steps; keep listbox output on for final hooks.
   SetDetailsPrint listonly
@@ -236,9 +241,10 @@ FunctionEnd
   DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall start"
   SetOverwrite on
-  ; Start the app as soon as files are installed; SW_SHOWNOACTIVATE (4) avoids activating the app window so the Finish page + log stay usable.
-  IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 +2
-  ExecShell "open" "$INSTDIR\${PRODUCT_FILENAME}.exe" "" 4
+  ; Start the app as soon as files are installed; nShowCmd 4 = SW_SHOWNOACTIVATE (avoid stealing focus from Finish page).
+  IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 hspCustomInstallSkipLaunch
+  Call HspShellOpenExeNoActivate
+  hspCustomInstallSkipLaunch:
   DetailPrint "[installer] customInstall complete"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall complete"
 !macroend
