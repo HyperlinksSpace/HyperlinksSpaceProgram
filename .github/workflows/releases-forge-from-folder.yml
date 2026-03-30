@@ -48,7 +48,7 @@ jobs:
           # Принудительно отключаем публикацию для electron-builder внутри Forge
           ELECTRON_PUBLISH: never
           # Дополнительная заглушка: передаем пустой конфиг публикаций в формате JSON
-          EP_PUBLISH_CONFIG: '{"provider":"none"}'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run make:win:forge
 
       - name: Locate Forge artifacts and normalize names
