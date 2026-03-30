@@ -32,9 +32,9 @@ CRCCheck off
 
 ; InstFiles log: (1) windows/common.nsh — ShowInstDetails show after stock common (compile-time).
 ; (2) Here — ShowInstDetails show again immediately before MUI_PAGE_INSTFILES (assistedInstaller.nsh).
-; (3) HspInstFilesShow — SetDetailsView show + SetDetailsPrint both on MUI InstFiles SHOW (runtime;
-;    MUI2 Pages/InstallFiles.nsh documents DetailPrint + visibility; exehead update_status_text skips the
-;    list if the details view state is wrong). Wiki LogText/LogSet = file logging (special NSIS build).
+; (3) HspInstFilesShow — on InstFiles SHOW: force listbox + listonly. NSIS SetDetailsPrint: listonly sends
+;    status/DetailPrint lines into the white list; textonly uses only the single-line status bar (often
+;    why "both" still leaves the list empty on MUI2). Wiki LogText/LogSet = file logging (special NSIS build).
 
 !ifndef BUILD_UNINSTALLER
 !macro customPageAfterChangeDir
@@ -44,7 +44,7 @@ CRCCheck off
 
 Function HspInstFilesShow
   SetDetailsView show
-  SetDetailsPrint both
+  SetDetailsPrint listonly
 FunctionEnd
 
 Var HspLogFile
@@ -124,8 +124,8 @@ FunctionEnd
 !macroend
 
 !macro customInstallMode
-  ; Stack Overflow / electron-builder: DetailPrint needs SetDetailsPrint both if something turned list output off.
-  SetDetailsPrint both
+  ; Prefer listonly so lines target the InstFiles listbox once that page exists.
+  SetDetailsPrint listonly
   SetDetailsView show
   DetailPrint "[installer] customInstallMode force current-user"
   !insertmacro HspAppendUpdaterLog "[installer] customInstallMode force current-user"
@@ -133,8 +133,8 @@ FunctionEnd
 !macroend
 
 !macro customInstall
-  ; electron-builder calls this after other install steps; Anders (NSIS): builder may leave SetDetailsPrint off.
-  SetDetailsPrint both
+  ; electron-builder calls this after other install steps; keep listbox output on for final hooks.
+  SetDetailsPrint listonly
   SetDetailsView show
   DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall start"
@@ -147,7 +147,7 @@ FunctionEnd
 !macroend
 
 !macro customUnInstall
-  SetDetailsPrint both
+  SetDetailsPrint listonly
   SetDetailsView show
   DetailPrint "[uninstaller] customUnInstall start"
   !insertmacro HspAppendUpdaterLog "[uninstaller] customUnInstall start"
