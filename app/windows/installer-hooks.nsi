@@ -12,6 +12,10 @@
 ; Window title only (no " Setup" suffix).
 ; Workaround for intermittent NSIS self-update/uninstall failures reported by
 ; multiple electron-builder users on some Windows machines.
+;
+; Installer lifetime (assisted / oneClick=false): the wizard stays open until the user closes it
+; (Finish on the last page, or Cancel). Do not Quit or HideWindow here when spawning the app early:
+; ShellExecuteW is asynchronous — the app and the installer run in parallel on purpose.
 CRCCheck off
 
 ; FileFunc.nsh before any macro that uses ${GetTime} (this include is merged ahead of installer.nsi).
@@ -139,6 +143,7 @@ Function HspFinishPageLeave
 FunctionEnd
 
 ; Replaces stock assistedInstaller.nsh finish block: optional Run + MUI_PAGE_FINISH with log viewer.
+; The user must still click Finish to exit — nothing in customInstall auto-closes the wizard.
 !macro customFinishPage
   !ifndef HIDE_RUN_AFTER_FINISH
     Function StartApp
@@ -236,12 +241,13 @@ FunctionEnd
 
 !macro customInstall
   ; electron-builder calls this after other install steps; keep listbox output on for final hooks.
+  ; Launching the app here does not end the installer: section completes, then MUI shows InstFiles → Finish.
   SetDetailsPrint listonly
   SetDetailsView show
   DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendUpdaterLog "[installer] customInstall start"
   SetOverwrite on
-  ; Start the app as soon as files are installed; nShowCmd 4 = SW_SHOWNOACTIVATE (avoid stealing focus from Finish page).
+  ; Start the app as soon as files are installed (parallel with the rest of the wizard). nShowCmd 4 = SW_SHOWNOACTIVATE.
   IfFileExists "$INSTDIR\${PRODUCT_FILENAME}.exe" 0 hspCustomInstallSkipLaunch
   Call HspShellOpenExeNoActivate
   hspCustomInstallSkipLaunch:

@@ -151,6 +151,7 @@ ${endIf}
   !endif
   !insertmacro quitSuccess
 !else
+  # Assisted installer: wizard stays open until the user clicks Finish (no quitSuccess here; only ONE_CLICK uses it).
   # for assisted installer run only if silent, because assisted installer has run after finish option
   ${if} ${isForceRun}
   ${andIf} ${Silent}
