@@ -44,14 +44,6 @@ FunctionEnd
 !macroend
 
 Function .onInstSuccess
-  IfFileExists "$INSTDIR\current\${PRODUCT_FILENAME}.exe" hspLaunchCurrent hspLaunchLegacy
-hspLaunchCurrent:
-  System::Call "shell32::ShellExecuteW(i 0, w \"open\", w \"$INSTDIR\current\${PRODUCT_FILENAME}.exe\", w \"\", w \"$INSTDIR\current\", i 1) i.r0"
-  Goto hspLaunchDone
-hspLaunchLegacy:
-  System::Call "shell32::ShellExecuteW(i 0, w \"open\", w \"$INSTDIR\${PRODUCT_FILENAME}.exe\", w \"\", w \"$INSTDIR\", i 1) i.r0"
-hspLaunchDone:
-  !insertmacro HspAppendInstallerLog "APP_LAUNCH_TRIGGERED"
   !insertmacro HspAppendInstallerLog "INSTALL_SUCCESS"
 FunctionEnd
 
@@ -149,6 +141,19 @@ FunctionEnd
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
+  !ifndef HIDE_RUN_AFTER_FINISH
+    Function StartApp
+      ${if} ${isUpdated}
+        StrCpy $1 "--updated"
+      ${else}
+        StrCpy $1 ""
+      ${endif}
+      ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
+    FunctionEnd
+    !define MUI_FINISHPAGE_RUN
+    !define MUI_FINISHPAGE_RUN_CHECKED
+    !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
+  !endif
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspFinishPageShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspFinishPageLeave
   !insertmacro MUI_PAGE_FINISH
