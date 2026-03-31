@@ -16,6 +16,7 @@
 Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
+Var HspDidLaunchApp
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -43,7 +44,7 @@ FunctionEnd
   !insertmacro HspAppendInstallerLog "${MSG}"
 !macroend
 
-Function .onInstSuccess
+Function HspLaunchInstalledApp
   IfFileExists "$INSTDIR\current\${PRODUCT_FILENAME}.exe" hspLaunchCurrent hspLaunchLegacy
 hspLaunchCurrent:
   System::Call "shell32::ShellExecuteW(i 0, w \"open\", w \"$INSTDIR\current\${PRODUCT_FILENAME}.exe\", w \"\", w \"$INSTDIR\current\", i 1) i.r0"
@@ -56,10 +57,12 @@ hspLaunchFallback:
   IntCmp $0 32 hspLaunchFailed hspLaunchFailed hspLaunchDone
 hspLaunchFailed:
   !insertmacro HspAppendInstallerLog "APP_LAUNCH_FAILED"
-  Goto hspLaunchAfterLog
+  Return
 hspLaunchDone:
   !insertmacro HspAppendInstallerLog "APP_LAUNCH_TRIGGERED"
-hspLaunchAfterLog:
+FunctionEnd
+
+Function .onInstSuccess
   !insertmacro HspAppendInstallerLog "INSTALL_SUCCESS"
 FunctionEnd
 
@@ -74,6 +77,11 @@ FunctionEnd
 
 Function HspFinishPageShow
   Call HspEnsureInstallerLogPath
+  ; Auto-launch app when Finish page appears, then keep installer open for log review.
+  StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
+  StrCpy $HspDidLaunchApp "1"
+  Call HspLaunchInstalledApp
+hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
   System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 128, i 128, i 360, i 220, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
   IntCmp $0 0 hspFinishShowDone
