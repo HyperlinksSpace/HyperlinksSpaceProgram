@@ -1,5 +1,5 @@
 /**
- * Runs electron-builder --win and shows a terminal progress bar during the 7z compression step.
+ * Runs electron-builder --win with stable pass-through logging.
  * Usage: node windows/build-with-progress.cjs [--pack] [--verbose]
  *   --pack     Skip "npm run build", run only electron-builder (pack:win style).
  *   --verbose  Add DEBUG=electron-builder.
@@ -16,41 +16,6 @@ const ebCli = require.resolve("electron-builder/cli.js");
 
 function relForConfig(p) {
   return path.relative(appDir, p).split(path.sep).join("/");
-}
-
-// 7z step: electron-builder runs 7za with -bd (no progress output), so we estimate by time.
-const ESTIMATED_7Z_SECONDS = 100;
-const PROGRESS_BAR_WIDTH = 24;
-const canAnimateProgress = process.stdout.isTTY && !isVerbose;
-
-let progressInterval = null;
-let progressStartTime = null;
-
-function startProgressBar() {
-  if (!canAnimateProgress) return;
-  if (progressStartTime !== null) return;
-  progressStartTime = Date.now();
-  progressInterval = setInterval(() => {
-    const elapsed = (Date.now() - progressStartTime) / 1000;
-    const pct = Math.min(95, Math.floor((elapsed / ESTIMATED_7Z_SECONDS) * 95));
-    const filled = Math.round((pct / 100) * PROGRESS_BAR_WIDTH);
-    const bar = "█".repeat(filled) + "░".repeat(PROGRESS_BAR_WIDTH - filled);
-    process.stdout.write(`\r  Compressing installer  ${String(pct).padStart(3)}% [${bar}]  `);
-  }, 500);
-}
-
-function stopProgressBar(finalPct = 100) {
-  if (!canAnimateProgress) return;
-  if (progressInterval) {
-    clearInterval(progressInterval);
-    progressInterval = null;
-  }
-  if (progressStartTime !== null) {
-    progressStartTime = null;
-    const filled = Math.round((finalPct / 100) * PROGRESS_BAR_WIDTH);
-    const bar = "█".repeat(filled) + "░".repeat(PROGRESS_BAR_WIDTH - filled);
-    process.stdout.write(`\r  Compressing installer  ${String(finalPct).padStart(3)}% [${bar}]  \n`);
-  }
 }
 
 function run(command, args, opts = {}) {
@@ -75,20 +40,16 @@ function run(command, args, opts = {}) {
     child.stdout.on("data", (chunk) => {
       const s = chunk.toString();
       process.stdout.write(s);
-      if (/7za\.exe|executing.*7z|\.nsis\.7z/.test(s)) startProgressBar();
     });
     child.stderr.on("data", (chunk) => {
       const s = chunk.toString();
       process.stderr.write(s);
-      if (/7za\.exe|executing.*7z|\.nsis\.7z/.test(s)) startProgressBar();
     });
     child.on("close", (code, signal) => {
-      stopProgressBar();
       if (code !== 0) reject(new Error(`Exit ${code}`));
       else resolve();
     });
     child.on("error", (err) => {
-      stopProgressBar();
       reject(err);
     });
   });
@@ -122,7 +83,6 @@ function run(command, args, opts = {}) {
     console.log("\nRunning: windows/cleanup.cjs\n");
     await run("node", [path.join(__dirname, "cleanup.cjs")], { env: ebEnv });
   } catch (e) {
-    stopProgressBar();
     process.exit(1);
   }
 })();

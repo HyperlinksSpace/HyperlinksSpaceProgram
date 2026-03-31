@@ -1,14 +1,13 @@
 ; Vendored from app-builder-lib templates/nsis/common.nsh (sync when upgrading electron-builder).
-; Only intentional delta vs stock: ShowInstDetails / ShowUninstDetails use "show" instead of "nevershow"
-; so the InstFiles ListView is compiled with CH_FLAGS_DETAILS_SHOWDETAILS (see NSIS exehead Ui.c).
+; Keep stock defaults to avoid installer UI reflow from forced details mode.
 
 !include x64.nsh
 !include WinVer.nsh
 
 BrandingText "${PRODUCT_NAME} ${VERSION}"
-ShowInstDetails show
+ShowInstDetails nevershow
 !ifdef BUILD_UNINSTALLER
-  ShowUninstDetails show
+  ShowUninstDetails nevershow
 !endif
 FileBufSize 64
 

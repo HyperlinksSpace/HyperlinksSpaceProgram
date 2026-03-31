@@ -35,28 +35,23 @@ CRCCheck off
 ; the running app/updater never truncates it — they may reuse %TEMP%\HyperlinksSpaceUpdater.log for updater UX.
 ; Uninstaller prebuild (BUILD_UNINSTALLER): separate un.* path below; no NSIS LogSet in stock electron-builder.
 
-; InstFiles log: (1) windows/common.nsh — ShowInstDetails show after stock common (compile-time).
-; (2) Here — ShowInstDetails show again immediately before MUI_PAGE_INSTFILES (assistedInstaller.nsh).
-; (3) HspInstFilesShow — on InstFiles SHOW: force listbox + listonly. NSIS SetDetailsPrint: listonly sends
-;    status/DetailPrint lines into the white list; textonly uses only the single-line status bar (often
-;    why "both" still leaves the list empty on MUI2). Wiki LogText/LogSet = file logging (special NSIS build).
+; InstFiles logging is file-first: write deterministic markers/messages to %TEMP%\HyperlinksSpaceInstall.log.
+; Avoid forcing NSIS details view/print mode to keep wizard UI stable across builder + Forge runs.
 
 !ifndef BUILD_UNINSTALLER
 !macro customPageAfterChangeDir
-  ShowInstDetails show
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesNoUiToggles
 !macroend
 
-Function HspInstFilesShow
-  SetDetailsView show
-  SetDetailsPrint listonly
+Function HspInstFilesNoUiToggles
 FunctionEnd
 
-; After all sections finish, NSIS often collapses the InstFiles list (text-only status). Re-open the list
-; so the install log stays readable until the user clicks Next to the finish page.
 Function .onInstSuccess
-  SetDetailsView show
-  SetDetailsPrint listonly
+  !insertmacro HspAppendInstallerMirrorLog "INSTALL_SUCCESS"
+FunctionEnd
+
+Function .onInstFailed
+  !insertmacro HspAppendInstallerMirrorLog "INSTALL_FAILED"
 FunctionEnd
 
 Var HspLogFile
@@ -84,9 +79,6 @@ FunctionEnd
 
 ; Re-assert list mode + mirror to %TEMP%\HyperlinksSpaceInstall.log (debug when MUI listbox stays empty).
 !macro HspInstallDetailPrint MSG
-  SetDetailsPrint both
-  SetDetailsView show
-  DetailPrint "${MSG}"
   !insertmacro HspAppendInstallerMirrorLog "${MSG}"
 !macroend
 
@@ -193,11 +185,6 @@ FunctionEnd
 
 !macro customHeader
   Caption "${PRODUCT_NAME}"
-  ; Belt-and-suspenders if an older common.nsh without the shadow is ever used.
-  ShowInstDetails show
-  !ifdef BUILD_UNINSTALLER
-    ShowUninstDetails show
-  !endif
 !macroend
 
 ; Override process check to use quoted SYSTEMROOT-based tool paths.
@@ -215,7 +202,6 @@ FunctionEnd
 ; DetailPrint in .onInit runs before the InstFiles page exists (insthwnd not set) — lines do not appear
 ; in the Installing list; use HspAppendInstallerMirrorLog or MessageBox for debug there if needed.
 !macro customInit
-  DetailPrint "[installer] customInit start"
   !insertmacro HspAppendInstallerMirrorLog "[installer] customInit start"
   SetRegView 64
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
@@ -227,15 +213,10 @@ FunctionEnd
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
-  DetailPrint "[installer] customInit complete"
   !insertmacro HspAppendInstallerMirrorLog "[installer] customInit complete"
 !macroend
 
 !macro customInstallMode
-  ; Prefer listonly so lines target the InstFiles listbox once that page exists.
-  SetDetailsPrint listonly
-  SetDetailsView show
-  DetailPrint "[installer] customInstallMode force current-user"
   !insertmacro HspAppendInstallerMirrorLog "[installer] customInstallMode force current-user"
   StrCpy $isForceCurrentInstall "1"
 !macroend
@@ -244,22 +225,13 @@ FunctionEnd
   ; electron-builder calls this after other install steps; keep listbox output on for final hooks.
   ; Do not launch app here: we launch from Finish page run option (checked by default) to avoid
   ; duplicate launches and keep installer page transitions/progress behavior stable.
-  SetDetailsPrint both
-  SetDetailsView show
-  DetailPrint "[installer] customInstall start"
   !insertmacro HspAppendInstallerMirrorLog "[installer] customInstall start"
   SetOverwrite on
-  DetailPrint "Waiting for Finish page to launch the app..."
   !insertmacro HspAppendInstallerMirrorLog "Waiting for Finish page to launch the app..."
-  DetailPrint "[installer] customInstall complete"
   !insertmacro HspAppendInstallerMirrorLog "[installer] customInstall complete"
 !macroend
 
 !macro customUnInstall
-  SetDetailsPrint listonly
-  SetDetailsView show
-  DetailPrint "[uninstaller] customUnInstall start"
   !insertmacro HspAppendInstallerMirrorLog "[uninstaller] customUnInstall start"
-  DetailPrint "[uninstaller] customUnInstall complete"
   !insertmacro HspAppendInstallerMirrorLog "[uninstaller] customUnInstall complete"
 !macroend
