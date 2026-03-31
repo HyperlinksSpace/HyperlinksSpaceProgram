@@ -96,14 +96,10 @@ hspRemoveOldCurrent:
   !insertmacro HspInstallDetailPrint "  (removing existing junction or folder: ${INSTDIR}\current)"
   nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c rmdir "$INSTDIR\current"'
   Pop $R9
-  StrCpy $R8 "  (rmdir exit code: $R9)"
-  Call HspAppendInstallerMirrorLogVar
 hspMklinkCurrent:
 !insertmacro HspInstallDetailPrint "  (creating junction: current -> versions\${VERSION})"
 nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c mklink /J "$INSTDIR\current" "$INSTDIR\versions\${VERSION}"'
 Pop $R9
-StrCpy $R8 "  (mklink exit code: $R9)"
-Call HspAppendInstallerMirrorLogVar
 StrCpy $appExe "$INSTDIR\current\${APP_EXECUTABLE_FILENAME}"
 !insertmacro HspInstallDetailPrint "Step 8/10 - Writing install location and Add/Remove Programs registry entries..."
 !insertmacro registryAddInstallInfo

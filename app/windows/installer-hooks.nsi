@@ -82,18 +82,6 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerMirrorLog "INSTALL_FAILED"
 FunctionEnd
 
-; Append one line to the install mirror log; message body must be in $R8 (timestamp added here).
-Function HspAppendInstallerMirrorLogVar
-  Call HspEnsureInstallerMirrorLogPath
-  ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
-  StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
-  FileOpen $HspLogHandle "$HspLogFile" a
-  FileWrite $HspLogHandle $R7
-  FileWrite $HspLogHandle $R8
-  FileWrite $HspLogHandle "$\r$\n"
-  FileClose $HspLogHandle
-FunctionEnd
-
 Var HspFinishLogEdit
 
 ; Child EDIT on the MUI finish page: stream the log file in with EM_REPLACESEL so the full file is shown (not limited by NSIS StrCpy size).
