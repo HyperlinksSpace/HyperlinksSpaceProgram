@@ -45,6 +45,13 @@ FunctionEnd
 !macroend
 
 Function .onInstSuccess
+  ; Primary launch trigger for all installer modes (including one-click/silent paths).
+  ; Use one-shot guard so Finish-page fallback does not launch twice.
+  StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
+  StrCpy $HspDidLaunchApp "1"
+  Sleep 500
+  Call HspLaunchInstalledApp
+hspInstSuccessAfterLaunch:
   !insertmacro HspAppendInstallerLog "INSTALL_SUCCESS"
 FunctionEnd
 
