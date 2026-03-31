@@ -46,14 +46,6 @@ CRCCheck off
 Function HspInstFilesNoUiToggles
 FunctionEnd
 
-Function .onInstSuccess
-  !insertmacro HspAppendInstallerMirrorLog "INSTALL_SUCCESS"
-FunctionEnd
-
-Function .onInstFailed
-  !insertmacro HspAppendInstallerMirrorLog "INSTALL_FAILED"
-FunctionEnd
-
 Var HspLogFile
 Var HspLogHandle
 Function HspEnsureInstallerMirrorLogPath
@@ -81,6 +73,14 @@ FunctionEnd
 !macro HspInstallDetailPrint MSG
   !insertmacro HspAppendInstallerMirrorLog "${MSG}"
 !macroend
+
+Function .onInstSuccess
+  !insertmacro HspAppendInstallerMirrorLog "INSTALL_SUCCESS"
+FunctionEnd
+
+Function .onInstFailed
+  !insertmacro HspAppendInstallerMirrorLog "INSTALL_FAILED"
+FunctionEnd
 
 ; Append one line to the install mirror log; message body must be in $R8 (timestamp added here).
 Function HspAppendInstallerMirrorLogVar
