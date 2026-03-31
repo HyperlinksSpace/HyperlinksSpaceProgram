@@ -126,7 +126,7 @@ ${endIf}
 
 !ifmacrodef customInstall
   !insertmacro HspInstallDetailPrint "Step 10/10 - Running final install hooks..."
-  SetDetailsPrint listonly
+  SetDetailsPrint both
   SetDetailsView show
   !insertmacro customInstall
 !endif
