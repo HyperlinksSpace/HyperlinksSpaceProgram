@@ -1,18 +1,19 @@
 ; Minimal NSIS overrides:
-; - force current-user install mode (hide all-users path in practice)
-; - auto-terminate running app process before stock check to avoid false "cannot be closed" loop
+; - force current-user install mode
+; - terminate/check only current user's app process to avoid false "cannot be closed" prompts
 
 !macro customInstallMode
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
 !macro customCheckAppRunning
-  ; Best-effort stop currently running app process.
-  nsExec::Exec '"$SYSDIR\cmd.exe" /c taskkill /F /IM "${PRODUCT_FILENAME}.exe" >nul 2>&1'
+  !define SYSTEMROOT "$%SYSTEMROOT%"
+  ; Best-effort stop currently running app process for current user only.
+  nsExec::Exec '"${SYSTEMROOT}\System32\cmd.exe" /c taskkill /F /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${PRODUCT_FILENAME}.exe" >nul 2>&1'
   Pop $R1
-  Sleep 600
+  Sleep 1200
 
-  ; Keep stock-style detection contract: $R0=0 when process still exists.
-  nsExec::Exec '"$SYSDIR\cmd.exe" /c tasklist /FI "IMAGENAME eq ${PRODUCT_FILENAME}.exe" /FO csv | "$SYSDIR\find.exe" "${PRODUCT_FILENAME}.exe"'
+  ; Keep stock contract: $R0 = 0 if process still exists, non-zero otherwise.
+  nsExec::Exec '"${SYSTEMROOT}\System32\cmd.exe" /c tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${PRODUCT_FILENAME}.exe" /FO csv | "${SYSTEMROOT}\System32\find.exe" "${PRODUCT_FILENAME}.exe"'
   Pop $R0
 !macroend
