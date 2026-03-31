@@ -240,24 +240,6 @@ FunctionEnd
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
-; NSIS 3.0.x ExecShell only accepts SW_SHOW* names, not a numeric nShowCmd — use ShellExecuteW for SW_SHOWNOACTIVATE (4).
-; Installer only: uninstaller prebuild defines BUILD_UNINSTALLER and omits HspAppendInstallerMirrorLogVar.
-!ifndef BUILD_UNINSTALLER
-Function HspShellOpenExeNoActivate
-  System::Call "shell32::ShellExecuteW(i 0, w \"open\", w \"$INSTDIR\${PRODUCT_FILENAME}.exe\", w \"\", w \"$INSTDIR\", i 4) i.r0"
-  ; Mirror to install log + DetailPrint (replaces old "ExecShell: open …" line in the listbox-only view).
-  IntCmp $0 32 hspShellExecBad hspShellExecBad hspShellExecOk
-hspShellExecBad:
-  StrCpy $R8 "ShellExecuteW failed (result=$0): $INSTDIR\${PRODUCT_FILENAME}.exe"
-  Goto hspShellExecDone
-hspShellExecOk:
-  StrCpy $R8 "ShellExecuteW ok (SW_SHOWNOACTIVATE): $INSTDIR\${PRODUCT_FILENAME}.exe"
-hspShellExecDone:
-  DetailPrint "$R8"
-  Call HspAppendInstallerMirrorLogVar
-FunctionEnd
-!endif
-
 !macro customInstall
   ; electron-builder calls this after other install steps; keep listbox output on for final hooks.
   ; Do not launch app here: we launch from Finish page run option (checked by default) to avoid
