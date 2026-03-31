@@ -1,5 +1,5 @@
 # Build Windows installer on CI (no .exe committed to git), publish GitHub Release, notify /api/releases.
-name: .exe build
+name: Windows release (CI build)
 
 on:
   workflow_dispatch:
@@ -47,53 +47,32 @@ jobs:
       - name: Build Windows installer
         run: npm run build:win
 
-      # cleanup.cjs writes releases/builder/<build_id>/ (installer at root; zip + yml in dev/).
-      # Stage flat copies under releases/electron/<build_id>/ for GitHub upload.
-      - name: Locate electron-builder artifacts and stage under releases/electron
+      # cleanup.cjs writes installer + latest.yml + portable zip + zip-latest.yml under releases/<build_id>/.
+      - name: Locate installer, portable zip, and release id
         id: artifact
         run: |
           set -euo pipefail
           rid="${{ steps.meta.outputs.release_id }}"
-          src_dir="releases/builder/$rid"
-          dev_dir="$src_dir/dev"
-          stage_dir="releases/electron/$rid"
-          mkdir -p "$stage_dir"
-          exe="$(ls -1 "$src_dir"/HyperlinksSpaceAppInstaller_*.exe 2>/dev/null | head -n 1 || true)"
+          exe="$(ls -1 "releases/$rid"/HyperlinksSpaceAppInstaller_*.exe 2>/dev/null | head -n 1 || true)"
           if [[ -z "$exe" || ! -f "$exe" ]]; then
-            echo "Expected timestamped installer in $src_dir (set RELEASE_BUILD_ID=$rid)."
-            find releases -maxdepth 6 -type f 2>/dev/null || true
+            echo "Expected timestamped installer in releases/$rid (set RELEASE_BUILD_ID=$rid)."
+            find releases -maxdepth 5 -type f 2>/dev/null || true
             exit 1
           fi
-          zip="$(ls -1 "$dev_dir"/HyperlinksSpaceApp_*.zip 2>/dev/null | head -n 1 || true)"
+          zip="$(ls -1 "releases/$rid"/HyperlinksSpaceApp_*.zip 2>/dev/null | head -n 1 || true)"
           if [[ -z "$zip" || ! -f "$zip" ]]; then
-            echo "Portable zip HyperlinksSpaceApp_<version>.zip is required in $dev_dir (electron-builder zip target + cleanup)."
-            find "$dev_dir" -maxdepth 1 -type f 2>/dev/null || true
+            echo "Portable zip HyperlinksSpaceApp_<version>.zip is required for in-app updates (electron-builder zip target + cleanup)."
+            find "releases/$rid" -maxdepth 1 -type f 2>/dev/null || true
             exit 1
           fi
-          yml="$dev_dir/latest.yml"
-          zip_yml="$dev_dir/zip-latest.yml"
-          if [[ ! -f "$yml" ]]; then
-            echo "latest.yml missing next to installer — electron-updater needs it on the GitHub Release."
-            exit 1
-          fi
+          zip_yml="$(dirname "$zip")/zip-latest.yml"
           exe_name="$(basename "$exe")"
           zip_name="$(basename "$zip")"
-          exe_out="$stage_dir/$exe_name"
-          zip_out="$stage_dir/$zip_name"
-          yml_out="$stage_dir/latest.yml"
-          zip_yml_out="$stage_dir/zip-latest.yml"
-          cp "$exe" "$exe_out"
-          cp "$zip" "$zip_out"
-          cp "$yml" "$yml_out"
-          if [[ -f "$zip_yml" ]]; then
-            cp "$zip_yml" "$zip_yml_out"
-          fi
-          echo "exe_path=$exe_out" >> "$GITHUB_OUTPUT"
+          echo "exe_path=$exe" >> "$GITHUB_OUTPUT"
           echo "exe_name=$exe_name" >> "$GITHUB_OUTPUT"
-          echo "zip_path=$zip_out" >> "$GITHUB_OUTPUT"
+          echo "zip_path=$zip" >> "$GITHUB_OUTPUT"
           echo "zip_name=$zip_name" >> "$GITHUB_OUTPUT"
-          echo "yml_path=$yml_out" >> "$GITHUB_OUTPUT"
-          echo "zip_yml_path=$zip_yml_out" >> "$GITHUB_OUTPUT"
+          echo "zip_yml_path=$zip_yml" >> "$GITHUB_OUTPUT"
           echo "release_id=$rid" >> "$GITHUB_OUTPUT"
 
       - name: Check if GitHub release already exists
@@ -110,56 +89,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Preflight checks and artifact summary
-        if: steps.exists.outputs.exists != 'true'
-        id: preflight
-        run: |
-          set -euo pipefail
-          rid="${{ steps.artifact.outputs.release_id }}"
-          exe="${{ steps.artifact.outputs.exe_path }}"
-          zip="${{ steps.artifact.outputs.zip_path }}"
-          yml="${{ steps.artifact.outputs.yml_path }}"
-          zip_yml="${{ steps.artifact.outputs.zip_yml_path }}"
-          stage_dir="releases/electron/$rid"
-
-          [[ -d "$stage_dir" ]] || { echo "Stage dir missing: $stage_dir"; exit 1; }
-          [[ -f "$exe" ]] || { echo "Installer missing: $exe"; exit 1; }
-          [[ -f "$zip" ]] || { echo "Portable zip missing: $zip"; exit 1; }
-          [[ -f "$yml" ]] || { echo "latest.yml missing: $yml"; exit 1; }
-
-          exe_name="$(basename "$exe")"
-          zip_name="$(basename "$zip")"
-          yml_name="$(basename "$yml")"
-
-          [[ "$exe_name" == HyperlinksSpaceAppInstaller_*.exe ]] || {
-            echo "Unexpected installer name: $exe_name"; exit 1;
-          }
-          [[ "$zip_name" == HyperlinksSpaceApp_*.zip ]] || {
-            echo "Unexpected zip name: $zip_name"; exit 1;
-          }
-          [[ "$yml_name" == "latest.yml" ]] || {
-            echo "Unexpected yml name: $yml_name"; exit 1;
-          }
-
-          app_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceApp_(.+)\.zip$/\1/')"
-          if [[ -z "$app_version" || "$app_version" == "$zip_name" ]]; then
-            app_version="unknown"
-          fi
-          echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
-
-          echo "Preflight OK (electron-builder):"
-          echo "  release_id: $rid"
-          echo "  app_version: $app_version"
-          echo "  stage_dir: $stage_dir"
-          echo "  installer: $exe"
-          echo "  portable_zip: $zip"
-          echo "  latest_yml: $yml"
-          if [[ -n "$zip_yml" && -f "$zip_yml" ]]; then
-            echo "  zip_latest_yml: $zip_yml"
-          else
-            echo "  zip_latest_yml: (missing, optional)"
-          fi
-
       - name: Create GitHub release and upload installer + portable zip
         if: steps.exists.outputs.exists != 'true'
         id: create
@@ -170,16 +99,22 @@ jobs:
           rid="${{ steps.artifact.outputs.release_id }}"
           exe="${{ steps.artifact.outputs.exe_path }}"
           zip="${{ steps.artifact.outputs.zip_path }}"
-          yml="${{ steps.artifact.outputs.yml_path }}"
           zip_yml="${{ steps.artifact.outputs.zip_yml_path }}"
+          yml="$(dirname "$exe")/latest.yml"
+          if [[ ! -f "$yml" ]]; then
+            echo "latest.yml missing next to installer — electron-updater needs it on the GitHub Release."
+            exit 1
+          fi
+          if [[ ! -f "$zip" ]]; then
+            echo "Portable zip missing at $zip"
+            exit 1
+          fi
           upload=( "$exe" "$yml" "$zip" )
           if [[ -f "$zip_yml" ]]; then
             upload+=( "$zip_yml" )
           else
             echo "Warning: zip-latest.yml missing (cleanup should generate it when zip exists)."
           fi
-          echo "Publishing release $rid (app_version=${{ steps.preflight.outputs.app_version }})"
-          printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
             --title "$rid" \

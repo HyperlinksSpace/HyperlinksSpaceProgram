@@ -27,7 +27,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** GitHub / Electron net layer: transient errors worth retrying (backoff in checkForUpdatesWithRetry). */
+/** GitHub sometimes returns 502 HTML (Unicorn) or other gateway errors; worth retrying. */
 function isTransientGithubUpdateError(err) {
   if (!err) return false;
   const code = err.statusCode ?? err.status;
@@ -38,9 +38,6 @@ function isTransientGithubUpdateError(err) {
       msg,
     )
   )
-    return true;
-  // Electron reports URL loader failures as net::ERR_* (not Node ECONNRESET).
-  if (/net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_TIMED_OUT|net::ERR_NETWORK_CHANGED/i.test(msg))
     return true;
   return false;
 }
@@ -77,27 +74,6 @@ function safeJson(obj, maxLen = 800) {
   } catch (_) {
     return String(obj);
   }
-}
-
-/** Escape for a PowerShell single-quoted literal (only ' is doubled). */
-function escapePsSingleQuotedPath(p) {
-  return String(p).replace(/'/g, "''");
-}
-
-/**
- * Detached `powershell -File script.ps1 -PlanPath ...` often drops or misparses args on Windows.
- * Use a short UTF-16LE -EncodedCommand that writes %TEMP%\\hsp-apply-trace.log then invokes the script.
- */
-function buildWindowsApplyLauncherCommand(ps1Path, planPath) {
-  const qPs1 = escapePsSingleQuotedPath(ps1Path);
-  const qPlan = escapePsSingleQuotedPath(planPath);
-  return (
-    `$ErrorActionPreference='Stop';` +
-    `try{$t=Join-Path $env:TEMP 'hsp-apply-trace.log';` +
-    `$ts=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ');` +
-    `Add-Content -LiteralPath $t -Encoding UTF8 -Value ('['+$ts+'] launcher start pid='+$PID)}catch{};` +
-    `& '${qPs1}' -PlanPath '${qPlan}'`
-  );
 }
 
 /**
@@ -435,25 +411,6 @@ function sha512Base64OfFile(filePath) {
   return hash.digest("base64");
 }
 
-/**
- * Portable zip may ship HyperlinksSpaceApp.exe while the installed NSIS exe is "Hyperlinks Space App.exe".
- * Must match resolveZipAppContentRoot / apply relaunch candidates.
- */
-function winStagingDirHasMainExe(stagingDir, exeBaseName) {
-  const alt = new Set([
-    exeBaseName,
-    "Hyperlinks Space App.exe",
-    "HyperlinksSpaceApp.exe",
-  ]);
-  for (const name of alt) {
-    const p = path.join(stagingDir, name);
-    try {
-      if (fs.existsSync(p) && fs.statSync(p).isFile()) return true;
-    } catch (_) {}
-  }
-  return false;
-}
-
 function resolveZipAppContentRoot(extractDir, exeBaseName) {
   const direct = path.join(extractDir, exeBaseName);
   if (fs.existsSync(direct)) return extractDir;
@@ -616,7 +573,10 @@ function setupAutoUpdater() {
       throw lastErr;
     };
     const currentVersion = app.getVersion();
-    const applyUserLogPath = path.join(app.getPath("userData"), "hsp-update-apply.log");
+    const currentVersionHtml = String(currentVersion)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/"/g, "&quot;");
 
     /** Prefer transferred/total when known; Windows often keeps percent at 0 until late. */
     const progressPercent = (progress) => {
@@ -636,9 +596,10 @@ function setupAutoUpdater() {
       return 0;
     };
 
-    // Single content height: always leave room for the activity log so it is not clipped when progress/actions hide.
+    // Tight chrome: content + padding only (title bar is extra OS chrome).
     const UPDATER_LOG_PANEL = 108;
-    const UPDATER_DIALOG_H = 198 + UPDATER_LOG_PANEL;
+    const UPDATER_COMPACT_H = 128 + UPDATER_LOG_PANEL;
+    const UPDATER_EXPANDED_H = 198 + UPDATER_LOG_PANEL;
 
     const sendUpdaterLogInitToDialog = () => {
       const w = updateDialogState.window;
@@ -674,7 +635,7 @@ function setupAutoUpdater() {
       }
       updateDialogState.window = new BrowserWindow({
         width: 420,
-        height: UPDATER_DIALOG_H,
+        height: UPDATER_COMPACT_H,
         useContentSize: true,
         title: "Updater",
         resizable: false,
@@ -682,21 +643,60 @@ function setupAutoUpdater() {
         maximizable: false,
         show: false,
         autoHideMenuBar: true,
-        // No parent: a child window + showMessageBox(modal to child) often leaves alerts behind the main frame.
+        parent: BrowserWindow.getAllWindows()[0] || undefined,
         modal: false,
-        webPreferences: { nodeIntegration: true, contextIsolation: false, sandbox: false },
+        webPreferences: { nodeIntegration: true, contextIsolation: false },
       });
-      const updaterHtmlPath = path.join(__dirname, "updater-dialog.html");
-      if (!fs.existsSync(updaterHtmlPath)) {
-        log(`[updater] FATAL: updater-dialog.html missing at ${updaterHtmlPath}`);
-      }
-      updateDialogState.window.loadFile(updaterHtmlPath);
+      const html = `<!doctype html><html><body style="font-family:Segoe UI,Arial,sans-serif;box-sizing:border-box;padding:12px 14px 10px;background:#111;color:#eee;margin:0;">
+<div id="cv" style="font-size:12px;color:#aaa;margin-bottom:6px;">Current version: ${currentVersionHtml}</div>
+<div id="t" style="font-size:14px;margin-bottom:8px;line-height:1.35;">Checking for updates...</div>
+<div id="progressWrap" style="display:none;margin-bottom:8px;">
+  <div style="height:14px;background:#333;border-radius:7px;overflow:hidden;">
+    <div id="b" style="height:100%;width:0%;background:#2ea043;"></div>
+  </div>
+</div>
+<div id="logWrap" style="margin-bottom:8px;">
+  <div style="font-size:10px;color:#888;margin-bottom:4px;">Activity log</div>
+  <pre id="log" style="margin:0;max-height:${UPDATER_LOG_PANEL - 18}px;overflow-y:auto;overflow-x:auto;background:#0d0d0d;border:1px solid #333;border-radius:4px;padding:6px 8px;font:11px/1.35 Consolas,\"Cascadia Mono\",monospace;color:#c9d1d9;white-space:pre-wrap;word-break:break-all;"></pre>
+</div>
+<div id="actionsWrap" style="display:none;flex-direction:row;justify-content:flex-end;">
+  <button id="install" disabled style="padding:5px 10px;">Update</button>
+</div>
+<script>
+  const { ipcRenderer } = require('electron');
+  function applyUpdaterUi(data) {
+    const t = document.getElementById('t');
+    const progressWrap = document.getElementById('progressWrap');
+    const actionsWrap = document.getElementById('actionsWrap');
+    const b = document.getElementById('b');
+    const i = document.getElementById('install');
+    if (t) t.textContent = data.text;
+    if (progressWrap) progressWrap.style.display = data.showProgress ? 'block' : 'none';
+    if (actionsWrap) actionsWrap.style.display = data.showActions ? 'flex' : 'none';
+    if (b) b.style.width = Math.max(0, Math.min(100, Math.round(Number(data.percent) || 0))) + '%';
+    if (i) i.disabled = !data.installEnabled;
+  }
+  function appendLogLine(line) {
+    const el = document.getElementById('log');
+    if (!el) return;
+    el.textContent += (el.textContent ? '\\n' : '') + line;
+    const parts = el.textContent.split('\\n');
+    if (parts.length > 220) el.textContent = parts.slice(-220).join('\\n');
+    el.scrollTop = el.scrollHeight;
+  }
+  ipcRenderer.on('updater-ui', (_e, data) => applyUpdaterUi(data));
+  ipcRenderer.on('updater-log-init', (_e, lines) => {
+    const el = document.getElementById('log');
+    if (!el) return;
+    el.textContent = Array.isArray(lines) ? lines.join('\\n') : '';
+    el.scrollTop = el.scrollHeight;
+  });
+  ipcRenderer.on('updater-log', (_e, line) => appendLogLine(typeof line === 'string' ? line : String(line)));
+  document.getElementById('install').addEventListener('click', () => ipcRenderer.send('updater-install-click'));
+</script>
+</body></html>`;
+      updateDialogState.window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       updateDialogState.window.webContents.once("did-finish-load", () => {
-        const w = updateDialogState.window;
-        if (!w || w.isDestroyed()) return;
-        const wc = w.webContents;
-        const cvText = `Current version: ${currentVersion}`;
-        wc.executeJavaScript(`document.getElementById('cv').textContent = ${JSON.stringify(cvText)}`).catch(() => {});
         sendUpdaterLogInitToDialog();
         refreshUpdaterDialogIfStagedReady();
       });
@@ -719,8 +719,9 @@ function setupAutoUpdater() {
       if (!updateDialogState.window || updateDialogState.window.isDestroyed()) return;
       const safe = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
       updateDialogState.installEnabled = Boolean(installEnabled);
+      const expanded = showProgress || showActions;
       try {
-        updateDialogState.window.setSize(420, UPDATER_DIALOG_H);
+        updateDialogState.window.setSize(420, expanded ? UPDATER_EXPANDED_H : UPDATER_COMPACT_H);
       } catch (_) {}
       const payload = {
         text,
@@ -749,40 +750,13 @@ function setupAutoUpdater() {
       updateDialogState.window = null;
       updateDialogState.installEnabled = false;
     };
-
-    /** Prefer main/browser window so native dialogs are not hidden behind a frame owned as child. */
-    const focusMainWindowForDialog = () => {
-      const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
-      const mainLike = all.find((w) => w !== updateDialogState.window) ?? all[0];
-      try {
-        if (mainLike) {
-          if (mainLike.isMinimized()) mainLike.restore();
-          mainLike.focus();
-        }
-      } catch (_) {}
-      return mainLike ?? null;
-    };
-
     if (!updateDialogState.ipcBound) {
       updateDialogState.ipcBound = true;
-      // invoke/handle is more reliable than send for click→main from file:// updater pages on some Electron builds.
-      ipcMain.handle("updater-install-now", () => {
-        logUpdater("ipc", "updater-install-now (invoke)");
-        try {
-          requestInstallNow();
-          return { ok: true };
-        } catch (e) {
-          const m = e?.message || String(e);
-          log(`[updater] requestInstallNow threw: ${m}`);
-          return { ok: false, err: m };
-        }
-      });
+      // Do not gate on installEnabled: it can stay false if syncZipReadyUi ran while the dialog
+      // was not open (startup update-available skip path). Renderer still enables the button via IPC.
       ipcMain.on("updater-install-click", () => {
-        logUpdater("ipc", "updater-install-click received (legacy send)");
+        logUpdater("ipc", "updater-install-click received");
         requestInstallNow();
-      });
-      ipcMain.on("updater-renderer-error", (_e, msg) => {
-        log(`[updater] renderer: ${typeof msg === "string" ? msg : String(msg)}`);
       });
     }
     const logUpdaterChannel = (m) => {
@@ -830,11 +804,9 @@ function setupAutoUpdater() {
 
     const stagingHasMainExe = (stagingDir) => {
       const exeBase = path.basename(process.execPath);
-      if (process.platform === "win32") {
-        return winStagingDirHasMainExe(stagingDir, exeBase);
-      }
       const direct = path.join(stagingDir, exeBase);
       if (fs.existsSync(direct)) return true;
+      if (process.platform !== "win32") return false;
       try {
         const want = exeBase.toLowerCase();
         return fs.readdirSync(stagingDir).some((n) => n.toLowerCase() === want);
@@ -913,9 +885,6 @@ function setupAutoUpdater() {
       const exeBase = path.basename(process.execPath);
       if (zipReadyVersion === remoteV && zipStagingContentPath && stagingHasMainExe(zipStagingContentPath)) {
         logUpdater("prepare", `skip (already staged ${remoteV})`);
-        if (!updateDialogState.window || updateDialogState.window.isDestroyed()) {
-          openOrFocusUpdateDialog();
-        }
         syncZipReadyUi(remoteV);
         manualDownloadInProgress = false;
         return;
@@ -925,16 +894,8 @@ function setupAutoUpdater() {
       const uiManual = Boolean(opts?.uiManual);
       const uiActive =
         uiManual || (updateDialogState.window && !updateDialogState.window.isDestroyed());
-      /** Tar heartbeat uses unpackLo+8 while extract-zip uses unpackLo+bump — without this the bar can drop (e.g. 88% → 84%). */
-      let prepareProgressCeiling = 0;
       const pushUi = (partial) => {
         if (!uiActive) return;
-        const raw = partial.percent;
-        const next =
-          typeof raw === "number" && !Number.isNaN(raw)
-            ? Math.max(prepareProgressCeiling, Math.round(raw))
-            : prepareProgressCeiling;
-        prepareProgressCeiling = next;
         updateDialogUi({
           showProgress: true,
           showActions: true,
@@ -942,7 +903,6 @@ function setupAutoUpdater() {
           percent: 0,
           text: "",
           ...partial,
-          percent: next,
         });
       };
       let versionsPrepareOk = false;
@@ -1034,10 +994,6 @@ function setupAutoUpdater() {
         manualDownloadInProgress = false;
         log(`[updater] staged update at ${contentRoot}`);
         logUpdater("prepare", `COMPLETE readyVersion=${meta.version} staging=${contentRoot}`);
-        // syncZipReadyUi needs an open dialog; background checks used uiActive=false and would skip UI.
-        if (!uiActive) {
-          openOrFocusUpdateDialog();
-        }
         syncZipReadyUi(meta.version);
         if (!uiActive && process.platform === "win32" && Notification.isSupported()) {
           try {
@@ -1091,7 +1047,7 @@ function setupAutoUpdater() {
       const appRoot = getWindowsAppRootFromExecPath(execPath);
       const useVersionedLayout =
         process.platform === "win32" && path.basename(installDir).toLowerCase() === "current";
-      const applyLogPath = applyUserLogPath;
+      const applyLogPath = path.join(app.getPath("userData"), "hsp-update-apply.log");
       logUpdater(
         "apply",
         `applyVersionsStagedUpdate installDir=${installDir} appRoot=${appRoot} versioned=${useVersionedLayout} exe=${exeName} staging=${zipStagingContentPath} version=${zipReadyVersion} pid=${process.pid}`,
@@ -1138,8 +1094,6 @@ function setupAutoUpdater() {
       const ps1Body = [
         "param([string]$PlanPath)",
         '$ErrorActionPreference = "Stop"',
-        "if (-not $PlanPath) { $PlanPath = $env:HSP_UPDATE_PLAN }",
-        'if (-not $PlanPath) { throw "Plan path missing (pass -PlanPath to this script or set HSP_UPDATE_PLAN)" }',
         "$plan = Get-Content -LiteralPath $PlanPath -Encoding UTF8 -Raw | ConvertFrom-Json",
         "$LogFile = $plan.logPath",
         `$settleMs = ${settleMs}`,
@@ -1180,33 +1134,32 @@ function setupAutoUpdater() {
         "  }",
         "  if ($plan.useVersionedLayout) {",
         "    if (Test-Path -LiteralPath $plan.currentLink) {",
-        "      Remove-Item -LiteralPath $plan.currentLink -Force",
-        '      Write-ApplyLog ("removed old current junction/link")',
+        "      $rj = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'rmdir', $plan.currentLink) -Wait -PassThru -NoNewWindow",
+        '      Write-ApplyLog ("rmdir old current junction exit=" + $rj.ExitCode)',
         "    }",
-        "    $null = New-Item -ItemType Junction -Path $plan.currentLink -Target $plan.targetVersionDir",
+        "    $mk = Start-Process -FilePath cmd.exe -ArgumentList @('/c', 'mklink', '/J', $plan.currentLink, $plan.targetVersionDir) -Wait -PassThru -NoNewWindow",
+        "    if ($mk.ExitCode -ne 0) { throw \"mklink /J failed exit $($mk.ExitCode)\" }",
         '    Write-ApplyLog ("junction: $($plan.currentLink) -> $($plan.targetVersionDir)")',
         "  }",
         "  if ($plan.stagingVersionDirToRemove -and (Test-Path -LiteralPath $plan.stagingVersionDirToRemove)) {",
         "    Remove-Item -LiteralPath $plan.stagingVersionDirToRemove -Recurse -Force",
         '    Write-ApplyLog "removed staging dir"',
         "  }",
-        "  $workDir = if ($plan.useVersionedLayout) { $plan.currentLink } else { $dst }",
-        '  $candidates = @($plan.exeName, "Hyperlinks Space App.exe", "HyperlinksSpaceApp.exe") | Select-Object -Unique',
-        "  $exePath = $null",
-        "  foreach ($c in $candidates) {",
-        "    $tryExe = Join-Path $workDir $c",
-        "    if (Test-Path -LiteralPath $tryExe) { $exePath = $tryExe; Write-ApplyLog (\"picked exe: \" + $c); break }",
+        "  if ($plan.useVersionedLayout) {",
+        "    $exePath = Join-Path $plan.currentLink $plan.exeName",
+        "    $workDir = $plan.currentLink",
+        "  } else {",
+        "    $exePath = Join-Path $dst $plan.exeName",
+        "    $workDir = $dst",
         "  }",
-        "  if (-not $exePath) { throw (\"main exe missing after apply under \" + $workDir + \" (tried \" + ($candidates -join \", \") + \")\") }",
-        '  Write-ApplyLog ("relaunch " + $exePath + " (wd=" + $workDir + ")")',
+        '  Write-ApplyLog "relaunch $exePath (wd=$workDir)"',
+        "  if (-not (Test-Path -LiteralPath $exePath)) { throw \"main exe missing after apply: $exePath\" }",
         "  Start-Process -FilePath $exePath -WorkingDirectory $workDir",
         '  Write-ApplyLog "Start-Process returned (GUI may take a moment)"',
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
         '  Write-ApplyLog "apply done"',
         "} catch {",
-        '  $err = "FATAL: " + $_.Exception.Message',
-        "  if ($LogFile) { try { Write-ApplyLog $err } catch {} }",
-        "  elseif ($plan -and $plan.logPath) { try { Add-Content -LiteralPath $plan.logPath -Value (\"[\" + (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ') + \"] \" + $err) -Encoding UTF8 } catch {} }",
+        '  Write-ApplyLog ("FATAL: " + $_.Exception.Message)',
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
         "  exit 1",
         "}",
@@ -1215,32 +1168,14 @@ function setupAutoUpdater() {
       fs.writeFileSync(ps1Path, ps1Body, "utf8");
       logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs}`);
 
-      try {
-        fs.appendFileSync(
-          applyLogPath,
-          `[${new Date().toISOString()}] [main] spawning apply encodedLauncher=1 ps1=${ps1Path} plan=${planPath} trace=%TEMP%\\hsp-apply-trace.log\n`,
-          "utf8",
-        );
-      } catch (_) {}
-
-      const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
-      const psExe = path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-      const launcherPs = buildWindowsApplyLauncherCommand(ps1Path, planPath);
-      const encodedLauncher = Buffer.from(launcherPs, "utf16le").toString("base64");
-
       const child = spawn(
-        psExe,
-        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodedLauncher],
-        {
-          env: { ...process.env, HSP_UPDATE_PLAN: planPath },
-          detached: true,
-          stdio: "ignore",
-          windowsHide: true,
-        },
+        "powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1Path, "-PlanPath", planPath],
+        { detached: true, stdio: "ignore", windowsHide: true },
       );
       logUpdater(
         "apply",
-        `spawn ${psExe} pid=${child.pid} detached=true -EncodedCommand launcher→-File ps1 (trace %TEMP%\\hsp-apply-trace.log)`,
+        `spawn powershell pid=${child.pid} detached=true (robocopy staging → installDir, then relaunch exe)`,
       );
       child.unref();
       if (!child.pid) {
@@ -1256,14 +1191,6 @@ function setupAutoUpdater() {
     };
 
     const requestInstallNow = () => {
-      try {
-        fs.appendFileSync(
-          applyUserLogPath,
-          `[${new Date().toISOString()}] [main] requestInstallNow (Update button clicked)\n`,
-          "utf8",
-        );
-      } catch (_) {}
-
       installRequested = true;
       log("[updater] user accepted update install");
       logUpdater("ipc", "requestInstallNow (Update button)");
@@ -1271,11 +1198,6 @@ function setupAutoUpdater() {
       suppressQuitForUpdateInstall = true;
 
       const useVersionsApply = canApplyVersionsStaging();
-      const semverNewer =
-        zipReadyVersion && compareSemverLike(zipReadyVersion, currentVersion) > 0;
-      const exeOk =
-        Boolean(zipStagingContentPath) &&
-        stagingHasMainExe(zipStagingContentPath);
       logUpdater(
         "ipc",
         `requestInstallNow useVersionsApply=${useVersionsApply} zipReady=${zipReadyVersion} path=${zipStagingContentPath}`,
@@ -1288,14 +1210,12 @@ function setupAutoUpdater() {
         } catch (e) {
           log(`[updater] applyVersionsStagedUpdate failed: ${e?.message || e}`);
           suppressQuitForUpdateInstall = false;
-          const mw = focusMainWindowForDialog();
-          const errOpts = {
+          void dialog.showMessageBox({
             type: "error",
             title: "Hyperlinks Space App",
             message: `Could not apply update: ${e?.message || String(e)}`,
             buttons: ["OK"],
-          };
-          void (mw ? dialog.showMessageBox(mw, errOpts) : dialog.showMessageBox(errOpts));
+          });
           return;
         }
         for (const win of BrowserWindow.getAllWindows()) {
@@ -1316,29 +1236,13 @@ function setupAutoUpdater() {
         log(
           `[updater] Update click ignored: no staged build (ready=${zipReadyVersion} path=${zipStagingContentPath})`,
         );
-        try {
-          fs.appendFileSync(
-            applyUserLogPath,
-            `[${new Date().toISOString()}] [main] blocked: cannot apply zip staging ` +
-              `(readyVer=${zipReadyVersion} stagingPath=${zipStagingContentPath} ` +
-              `semverNewer=${Boolean(semverNewer)} exeOk=${Boolean(exeOk)} current=${currentVersion})\n`,
-            "utf8",
-          );
-        } catch (_) {}
-        const boxOpts = {
+        void dialog.showMessageBox({
           type: "info",
           title: "Hyperlinks Space App",
           message:
             "The quick update is not ready yet. Keep the app open until download and unpack finish, or ensure the latest GitHub release includes zip-latest.yml and HyperlinksSpaceApp_<version>.zip from your Windows build (cleanup folder).",
           buttons: ["OK"],
-        };
-        try {
-          if (updateDialogState.window && !updateDialogState.window.isDestroyed()) {
-            updateDialogState.window.hide();
-          }
-        } catch (_) {}
-        const mw = focusMainWindowForDialog();
-        void (mw ? dialog.showMessageBox(mw, boxOpts) : dialog.showMessageBox(boxOpts));
+        });
         return;
       }
 

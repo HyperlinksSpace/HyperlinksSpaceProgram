@@ -4,7 +4,7 @@
 
 *Special note: now temporarily main development is in [`./app`](./app) folder. After refactor it'll be in root. Root contents is a design structuring outcome used for prompting and demo only.*
 
-## [`./app`](./app) active development area
+##[`./app`](./app) active development area
 
 - [`app`](./app/app) - Expo/React Telegram Mini App client (web/mobile screens, navigation, UI logic).
 - [`bot`](./app/bot) - TypeScript Telegram bot service and runtime entrypoints.
