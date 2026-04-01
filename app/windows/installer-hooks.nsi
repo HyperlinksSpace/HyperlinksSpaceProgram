@@ -4,6 +4,7 @@
 ; - finish page shows full log in selectable read-only text area
 
 !include "FileFunc.nsh"
+!include "nsDialogs.nsh"
 
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
@@ -17,6 +18,7 @@ Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
 Var HspDidLaunchApp
+Var HspIsRefreshingLog
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -81,6 +83,42 @@ Function HspInstFilesShow
   SetDetailsPrint both
 FunctionEnd
 
+Function HspLoadFinishLog
+  StrCmp $HspFinishLogEdit "" hspLoadFinishDone
+  StrCpy $9 $HspFinishLogEdit
+  ; Temporarily allow updates while rewriting text content.
+  System::Call "user32::SendMessageW(i r9, i 0x00CF, i 0, i 0)"
+  System::Call "user32::SetWindowTextW(i r9, w \"\")"
+  IfFileExists "$HspLogFile" hspLoadFinishFile
+  System::Call "user32::SetWindowTextW(i r9, w \"No installation log file was found.\")"
+  Goto hspLoadFinishReadonly
+hspLoadFinishFile:
+  FileOpen $R0 "$HspLogFile" r
+hspLoadFinishLoop:
+  FileRead $R0 $1
+  IfErrors hspLoadFinishFileDone
+  System::Call "user32::SendMessageW(i r9, i 0x000E, i 0, i 0) i.r4"
+  System::Call "user32::SendMessageW(i r9, i 0xB1, i r4, i r4)"
+  StrCpy $2 "$1$\r$\n"
+  System::Call "user32::SendMessageW(i r9, i 0xC2, i 1, w r2)"
+  Goto hspLoadFinishLoop
+hspLoadFinishFileDone:
+  FileClose $R0
+hspLoadFinishReadonly:
+  ; Keep content non-editable while still selectable/copyable.
+  System::Call "user32::SendMessageW(i r9, i 0x00CF, i 1, i 0)"
+hspLoadFinishDone:
+FunctionEnd
+
+Function HspRefreshFinishLogTimer
+  StrCmp $HspFinishLogEdit "" hspTimerDone
+  StrCmp $HspIsRefreshingLog "1" hspTimerDone
+  StrCpy $HspIsRefreshingLog "1"
+  Call HspLoadFinishLog
+  StrCpy $HspIsRefreshingLog "0"
+hspTimerDone:
+FunctionEnd
+
 Function HspFinishPageShow
   Call HspEnsureInstallerLogPath
   ; Launch app automatically when install reaches finish page; keep installer open for logs.
@@ -97,27 +135,15 @@ hspSkipAutoLaunch:
   StrCpy $9 $0
   System::Call "user32::SetFocus(i r9)"
   System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
-  IfFileExists "$HspLogFile" hspFinishFillFile
-  System::Call "user32::SetWindowTextW(i r9, w \"No installation log file was found.\")"
-  Goto hspFinishShowDone
-hspFinishFillFile:
-  FileOpen $R0 "$HspLogFile" r
-hspFinishReadLoop:
-  FileRead $R0 $1
-  IfErrors hspFinishFileDone
-  System::Call "user32::SendMessageW(i r9, i 0x000E, i 0, i 0) i.r4"
-  System::Call "user32::SendMessageW(i r9, i 0xB1, i r4, i r4)"
-  StrCpy $2 "$1$\r$\n"
-  System::Call "user32::SendMessageW(i r9, i 0xC2, i 1, w r2)"
-  Goto hspFinishReadLoop
-hspFinishFileDone:
-  FileClose $R0
-  ; Keep content non-editable while still selectable/copyable.
-  System::Call "user32::SendMessageW(i r9, i 0x00CF, i 1, i 0)"
+  Call HspLoadFinishLog
+  ; Poll the mirrored log file so new lines appear while finish page is open.
+  nsDialogs::CreateTimer HspRefreshFinishLogTimer 400
 hspFinishShowDone:
 FunctionEnd
 
 Function HspFinishPageLeave
+  nsDialogs::KillTimer HspRefreshFinishLogTimer
+  StrCpy $HspIsRefreshingLog "0"
   StrCmp $HspFinishLogEdit "" +3
   StrCpy $0 $HspFinishLogEdit
   System::Call "user32::DestroyWindow(i r0)"
