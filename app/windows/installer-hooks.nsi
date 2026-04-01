@@ -4,7 +4,6 @@
 ; - built-in NSIS details list is not used for copying (row-only selection)
 
 !include "FileFunc.nsh"
-!include "nsDialogs.nsh"
 
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
@@ -18,7 +17,6 @@ Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
 Var HspDidLaunchApp
-Var HspIsRefreshingLog
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -40,7 +38,8 @@ FunctionEnd
 !macroend
 
 !macro HspInstallDetailPrint MSG
-  SetDetailsView show
+  ; Keep built-in details list hidden so the custom Edit log surface stays usable.
+  SetDetailsView hide
   SetDetailsPrint both
   DetailPrint "${MSG}"
   !insertmacro HspAppendInstallerLog "${MSG}"
@@ -104,16 +103,8 @@ hspMirroredReadonly:
 hspMirroredDone:
 FunctionEnd
 
-Function HspRefreshInstallLogTimer
-  StrCmp $HspFinishLogEdit "" hspTimerDone
-  StrCmp $HspIsRefreshingLog "1" hspTimerDone
-  StrCpy $HspIsRefreshingLog "1"
-  Call HspLoadMirroredLogIntoEdit
-  StrCpy $HspIsRefreshingLog "0"
-hspTimerDone:
-FunctionEnd
-
 ; Main install page: ordinary multiline read-only Edit fed from mirrored log file (not SysListView details).
+; Do not use nsDialogs::CreateTimer here: it is not reliable on standard MUI pages and can crash the installer.
 Function HspInstFilesShow
   Call HspEnsureInstallerLogPath
   SetDetailsView hide
@@ -127,15 +118,10 @@ Function HspInstFilesShow
   System::Call "user32::SetFocus(i r9)"
   System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
   Call HspLoadMirroredLogIntoEdit
-  GetFunctionAddress $8 HspRefreshInstallLogTimer
-  nsDialogs::CreateTimer $8 350
 hspInstShowDone:
 FunctionEnd
 
 Function HspInstFilesLeave
-  GetFunctionAddress $8 HspRefreshInstallLogTimer
-  nsDialogs::KillTimer $8
-  StrCpy $HspIsRefreshingLog "0"
   StrCmp $HspFinishLogEdit "" +3
   StrCpy $0 $HspFinishLogEdit
   System::Call "user32::DestroyWindow(i r0)"
@@ -176,7 +162,7 @@ FunctionEnd
 !macroend
 
 !macro customPageAfterChangeDir
-  ShowInstDetails nevershow
+  ShowInstDetails show
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspInstFilesLeave
 !macroend
