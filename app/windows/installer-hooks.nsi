@@ -128,6 +128,8 @@ FunctionEnd
 !endif
 
 !macro customHeader
+  ; Default NSIS string is ^CopyDetails ("Copy Details To Clipboard"); use shorter label for the details list menu.
+  LangString ^CopyDetails ${LANG_ENGLISH} "Copy logs"
   Caption "${PRODUCT_NAME}"
   ShowInstDetails show
   !ifdef BUILD_UNINSTALLER
