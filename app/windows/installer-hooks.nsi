@@ -76,19 +76,27 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
 FunctionEnd
 
-; Hide NSIS wizard pushbuttons (IDs 1=Next/Finish, 2=Cancel, 3=Back) so only the title-bar close [X] dismisses the window.
+; Hide all standard NSIS/MUI footer controls (child IDs 1–24): Next, Install, Cancel, Back, etc.
+; Close the window with the title-bar [X] only. (Keep oneClick=false so custom finish page + hooks still apply.)
 Function HspHideWizardPushButtons
+  Push $R7
   Push $R8
-  GetDlgItem $R8 $HWNDPARENT 1
-  IntCmp $R8 0 +2
+  StrCpy $R7 1
+hspHideBtnLoop:
+  GetDlgItem $R8 $HWNDPARENT $R7
+  IntCmp $R8 0 hspHideBtnNext
   System::Call "user32::ShowWindow(i r8, i 0)"
-  GetDlgItem $R8 $HWNDPARENT 2
-  IntCmp $R8 0 +2
-  System::Call "user32::ShowWindow(i r8, i 0)"
-  GetDlgItem $R8 $HWNDPARENT 3
-  IntCmp $R8 0 +2
-  System::Call "user32::ShowWindow(i r8, i 0)"
+hspHideBtnNext:
+  IntOp $R7 $R7 + 1
+  IntCmp $R7 25 hspHideBtnDone hspHideBtnLoop
+hspHideBtnDone:
   Pop $R8
+  Pop $R7
+FunctionEnd
+
+; Installing page: hide footer buttons as soon as the page is shown (install runs without Next/Install).
+Function HspInstFilesPageShow
+  Call HspHideWizardPushButtons
 FunctionEnd
 
 ; Load mirrored log file into the multiline Edit control (HWND in $HspFinishLogEdit).
@@ -155,6 +163,8 @@ FunctionEnd
 
 !macro customPageAfterChangeDir
   ShowInstDetails show
+  ; Applies to the following MUI_PAGE_INSTFILES in electron-builder's assisted installer.
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesPageShow
 !macroend
 
 !macro customInstallMode
