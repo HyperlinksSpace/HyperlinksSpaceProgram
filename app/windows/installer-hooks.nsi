@@ -76,49 +76,6 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
 FunctionEnd
 
-; Hide every child window of class "Button" under a dialog (MUI footer uses real Button HWNDs; IDs are not always 1–3).
-Function HspHideButtonsUnderParent
-  Pop $R6
-  Push $R1
-  Push $R2
-  StrCpy $R1 0
-hspBtnEnum:
-  System::Call "user32::FindWindowExW(i r6, i r1, w \"Button\", i 0) i.r2"
-  IntCmp $R2 0 hspBtnEnumDone
-  System::Call "user32::ShowWindow(i r2, i 0)"
-  StrCpy $R1 $R2
-  Goto hspBtnEnum
-hspBtnEnumDone:
-  Pop $R2
-  Pop $R1
-FunctionEnd
-
-; Enumerate "Button" children only under the page dialog (never GetParent — that targets the outer frame and breaks/crashes the installer).
-Function HspHideWizardPushButtons
-  Push $R6
-  Push $R7
-  Sleep 50
-  Push $HWNDPARENT
-  Call HspHideButtonsUnderParent
-  FindWindow $R6 "#32770" "" $HWNDPARENT
-  IntCmp $R6 0 hspTry32770_2
-  Push $R6
-  Call HspHideButtonsUnderParent
-hspTry32770_2:
-  FindWindow $R7 "#32770" "" $HWNDPARENT $R6
-  IntCmp $R7 0 hspHideWizDone
-  Push $R7
-  Call HspHideButtonsUnderParent
-hspHideWizDone:
-  Pop $R7
-  Pop $R6
-FunctionEnd
-
-; Installing page: one pass; avoid repeated API spam that can destabilize MUI.
-Function HspInstFilesPageShow
-  Call HspHideWizardPushButtons
-FunctionEnd
-
 ; Load mirrored log file into the multiline Edit control (HWND in $HspFinishLogEdit).
 Function HspLoadMirroredLogIntoEdit
   StrCmp $HspFinishLogEdit "" hspMirroredDone
@@ -152,14 +109,14 @@ Function HspFinishPageShow
   Call HspLaunchInstalledApp
 hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50B101C4, i 128, i 128, i 360, i 220, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
+  StrCpy $R8 $HWNDPARENT
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50B101C4, i 128, i 128, i 360, i 220, i r8, i 0, i 0, i 0) i.r0"
   IntCmp $0 0 hspFinishShowDone
   StrCpy $HspFinishLogEdit $0
   StrCpy $9 $0
   System::Call "user32::SetFocus(i r9)"
   System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
   Call HspLoadMirroredLogIntoEdit
-  Call HspHideWizardPushButtons
 hspFinishShowDone:
 FunctionEnd
 
@@ -183,8 +140,6 @@ FunctionEnd
 
 !macro customPageAfterChangeDir
   ShowInstDetails show
-  ; Applies to the following MUI_PAGE_INSTFILES in electron-builder's assisted installer.
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspInstFilesPageShow
 !macroend
 
 !macro customInstallMode
