@@ -210,9 +210,20 @@ Var /GLOBAL IsPowerShellAvailable
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${APP_PACKAGE_NAME}.exe"`
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: taskkill package-name exitcode=$R0"
+  ; Electron spawns separate helper executables (same folder); image name may not match APP_EXECUTABLE_FILENAME.
+  !insertmacro HspInstallDetailPrint "[installer] supplemental: taskkill Electron helper image names"
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper.exe"`
+  Pop $R0
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (GPU).exe"`
+  Pop $R0
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (Renderer).exe"`
+  Pop $R0
+  nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (Plugin).exe"`
+  Pop $R0
   Call HspSetInstDirEnvForPs
-  !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell Stop-Process (ExecutablePath + Get-Process.Path under %HSP_INSTDIR%)"
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$$d=$$env:HSP_INSTDIR; if(-not $$d){exit 0}; Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue | ForEach-Object { $$e=$$_.ExecutablePath; if($$e -and $$d -and $$e.StartsWith($$d,[System.StringComparison]::OrdinalIgnoreCase)){ Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue } }; Get-Process -ErrorAction SilentlyContinue | ForEach-Object { try { $$p=$$_.Path; if($$p -and $$d -and $$p.StartsWith($$d,[System.StringComparison]::OrdinalIgnoreCase)){ Stop-Process -Id $$_.Id -Force -ErrorAction SilentlyContinue } } catch {} }"`
+  ; Strip \\?\ from WMI paths, canonicalize, enforce prefix boundary (avoid \\?\ mismatch + false C:\Foo vs C:\FooBar).
+  !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell Stop-Process (normalized INSTDIR + ExecutablePath / Path / MainModule)"
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$$d=$$env:HSP_INSTDIR; if(-not $$d){exit 0}; function N($$p){ if([string]::IsNullOrEmpty($$p)){return $$null}; $$p=$$p.Trim(); if($$p.StartsWith('\\?\')){$$p=$$p.Substring(4)}; if($$p.StartsWith('\??\')){$$p=$$p.Substring(4)}; try { return [System.IO.Path]::GetFullPath($$p).TrimEnd([char]92) } catch { return $$p.TrimEnd([char]92) } }; $$root=N $$d; if(-not $$root){exit 0}; function U($$f){ if([string]::IsNullOrEmpty($$f)){return $$false}; $$n=N $$f; if(-not $$n){return $$false}; if(-not $$n.StartsWith($$root,[System.StringComparison]::OrdinalIgnoreCase)){return $$false}; if($$n.Length -eq $$root.Length){return $$true}; return $$n[$$root.Length] -eq [char]92 }; Get-CimInstance -ClassName Win32_Process -ErrorAction SilentlyContinue | ForEach-Object { if(U $$_.ExecutablePath){ Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue } }; Get-Process -ErrorAction SilentlyContinue | ForEach-Object { try { $$fp=$$_.Path; if(-not $$fp){ $$fp=$$_.MainModule.FileName }; if(U $$fp){ Stop-Process -Id $$_.Id -Force -ErrorAction SilentlyContinue } } catch {} }; Start-Sleep -Milliseconds 1200"`
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell exitcode=$R0"
   !insertmacro HspInstallDetailPrint "[installer] detecting PowerShell (CIM + execution policy)"
