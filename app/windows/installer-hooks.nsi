@@ -50,13 +50,14 @@ hspApplyHide:
   GetDlgItem $R0 $R6 3
   System::Call "user32::ShowWindow(i r0, i 0)"
   System::Call "user32::EnableWindow(i r0, i 0)"
+  ; Synchronous repaint of the wizard shell (replaces a second hide pass + Sleep).
+  System::Call "user32::InvalidateRect(i r6, i 0, i 1)"
+  System::Call "user32::UpdateWindow(i r6)"
+  Goto hspHideDone
 hspHideDone:
 FunctionEnd
 
 Function HspInstFilesPageShow
-  Call HspHideWizardButtons
-  ; Brief delay in case the shell repaints after SHOW (second pass helps some MUI builds).
-  Sleep 100
   Call HspHideWizardButtons
 FunctionEnd
 
@@ -110,7 +111,6 @@ Function .onInstSuccess
   ; Use one-shot guard so Finish-page fallback does not launch twice.
   StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
   StrCpy $HspDidLaunchApp "1"
-  Sleep 500
   Call HspLaunchInstalledApp
 hspInstSuccessAfterLaunch:
   !insertmacro HspAppendInstallerLog "INSTALL_SUCCESS"
@@ -164,8 +164,6 @@ hspMirroredDone:
 FunctionEnd
 
 Function HspFinishPageShow
-  Call HspHideWizardButtons
-  Sleep 100
   Call HspHideWizardButtons
   Call HspEnsureInstallerLogPath
   StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
@@ -234,12 +232,10 @@ Var /GLOBAL IsPowerShellAvailable
   nsExec::Exec `"$SYSDIR\cmd.exe" /c taskkill /F /IM "${APP_PACKAGE_NAME}.exe"`
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: taskkill package-name exitcode=$R0"
-  Sleep 500
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell Stop-Process for any exe under INSTDIR"
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell exitcode=$R0"
-  Sleep 500
   !insertmacro HspInstallDetailPrint "[installer] detecting PowerShell (CIM + execution policy)"
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"`
   Pop $R1
