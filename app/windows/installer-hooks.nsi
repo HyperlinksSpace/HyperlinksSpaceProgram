@@ -76,6 +76,21 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
 FunctionEnd
 
+; Hide NSIS wizard pushbuttons (IDs 1=Next/Finish, 2=Cancel, 3=Back) so only the title-bar close [X] dismisses the window.
+Function HspHideWizardPushButtons
+  Push $R8
+  GetDlgItem $R8 $HWNDPARENT 1
+  IntCmp $R8 0 +2
+  System::Call "user32::ShowWindow(i r8, i 0)"
+  GetDlgItem $R8 $HWNDPARENT 2
+  IntCmp $R8 0 +2
+  System::Call "user32::ShowWindow(i r8, i 0)"
+  GetDlgItem $R8 $HWNDPARENT 3
+  IntCmp $R8 0 +2
+  System::Call "user32::ShowWindow(i r8, i 0)"
+  Pop $R8
+FunctionEnd
+
 ; Load mirrored log file into the multiline Edit control (HWND in $HspFinishLogEdit).
 Function HspLoadMirroredLogIntoEdit
   StrCmp $HspFinishLogEdit "" hspMirroredDone
@@ -116,6 +131,7 @@ hspSkipAutoLaunch:
   System::Call "user32::SetFocus(i r9)"
   System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
   Call HspLoadMirroredLogIntoEdit
+  Call HspHideWizardPushButtons
 hspFinishShowDone:
 FunctionEnd
 
