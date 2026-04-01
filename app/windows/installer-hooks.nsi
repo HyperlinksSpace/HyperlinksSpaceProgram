@@ -93,20 +93,13 @@ hspBtnEnumDone:
   Pop $R1
 FunctionEnd
 
-; Try each plausible parent: MUI inner dialog, then nested #32770 children (electron-builder / NSIS layout).
+; Enumerate "Button" children only under the page dialog (never GetParent — that targets the outer frame and breaks/crashes the installer).
 Function HspHideWizardPushButtons
   Push $R6
   Push $R7
-  ; Allow layout to create controls (footer sometimes appears after first paint).
-  Sleep 75
+  Sleep 50
   Push $HWNDPARENT
   Call HspHideButtonsUnderParent
-  ; Footer bar is sometimes on the parent of the page dialog (not a child of $HWNDPARENT).
-  System::Call "user32::GetParent(i $HWNDPARENT) i.r6"
-  IntCmp $R6 0 hsp32770
-  Push $R6
-  Call HspHideButtonsUnderParent
-hsp32770:
   FindWindow $R6 "#32770" "" $HWNDPARENT
   IntCmp $R6 0 hspTry32770_2
   Push $R6
@@ -121,10 +114,8 @@ hspHideWizDone:
   Pop $R6
 FunctionEnd
 
-; Installing page: hide footer buttons as soon as the page is shown (install runs without Next/Install).
+; Installing page: one pass; avoid repeated API spam that can destabilize MUI.
 Function HspInstFilesPageShow
-  Call HspHideWizardPushButtons
-  Sleep 75
   Call HspHideWizardPushButtons
 FunctionEnd
 
@@ -168,8 +159,6 @@ hspSkipAutoLaunch:
   System::Call "user32::SetFocus(i r9)"
   System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
   Call HspLoadMirroredLogIntoEdit
-  Call HspHideWizardPushButtons
-  Sleep 75
   Call HspHideWizardPushButtons
 hspFinishShowDone:
 FunctionEnd
