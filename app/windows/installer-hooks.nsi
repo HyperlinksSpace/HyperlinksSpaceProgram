@@ -77,7 +77,7 @@ Function HspAppendInstDirToLog
   FileClose $HspLogHandle
 FunctionEnd
 
-; Pass flag in $R9 — do not reference $IsPowerShellAvailable here (NSIS 6000: Var is declared inside IS_POWERSHELL_AVAILABLE).
+; Pass flag in $R9 — do not reference $IsPowerShellAvailable here (NSIS 6000: Var is declared before customCheckAppRunning runs).
 Function HspAppendPowShellAvailToLog
   Call HspEnsureInstallerLogPath
   FileOpen $HspLogHandle "$HspLogFile" a
@@ -219,9 +219,9 @@ FunctionEnd
 Var pid
 Var /GLOBAL IsPowerShellAvailable
 
-; Log + supplemental kill, inline PS availability (same rules as allowOnlyOneInstallerInstance IS_POWERSHELL_AVAILABLE),
-; then !insertmacro _CHECK_APP_RUNNING. We do not call IS_POWERSHELL_AVAILABLE — Forge/NSIS script order can expand this
-; macro before that helper is registered. Use $SYSDIR\...\powershell.exe — NSIS -WX warns on $PowerShellPath here.
+; Log + supplemental kill, then inline PS availability (same checks as app-builder allowOnlyOneInstallerInstance.nsh),
+; then stock _CHECK_APP_RUNNING. The stock IS_POWERSHELL helper is not invoked by name (Forge stdin script order).
+; PowerShell path: use $SYSDIR\...\powershell.exe (NSIS -WX warns on $PowerShellPath here).
 !macro customCheckAppRunning
   !insertmacro HspInstallDetailPrint "[installer] CHECK_APP_RUNNING: start"
   DetailPrint "[installer] INSTDIR=$INSTDIR"
