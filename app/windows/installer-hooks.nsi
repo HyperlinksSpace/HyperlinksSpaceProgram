@@ -145,38 +145,6 @@ Function HspRefreshFinishLogTimer
 hspTimerDone:
 FunctionEnd
 
-Function HspFinishPageShow
-  Call HspEnsureInstallerLogPath
-  ; Launch app automatically when install reaches finish page; keep installer open for logs.
-  StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
-  StrCpy $HspDidLaunchApp "1"
-  Call HspLaunchInstalledApp
-hspSkipAutoLaunch:
-  StrCpy $HspFinishLogEdit ""
-  ; Use a regular multiline Edit control for native text-cursor selection behavior.
-  ; Style: child + visible + tabstop + border + vscroll + hscroll + multiline + auto scroll.
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50B101C4, i 128, i 128, i 360, i 220, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
-  IntCmp $0 0 hspFinishShowDone
-  StrCpy $HspFinishLogEdit $0
-  StrCpy $9 $0
-  System::Call "user32::SetFocus(i r9)"
-  System::Call "user32::SendMessageW(i r9, i 0xC5, i 16777216, i 0)"
-  Call HspLoadFinishLog
-  ; Poll the mirrored log file so new lines appear while finish page is open.
-  GetFunctionAddress $8 HspRefreshFinishLogTimer
-  nsDialogs::CreateTimer $8 400
-hspFinishShowDone:
-FunctionEnd
-
-Function HspFinishPageLeave
-  GetFunctionAddress $8 HspRefreshFinishLogTimer
-  nsDialogs::KillTimer $8
-  StrCpy $HspIsRefreshingLog "0"
-  StrCmp $HspFinishLogEdit "" +3
-  StrCpy $0 $HspFinishLogEdit
-  System::Call "user32::DestroyWindow(i r0)"
-  StrCpy $HspFinishLogEdit ""
-FunctionEnd
 !endif
 
 !macro customHeader
