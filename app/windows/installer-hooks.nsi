@@ -217,10 +217,11 @@ FunctionEnd
 ; When customCheckAppRunning is defined, app-builder skips its own getProcessInfo.nsh + Var pid — required by _CHECK_APP_RUNNING.
 !include "getProcessInfo.nsh"
 Var pid
+Var /GLOBAL IsPowerShellAvailable
 
-; Log + supplemental kill, then delegate to electron-builder's IS_POWERSHELL_AVAILABLE + _CHECK_APP_RUNNING.
-; (Older hook used taskkill /FI IMAGENAME eq ... — breaks when the exe name contains spaces.)
-; Use $SYSDIR\... for PowerShell here — NSIS -WX warns on $PowerShellPath inside this macro (Var is in CHECK_APP_RUNNING).
+; Log + supplemental kill, inline PS availability (same rules as allowOnlyOneInstallerInstance IS_POWERSHELL_AVAILABLE),
+; then !insertmacro _CHECK_APP_RUNNING. We do not call IS_POWERSHELL_AVAILABLE — Forge/NSIS script order can expand this
+; macro before that helper is registered. Use $SYSDIR\...\powershell.exe — NSIS -WX warns on $PowerShellPath here.
 !macro customCheckAppRunning
   !insertmacro HspInstallDetailPrint "[installer] CHECK_APP_RUNNING: start"
   DetailPrint "[installer] INSTDIR=$INSTDIR"
@@ -239,7 +240,21 @@ Var pid
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell exitcode=$R0"
   Sleep 500
-  !insertmacro IS_POWERSHELL_AVAILABLE
+  !insertmacro HspInstallDetailPrint "[installer] detecting PowerShell (CIM + execution policy)"
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }"`
+  Pop $R1
+  StrCmp $R1 0 hspPsCheckPolicy
+  StrCpy $IsPowerShellAvailable 1
+  Goto hspPsAvailDone
+hspPsCheckPolicy:
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "if ((Get-ExecutionPolicy -Scope Process) -eq 'Restricted') { exit 1 } else { exit 0 }"`
+  Pop $R1
+  StrCmp $R1 0 hspPsAvailOk
+  StrCpy $IsPowerShellAvailable 1
+  Goto hspPsAvailDone
+hspPsAvailOk:
+  StrCpy $IsPowerShellAvailable 0
+hspPsAvailDone:
   DetailPrint "[installer] IsPowerShellAvailable=$IsPowerShellAvailable (0=path-based find/kill)"
   StrCpy $R9 $IsPowerShellAvailable
   Call HspAppendPowShellAvailToLog
