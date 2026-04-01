@@ -220,7 +220,7 @@ Var pid
 
 ; Log + supplemental kill, then delegate to electron-builder's IS_POWERSHELL_AVAILABLE + _CHECK_APP_RUNNING.
 ; (Older hook used taskkill /FI IMAGENAME eq ... — breaks when the exe name contains spaces.)
-; CHECK_APP_RUNNING sets $CmdPath / $PowerShellPath before this macro runs.
+; Use $SYSDIR\... for PowerShell here — NSIS -WX warns on $PowerShellPath inside this macro (Var is in CHECK_APP_RUNNING).
 !macro customCheckAppRunning
   !insertmacro HspInstallDetailPrint "[installer] CHECK_APP_RUNNING: start"
   DetailPrint "[installer] INSTDIR=$INSTDIR"
@@ -235,7 +235,7 @@ Var pid
   !insertmacro HspInstallDetailPrint "[installer] supplemental: taskkill package-name exitcode=$R0"
   Sleep 500
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell Stop-Process for any exe under INSTDIR"
-  nsExec::Exec `"$PowerShellPath" -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Pop $R0
   !insertmacro HspInstallDetailPrint "[installer] supplemental: PowerShell exitcode=$R0"
   Sleep 500
