@@ -60,7 +60,6 @@ Function .onInstSuccess
   ; Use one-shot guard so Finish-page fallback does not launch twice.
   StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
   StrCpy $HspDidLaunchApp "1"
-  Sleep 500
   Call HspLaunchInstalledApp
 hspInstSuccessAfterLaunch:
   !insertmacro HspAppendInstallerLog "INSTALL_SUCCESS"
@@ -90,6 +89,33 @@ FunctionEnd
 Function HspInstFilesShow
   SetDetailsView show
   SetDetailsPrint both
+FunctionEnd
+
+; Poll until ${APP_EXECUTABLE_FILENAME} is not listed by WMI (handles spaced names; no fixed delay on success).
+; $R8 = iteration cap (~300 * 50ms max); uses $0 from ExecWait.
+Function HspWaitUntilExeNotRunning
+  StrCpy $R8 0
+hspWaitExePoll:
+  ; Exit 0 = process still present; exit 1 = no matching process (or findstr found no line).
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "wmic process where \"name='${APP_EXECUTABLE_FILENAME}'\" get ProcessId /value 2>nul | findstr /B ProcessId= >nul && exit /b 0 || exit /b 1"`
+  IntCmp $0 0 hspWaitExeStill
+  Return
+hspWaitExeStill:
+  IntOp $R8 $R8 + 1
+  IntCmp $R8 300 0 0 hspWaitExeGiveUp
+  Sleep 50
+  Goto hspWaitExePoll
+hspWaitExeGiveUp:
+FunctionEnd
+
+; Called before each CopyFiles from 7z-out to $INSTDIR (see windows/extractAppPackage.nsh retry loop).
+Function HspKillBeforeCopy
+  SetDetailsView show
+  SetDetailsPrint both
+  DetailPrint "[installer] unlock copy target (attempt $R1): taskkill /T ${APP_EXECUTABLE_FILENAME}"
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  Call HspWaitUntilExeNotRunning
 FunctionEnd
 
 Function HspFinishPageShow
@@ -169,12 +195,12 @@ FunctionEnd
   !insertmacro HspInstallDetailPrint "[installer] stop running processes (electron-builder + extra taskkill)"
   !insertmacro _CHECK_APP_RUNNING
   !insertmacro HspInstallDetailPrint "[installer] extra taskkill pass (spaced product name / stubborn locks)"
-  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
   Pop $R9
-  Sleep 2000
-  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+  Call HspWaitUntilExeNotRunning
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
   Pop $R9
-  Sleep 2000
+  Call HspWaitUntilExeNotRunning
 !macroend
 !endif
 
