@@ -8,7 +8,7 @@
 ;                button, then WM_CLOSE / Quit in HspFinishPage*).
 ;   • Commented → installer stays open for logs (160595ef: MUI_FINISHPAGE_NOAUTOCLOSE, no forced close).
 ; Uncomment the next line to enable auto-close:
-;!define HSP_INSTALLER_AUTO_FINISH
+!define HSP_INSTALLER_AUTO_FINISH
 
 !include "FileFunc.nsh"
 !include "WinMessages.nsh"
