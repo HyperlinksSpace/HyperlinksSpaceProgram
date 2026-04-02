@@ -4,6 +4,7 @@
 ; - finish page shows full log in selectable read-only text area
 
 !include "FileFunc.nsh"
+!include "WinMessages.nsh"
 
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
@@ -45,6 +46,7 @@ FunctionEnd
 !macroend
 
 Function .onInstSuccess
+  Call HspSetWizardNextToFinish
   ; Primary launch trigger for all installer modes (including one-click/silent paths).
   ; Use one-shot guard so Finish-page fallback does not launch twice.
   StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
@@ -74,6 +76,11 @@ FunctionEnd
 
 Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
+FunctionEnd
+
+Function HspSetWizardNextToFinish
+  ; InstFiles step keeps the same HWND as MUI's Next control; only the caption changes on the real page.
+  SendMessage $mui.Button.Next ${WM_SETTEXT} 0 "STR:Finish"
 FunctionEnd
 
 Function HspInstFilesShow
@@ -184,6 +191,7 @@ hspCheckDone:
   Call HspLaunchInstalledApp
 hspCustomInstallAfterLaunch:
   !insertmacro HspInstallDetailPrint "[installer] customInstall complete"
+  Call HspSetWizardNextToFinish
 !macroend
 
 !macro customFinishPage
