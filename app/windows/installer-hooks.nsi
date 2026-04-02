@@ -153,6 +153,9 @@ FunctionEnd
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
+; Only for the installer script. Uninstaller build defines BUILD_UNINSTALLER and does not include
+; getProcessInfo.nsh here — if this macro existed, _CHECK_APP_RUNNING would expand ${GetProcessInfo} without the lib.
+!ifndef BUILD_UNINSTALLER
 !macro customCheckAppRunning
   ; Full _CHECK_APP_RUNNING (taskkill /im, retry loop). FIND_PROCESS uses IMAGENAME eq … which is unreliable
   ; when the exe name contains spaces, so the inner block can be skipped and nothing gets killed before CopyFiles.
@@ -166,6 +169,7 @@ FunctionEnd
   Pop $R9
   Sleep 2000
 !macroend
+!endif
 
 !macro customInit
   !insertmacro HspInstallDetailPrint "[installer] customInit start"
