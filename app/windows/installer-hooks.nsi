@@ -187,6 +187,8 @@ hspCustomInstallAfterLaunch:
   !ifndef BUILD_UNINSTALLER
   ; Keep installer window open on completion for log inspection/copying.
   !define MUI_FINISHPAGE_NOAUTOCLOSE
+  ; Primary control is still the wizard "Next" button — set label explicitly (default can show "Next >").
+  !define MUI_FINISHPAGE_BUTTON "Finish"
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspFinishPageShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspFinishPageLeave
   !insertmacro MUI_PAGE_FINISH
