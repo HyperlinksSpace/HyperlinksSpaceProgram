@@ -142,6 +142,32 @@ def build_app_launch_url() -> str | None:
     return result
 
 
+def resolve_bot_version() -> str:
+    """Resolve a human-friendly bot version string for /start and logs."""
+    candidates = [
+        "BOT_VERSION",
+        "RELEASE",
+        "RAILWAY_GIT_COMMIT_SHA",
+        "VERCEL_GIT_COMMIT_SHA",
+        "GIT_SHA",
+        "GIT_COMMIT",
+        "HEROKU_SLUG_COMMIT",
+    ]
+    for key in candidates:
+        value = (os.getenv(key) or "").strip()
+        if value:
+            return value
+    return "dev"
+
+
+def build_start_message_text() -> str:
+    version = resolve_bot_version()
+    return (
+        f"That's @HyperlinksSpaceBot (https://t.me/HyperlinksSpaceBot) v.{version}, "
+        "you can use AI in bot and explore the app for more features"
+    )
+
+
 async def cancel_stream(chat_id: int, message_id: int) -> None:
     """Signal cancellation only. Do not await old task cleanup."""
     key = (chat_id, message_id)
@@ -812,7 +838,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start: always send a reply; use Run app button only when APP_URL is valid."""
     app_launch_url = build_app_launch_url()
-    message_text = "That's @HyperlinksSpaceBot, you can use AI in bot and explore the app for more features"
+    message_text = build_start_message_text()
 
     if app_launch_url:
         try:

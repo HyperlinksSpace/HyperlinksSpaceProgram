@@ -22,6 +22,7 @@ Required:
 Optional:
 
 - `APP_URL` (used in `/start` button)
+- `BOT_VERSION` (shown in `/start` message)
 
 Example:
 
@@ -31,6 +32,7 @@ DATABASE_URL=postgresql://user:pass@host:5432/db
 AI_BACKEND_URL=http://127.0.0.1:8000
 INNER_CALLS_KEY=change-me-shared-secret
 APP_URL=https://your-frontend-domain
+BOT_VERSION=123
 ```
 
 ## Railway

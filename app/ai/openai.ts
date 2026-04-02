@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { getInputPrefixForMode } from "./instructions.js";
 
 export type AiMode = "chat" | "token_info";
 
@@ -65,9 +66,7 @@ export async function callOpenAiChat(
   }
 
   const prefix =
-    mode === "token_info"
-      ? "You are a blockchain and token analyst. Answer clearly and briefly.\n\n"
-      : "";
+    getInputPrefixForMode(mode);
 
   try {
     const response = await client.responses.create({
@@ -126,9 +125,7 @@ export async function callOpenAiChatStream(
   }
 
   const prefix =
-    mode === "token_info"
-      ? "You are a blockchain and token analyst. Answer clearly and briefly.\n\n"
-      : "";
+    getInputPrefixForMode(mode);
   let onAbort: (() => void) | null = null;
 
   try {

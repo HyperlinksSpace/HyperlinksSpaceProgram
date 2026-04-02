@@ -1,6 +1,7 @@
 import type { Context } from "grammy";
 import { normalizeSymbol } from "../blockchain/coffee.js";
 import { transmit, transmitStream } from "../ai/transmitter.js";
+import { TELEGRAM_BOT_LENGTH_INSTRUCTION } from "../ai/instructions.js";
 import { normalizeUsername } from "../database/users.js";
 import { getMaxTelegramUpdateIdForThread, insertMessage } from "../database/messages.js";
 import {
@@ -16,10 +17,6 @@ const MAX_MESSAGE_TEXT_LENGTH = 4096;
 const MAX_LONG_MESSAGE_PARTS = 2;
 const TELEGRAM_TRUNCATION_NOTICE =
   "\n\n[Truncated in Telegram. Open the Mini App for the full response.]";
-
-/** Instruction passed to AI when the message comes from the bot: keep replies under 4096 chars and mention TMA for long answers. */
-const TELEGRAM_BOT_LENGTH_INSTRUCTION =
-  "Please give an answer in less than 4096 chars. If user asks for a long message or a message with more than 4096 chars add a sentence that full responses are available only in TMA and your bot you can give just a short answer that follows.";
 
 /** Split text into chunks of at most maxLen, preferring to break at newlines. */
 function chunkText(text: string, maxLen: number): string[] {

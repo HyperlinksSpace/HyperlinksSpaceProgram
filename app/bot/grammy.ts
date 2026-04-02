@@ -8,6 +8,7 @@ import {
   upsertUserFromBot,
 } from '../database/users.js';
 import { handleBotAiResponse } from './responder.js';
+import { buildStartMessage } from './start.js';
 
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
@@ -31,7 +32,7 @@ export function createBot(token: string): Bot {
 
   bot.command('start', async (ctx: Context) => {
     await handleUserUpsert(ctx);
-    await ctx.reply("That's @HyperlinksSpaceBot, you can use AI in bot and explore the app for more features");
+    await ctx.reply(buildStartMessage());
   });
 
   bot.on('message:text', async (ctx: Context) => {

@@ -24,6 +24,7 @@
     "web": "expo start --web",
     "dev:vercel": "cross-env TS_NODE_PROJECT=api/tsconfig.json npx vercel dev",
     "lint": "expo lint",
+    "test:bot": "node --import tsx --test bot/**/*.test.ts",
     "draft": "npx eas-cli@latest workflow:run create-draft.yml",
     "development-builds": "npx eas-cli@latest workflow:run create-development-builds.yml",
     "deploy": "npx eas-cli@latest workflow:run deploy-to-production.yml",

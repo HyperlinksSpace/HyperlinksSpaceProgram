@@ -38,6 +38,12 @@
 - **Usage**: Used in `/start` command to create inline button linking to the app
 - **Note**: If not set, button will have `None?mode=fullscreen` as URL
 
+### `BOT_VERSION`
+- **Description**: Human-friendly version tag shown in the `/start` message (helps avoid mixing up deployments)
+- **Required**: No
+- **Example**: `123` (shown as `v.123`)
+- **Usage**: Included in the `/start` message so deployers can verify the running version
+
 ## Setup Instructions
 
 ### Local Development
