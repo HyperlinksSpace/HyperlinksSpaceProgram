@@ -19,6 +19,9 @@
 !endif
 
 !ifndef BUILD_UNINSTALLER
+; Required when customCheckAppRunning is defined: app-builder skips its own include (allowOnlyOneInstallerInstance.nsh).
+!include "getProcessInfo.nsh"
+Var pid
 Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
@@ -150,9 +153,19 @@ FunctionEnd
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
-; Intentionally no customCheckAppRunning: defining it replaces electron-builder's _CHECK_APP_RUNNING, which
-; uses GetProcessInfo, optional user prompt, and a retry loop with taskkill /im — required to release locks
-; before File commands. A custom shortcut left "Can't modify … files" / Copy failed on upgrades.
+!macro customCheckAppRunning
+  ; Full _CHECK_APP_RUNNING (taskkill /im, retry loop). FIND_PROCESS uses IMAGENAME eq … which is unreliable
+  ; when the exe name contains spaces, so the inner block can be skipped and nothing gets killed before CopyFiles.
+  !insertmacro HspInstallDetailPrint "[installer] stop running processes (electron-builder + extra taskkill)"
+  !insertmacro _CHECK_APP_RUNNING
+  !insertmacro HspInstallDetailPrint "[installer] extra taskkill pass (spaced product name / stubborn locks)"
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  Sleep 2000
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /IM "${APP_EXECUTABLE_FILENAME}" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  Sleep 2000
+!macroend
 
 !macro customInit
   !insertmacro HspInstallDetailPrint "[installer] customInit start"
