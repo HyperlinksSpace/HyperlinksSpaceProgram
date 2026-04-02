@@ -2,6 +2,14 @@
 ; - force current-user install mode
 ; - real-time DetailPrint + mirrored log file in %TEMP%
 ; - finish page shows full log in selectable read-only text area
+;
+; --- One-line release vs debug UI (comment/uncomment only the next line) ---
+; With HSP_INSTALLER_AUTO_FINISH defined (default): InstFiles auto-advances to the finish page and
+;   the wizard can close automatically when install completes (typical release behavior).
+; Comment out `!define HSP_INSTALLER_AUTO_FINISH` for debug: stay on the install-files page with
+;   Next, then the finish page; installer stays open until Finish — copy logs from the detail list
+;   or the finish-page edit control.
+!define HSP_INSTALLER_AUTO_FINISH
 
 !include "FileFunc.nsh"
 !include "WinMessages.nsh"
@@ -46,7 +54,9 @@ FunctionEnd
 !macroend
 
 Function .onInstSuccess
+!ifdef HSP_INSTALLER_AUTO_FINISH
   Call HspSetWizardNextToFinish
+!endif
   ; Primary launch trigger for all installer modes (including one-click/silent paths).
   ; Use one-shot guard so Finish-page fallback does not launch twice.
   StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
@@ -92,9 +102,10 @@ Function HspInstFilesShow
 FunctionEnd
 
 Function HspFinishPageShow
-  ; MUI may set SetAutoClose true for the finish page path; do that only here, not in customInstall.
-  ; SetAutoClose false before the install section ends blocks InstFiles→Finish auto-advance (Next stays).
+!ifndef HSP_INSTALLER_AUTO_FINISH
+  ; Debug UI: require Finish to dismiss (release omits this so MUI may auto-close after install).
   SetAutoClose false
+!endif
   Call HspEnsureInstallerLogPath
   ; Launch app automatically when install reaches finish page; keep installer open for logs.
   StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
@@ -194,15 +205,17 @@ hspCheckDone:
   Call HspLaunchInstalledApp
 hspCustomInstallAfterLaunch:
   !insertmacro HspInstallDetailPrint "[installer] customInstall complete"
+!ifdef HSP_INSTALLER_AUTO_FINISH
   Call HspSetWizardNextToFinish
+!endif
 !macroend
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
-  ; Do NOT use MUI_FINISHPAGE_NOAUTOCLOSE here: in MUI2 it means "stay on the install-files page
-  ; after the section completes" (Next advances to the real finish page). That produced a misleading
-  ; two-step flow: InstFiles completion + Next, then Finish. Omitting it auto-advances to this page.
-  ; Full log remains available in HspFinishPageShow below.
+!ifndef HSP_INSTALLER_AUTO_FINISH
+  ; Debug only: do not auto-jump from InstFiles to this page (user clicks Next, then Finish).
+  !define MUI_FINISHPAGE_NOAUTOCLOSE
+!endif
   !define MUI_FINISHPAGE_BUTTON "Finish"
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspFinishPageShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspFinishPageLeave
