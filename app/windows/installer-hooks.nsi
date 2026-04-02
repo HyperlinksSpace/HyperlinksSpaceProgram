@@ -3,8 +3,10 @@
 ; - real-time DetailPrint + mirrored log file in %TEMP%
 ; - finish page shows full log in selectable read-only text area
 ;
-; Release: leave defined — omit MUI_FINISHPAGE_NOAUTOCLOSE so MUI auto-advances and can close after install.
-; Debug: comment out this line — restores NOAUTOCLOSE + SetAutoClose false (stay on InstFiles with Next, then Finish).
+; Release: leave defined — after the real finish page is shown, Quit (see HspFinishPageShow). Do not omit
+; MUI_FINISHPAGE_NOAUTOCLOSE for that: without it MUI can advance/close while the InstFiles progress bar is
+; still catching up (wrong ESTIMATED_SIZE vs actual bytes), which looks like exit at ~60%.
+; Debug: comment out — SetAutoClose false on the finish page; no Quit (copy logs, close manually).
 !define HSP_INSTALLER_AUTO_FINISH
 
 !include "FileFunc.nsh"
@@ -117,6 +119,9 @@ hspFinishReadLoop:
 hspFinishFileDone:
   FileClose $R0
 hspFinishShowDone:
+!ifdef HSP_INSTALLER_AUTO_FINISH
+  Quit
+!endif
 FunctionEnd
 
 Function HspFinishPageLeave
@@ -192,9 +197,8 @@ hspCustomInstallAfterLaunch:
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
-!ifndef HSP_INSTALLER_AUTO_FINISH
+  ; Always set: avoids MUI auto-jumping/closing while InstFiles progress is mid-bar (see header comment).
   !define MUI_FINISHPAGE_NOAUTOCLOSE
-!endif
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspFinishPageShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspFinishPageLeave
   !insertmacro MUI_PAGE_FINISH
