@@ -2,17 +2,8 @@
 ; - force current-user install mode
 ; - real-time DetailPrint + mirrored log file in %TEMP%
 ; - finish page shows full log in selectable read-only text area
-;
-; --- One-line release vs debug UI (comment/uncomment only the next line) ---
-; With HSP_INSTALLER_AUTO_FINISH defined (default): InstFiles auto-advances to the finish page and
-;   the wizard can close automatically when install completes (typical release behavior).
-; Comment out `!define HSP_INSTALLER_AUTO_FINISH` for debug: stay on the install-files page with
-;   Next, then the finish page; installer stays open until Finish — copy logs from the detail list
-;   or the finish-page edit control.
-!define HSP_INSTALLER_AUTO_FINISH
 
 !include "FileFunc.nsh"
-!include "WinMessages.nsh"
 
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
@@ -54,9 +45,6 @@ FunctionEnd
 !macroend
 
 Function .onInstSuccess
-!ifdef HSP_INSTALLER_AUTO_FINISH
-  Call HspSetWizardNextToFinish
-!endif
   ; Primary launch trigger for all installer modes (including one-click/silent paths).
   ; Use one-shot guard so Finish-page fallback does not launch twice.
   StrCmp $HspDidLaunchApp "1" hspInstSuccessAfterLaunch
@@ -88,24 +76,12 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
 FunctionEnd
 
-Function HspSetWizardNextToFinish
-  ; Cannot use $mui.Button.Next here: this include is parsed before MUI declares that Var (makensis
-  ; warning 6000 → CI treats warnings as errors). Same pattern as multiUserUi.nsh: dlg item 1 = Next.
-  GetDlgItem $R0 $HWNDPARENT 1
-  StrCmp $R0 0 +2
-  SendMessage $R0 ${WM_SETTEXT} 0 "STR:Finish"
-FunctionEnd
-
 Function HspInstFilesShow
   SetDetailsView show
   SetDetailsPrint both
 FunctionEnd
 
 Function HspFinishPageShow
-!ifndef HSP_INSTALLER_AUTO_FINISH
-  ; Debug UI: require Finish to dismiss (release omits this so MUI may auto-close after install).
-  SetAutoClose false
-!endif
   Call HspEnsureInstallerLogPath
   ; Launch app automatically when install reaches finish page; keep installer open for logs.
   StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
@@ -205,18 +181,12 @@ hspCheckDone:
   Call HspLaunchInstalledApp
 hspCustomInstallAfterLaunch:
   !insertmacro HspInstallDetailPrint "[installer] customInstall complete"
-!ifdef HSP_INSTALLER_AUTO_FINISH
-  Call HspSetWizardNextToFinish
-!endif
 !macroend
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
-!ifndef HSP_INSTALLER_AUTO_FINISH
-  ; Debug only: do not auto-jump from InstFiles to this page (user clicks Next, then Finish).
+  ; Keep installer window open on completion for log inspection/copying.
   !define MUI_FINISHPAGE_NOAUTOCLOSE
-!endif
-  !define MUI_FINISHPAGE_BUTTON "Finish"
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW HspFinishPageShow
   !define MUI_PAGE_CUSTOMFUNCTION_LEAVE HspFinishPageLeave
   !insertmacro MUI_PAGE_FINISH
