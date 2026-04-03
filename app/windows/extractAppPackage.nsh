@@ -105,6 +105,8 @@
   Pop $R0
   SetOutPath $R0
 
+  !insertmacro HspInstallDetailPrint "[installer] Installing application files (package extracted; copying to destination)"
+
   # Retry counter
   StrCpy $R1 0
 
@@ -116,7 +118,11 @@
     CopyFiles /SILENT "$PLUGINSDIR\7z-out\*" $OUTDIR
     IfErrors 0 DoneExtract7za
 
-    DetailPrint `Can't modify "${PRODUCT_NAME}"'s files.`
+    StrCpy $0 `Can't modify "${PRODUCT_NAME}"'s files.`
+    Call HspAppendLogText
+    SetDetailsView show
+    SetDetailsPrint textonly
+    DetailPrint "Error: could not update installed files (details in install log)."
     ${if} $R1 < 15
       # Automatic retries (same work as user clicking Retry: kill + wait + copy again).
       Goto RetryExtract7za
