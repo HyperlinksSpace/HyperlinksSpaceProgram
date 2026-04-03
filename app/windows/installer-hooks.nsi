@@ -37,6 +37,10 @@ Var HspDidLaunchApp
 Var HspInstFilesLogHwnd
 Var HspInstFilesLogStyle
 Var HspInstFilesLogExStyle
+Var HspInstFilesLogSaveX
+Var HspInstFilesLogSaveY
+Var HspInstFilesLogSaveW
+Var HspInstFilesLogSaveH
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -125,10 +129,28 @@ hspInstFilesOuterLineDone:
   IntCmp $1 0 hspInstFilesHideIntroDone
   ShowWindow $1 ${SW_HIDE}
 hspInstFilesHideIntroDone:
+  ; "Show details" (1027) still consumes a row; hide it so the log can use full inner height.
+  GetDlgItem $1 $0 1027
+  IntCmp $1 0 hspInstFilesHideShowDetailsDone
+  ShowWindow $1 ${SW_HIDE}
+hspInstFilesHideShowDetailsDone:
   ; SysListView32 (1016): top edge reads as a gray rule above the log; clear border + clientedge.
   GetDlgItem $1 $0 1016
   IntCmp $1 0 hspInstFilesInnerDone
   StrCpy $HspInstFilesLogHwnd $1
+  ; Save placement (parent client coords) so Leave can restore after we expand to full inner client.
+  System::Call "*(&i4 0 &i4 0 &i4 0 &i4 0) i.r6"
+  System::Call "user32::GetWindowRect(i r1, i r6)"
+  System::Call "*$6(&i4 .r2 &i4 .r3 &i4 .r4 &i4 .r5)"
+  System::Call "*(&i4 r2 &i4 r3) i.r7"
+  System::Call "user32::ScreenToClient(i r0, i r7)"
+  System::Call "*$7(&i4 .r8 &i4 .r9)"
+  StrCpy $HspInstFilesLogSaveX $8
+  StrCpy $HspInstFilesLogSaveY $9
+  IntOp $R8 $R4 - $R2
+  IntOp $R9 $R5 - $R3
+  StrCpy $HspInstFilesLogSaveW $R8
+  StrCpy $HspInstFilesLogSaveH $R9
   System::Call "user32::GetWindowLong(i r1, i ${HSP_GWL_STYLE}) i .r2"
   StrCpy $HspInstFilesLogStyle $2
   System::Call "user32::GetWindowLong(i r1, i ${HSP_GWL_EXSTYLE}) i .r2"
@@ -137,7 +159,12 @@ hspInstFilesHideIntroDone:
   IntOp $3 $HspInstFilesLogExStyle & 0xFFFFFDFF
   System::Call "user32::SetWindowLong(i r1, i ${HSP_GWL_STYLE}, i r2) i .r4"
   System::Call "user32::SetWindowLong(i r1, i ${HSP_GWL_EXSTYLE}, i r3) i .r4"
-  System::Call "user32::SetWindowPos(i r1, i 0, i 0, i 0, i 0, i 0, i 0x0027) i .r4"
+  System::Call "*(&i4 0 &i4 0 &i4 0 &i4 0) i.r6"
+  System::Call "user32::GetClientRect(i r0, i r6)"
+  System::Call "*$6(&i4 .r2 &i4 .r3 &i4 .r4 &i4 .r5)"
+  IntOp $R7 $R4 - $R2
+  IntOp $R8 $R5 - $R3
+  System::Call "user32::SetWindowPos(i r1, i 0, i 0, i 0, i r7, i r8, i 0x0027) i .r4"
 hspInstFilesInnerDone:
 FunctionEnd
 
@@ -151,13 +178,21 @@ Function HspInstFilesLeave
   IntCmp $1 0 hspInstFilesLeaveIntroDone
   ShowWindow $1 ${SW_SHOW}
 hspInstFilesLeaveIntroDone:
+  GetDlgItem $1 $0 1027
+  IntCmp $1 0 hspInstFilesLeaveShowDetailsDone
+  ShowWindow $1 ${SW_SHOW}
+hspInstFilesLeaveShowDetailsDone:
   StrCmp $HspInstFilesLogHwnd "" hspInstFilesLeaveLogDone
   StrCpy $R8 $HspInstFilesLogHwnd
   StrCpy $R7 $HspInstFilesLogStyle
   StrCpy $R6 $HspInstFilesLogExStyle
   System::Call "user32::SetWindowLong(i r8, i ${HSP_GWL_STYLE}, i r7) i .r9"
   System::Call "user32::SetWindowLong(i r8, i ${HSP_GWL_EXSTYLE}, i r6) i .r9"
-  System::Call "user32::SetWindowPos(i r8, i 0, i 0, i 0, i 0, i 0, i 0x0027) i .r9"
+  StrCpy $R4 $HspInstFilesLogSaveX
+  StrCpy $R5 $HspInstFilesLogSaveY
+  StrCpy $R6 $HspInstFilesLogSaveW
+  StrCpy $R7 $HspInstFilesLogSaveH
+  System::Call "user32::MoveWindow(i r8, i r4, i r5, i r6, i r7, i 1) i .r9"
   StrCpy $HspInstFilesLogHwnd ""
 hspInstFilesLeaveLogDone:
 FunctionEnd
@@ -223,6 +258,14 @@ Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false
 !endif
+  StrCpy $R9 $HWNDPARENT
+  ; Hide MUI header title/subtitle (otherwise e.g. "Completed" / "Complete" from lang file).
+  GetDlgItem $R0 $R9 1037
+  IntCmp $R0 0 +2
+  ShowWindow $R0 ${SW_HIDE}
+  GetDlgItem $R0 $R9 1038
+  IntCmp $R0 0 +2
+  ShowWindow $R0 ${SW_HIDE}
   Call HspFinishResolveLogPath
   ; Launch app automatically when install reaches finish page; keep installer open for logs.
   StrCmp $HspDidLaunchApp "1" hspSkipAutoLaunch
@@ -230,8 +273,22 @@ Function HspFinishPageShow
   Call HspLaunchInstalledApp
 hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
-  ; Single multiline edit for the log only (no separate summary line / STATIC above).
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 128, i 128, i 360, i 220, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
+  ; Size log edit to the wizard content placeholder (IDC_CHILDRECT 1018), not fixed 128×128 indents.
+  GetDlgItem $R0 $R9 1018
+  IntCmp $R0 0 hspFinishEditCreateFallback
+  System::Call "*(&i4 0 &i4 0 &i4 0 &i4 0) i.r6"
+  System::Call "user32::GetWindowRect(i r0, i r6)"
+  System::Call "*$6(&i4 .r2 &i4 .r3 &i4 .r4 &i4 .r5)"
+  System::Call "*(&i4 r2 &i4 r3) i.r7"
+  System::Call "user32::ScreenToClient(i r9, i r7)"
+  System::Call "*$7(&i4 .r10 &i4 .r11)"
+  IntOp $R12 $R4 - $R2
+  IntOp $R13 $R5 - $R3
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i r10, i r11, i r12, i r13, i r9, i 0, i 0, i 0) i.r0"
+  Goto hspFinishEditCreateDone
+hspFinishEditCreateFallback:
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 16, i 48, i 300, i 200, i r9, i 0, i 0, i 0) i.r0"
+hspFinishEditCreateDone:
   IntCmp $0 0 hspFinishShowDone
   StrCpy $HspFinishLogEdit $0
   StrCpy $9 $0
@@ -333,6 +390,9 @@ hspCustomInstallAfterLaunch:
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
+  ; Suppress default finish header strings (we hide 1037/1038 in HspFinishPageShow as well).
+  !define MUI_FINISHPAGE_TITLE " "
+  !define MUI_FINISHPAGE_SUBTITLE " "
   !ifdef HSP_INSTALLER_AUTO_FINISH
     ; 4f25a5c: omit NOAUTOCLOSE (single-step to Finish; then we force-close in HspFinishPageShow/Leave).
     !define MUI_FINISHPAGE_BUTTON "Finish"
