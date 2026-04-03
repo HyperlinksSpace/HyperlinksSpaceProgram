@@ -23,6 +23,8 @@
 !macroend
 !macro HspInstallDetailPrint MSG
 !macroend
+!macro HspInstallStepPrint STEP TOTAL DESC
+!macroend
 !endif
 
 !ifndef BUILD_UNINSTALLER
@@ -55,6 +57,11 @@ FunctionEnd
   SetDetailsPrint both
   DetailPrint "${MSG}"
   !insertmacro HspAppendInstallerLog "${MSG}"
+!macroend
+
+; Numbered stage lines (DetailPrint + log file) — insert before/after NSIS "Output folder" / "Extract" / "Copy to" output.
+!macro HspInstallStepPrint STEP TOTAL DESC
+  !insertmacro HspInstallDetailPrint "[installer] Step ${STEP} of ${TOTAL}: ${DESC}"
 !macroend
 
 Function .onInstSuccess
