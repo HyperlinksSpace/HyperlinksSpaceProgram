@@ -254,6 +254,25 @@ Function HspKillBeforeCopy
   Call HspWaitUntilPackagedProcessesGone
 FunctionEnd
 
+; Drop trailing NSIS status line ("Completed") from log buffer in $R3.
+Function HspFinishStripTrailingCompleted
+  StrLen $R4 $R3
+  IntCmp $R4 0 hspStripDone
+  StrCpy $R5 "$\r$\nCompleted"
+  StrLen $R6 $R5
+  IntOp $R7 $R4 - $R6
+  IntCmp $R7 0 hspStripTry hspStripDone hspStripTry
+hspStripTry:
+  StrCpy $R8 $R3 $R6 $R7
+  StrCmp $R8 "$\r$\nCompleted" 0 hspStripBare
+  StrCpy $R3 $R3 $R7 0
+  Goto hspStripDone
+hspStripBare:
+  StrCmp $R3 "Completed" 0 hspStripDone
+  StrCpy $R3 ""
+hspStripDone:
+FunctionEnd
+
 Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false
@@ -273,8 +292,29 @@ Function HspFinishPageShow
   Call HspLaunchInstalledApp
 hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
-  ; Size log edit to the wizard content placeholder (IDC_CHILDRECT 1018), not fixed 128×128 indents.
-  ; NSIS only allows $0-$9 and $R0-$R9 (no $R10+); use $R1 = parent HWND throughout.
+  ; MUI finish = nsDialogs full-window page: inner #32770 holds bitmap + title + body labels.
+  ; Hide the two labels under the bitmap, then place the edit in the same dialog-unit rect MUI uses (~120–315 x, 10–193 y).
+  FindWindow $R2 "#32770" "" $HWNDPARENT
+  IntCmp $R2 0 hspFinishEditOuterLayout
+  System::Call "user32::GetWindow(i r2, i 4) i .r3"
+  IntCmp $R3 0 hspFinishMapDlg
+  System::Call "user32::GetWindow(i r3, i 2) i .r4"
+  IntCmp $R4 0 hspFinishMapDlg
+  ShowWindow $R4 ${SW_HIDE}
+  System::Call "user32::GetWindow(i r4, i 2) i .r5"
+  IntCmp $R5 0 hspFinishMapDlg
+  ShowWindow $R5 ${SW_HIDE}
+hspFinishMapDlg:
+  StrCpy $8 $R2
+  System::Call "*(&i4 120 &i4 10 &i4 315 &i4 193) i.r6"
+  System::Call "user32::MapDialogRect(i r8, i r6)"
+  System::Call "*$6(&i4 .r2 &i4 .r3 &i4 .r4 &i4 .r5)"
+  IntOp $6 $4 - $2
+  IntOp $7 $5 - $3
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i r2, i r3, i r6, i r7, i r8, i 0, i 0, i 0) i.r0"
+  Goto hspFinishEditCreateDone
+hspFinishEditOuterLayout:
+  ; Fallback: outer IDC_CHILDRECT (installer pages that are not MUI full-window finish).
   GetDlgItem $R0 $R1 1018
   IntCmp $R0 0 hspFinishEditCreateFallback
   System::Call "*(&i4 0 &i4 0 &i4 0 &i4 0) i.r6"
@@ -283,7 +323,6 @@ hspSkipAutoLaunch:
   System::Call "*(&i4 r2 &i4 r3) i.r7"
   System::Call "user32::ScreenToClient(i r1, i r7)"
   System::Call "*$7(&i4 .r8 &i4 .r9)"
-  ; Width/height in $6/$7 (r6/r7 for System::Call — not $R6; rect sides are $2-$5).
   IntOp $6 $4 - $2
   IntOp $7 $5 - $3
   System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i r8, i r9, i r6, i r7, i r1, i 0, i 0, i 0) i.r0"
@@ -311,6 +350,7 @@ hspFinishReadLoop:
   IntCmp $R4 7500 hspFinishFileDone hspFinishReadLoop hspFinishFileDone
 hspFinishFileDone:
   FileClose $R0
+  Call HspFinishStripTrailingCompleted
   System::Call "user32::SetWindowTextW(i r9, w r3)"
   Goto hspFinishAfterLogSet
 hspFinishReadErr:
@@ -392,9 +432,9 @@ hspCustomInstallAfterLaunch:
 
 !macro customFinishPage
   !ifndef BUILD_UNINSTALLER
-  ; Suppress default finish header strings (we hide 1037/1038 in HspFinishPageShow as well).
-  !define MUI_FINISHPAGE_TITLE " "
-  !define MUI_FINISHPAGE_SUBTITLE " "
+  ; MUI finish page body/title are MUI_FINISHPAGE_TITLE + MUI_FINISHPAGE_TEXT (nsDialogs labels), not SUBTITLE.
+  !define MUI_FINISHPAGE_TITLE ""
+  !define MUI_FINISHPAGE_TEXT ""
   !ifdef HSP_INSTALLER_AUTO_FINISH
     ; 4f25a5c: omit NOAUTOCLOSE (single-step to Finish; then we force-close in HspFinishPageShow/Leave).
     !define MUI_FINISHPAGE_BUTTON "Finish"
