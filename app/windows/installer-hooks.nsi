@@ -1,7 +1,7 @@
 ; Installer hooks for debug-friendly installs:
 ; - force current-user install mode
-; - InstFiles: "Step X of N" lines only (textonly); full lines mirrored to %TEMP%\HyperlinksSpaceInstall.log
-; - finish page: "Complete" + full log in selectable read-only text area
+; - real-time DetailPrint + mirrored log file in %TEMP%
+; - finish page shows full log in selectable read-only text area
 ;
 ; HSP_INSTALLER_AUTO_FINISH — two finish-page setups (see commits 4f25a5c vs 160595ef):
 ;   • Defined   → auto-dismiss wizard after install (4f25a5c: no MUI_FINISHPAGE_NOAUTOCLOSE, Finish
@@ -30,10 +30,6 @@ Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
 Var HspDidLaunchApp
-Var HspStep
-
-; Must match the number of !insertmacro HspInstallDetailPrint usages (init + mode + check + extract + customInstall x3).
-!define HSP_INSTALL_STEP_TOTAL 8
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -43,29 +39,22 @@ hspSetLogPath:
 hspLogPathDone:
 FunctionEnd
 
-Function HspAppendLogText
+!macro HspAppendInstallerLog TEXT
   Call HspEnsureInstallerLogPath
   ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
   StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
   FileOpen $HspLogHandle "$HspLogFile" a
   FileWrite $HspLogHandle $R7
-  FileWrite $HspLogHandle $0
+  FileWrite $HspLogHandle "${TEXT}"
   FileWrite $HspLogHandle "$\r$\n"
   FileClose $HspLogHandle
-FunctionEnd
-
-!macro HspAppendInstallerLog TEXT
-  StrCpy $0 "${TEXT}"
-  Call HspAppendLogText
 !macroend
 
 !macro HspInstallDetailPrint MSG
-  IntOp $HspStep $HspStep + 1
   SetDetailsView show
-  SetDetailsPrint textonly
-  DetailPrint "Step $HspStep of ${HSP_INSTALL_STEP_TOTAL}: ${MSG}"
-  StrCpy $0 "Step $HspStep/${HSP_INSTALL_STEP_TOTAL}: ${MSG}"
-  Call HspAppendLogText
+  SetDetailsPrint both
+  DetailPrint "${MSG}"
+  !insertmacro HspAppendInstallerLog "${MSG}"
 !macroend
 
 Function .onInstSuccess
@@ -102,8 +91,7 @@ FunctionEnd
 
 Function HspInstFilesShow
   SetDetailsView show
-  ; Avoid duplicating the long file/extract list: show only our DetailPrint "Step …" lines in this pane.
-  SetDetailsPrint textonly
+  SetDetailsPrint both
   FindWindow $0 "#32770" "" $HWNDPARENT
   FindWindow $1 "msctls_progress32" "" $0
   IntCmp $1 0 hspInstFilesBarDone
@@ -162,9 +150,8 @@ FunctionEnd
 ; Called from windows/extractAppPackage.nsh before each CopyFiles (and each retry).
 Function HspKillBeforeCopy
   SetDetailsView show
-  SetDetailsPrint textonly
-  StrCpy $0 "[installer] unlock install dir before copy (attempt $R1)"
-  Call HspAppendLogText
+  SetDetailsPrint both
+  DetailPrint "[installer] unlock install dir before copy (attempt $R1)"
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
 FunctionEnd
@@ -189,8 +176,6 @@ hspSkipAutoLaunch:
   System::Call "user32::SetWindowTextW(i r9, w \"No installation log file was found.\")"
   Goto hspFinishShowDone
 hspFinishFillFile:
-  StrCpy $2 "Complete$\r$\n$\r$\n"
-  System::Call "user32::SendMessageW(i r9, i 0xC2, i 1, w r2)"
   FileOpen $R0 "$HspLogFile" r
 hspFinishReadLoop:
   FileRead $R0 $1
@@ -249,7 +234,6 @@ FunctionEnd
 !endif
 
 !macro customInit
-  StrCpy $HspStep 0
   !insertmacro HspInstallDetailPrint "[installer] customInit start"
   SetRegView 64
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
