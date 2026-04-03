@@ -92,14 +92,23 @@ Function HspInstFilesShow
   SetDetailsPrint both
 FunctionEnd
 
-; $0 = 1 if any known main exe is still running, else 0. Uses wmic (works with spaces in image name).
+; $0 = 1 if any known main or Electron helper exe is still running, else 0.
+; Uses tasklist (works with spaces; avoids deprecated wmic on Windows 11+).
 ; Use PRODUCT_FILENAME / APP_PACKAGE_NAME only — APP_EXECUTABLE_FILENAME is not always passed to makensis.
 Function HspAnyPackagedExeRunning
-  ExecWait `"$WINDIR\System32\cmd.exe" /C "wmic process where \"name='${PRODUCT_FILENAME}.exe'\" get ProcessId /value 2>nul | findstr /B ProcessId= >nul && exit /b 0 || exit /b 1"`
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${PRODUCT_FILENAME}.exe\" 2>nul | findstr /I /C:\"${PRODUCT_FILENAME}.exe\" >nul && exit /b 0 || exit /b 1"`
   IntCmp $0 0 hspAnyExeYes
-  ExecWait `"$WINDIR\System32\cmd.exe" /C "wmic process where \"name='${APP_PACKAGE_NAME}.exe'\" get ProcessId /value 2>nul | findstr /B ProcessId= >nul && exit /b 0 || exit /b 1"`
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${PRODUCT_FILENAME} Helper.exe\" 2>nul | findstr /I /C:\"${PRODUCT_FILENAME} Helper.exe\" >nul && exit /b 0 || exit /b 1"`
   IntCmp $0 0 hspAnyExeYes
-  ExecWait `"$WINDIR\System32\cmd.exe" /C "wmic process where \"name='${HSP_ALT_MAIN_EXE}'\" get ProcessId /value 2>nul | findstr /B ProcessId= >nul && exit /b 0 || exit /b 1"`
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${PRODUCT_FILENAME} Helper (GPU).exe\" 2>nul | findstr /I /C:\"${PRODUCT_FILENAME} Helper (GPU).exe\" >nul && exit /b 0 || exit /b 1"`
+  IntCmp $0 0 hspAnyExeYes
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${PRODUCT_FILENAME} Helper (Renderer).exe\" 2>nul | findstr /I /C:\"${PRODUCT_FILENAME} Helper (Renderer).exe\" >nul && exit /b 0 || exit /b 1"`
+  IntCmp $0 0 hspAnyExeYes
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${PRODUCT_FILENAME} Helper (Plugin).exe\" 2>nul | findstr /I /C:\"${PRODUCT_FILENAME} Helper (Plugin).exe\" >nul && exit /b 0 || exit /b 1"`
+  IntCmp $0 0 hspAnyExeYes
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${APP_PACKAGE_NAME}.exe\" 2>nul | findstr /I /C:\"${APP_PACKAGE_NAME}.exe\" >nul && exit /b 0 || exit /b 1"`
+  IntCmp $0 0 hspAnyExeYes
+  ExecWait `"$WINDIR\System32\cmd.exe" /C "tasklist /FI \"IMAGENAME eq ${HSP_ALT_MAIN_EXE}\" 2>nul | findstr /I /C:\"${HSP_ALT_MAIN_EXE}\" >nul && exit /b 0 || exit /b 1"`
   IntCmp $0 0 hspAnyExeYes
   StrCpy $0 0
   Return
@@ -121,11 +130,24 @@ hspWaitPackagedDone:
 FunctionEnd
 
 Function HspKillPackagedAppProcesses
+  ; Named exes (Electron main + helpers + legacy names). /F /T = force + child processes.
   nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${PRODUCT_FILENAME}.exe" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper.exe" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (GPU).exe" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (Renderer).exe" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${PRODUCT_FILENAME} Helper (Plugin).exe" /FI "USERNAME eq %USERNAME%"`
   Pop $R9
   nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${APP_PACKAGE_NAME}.exe" /FI "USERNAME eq %USERNAME%"`
   Pop $R9
   nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /F /T /IM "${HSP_ALT_MAIN_EXE}" /FI "USERNAME eq %USERNAME%"`
+  Pop $R9
+  ; Anything still running from $INSTDIR (crashpad, future helper renames, etc.). Same approach as app-builder _KILL_PROCESS via CIM.
+  StrCpy $R7 "$INSTDIR"
+  nsExec::Exec `"$WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { $$inst = '$R7'; $$root = $$inst.ToLower(); Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $$_.ExecutablePath -and $$_.ExecutablePath.ToLower().StartsWith($$root) } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue } }"`
   Pop $R9
 FunctionEnd
 
