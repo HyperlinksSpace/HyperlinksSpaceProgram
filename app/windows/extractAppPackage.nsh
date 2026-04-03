@@ -86,7 +86,7 @@
 
 !macro decompress
   !ifdef ZIP_COMPRESSION
-    !insertmacro HspInstallStepPrint 1 1 "Unzip embedded package to $INSTDIR"
+    !insertmacro HspInstallDetailPrint "[installer] Step 1 of 1: Unzip embedded package to $INSTDIR"
     nsisunz::Unzip "$PLUGINSDIR\app-$packageArch.zip" "$INSTDIR"
     Pop $R0
     StrCmp $R0 "success" +3
@@ -100,19 +100,20 @@
 !macro extractUsing7za FILE
   Push $OUTDIR
   ; Four stages matching NSIS detail lines: Create folder / Output folder → Extract → Output folder → Copy to.
-  !insertmacro HspInstallStepPrint 1 4 "Prepare temp folder and output path for 7z extraction"
+  ; Use HspInstallDetailPrint with literal strings — nested HspInstallStepPrint → HspInstallDetailPrint can fail to expand ${STEP}/${TOTAL}/${DESC} in some NSIS builds, so step lines never appeared in the detail log.
+  !insertmacro HspInstallDetailPrint "[installer] Step 1 of 4: Prepare temp folder and output path for 7z extraction"
   CreateDirectory "$PLUGINSDIR\7z-out"
   ClearErrors
   SetOutPath "$PLUGINSDIR\7z-out"
-  !insertmacro HspInstallStepPrint 2 4 "Extract 7z archive into temp folder (Nsis7z)"
+  !insertmacro HspInstallDetailPrint "[installer] Step 2 of 4: Extract 7z archive into temp folder (Nsis7z)"
   Nsis7z::Extract "${FILE}"
   Pop $R0
-  !insertmacro HspInstallStepPrint 3 4 "Switch output path back to installation directory"
+  !insertmacro HspInstallDetailPrint "[installer] Step 3 of 4: Switch output path back to installation directory"
   SetOutPath $R0
 
   # Retry counter
   StrCpy $R1 0
-  !insertmacro HspInstallStepPrint 4 4 "Copy unpacked files from temp into $INSTDIR (retries run unlock + copy again)"
+  !insertmacro HspInstallDetailPrint "[installer] Step 4 of 4: Copy unpacked files into installation directory (retries run unlock + copy again)"
 
   LoopExtract7za:
     IntOp $R1 $R1 + 1
