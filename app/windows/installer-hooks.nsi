@@ -193,9 +193,6 @@ Function HspExtract7z_Step4
   !insertmacro HspAppendInstallerLog "[installer] Step 4 of 4: Copy unpacked files into installation directory (retries run unlock + copy again)"
 FunctionEnd
 
-; Include before templates/nsis/include/installer.nsh — same filename is guarded in extractAppPackage.nsh so the second !include is skipped and this buildResources copy always wins over app-builder.
-!include "extractAppPackage.nsh"
-
 Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false

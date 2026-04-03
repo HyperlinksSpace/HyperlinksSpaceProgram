@@ -1,8 +1,8 @@
-; Shadow of app-builder-lib templates/nsis/include/extractAppPackage.nsh
-;
-; Wrapped in HSP_EXTRACT_APP_PACKAGE_NSH so a second !include from templates/nsis/include/installer.nsh
-; is a no-op. installer-hooks.nsi loads this file first (see comment there); that guarantees the
-; copy from buildResources is used, not the bundled app-builder template.
+; Shadow of app-builder-lib templates/nsis/include/extractAppPackage.nsh (buildResources must win via
+; !addincludedir order — see electron-builder). Do not !include this file from installer-hooks.nsi:
+; Forge / nested app-builder copies use a different absolute path for the bundled file, so a second
+; include would redefine macros and fail (extractEmbeddedAppPackage already exists).
+; HSP_EXTRACT_APP_PACKAGE_NSH guards duplicate include of the same file only.
 ;
 ; Changes: Call HspKillBeforeCopy before every CopyFiles (and each retry) so taskkill + wait
 ; runs after uninstall/old files, not only in customCheckAppRunning. More automatic retries
