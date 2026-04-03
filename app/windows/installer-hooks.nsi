@@ -1,7 +1,8 @@
 ; Installer hooks for debug-friendly installs:
 ; - force current-user install mode
-; - real-time DetailPrint + mirrored log file in %TEMP%
-; - finish page shows full log in selectable read-only text area
+; - Phases: N fixed "categories" (our hooks only), not NSIS File/Copy lines — see HspInstallPhasePrint.
+; - InstFiles: DetailPrint shows Step X of N + short LABEL; full line in %TEMP%\HyperlinksSpaceInstall.log
+; - Finish page STATIC: counter + last phase only (no duplicate of full log); Edit = full log
 ;
 ; HSP_INSTALLER_AUTO_FINISH — two finish-page setups (see commits 4f25a5c vs 160595ef):
 ;   • Defined   → auto-dismiss wizard after install (4f25a5c: no MUI_FINISHPAGE_NOAUTOCLOSE, Finish
@@ -21,6 +22,8 @@
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
 !macroend
+!macro HspInstallPhasePrint LABEL MSG
+!macroend
 !macro HspInstallDetailPrint MSG
 !macroend
 !endif
@@ -29,7 +32,13 @@
 Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
+Var HspFinishStepsStatic
 Var HspDidLaunchApp
+Var HspStep
+Var HspLastPhaseLabel
+
+; Must match number of !insertmacro HspInstallPhasePrint calls (init×2 + mode + check + extract + customInstall×3).
+!define HSP_INSTALL_STEP_TOTAL 8
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -39,22 +48,35 @@ hspSetLogPath:
 hspLogPathDone:
 FunctionEnd
 
-!macro HspAppendInstallerLog TEXT
+Function HspAppendLogText
   Call HspEnsureInstallerLogPath
   ${GetTime} "" "L" $R0 $R1 $R2 $R3 $R4 $R5 $R6
   StrCpy $R7 "[$R2-$R1-$R0 $R4:$R5:$R6] "
   FileOpen $HspLogHandle "$HspLogFile" a
   FileWrite $HspLogHandle $R7
-  FileWrite $HspLogHandle "${TEXT}"
+  FileWrite $HspLogHandle $0
   FileWrite $HspLogHandle "$\r$\n"
   FileClose $HspLogHandle
+FunctionEnd
+
+!macro HspAppendInstallerLog TEXT
+  StrCpy $0 "${TEXT}"
+  Call HspAppendLogText
+!macroend
+
+; LABEL = short category (shown in DetailPrint + finish summary). MSG = full line written to the log file.
+!macro HspInstallPhasePrint LABEL MSG
+  IntOp $HspStep $HspStep + 1
+  StrCpy $HspLastPhaseLabel "${LABEL}"
+  SetDetailsView show
+  SetDetailsPrint textonly
+  DetailPrint "Step $HspStep of ${HSP_INSTALL_STEP_TOTAL}: ${LABEL}"
+  StrCpy $0 "Step $HspStep/${HSP_INSTALL_STEP_TOTAL}: ${MSG}"
+  Call HspAppendLogText
 !macroend
 
 !macro HspInstallDetailPrint MSG
-  SetDetailsView show
-  SetDetailsPrint both
-  DetailPrint "${MSG}"
-  !insertmacro HspAppendInstallerLog "${MSG}"
+  !insertmacro HspInstallPhasePrint "${MSG}" "${MSG}"
 !macroend
 
 Function .onInstSuccess
@@ -91,7 +113,7 @@ FunctionEnd
 
 Function HspInstFilesShow
   SetDetailsView show
-  SetDetailsPrint both
+  SetDetailsPrint textonly
   FindWindow $0 "#32770" "" $HWNDPARENT
   FindWindow $1 "msctls_progress32" "" $0
   IntCmp $1 0 hspInstFilesBarDone
@@ -150,8 +172,9 @@ FunctionEnd
 ; Called from windows/extractAppPackage.nsh before each CopyFiles (and each retry).
 Function HspKillBeforeCopy
   SetDetailsView show
-  SetDetailsPrint both
-  DetailPrint "[installer] unlock install dir before copy (attempt $R1)"
+  SetDetailsPrint textonly
+  StrCpy $0 "[installer] unlock install dir before copy (attempt $R1)"
+  Call HspAppendLogText
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
 FunctionEnd
@@ -167,7 +190,19 @@ Function HspFinishPageShow
   Call HspLaunchInstalledApp
 hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 128, i 128, i 360, i 220, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
+  StrCpy $HspFinishStepsStatic ""
+  ; Summary only (no duplicate of log): phase count + last category label. WS_CHILD|WS_VISIBLE|SS_LEFT = 0x5000000E
+  IntCmp $HspStep 0 hspFinishStepsEmpty
+  StrCpy $R8 "Phases completed: $HspStep / ${HSP_INSTALL_STEP_TOTAL}$\r$\nLast: $HspLastPhaseLabel$\r$\n$\r$\nStatus: Complete"
+  Goto hspFinishStepsCreate
+hspFinishStepsEmpty:
+  StrCpy $R8 "No installer phases were recorded.$\r$\nStatus: Complete"
+hspFinishStepsCreate:
+  System::Call "user32::CreateWindowExW(i 0, w \"STATIC\", w r8, i 0x5000000E, i 120, i 86, i 360, i 78, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
+  IntCmp $0 0 hspFinishNoStatic
+  StrCpy $HspFinishStepsStatic $0
+hspFinishNoStatic:
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 120, i 172, i 360, i 200, i $HWNDPARENT, i 0, i 0, i 0) i.r0"
   IntCmp $0 0 hspFinishShowDone
   StrCpy $HspFinishLogEdit $0
   StrCpy $9 $0
@@ -196,6 +231,10 @@ hspFinishShowDone:
 FunctionEnd
 
 Function HspFinishPageLeave
+  StrCmp $HspFinishStepsStatic "" +4
+  StrCpy $0 $HspFinishStepsStatic
+  System::Call "user32::DestroyWindow(i r0)"
+  StrCpy $HspFinishStepsStatic ""
   StrCmp $HspFinishLogEdit "" +3
   StrCpy $0 $HspFinishLogEdit
   System::Call "user32::DestroyWindow(i r0)"
@@ -220,21 +259,23 @@ FunctionEnd
 !macroend
 
 !macro customInstallMode
-  !insertmacro HspInstallDetailPrint "[installer] forcing current-user install mode"
+  !insertmacro HspInstallPhasePrint "Per-user install mode" "[installer] forcing current-user install mode"
   StrCpy $isForceCurrentInstall "1"
 !macroend
 
 ; Installer only. Uninstaller defines BUILD_UNINSTALLER — Call must use un.* there; use stock _CHECK_APP_RUNNING.
 !ifndef BUILD_UNINSTALLER
 !macro customCheckAppRunning
-  !insertmacro HspInstallDetailPrint "[installer] stop running app processes (tree kill + wait, all exe names)"
+  !insertmacro HspInstallPhasePrint "Stop running app" "[installer] stop running app processes (tree kill + wait, all exe names)"
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
 !macroend
 !endif
 
 !macro customInit
-  !insertmacro HspInstallDetailPrint "[installer] customInit start"
+  StrCpy $HspStep 0
+  StrCpy $HspLastPhaseLabel ""
+  !insertmacro HspInstallPhasePrint "Initialization (start)" "[installer] customInit start"
   SetRegView 64
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
@@ -245,18 +286,18 @@ FunctionEnd
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
-  !insertmacro HspInstallDetailPrint "[installer] customInit complete"
+  !insertmacro HspInstallPhasePrint "Initialization (complete)" "[installer] customInit complete"
 !macroend
 
 !macro customInstall
-  !insertmacro HspInstallDetailPrint "[installer] customInstall start"
-  !insertmacro HspInstallDetailPrint "[installer] files copied, waiting for Finish page"
+  !insertmacro HspInstallPhasePrint "Post-install (start)" "[installer] customInstall start"
+  !insertmacro HspInstallPhasePrint "Waiting for Finish page" "[installer] files copied, waiting for Finish page"
   ; Trigger launch as soon as install work is complete.
   StrCmp $HspDidLaunchApp "1" hspCustomInstallAfterLaunch
   StrCpy $HspDidLaunchApp "1"
   Call HspLaunchInstalledApp
 hspCustomInstallAfterLaunch:
-  !insertmacro HspInstallDetailPrint "[installer] customInstall complete"
+  !insertmacro HspInstallPhasePrint "Post-install (complete)" "[installer] customInstall complete"
 !macroend
 
 !macro customFinishPage
