@@ -1,12 +1,10 @@
-; Shadow of app-builder-lib templates/nsis/include/extractAppPackage.nsh (buildResources must win via
-; !addincludedir order — see electron-builder). Do not !include this file from installer-hooks.nsi:
-; Forge / nested app-builder copies use a different absolute path for the bundled file, so a second
-; include would redefine macros and fail (extractEmbeddedAppPackage already exists).
-; HSP_EXTRACT_APP_PACKAGE_NSH guards duplicate include of the same file only.
+; Fork of app-builder-lib templates/nsis/include/extractAppPackage.nsh — included only via
+; windows/installer.nsh (!include "hsp-extractAppPackage.nsh") so the name never collides with
+; bundled extractAppPackage.nsh (Forge / multiple node_modules paths broke shadow-by-filename).
+; Sync with upstream when upgrading electron-builder.
 ;
-; Changes: Call HspKillBeforeCopy before every CopyFiles (and each retry) so taskkill + wait
-; runs after uninstall/old files, not only in customCheckAppRunning. More automatic retries
-; before the "cannot close app" dialog. Sync with upstream when upgrading electron-builder.
+; Changes: Call HspKillBeforeCopy before every CopyFiles (and each retry); runtime Call + DetailPrint
+; for Step lines. See installer-hooks.nsi (HspExtract7z_Step*, HspExtractZip_Step1).
 
 !ifndef HSP_EXTRACT_APP_PACKAGE_NSH
 !define HSP_EXTRACT_APP_PACKAGE_NSH

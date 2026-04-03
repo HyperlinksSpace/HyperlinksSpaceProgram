@@ -147,7 +147,7 @@ Function HspKillPackagedAppProcesses
   Pop $R9
 FunctionEnd
 
-; Called from windows/extractAppPackage.nsh before each CopyFiles (and each retry).
+; Called from windows/hsp-extractAppPackage.nsh before each CopyFiles (and each retry).
 Function HspKillBeforeCopy
   SetDetailsView show
   SetDetailsPrint both
@@ -157,7 +157,7 @@ Function HspKillBeforeCopy
 FunctionEnd
 
 ; Extract pipeline step lines — use Functions + DetailPrint (not only !insertmacro) so messages show
-; during installSection after SetDetailsPrint none. See windows/extractAppPackage.nsh.
+; during installSection after SetDetailsPrint none. See windows/hsp-extractAppPackage.nsh.
 Function HspExtractZip_Step1
   SetDetailsView show
   SetDetailsPrint both
