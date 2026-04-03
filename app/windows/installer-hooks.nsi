@@ -106,6 +106,7 @@ Function HspAnyPackagedExeRunning
 hspAnyExeYes:
   StrCpy $0 1
   Return
+FunctionEnd
 
 Function HspWaitUntilPackagedProcessesGone
   StrCpy $R8 0
