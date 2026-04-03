@@ -105,15 +105,16 @@ Function HspInstFilesShow
   IntCmp $1 0 hspInstFilesBarDone
   ShowWindow $1 ${SW_HIDE}
 hspInstFilesBarDone:
-  ; MUI outer dialog: control 1035 is mui.Line.Standard (rule under header, above inner page / detail log).
-  GetDlgItem $1 $HWNDPARENT 1035
+  ; Outer wizard (IDD_INST in Contrib/UIs/modern*.rc): etched line *below* the header is control 1036.
+  ; (1035 is the separate footer rule above branding; do not use it here.)
+  GetDlgItem $1 $HWNDPARENT 1036
   IntCmp $1 0 hspInstFilesLineDone
   ShowWindow $1 ${SW_HIDE}
 hspInstFilesLineDone:
 FunctionEnd
 
 Function HspInstFilesLeave
-  GetDlgItem $0 $HWNDPARENT 1035
+  GetDlgItem $0 $HWNDPARENT 1036
   IntCmp $0 0 +2
   ShowWindow $0 ${SW_SHOW}
 FunctionEnd
