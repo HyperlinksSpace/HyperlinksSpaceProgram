@@ -258,12 +258,12 @@ Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false
 !endif
-  StrCpy $R9 $HWNDPARENT
+  StrCpy $R1 $HWNDPARENT
   ; Hide MUI header title/subtitle (otherwise e.g. "Completed" / "Complete" from lang file).
-  GetDlgItem $R0 $R9 1037
+  GetDlgItem $R0 $R1 1037
   IntCmp $R0 0 +2
   ShowWindow $R0 ${SW_HIDE}
-  GetDlgItem $R0 $R9 1038
+  GetDlgItem $R0 $R1 1038
   IntCmp $R0 0 +2
   ShowWindow $R0 ${SW_HIDE}
   Call HspFinishResolveLogPath
@@ -274,20 +274,22 @@ Function HspFinishPageShow
 hspSkipAutoLaunch:
   StrCpy $HspFinishLogEdit ""
   ; Size log edit to the wizard content placeholder (IDC_CHILDRECT 1018), not fixed 128×128 indents.
-  GetDlgItem $R0 $R9 1018
+  ; NSIS only allows $0-$9 and $R0-$R9 (no $R10+); use $R1 = parent HWND throughout.
+  GetDlgItem $R0 $R1 1018
   IntCmp $R0 0 hspFinishEditCreateFallback
   System::Call "*(&i4 0 &i4 0 &i4 0 &i4 0) i.r6"
   System::Call "user32::GetWindowRect(i r0, i r6)"
   System::Call "*$6(&i4 .r2 &i4 .r3 &i4 .r4 &i4 .r5)"
   System::Call "*(&i4 r2 &i4 r3) i.r7"
-  System::Call "user32::ScreenToClient(i r9, i r7)"
-  System::Call "*$7(&i4 .r10 &i4 .r11)"
-  IntOp $R12 $R4 - $R2
-  IntOp $R13 $R5 - $R3
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i r10, i r11, i r12, i r13, i r9, i 0, i 0, i 0) i.r0"
+  System::Call "user32::ScreenToClient(i r1, i r7)"
+  System::Call "*$7(&i4 .r8 &i4 .r9)"
+  ; Width/height in $6/$7 (r6/r7 for System::Call — not $R6; rect sides are $2-$5).
+  IntOp $6 $4 - $2
+  IntOp $7 $5 - $3
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i r8, i r9, i r6, i r7, i r1, i 0, i 0, i 0) i.r0"
   Goto hspFinishEditCreateDone
 hspFinishEditCreateFallback:
-  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 16, i 48, i 300, i 200, i r9, i 0, i 0, i 0) i.r0"
+  System::Call "user32::CreateWindowExW(i 0, w \"Edit\", w \"\", i 0x50201844, i 16, i 48, i 300, i 200, i r1, i 0, i 0, i 0) i.r0"
 hspFinishEditCreateDone:
   IntCmp $0 0 hspFinishShowDone
   StrCpy $HspFinishLogEdit $0
