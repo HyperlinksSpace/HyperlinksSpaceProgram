@@ -254,25 +254,6 @@ Function HspKillBeforeCopy
   Call HspWaitUntilPackagedProcessesGone
 FunctionEnd
 
-; Drop trailing NSIS status line ("Completed") from log buffer in $R3.
-Function HspFinishStripTrailingCompleted
-  StrLen $R4 $R3
-  IntCmp $R4 0 hspStripDone
-  StrCpy $R5 "$\r$\nCompleted"
-  StrLen $R6 $R5
-  IntOp $R7 $R4 - $R6
-  IntCmp $R7 0 hspStripTry hspStripDone hspStripTry
-hspStripTry:
-  StrCpy $R8 $R3 $R6 $R7
-  StrCmp $R8 "$\r$\nCompleted" 0 hspStripBare
-  StrCpy $R3 $R3 $R7 0
-  Goto hspStripDone
-hspStripBare:
-  StrCmp $R3 "Completed" 0 hspStripDone
-  StrCpy $R3 ""
-hspStripDone:
-FunctionEnd
-
 Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false
@@ -350,7 +331,6 @@ hspFinishReadLoop:
   IntCmp $R4 7500 hspFinishFileDone hspFinishReadLoop hspFinishFileDone
 hspFinishFileDone:
   FileClose $R0
-  Call HspFinishStripTrailingCompleted
   System::Call "user32::SetWindowTextW(i r9, w r3)"
   Goto hspFinishAfterLogSet
 hspFinishReadErr:
