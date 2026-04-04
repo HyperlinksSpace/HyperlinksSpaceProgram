@@ -3,6 +3,10 @@
 ; - real-time DetailPrint + mirrored log file in %TEMP%
 ; - finish page shows full log in selectable read-only text area
 ;
+; InstFiles page: the one-line status above the list is separate from the details list. SetDetailsPrint
+; both duplicates DetailPrint into both; we use textonly once for a fixed status caption, then listonly
+; so HspInstallDetailPrint lines only appear in the list (not repeated on the status line).
+;
 ; HSP_INSTALLER_AUTO_FINISH — two finish-page setups (see commits 4f25a5c vs 160595ef):
 ;   • Defined   → auto-dismiss wizard after install (4f25a5c: no MUI_FINISHPAGE_NOAUTOCLOSE, Finish
 ;                button, then WM_CLOSE / Quit in HspFinishPage*).
@@ -52,7 +56,7 @@ FunctionEnd
 
 !macro HspInstallDetailPrint MSG
   SetDetailsView show
-  SetDetailsPrint both
+  SetDetailsPrint listonly
   DetailPrint "${MSG}"
   !insertmacro HspAppendInstallerLog "${MSG}"
 !macroend
@@ -91,7 +95,10 @@ FunctionEnd
 
 Function HspInstFilesShow
   SetDetailsView show
-  SetDetailsPrint both
+  ; Fixed one-line status (status-only); further messages use listonly via HspInstallDetailPrint.
+  SetDetailsPrint textonly
+  DetailPrint "Installing ${PRODUCT_NAME}…"
+  SetDetailsPrint listonly
   FindWindow $0 "#32770" "" $HWNDPARENT
   FindWindow $1 "msctls_progress32" "" $0
   IntCmp $1 0 hspInstFilesBarDone
@@ -150,7 +157,7 @@ FunctionEnd
 ; Called from windows/extractAppPackage.nsh before each CopyFiles (and each retry).
 Function HspKillBeforeCopy
   SetDetailsView show
-  SetDetailsPrint both
+  SetDetailsPrint listonly
   DetailPrint "[installer] unlock install dir before copy (attempt $R1)"
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
