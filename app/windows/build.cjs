@@ -584,6 +584,12 @@ function setupAutoUpdater() {
   if (isDev || !app.isPackaged) return;
   try {
     const { autoUpdater } = require("electron-updater");
+    // Without this, checkForUpdates reads resources/app-update.yml (embedded by electron-builder, absent in Forge installs).
+    autoUpdater.setFeedURL({
+      provider: "github",
+      owner: UPDATE_GITHUB_OWNER,
+      repo: UPDATE_GITHUB_REPO,
+    });
     let manualCheckInProgress = false;
     let manualDownloadInProgress = false;
     let updaterCheckRetrying = false;
