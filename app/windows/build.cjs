@@ -1208,7 +1208,7 @@ function setupAutoUpdater() {
         "  }",
         `  Write-ApplyLog "parent process ended (or timeout); settle delay ${settleMs}ms (HSP_UPDATE_SETTLE_MS)"`,
         "  if ($settleMs -gt 0) { Start-Sleep -Milliseconds $settleMs }",
-        '  Write-ApplyLog "taskkill: Electron helpers (unlock resources before robocopy — same idea as NSIS installer)"',
+        '  Write-ApplyLog "taskkill: Electron helpers (unlock resources before robocopy - same idea as NSIS installer)"',
         "  $cmdExe = Join-Path $env:SystemRoot 'System32\\cmd.exe'",
         "  $names = @($plan.processNamesToKill)",
         "  if ($names.Count -gt 0) {",
@@ -1284,7 +1284,8 @@ function setupAutoUpdater() {
         "}",
         "",
       ].join("\r\n");
-      fs.writeFileSync(ps1Path, ps1Body, "utf8");
+      // UTF-8 BOM so Windows PowerShell 5.1 parses multi-byte literals reliably in .ps1 files.
+      fs.writeFileSync(ps1Path, `\uFEFF${ps1Body}`, "utf8");
       logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs} relaunchDelayMs=${relaunchDelayMs}`);
 
       try {
