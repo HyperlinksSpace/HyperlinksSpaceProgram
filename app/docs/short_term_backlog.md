@@ -1,4 +1,5 @@
 Updater: instant reload<br>
+Updater progress bar<br>
 Updater text area style<br>
 Program files installation folder<br>
 
