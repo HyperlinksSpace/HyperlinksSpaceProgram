@@ -1549,7 +1549,7 @@ function setupAutoUpdater() {
           text: "You are already on the latest version.",
           percent: 0,
           showProgress: false,
-          showActions: false,
+          showActions: true,
           installEnabled: false,
         });
       }

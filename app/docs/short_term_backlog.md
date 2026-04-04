@@ -1,7 +1,6 @@
-Updater progress bar bug (100% then steps)<br>
-Updater text area style<br>
-Program files installation folder<br>
 Open app fullsize<br>
+Program files installation folder<br>
+Check updater automatically appearing and on launch<br>
 
 Show update install dialog only when program is not in the tray<br>
 Confirm fasten update<br>
