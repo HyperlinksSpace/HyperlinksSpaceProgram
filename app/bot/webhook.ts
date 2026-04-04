@@ -6,9 +6,8 @@
  * - We return 200 OK immediately so Telegram does not retry or hide the user's message.
  * - We process the update in the background (waitUntil).
  *
- * Per-chat serialization: we process one update per chat at a time. When a new update arrives
- * for a chat, we wait for the previous handler for that chat to finish, then run the new one.
- * So Reply A is always sent before we start processing Prompt B — no reorder flash.
+ * Updates are processed concurrently. Cancellation/ordering is handled in responder logic
+ * ("latest prompt wins"), so a newer message can interrupt an in-flight stream quickly.
  */
 
 import { waitUntil } from '@vercel/functions';
@@ -22,22 +21,6 @@ interface TelegramUpdate {
   callback_query?: { message?: { chat?: { id?: number } }; [key: string]: unknown };
   [key: string]: unknown;
 }
-
-/** Extract chat id from update so we can serialize processing per chat and avoid reply order flash. */
-function getChatIdFromUpdate(update: TelegramUpdate): number | undefined {
-  const msg = update.message ?? update.edited_message ?? update.channel_post;
-  if (msg && typeof msg === 'object' && msg.chat && typeof (msg.chat as { id?: number }).id === 'number') {
-    return (msg.chat as { id: number }).id;
-  }
-  const cq = update.callback_query;
-  if (cq && typeof cq === 'object' && cq.message && typeof (cq.message as { chat?: { id?: number } }).chat?.id === 'number') {
-    return (cq.message as { chat: { id: number } }).chat.id;
-  }
-  return undefined;
-}
-
-/** Per-chat tail promise: next update for this chat waits for the previous handler to finish. */
-const chatQueue = new Map<number, Promise<void>>();
 
 const BOT_TOKEN = process.env.BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
 /** Single bot instance for all webhook requests; created once at module load. */
@@ -92,6 +75,7 @@ async function getWebhookInfo(): Promise<{ url?: string }> {
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
+  console.log("🔥 LOCAL WEBHOOK HIT", new Date().toISOString());
   const method = request.method;
   console.log('[webhook]', method, new Date().toISOString());
 
@@ -149,12 +133,8 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   // Return 200 OK immediately so Telegram applies the message to the chat. Process update
   // in waitUntil so we don't block the response on AI/DB.
-  // Serialize per chat so Reply A is always sent before we start processing Prompt B.
   const updateId = update.update_id;
-  const chatId = getChatIdFromUpdate(update);
-  const prev = chatId !== undefined ? chatQueue.get(chatId) : undefined;
-  const work = (prev ?? Promise.resolve())
-    .then(() => ensureBotInit())
+  const work = ensureBotInit()
     .then(() => bot!.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]))
     .then(() => {
       console.log('[webhook] handled update', updateId);
@@ -162,10 +142,6 @@ export async function handleRequest(request: Request): Promise<Response> {
     .catch((err) => {
       console.error('[bot]', err);
     });
-  const tail = work.then(() => {}, () => {});
-  if (chatId !== undefined) {
-    chatQueue.set(chatId, tail);
-  }
   waitUntil(work);
   return jsonResponse({ ok: true });
 }
@@ -234,20 +210,14 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     res.status(400).json({ ok: false, error: 'invalid_body' });
     return;
   }
-  try {
-    await ensureBotInit();
-    const chatIdLegacy = getChatIdFromUpdate(update);
-    const prevLegacy = chatIdLegacy !== undefined ? chatQueue.get(chatIdLegacy) : undefined;
-    await (prevLegacy ?? Promise.resolve());
-    await bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]);
-    if (chatIdLegacy !== undefined) {
-      chatQueue.set(chatIdLegacy, Promise.resolve());
-    }
-  } catch (err) {
-    console.error('[bot]', err);
-    res.status(500).json({ ok: false, error: 'handler_error' });
-    return;
-  }
+  void ensureBotInit()
+    .then(() => bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]))
+    .then(() => {
+      console.log('[webhook] handled update', update.update_id);
+    })
+    .catch((err) => {
+      console.error('[bot]', err);
+    });
   res.status(200).json({ ok: true });
 }
 

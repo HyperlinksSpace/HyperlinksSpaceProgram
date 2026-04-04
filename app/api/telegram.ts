@@ -22,6 +22,7 @@ async function handler(
   res?: { status: (n: number) => void; setHeader: (k: string, v: string) => void; end: (s?: string) => void }
 ): Promise<Response | void> {
   const method = (request as { method?: string }).method ?? request.method;
+  console.log('[api/telegram]', method, new Date().toISOString());
   if (method === 'GET') {
     const body = { ok: true, endpoint: 'telegram', use: 'POST with initData' };
     if (res) {
@@ -41,6 +42,7 @@ async function handler(
   try {
     const { handlePost } = await import('../telegram/post.js');
     const response = await handlePost(request);
+    console.log('[api/telegram] POST status', response.status);
     if (res) {
       res.status(response.status);
       response.headers.forEach((v, k) => res.setHeader(k, v));

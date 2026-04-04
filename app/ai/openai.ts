@@ -100,7 +100,11 @@ export async function callOpenAiChatStream(
   mode: AiMode,
   params: AiRequestBase,
   onDelta: (text: string) => void | Promise<void>,
-  opts?: { isCancelled?: () => boolean; getAbortSignal?: () => Promise<boolean> },
+  opts?: {
+    isCancelled?: () => boolean;
+    getAbortSignal?: () => Promise<boolean>;
+    abortSignal?: AbortSignal;
+  },
 ): Promise<AiResponseBase> {
   if (!client) {
     return {
@@ -125,31 +129,58 @@ export async function callOpenAiChatStream(
     mode === "token_info"
       ? "You are a blockchain and token analyst. Answer clearly and briefly.\n\n"
       : "";
+  let onAbort: (() => void) | null = null;
 
   try {
+    if (opts?.abortSignal?.aborted) {
+      return {
+        ok: false,
+        provider: "openai",
+        mode,
+        error: "Generation aborted by newer message.",
+      };
+    }
+
     const stream = client.responses.stream({
       model: "gpt-5.2",
       ...(params.instructions ? { instructions: params.instructions } : {}),
       input: `${prefix}${trimmed}`,
     });
+    const abortStream = (): void => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (stream as any)?.abort?.();
+      } catch {
+        /* ignore */
+      }
+    };
+    let cancelLogged = false;
+    const hardAbort = (reason: string): void => {
+      if (!cancelLogged) {
+        cancelLogged = true;
+        console.log("[STREAM] aborted immediately:", reason);
+      }
+      abortStream();
+    };
+    onAbort = (): void => {
+      abortStream();
+    };
+    if (opts?.abortSignal) {
+      opts.abortSignal.addEventListener("abort", onAbort, { once: true });
+    }
 
     stream.on("response.output_text.delta", async (event: { snapshot?: string }) => {
+      if (opts?.abortSignal?.aborted) {
+        hardAbort("abortSignal");
+        return;
+      }
       if (opts?.isCancelled && opts.isCancelled()) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (stream as any)?.abort?.();
-        } catch {
-          /* ignore */
-        }
+        hardAbort("isCancelled");
         return;
       }
       if (opts?.getAbortSignal && (await opts.getAbortSignal())) {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (stream as any)?.abort?.();
-        } catch {
-          /* ignore */
-        }
+        console.log("[STREAM] stale generation");
+        hardAbort("getAbortSignal");
         return;
       }
       const text = event?.snapshot ?? "";
@@ -157,6 +188,14 @@ export async function callOpenAiChatStream(
     });
 
     const response = await stream.finalResponse();
+    if (opts?.abortSignal?.aborted) {
+      return {
+        ok: false,
+        provider: "openai",
+        mode,
+        error: "Generation aborted by newer message.",
+      };
+    }
     const r = response as any;
     let output_text = r.output_text;
     if (output_text == null || String(output_text).trim() === "") {
@@ -189,6 +228,14 @@ export async function callOpenAiChatStream(
       usage: r.usage ?? undefined,
     };
   } catch (e: any) {
+    if (opts?.abortSignal?.aborted) {
+      return {
+        ok: false,
+        provider: "openai",
+        mode,
+        error: "Generation aborted by newer message.",
+      };
+    }
     const message =
       (e && typeof e === "object" && "message" in e ? (e as Error).message : null) ??
       (e != null ? String(e) : "Failed to call OpenAI. Check OPENAI env and network.");
@@ -198,5 +245,9 @@ export async function callOpenAiChatStream(
       mode,
       error: message,
     };
+  } finally {
+    if (opts?.abortSignal && onAbort) {
+      opts.abortSignal.removeEventListener("abort", onAbort);
+    }
   }
 }
