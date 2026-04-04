@@ -14,17 +14,9 @@
 !define HSP_ALT_MAIN_EXE "Hyperlinks Space Program.exe"
 
 ; Hiding the bar: MUI2 only allows MUI_INSTFILESPAGE_PROGRESSBAR = "" | colored | smooth — "disable" is invalid and breaks InstProgressFlags (NSIS 3 CI). Hide msctls_progress32 at runtime in HspInstFilesShow instead.
-; Custom phase-based progress (0–100): own msctls_progress32; stock bar stays hidden. See HspInstallProgressSet + extractAppPackage.nsh.
 
 !include "FileFunc.nsh"
 !include "WinMessages.nsh"
-; Progress bar messages (not always in WinMessages.nsh)
-!ifndef PBM_SETPOS
-!define PBM_SETPOS 0x0402
-!endif
-!ifndef PBM_SETRANGE32
-!define PBM_SETRANGE32 0x0461
-!endif
 
 !ifdef BUILD_UNINSTALLER
 !macro HspAppendInstallerLog TEXT
@@ -38,7 +30,6 @@ Var HspLogFile
 Var HspLogHandle
 Var HspFinishLogEdit
 Var HspDidLaunchApp
-Var HspCustomProgressHwnd
 
 Function HspEnsureInstallerLogPath
   StrCmp $HspLogFile "" hspSetLogPath hspLogPathDone
@@ -98,62 +89,13 @@ Function .onInstFailed
   !insertmacro HspAppendInstallerLog "INSTALL_FAILED"
 FunctionEnd
 
-; $0 = inner dialog #32770, $1 = stock msctls_progress32 or 0 (used for layout when present).
-; GetWindowRect fills $2–$5 via .r2–.r5 — NOT $R2–$R5 (different NSIS registers).
-Function HspCreateCustomInstallProgress
-  StrCmp $0 0 hspCreateProgEnd
-  StrCmp $1 0 hspCreateProgUseDefault
-  System::Alloc 16
-  Pop $R9
-  System::Call "user32::GetWindowRect(i r1, i r9)"
-  System::Call "*$R9(&i4 .r2, &i4 .r3, &i4 .r4, &i4 .r5)"
-  System::Alloc 8
-  Pop $R8
-  System::Call "*$R8(&i4 r2, &i4 r3)"
-  System::Call "user32::ScreenToClient(i $0, i r8)"
-  System::Call "*$R8(&i4 .r6, &i4 .r7)"
-  IntOp $R8 $4 - $2
-  IntOp $R9 $5 - $3
-  Goto hspCreateProgDo
-hspCreateProgUseDefault:
-  StrCpy $6 20
-  StrCpy $7 88
-  StrCpy $R8 328
-  StrCpy $R9 18
-hspCreateProgDo:
-  ; WS_CHILD | WS_VISIBLE | PBS_SMOOTH (0x01)
-  System::Call "user32::CreateWindowExW(i 0, w \"msctls_progress32\", w \"\", i 0x50000001, i r6, i r7, i r8, i r9, i $0, i 0, i 0, i 0) i.r3"
-  StrCpy $HspCustomProgressHwnd $3
-  IntCmp $3 0 hspCreateProgEnd
-  SendMessage $3 ${PBM_SETRANGE32} 0 100
-  Push 5
-  Call HspSetInstallProgress
-hspCreateProgEnd:
-FunctionEnd
-
-; Stack: [return][percent]
-Function HspSetInstallProgress
-  Pop $R0
-  Pop $R1
-  Push $R0
-  StrCmp $HspCustomProgressHwnd "" hspSetProgReturn
-  IntCmp $R1 100 hspProgSend hspProgSend hspProgClampHi
-hspProgClampHi:
-  StrCpy $R1 100
-hspProgSend:
-  SendMessage $HspCustomProgressHwnd ${PBM_SETPOS} $R1 0
-hspSetProgReturn:
-FunctionEnd
-
 Function HspInstFilesShow
   SetDetailsView show
   SetDetailsPrint both
   FindWindow $0 "#32770" "" $HWNDPARENT
-  StrCmp $0 0 hspInstFilesBarDone
   FindWindow $1 "msctls_progress32" "" $0
-  StrCmp $1 0 +2
+  IntCmp $1 0 hspInstFilesBarDone
   ShowWindow $1 ${SW_HIDE}
-  Call HspCreateCustomInstallProgress
 hspInstFilesBarDone:
 FunctionEnd
 
@@ -264,14 +206,6 @@ Function HspFinishPageLeave
 FunctionEnd
 !endif
 
-; Always defined so included scripts (e.g. extractAppPackage.nsh) compile for both installer and uninstaller builds.
-!macro HspInstallProgressSet PCT
-  !ifndef BUILD_UNINSTALLER
-  Push ${PCT}
-  Call HspSetInstallProgress
-  !endif
-!macroend
-
 !macro customHeader
   Caption "${PRODUCT_NAME}"
   ShowInstDetails show
@@ -296,7 +230,6 @@ FunctionEnd
   !insertmacro HspInstallDetailPrint "[installer] stop running app processes (tree kill + wait, all exe names)"
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
-  !insertmacro HspInstallProgressSet 15
 !macroend
 !endif
 
@@ -313,11 +246,9 @@ FunctionEnd
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
   DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
   !insertmacro HspInstallDetailPrint "[installer] customInit complete"
-  ; customInit runs in .onInit before the InstFiles page — no custom progress bar yet (HspInstFilesShow creates it).
 !macroend
 
 !macro customInstall
-  !insertmacro HspInstallProgressSet 95
   !insertmacro HspInstallDetailPrint "[installer] customInstall start"
   !insertmacro HspInstallDetailPrint "[installer] files copied, waiting for Finish page"
   ; Trigger launch as soon as install work is complete.
@@ -326,7 +257,6 @@ FunctionEnd
   Call HspLaunchInstalledApp
 hspCustomInstallAfterLaunch:
   !insertmacro HspInstallDetailPrint "[installer] customInstall complete"
-  !insertmacro HspInstallProgressSet 100
 !macroend
 
 !macro customFinishPage

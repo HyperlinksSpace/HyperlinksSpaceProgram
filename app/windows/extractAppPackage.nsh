@@ -4,7 +4,6 @@
 ; Changes: Call HspKillBeforeCopy before every CopyFiles (and each retry) so taskkill + wait
 ; runs after uninstall/old files, not only in customCheckAppRunning. More automatic retries
 ; before the "cannot close app" dialog. Sync with upstream when upgrading electron-builder.
-; Phase progress: HspInstallProgressSet (installer-hooks.nsi) at decompress / post-extract / copy done.
 
 !macro extractEmbeddedAppPackage
   !ifdef COMPRESS
@@ -87,20 +86,17 @@
 
 !macro decompress
   !ifdef ZIP_COMPRESSION
-    !insertmacro HspInstallProgressSet 30
     nsisunz::Unzip "$PLUGINSDIR\app-$packageArch.zip" "$INSTDIR"
     Pop $R0
     StrCmp $R0 "success" +3
       MessageBox MB_OK|MB_ICONEXCLAMATION "$(decompressionFailed)$\n$R0"
       Quit
-    !insertmacro HspInstallProgressSet 85
   !else
     !insertmacro extractUsing7za "$PLUGINSDIR\app-$packageArch.7z"
   !endif
 !macroend
 
 !macro extractUsing7za FILE
-  !insertmacro HspInstallProgressSet 30
   Push $OUTDIR
   CreateDirectory "$PLUGINSDIR\7z-out"
   ClearErrors
@@ -108,7 +104,6 @@
   Nsis7z::Extract "${FILE}"
   Pop $R0
   SetOutPath $R0
-  !insertmacro HspInstallProgressSet 55
 
   # Retry counter
   StrCpy $R1 0
@@ -147,5 +142,4 @@
     Goto LoopExtract7za
 
   DoneExtract7za:
-    !insertmacro HspInstallProgressSet 85
 !macroend
