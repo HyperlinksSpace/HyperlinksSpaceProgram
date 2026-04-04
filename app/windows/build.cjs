@@ -178,30 +178,6 @@ function getWindowsAppRootFromExecPath(execPath) {
   return dir;
 }
 
-/**
- * Same exe names as NSIS `HspKillPackagedAppProcesses` / `HspAnyPackagedExeRunning`. Waiting only for
- * the main PID is not enough: Electron helpers keep handles on resources\\app.asar and robocopy then fails.
- * Only the **running** pack's base name matters; killing every historic rebrand name serially costs ~1s each.
- */
-function windowsElectronProcessNamesForTaskKillFromExe(exeBaseName) {
-  const out = [];
-  const seen = new Set();
-  const add = (n) => {
-    if (!seen.has(n)) {
-      seen.add(n);
-      out.push(n);
-    }
-  };
-  const base = exeBaseName || `${brand.productSlug}.exe`;
-  add(base);
-  const stem = base.replace(/\.exe$/i, "");
-  add(`${stem} Helper.exe`);
-  add(`${stem} Helper (GPU).exe`);
-  add(`${stem} Helper (Renderer).exe`);
-  add(`${stem} Helper (Plugin).exe`);
-  return out;
-}
-
 function parseSimpleUpdateYml(text) {
   const versionM = text.match(/^version:\s*(.+)$/m);
   const version = versionM ? versionM[1].trim() : null;
@@ -1138,7 +1114,6 @@ function setupAutoUpdater() {
         appRoot,
         targetVersionDir,
         currentLink,
-        processNamesToKill: windowsElectronProcessNamesForTaskKillFromExe(exeName),
         installRootForKill: appRoot,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan), "utf8");
@@ -1188,49 +1163,25 @@ function setupAutoUpdater() {
         "      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath.ToLower().StartsWith($root)) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-ApplyLog (\"stopped pid=\" + $_.ProcessId + \" \" + $_.ExecutablePath) } catch {} }",
         "    } catch { Write-ApplyLog (\"installRoot process sweep: \" + $_.Exception.Message) }",
         "  }",
-        '  Write-ApplyLog "taskkill: current pack only (HSP: unlock resources; avoids ~15s serial kills for all rebrand names)"',
-        "  $cmdExe = Join-Path $env:SystemRoot 'System32\\cmd.exe'",
-        "  $names = @($plan.processNamesToKill)",
-        "  if ($names.Count -gt 0) {",
-        "    foreach ($im in $names) {",
-        "      try {",
-        "        $tk = Start-Process -FilePath $cmdExe -ArgumentList @('/c','taskkill','/F','/T','/IM',$im,'/FI','USERNAME eq %USERNAME%') -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue",
-        '        Write-ApplyLog ("taskkill " + $im + " exit=" + $tk.ExitCode)',
-        "      } catch { Write-ApplyLog (\"taskkill skip \" + $im + \": \" + $_.Exception.Message) }",
-        "    }",
-        "  }",
+        '  Write-ApplyLog "taskkill skipped (installRoot sweep above stops processes under the app dir; avoids ~5s serial taskkill)"',
         "  $src = $plan.stagingContent",
         "  if ($plan.useVersionedLayout) {",
         "    $dst = $plan.targetVersionDir",
         "    $null = New-Item -ItemType Directory -Force -LiteralPath $dst",
-        '    Write-ApplyLog "robocopy target (versioned): $dst"',
+        '    Write-ApplyLog "mirror target (versioned): $dst"',
         "  } else {",
         "    $dst = $plan.installDir",
-        '    Write-ApplyLog "robocopy target (flat): $dst"',
+        '    Write-ApplyLog "mirror target (flat): $dst"',
         "  }",
-        '  Write-ApplyLog "robocopy/copy from $src to $dst"',
-        "  Get-ChildItem -LiteralPath $src -Force | ForEach-Object {",
-        "    $item = $_",
-        "    if ($item.Name -ne 'versions') {",
-        "      $target = Join-Path $dst $item.Name",
-        "      if ($item.PSIsContainer) {",
-        "        $robocopyExe = Join-Path $env:SystemRoot 'System32\\robocopy.exe'",
-        "        $p = Start-Process -FilePath $robocopyExe -ArgumentList @($item.FullName, $target, '/MIR', '/MT:16', '/R:0', '/W:0', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow",
-        "        $lastExit = $p.ExitCode",
-        "        Write-ApplyLog (\"robocopy dir \" + $item.Name + \" exit=\" + $lastExit)",
-        "        if ($lastExit -gt 7) {",
-        "          Write-ApplyLog (\"robocopy exit \" + $lastExit + \"; Copy-Item fallback for \" + $item.Name)",
-        "          try {",
-        "            if (-not (Test-Path -LiteralPath $target)) { New-Item -ItemType Directory -Force -LiteralPath $target | Out-Null }",
-        "            Copy-Item -Path (Join-Path $item.FullName '*') -Destination $target -Recurse -Force",
-        "            Write-ApplyLog (\"Copy-Item fallback ok \" + $item.Name)",
-        "          } catch { throw (\"copy failed for \" + $item.Name + \": robocopy=\" + $lastExit + \" \" + $_.Exception.Message) }",
-        "        }",
-        "      } else {",
-        "        Copy-Item -LiteralPath $item.FullName -Destination $target -Force",
-        '        Write-ApplyLog ("copied file " + $item.Name)',
-        "      }",
-        "    }",
+        '  Write-ApplyLog "mirror staging -> dest (single robocopy; /XD versions)"',
+        "  $robocopyExe = Join-Path $env:SystemRoot 'System32\\robocopy.exe'",
+        "  & $robocopyExe $src $dst /MIR /E /MT:32 /R:0 /W:0 /XD versions /NFL /NDL /NJH /NJS",
+        "  $mirrorExit = $LASTEXITCODE",
+        "  Write-ApplyLog (\"robocopy mirror exit=\" + $mirrorExit)",
+        "  if ($mirrorExit -gt 7) {",
+        '    Write-ApplyLog "robocopy mirror failed; Copy-Item full tree fallback"',
+        "    Copy-Item -Path (Join-Path $src '*') -Destination $dst -Recurse -Force",
+        '    Write-ApplyLog "Copy-Item fallback done"',
         "  }",
         "  if ($plan.useVersionedLayout) {",
         "    if (Test-Path -LiteralPath $plan.currentLink) {",
@@ -1268,7 +1219,10 @@ function setupAutoUpdater() {
       ].join("\r\n");
       // UTF-8 BOM so Windows PowerShell 5.1 parses multi-byte literals reliably in .ps1 files.
       fs.writeFileSync(ps1Path, `\uFEFF${ps1Body}`, "utf8");
-      logUpdater("apply", `wrote ps1 ${ps1Path} (no fixed sleeps; Wait-Process parent; robocopy /R:0 /W:0)`);
+      logUpdater(
+        "apply",
+        `wrote ps1 ${ps1Path} (Wait-Process; CIM sweep; single robocopy mirror + Copy-Item fallback)`,
+      );
 
       try {
         fs.appendFileSync(
