@@ -1,5 +1,6 @@
 Updater: instant reload<br>
 Updater text area style<br>
+Program files installation folder<br>
 
 Show update install dialog only when program is not in the tray<br>
 Confirm fasten update<br>
