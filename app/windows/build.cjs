@@ -178,6 +178,30 @@ function getWindowsAppRootFromExecPath(execPath) {
   return dir;
 }
 
+/**
+ * Same exe names as NSIS `HspKillPackagedAppProcesses` / `HspAnyPackagedExeRunning`. Waiting only for
+ * the main PID is not enough: Electron helpers keep handles on resources\\app.asar and robocopy then fails.
+ */
+function windowsElectronProcessNamesForTaskKill() {
+  const out = [];
+  const seen = new Set();
+  const add = (n) => {
+    if (!seen.has(n)) {
+      seen.add(n);
+      out.push(n);
+    }
+  };
+  for (const base of brand.allKnownExeBaseNames()) {
+    add(base);
+    const stem = base.replace(/\.exe$/i, "");
+    add(`${stem} Helper.exe`);
+    add(`${stem} Helper (GPU).exe`);
+    add(`${stem} Helper (Renderer).exe`);
+    add(`${stem} Helper (Plugin).exe`);
+  }
+  return out;
+}
+
 function parseSimpleUpdateYml(text) {
   const versionM = text.match(/^version:\s*(.+)$/m);
   const version = versionM ? versionM[1].trim() : null;
@@ -1114,17 +1138,23 @@ function setupAutoUpdater() {
         appRoot,
         targetVersionDir,
         currentLink,
+        processNamesToKill: windowsElectronProcessNamesForTaskKill(),
+        installRootForKill: appRoot,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan), "utf8");
       logUpdater("apply", `wrote plan ${planPath} ${safeJson(plan)}`);
 
       const ps1Path = path.join(app.getPath("temp"), `hsp-apply-versions-${Date.now()}.ps1`);
       /**
-       * After PID exit: short settle (handles + mutex). Versioned layout: robocopy to
+       * After PID exit: short settle (handles + DLL unload). Versioned layout: robocopy to
        * versions\<ver>, then replace the `current` junction (fast); flat layout: robocopy in place.
-       * Override: HSP_UPDATE_SETTLE_MS (ms, 0–5000). Default 100ms when versioned, 400ms when flat.
+       * Override: HSP_UPDATE_SETTLE_MS (ms, 0–5000). Default 400ms versioned, 500ms flat.
+       *
+       * After files are in place, optional relaunch delay so the old process fully releases the
+       * single-instance mutex / file locks before Start-Process (avoids new instance exiting immediately).
+       * Override: HSP_UPDATE_RELAUNCH_DELAY_MS (ms, 0–10000). Default 1200ms.
        */
-      const defaultSettle = useVersionedLayout ? 100 : 400;
+      const defaultSettle = useVersionedLayout ? 400 : 500;
       const rawSettle = process.env.HSP_UPDATE_SETTLE_MS;
       let settleMs;
       if (rawSettle !== undefined && rawSettle !== "") {
@@ -1132,6 +1162,15 @@ function setupAutoUpdater() {
         settleMs = Math.min(5000, Math.max(0, Number.isFinite(p) ? p : defaultSettle));
       } else {
         settleMs = Math.min(5000, Math.max(0, defaultSettle));
+      }
+      const defaultRelaunchDelay = 1200;
+      const rawRelaunch = process.env.HSP_UPDATE_RELAUNCH_DELAY_MS;
+      let relaunchDelayMs;
+      if (rawRelaunch !== undefined && rawRelaunch !== "") {
+        const p = parseInt(rawRelaunch, 10);
+        relaunchDelayMs = Math.min(10000, Math.max(0, Number.isFinite(p) ? p : defaultRelaunchDelay));
+      } else {
+        relaunchDelayMs = defaultRelaunchDelay;
       }
       const ps1Body = [
         "param([string]$PlanPath)",
@@ -1141,18 +1180,37 @@ function setupAutoUpdater() {
         "$plan = Get-Content -LiteralPath $PlanPath -Encoding UTF8 -Raw | ConvertFrom-Json",
         "$LogFile = $plan.logPath",
         `$settleMs = ${settleMs}`,
+        `$relaunchDelayMs = ${relaunchDelayMs}`,
         "function Write-ApplyLog([string]$m) {",
         "  $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')",
         '  Add-Content -LiteralPath $LogFile -Value ("[$ts] " + $m) -Encoding UTF8',
         "}",
         "try {",
-        '  Write-ApplyLog "apply start waitPid=$($plan.waitPid) exe=$($plan.exeName) settleMs=$settleMs versioned=$($plan.useVersionedLayout)"',
+        '  Write-ApplyLog "apply start waitPid=$($plan.waitPid) exe=$($plan.exeName) settleMs=$settleMs relaunchDelayMs=$relaunchDelayMs versioned=$($plan.useVersionedLayout)"',
         "  $deadline = (Get-Date).AddSeconds(120)",
         "  while ((Get-Process -Id $plan.waitPid -ErrorAction SilentlyContinue) -and ((Get-Date) -lt $deadline)) {",
         "    Start-Sleep -Milliseconds 50",
         "  }",
         `  Write-ApplyLog "parent process ended (or timeout); settle delay ${settleMs}ms (HSP_UPDATE_SETTLE_MS)"`,
         "  if ($settleMs -gt 0) { Start-Sleep -Milliseconds $settleMs }",
+        '  Write-ApplyLog "taskkill: Electron helpers (unlock resources before robocopy — same idea as NSIS installer)"',
+        "  $cmdExe = Join-Path $env:SystemRoot 'System32\\cmd.exe'",
+        "  $names = @($plan.processNamesToKill)",
+        "  if ($names.Count -gt 0) {",
+        "    foreach ($im in $names) {",
+        "      try {",
+        "        $tk = Start-Process -FilePath $cmdExe -ArgumentList @('/c','taskkill','/F','/T','/IM',$im,'/FI','USERNAME eq %USERNAME%') -Wait -NoNewWindow -PassThru -ErrorAction SilentlyContinue",
+        '        Write-ApplyLog ("taskkill " + $im + " exit=" + $tk.ExitCode)',
+        "      } catch { Write-ApplyLog (\"taskkill skip \" + $im + \": \" + $_.Exception.Message) }",
+        "    }",
+        "  }",
+        "  if ($plan.installRootForKill -and $plan.installRootForKill.Length -gt 0) {",
+        "    $root = $plan.installRootForKill.ToLower()",
+        "    try {",
+        "      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath.ToLower().StartsWith($root)) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-ApplyLog (\"stopped pid=\" + $_.ProcessId + \" \" + $_.ExecutablePath) } catch {} }",
+        "    } catch { Write-ApplyLog (\"installRoot process sweep: \" + $_.Exception.Message) }",
+        "    Start-Sleep -Milliseconds 400",
+        "  }",
         "  $src = $plan.stagingContent",
         "  if ($plan.useVersionedLayout) {",
         "    $dst = $plan.targetVersionDir",
@@ -1196,7 +1254,8 @@ function setupAutoUpdater() {
         "    if (Test-Path -LiteralPath $tryExe) { $exePath = $tryExe; Write-ApplyLog (\"picked exe: \" + $c); break }",
         "  }",
         "  if (-not $exePath) { throw (\"main exe missing after apply under \" + $workDir + \" (tried \" + ($candidates -join \", \") + \")\") }",
-        '  Write-ApplyLog ("relaunch " + $exePath + " (wd=" + $workDir + ")")',
+        '  Write-ApplyLog ("relaunch " + $exePath + " (wd=" + $workDir + ") after delayMs=" + $relaunchDelayMs)',
+        "  if ($relaunchDelayMs -gt 0) { Start-Sleep -Milliseconds $relaunchDelayMs; Write-ApplyLog \"relaunch delay complete (mutex/file settle)\" }",
         "  Start-Process -FilePath $exePath -WorkingDirectory $workDir",
         '  Write-ApplyLog "Start-Process returned (GUI may take a moment)"',
         "  try { Remove-Item -LiteralPath $PlanPath -Force } catch {}",
@@ -1211,12 +1270,12 @@ function setupAutoUpdater() {
         "",
       ].join("\r\n");
       fs.writeFileSync(ps1Path, ps1Body, "utf8");
-      logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs}`);
+      logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs} relaunchDelayMs=${relaunchDelayMs}`);
 
       try {
         fs.appendFileSync(
           applyLogPath,
-          `[${new Date().toISOString()}] [main] spawning apply encodedLauncher=1 ps1=${ps1Path} plan=${planPath} trace=%TEMP%\\hsp-apply-trace.log\n`,
+          `[${new Date().toISOString()}] [main] spawning apply encodedLauncher=1 ps1=${ps1Path} plan=${planPath} settleMs=${settleMs} relaunchDelayMs=${relaunchDelayMs} trace=%TEMP%\\hsp-apply-trace.log\n`,
           "utf8",
         );
       } catch (_) {}
@@ -1236,6 +1295,17 @@ function setupAutoUpdater() {
           windowsHide: true,
         },
       );
+      child.on("error", (err) => {
+        const msg = err?.message || String(err);
+        logUpdater("apply", `powershell spawn error: ${msg}`);
+        try {
+          fs.appendFileSync(
+            applyLogPath,
+            `[${new Date().toISOString()}] [main] spawn error: ${msg}\n`,
+            "utf8",
+          );
+        } catch (_) {}
+      });
       logUpdater(
         "apply",
         `spawn ${psExe} pid=${child.pid} detached=true -EncodedCommand launcher→-File ps1 (trace %TEMP%\\hsp-apply-trace.log)`,
