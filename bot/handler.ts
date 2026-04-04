@@ -1,5 +1,6 @@
 import { callOpenAi, getOpenAiGuardState, type ChatMessage } from "./openapi.js";
 import { extractTickerFromText, fetchCoffeeContext } from "./coffee.js";
+import { buildVerifiedTokenContextSystemMessage } from "./instructions.js";
 
 export type HandleChatInput = {
   messages: ChatMessage[];
@@ -51,14 +52,10 @@ function buildCoffeeOnlySummary(symbol: string, facts: string[]): string {
 
 function withContextMessages(messages: ChatMessage[], facts: string[], sourceUrls: string[]): ChatMessage[] {
   if (facts.length === 0) return messages;
-
-  const contextLines = [
-    "Use this verified token context if relevant to the user question.",
-    ...facts.map((fact) => `${fact}`),
+  return [
+    { role: "system", content: buildVerifiedTokenContextSystemMessage(facts, sourceUrls) },
+    ...messages,
   ];
-  if (sourceUrls.length > 0) contextLines.push(`Sources: ${sourceUrls.join(", ")}`);
-
-  return [{ role: "system", content: contextLines.join("\n") }, ...messages];
 }
 
 export async function handleChat(input: HandleChatInput): Promise<HandleChatOutput> {
@@ -141,4 +138,3 @@ export async function handleChat(input: HandleChatInput): Promise<HandleChatOutp
     },
   };
 }
-

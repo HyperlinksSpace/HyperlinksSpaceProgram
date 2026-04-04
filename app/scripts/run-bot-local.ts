@@ -17,8 +17,8 @@ if (!token) {
 async function main() {
   const bot = createBot(token);
   await bot.api.deleteWebhook();
-  await bot.start();
   console.log('Bot running locally (getUpdates). Press Ctrl+C to stop.');
+  await bot.start();
 }
 
 main().catch((err) => {

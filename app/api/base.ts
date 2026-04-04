@@ -14,6 +14,29 @@ function normalizeBase(base: string): string {
   return base.replace(/\/$/, "");
 }
 
+function isLocalhostUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return isPrivateOrLocalHost(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyTelegramMiniApp(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if ((window.location.hash ?? "").includes("tgWebApp")) return true;
+  } catch {
+    // ignore
+  }
+  try {
+    return !!(window as unknown as { Telegram?: { WebApp?: unknown } }).Telegram?.WebApp;
+  } catch {
+    return false;
+  }
+}
+
 function isPrivateOrLocalHost(hostname: string): boolean {
   if (hostname === "localhost" || hostname === "127.0.0.1") return true;
   if (hostname.startsWith("10.")) return true;
@@ -92,6 +115,14 @@ function getNodeBaseUrl(): string {
 export function getApiBaseUrl(): string {
   const envBase = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (envBase) {
+    if (
+      typeof window !== "undefined" &&
+      isLikelyTelegramMiniApp() &&
+      isLocalhostUrl(envBase)
+    ) {
+      const browserBase = getBrowserBaseUrl();
+      if (browserBase) return browserBase;
+    }
     return normalizeBase(envBase);
   }
 

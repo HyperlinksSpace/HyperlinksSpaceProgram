@@ -1,6 +1,7 @@
 import { detectRequestedLanguage, fallbackNarrative, hasGenericFallbackText } from "./fallback.js";
 import type { LlmClient } from "./llm.js";
 import { extractTickerFromText, RagContextBuilder } from "./rag.js";
+import { buildVerifiedTokenContextSystemMessage } from "./instructions.js";
 import type {
   ChatMessage,
   GenerateAnswerInput,
@@ -108,14 +109,10 @@ function withContextMessages(
   sourceUrls: string[]
 ): ChatMessage[] {
   if (contextBlocks.length === 0) return messages;
-
-  const contextLines = [
-    "Use this verified token context if relevant to the user question.",
-    ...contextBlocks,
+  return [
+    { role: "system", content: buildVerifiedTokenContextSystemMessage(contextBlocks, sourceUrls) },
+    ...messages,
   ];
-  if (sourceUrls.length > 0) contextLines.push(`Sources: ${sourceUrls.join(", ")}`);
-
-  return [{ role: "system", content: contextLines.join("\n") }, ...messages];
 }
 
 function normalizeSymbol(value: string | undefined): string | undefined {
@@ -123,4 +120,3 @@ function normalizeSymbol(value: string | undefined): string | undefined {
   const normalized = value.replace("$", "").trim().toUpperCase();
   return normalized || undefined;
 }
-
