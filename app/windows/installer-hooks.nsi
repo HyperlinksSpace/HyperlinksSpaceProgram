@@ -99,6 +99,7 @@ Function .onInstFailed
 FunctionEnd
 
 ; $0 = inner dialog #32770, $1 = stock msctls_progress32 or 0 (used for layout when present).
+; GetWindowRect fills $2–$5 via .r2–.r5 — NOT $R2–$R5 (different NSIS registers).
 Function HspCreateCustomInstallProgress
   StrCmp $0 0 hspCreateProgEnd
   StrCmp $1 0 hspCreateProgUseDefault
@@ -110,13 +111,13 @@ Function HspCreateCustomInstallProgress
   Pop $R8
   System::Call "*$R8(&i4 r2, &i4 r3)"
   System::Call "user32::ScreenToClient(i $0, i r8)"
-  System::Call "*$R8(&i4 .R6, &i4 .R7)"
-  IntOp $R8 $R4 - $R2
-  IntOp $R9 $R5 - $R3
+  System::Call "*$R8(&i4 .r6, &i4 .r7)"
+  IntOp $R8 $4 - $2
+  IntOp $R9 $5 - $3
   Goto hspCreateProgDo
 hspCreateProgUseDefault:
-  StrCpy $R6 20
-  StrCpy $R7 88
+  StrCpy $6 20
+  StrCpy $7 88
   StrCpy $R8 328
   StrCpy $R9 18
 hspCreateProgDo:
