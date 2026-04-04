@@ -332,14 +332,15 @@ async function extractPortableZipToDir(zipPath, extractDir, logFn, pulse, unpack
     let unpackEntryCount = 0;
     let unpackLastName = "";
     const pulseUnpack = () => {
-      const span = unpackHi - unpackLo;
+      const span = Math.max(1, unpackHi - unpackLo);
       const bump = Math.min(span, 4 + Math.floor(unpackEntryCount / 30));
+      const pct = Math.min(unpackHi, unpackLo + bump);
       pulse({
         text:
           unpackEntryCount > 0
-            ? `Unpacking… ${unpackEntryCount} items${unpackLastName ? ` — ${unpackLastName.slice(-56)}` : ""}`
-            : "Unpacking… starting",
-        percent: Math.min(unpackHi, unpackLo + bump),
+            ? `${pct}% — Unpacking… ${unpackEntryCount} files${unpackLastName ? ` — ${unpackLastName.slice(-56)}` : ""}`
+            : `${pct}% — Unpacking… starting`,
+        percent: pct,
       });
     };
     const unpackHeartbeat = setInterval(pulseUnpack, 2800);
@@ -359,6 +360,10 @@ async function extractPortableZipToDir(zipPath, extractDir, logFn, pulse, unpack
     } finally {
       clearInterval(unpackHeartbeat);
     }
+    pulse({
+      text: `${unpackHi}% — Unpacking… (done)`,
+      percent: unpackHi,
+    });
     logFn(`[updater] extract-zip done in ${Date.now() - t0}ms (${unpackEntryCount} entries)`);
   };
 
@@ -369,12 +374,17 @@ async function extractPortableZipToDir(zipPath, extractDir, logFn, pulse, unpack
       try {
         const t0 = Date.now();
         logFn(`[updater] extracting with ${tarExe}`);
+        let tarPct = unpackLo;
         const hb = setInterval(() => {
+          tarPct = Math.min(
+            unpackHi,
+            tarPct + Math.max(1, Math.round((unpackHi - unpackLo) / 35)),
+          );
           pulse({
-            text: "Unpacking… (system archiver, large files can take a minute)",
-            percent: Math.min(unpackHi, unpackLo + 8),
+            text: `${tarPct}% — Unpacking… (system archiver)`,
+            percent: tarPct,
           });
-        }, 2800);
+        }, 450);
         try {
           await new Promise((resolve, reject) => {
             const child = spawn(tarExe, ["-xf", zipPath, "-C", extractDir], {
@@ -399,6 +409,10 @@ async function extractPortableZipToDir(zipPath, extractDir, logFn, pulse, unpack
         } finally {
           clearInterval(hb);
         }
+        pulse({
+          text: `${unpackHi}% — Unpacking… (done)`,
+          percent: unpackHi,
+        });
         logFn(`[updater] system tar done in ${Date.now() - t0}ms`);
         if (verifyExeBase) {
           const root = resolveZipAppContentRoot(extractDir, verifyExeBase);
@@ -930,14 +944,15 @@ function setupAutoUpdater() {
       const uiManual = Boolean(opts?.uiManual);
       const uiActive =
         uiManual || (updateDialogState.window && !updateDialogState.window.isDestroyed());
-      /** Tar heartbeat uses unpackLo+8 while extract-zip uses unpackLo+bump — without this the bar can drop (e.g. 88% → 84%). */
+      /** Overall 0–100: 0–81 download, 81–100 verify/unpack/finalize (single bar, monotonic). */
       let prepareProgressCeiling = 0;
       const pushUi = (partial) => {
         if (!uiActive) return;
         const raw = partial.percent;
+        const n = typeof raw === "number" && !Number.isNaN(raw) ? raw : Number(raw);
         const next =
-          typeof raw === "number" && !Number.isNaN(raw)
-            ? Math.max(prepareProgressCeiling, Math.round(raw))
+          typeof n === "number" && !Number.isNaN(n)
+            ? Math.max(prepareProgressCeiling, Math.round(Math.max(0, Math.min(100, n))))
             : prepareProgressCeiling;
         prepareProgressCeiling = next;
         updateDialogUi({
@@ -958,9 +973,12 @@ function setupAutoUpdater() {
         }
         log(`[updater] sidecar source: ${meta.source} → ${meta.fileName}`);
 
-        // One bar: download + verify + unpack = "prepare" until Update is enabled.
-        const PROGRESS_DOWNLOAD_CAP = 72;
-        pushUi({ text: "Downloading and preparing update… 0%", percent: 0 });
+        // One bar: 81% for download, 19% for verify + unpack + finalize (overall 0–100).
+        const PREP_PCT_DOWNLOAD_MAX = 81;
+        const PREP_PCT_VERIFY_END = 87;
+        const PREP_UNPACK_LO = 87;
+        const PREP_UNPACK_HI = 99;
+        pushUi({ text: "0% — Downloading update…", percent: 0 });
 
         const versionsRoot = getVersionsStagingRoot();
         const versionDir = path.join(versionsRoot, meta.version);
@@ -982,23 +1000,23 @@ function setupAutoUpdater() {
           if (!hasTotal && lastZipPush > 0 && now - lastZipPush < 150) return;
           lastZipPush = now;
           const mb = received / (1024 * 1024);
-          let dlPct;
           let overall;
           if (hasTotal) {
             const dl = received / total;
-            dlPct = Math.round(100 * dl);
-            overall = Math.min(PROGRESS_DOWNLOAD_CAP, Math.round(PROGRESS_DOWNLOAD_CAP * dl));
-          } else {
-            dlPct = Math.min(99, Math.round(22 * Math.log1p(mb / 12)));
             overall = Math.min(
-              PROGRESS_DOWNLOAD_CAP - 1,
-              Math.round(PROGRESS_DOWNLOAD_CAP * (1 - Math.exp(-mb / 55))),
+              PREP_PCT_DOWNLOAD_MAX,
+              Math.round(PREP_PCT_DOWNLOAD_MAX * dl),
+            );
+          } else {
+            overall = Math.min(
+              PREP_PCT_DOWNLOAD_MAX - 1,
+              Math.round(PREP_PCT_DOWNLOAD_MAX * (1 - Math.exp(-mb / 55))),
             );
           }
           pushUi({
             text: hasTotal
-              ? `Downloading and preparing update… ${dlPct}%`
-              : `Downloading and preparing update… ${dlPct}% (~${mb.toFixed(1)} MB, size unknown)`,
+              ? `${overall}% — Downloading update…`
+              : `${overall}% — Downloading update… (~${mb.toFixed(1)} MB, size unknown)`,
             percent: overall,
           });
         };
@@ -1018,31 +1036,42 @@ function setupAutoUpdater() {
           await downloadToFile((u) => net.fetch(u), altUrl, zipPath, onZipProgress);
         }
 
-        pushUi({ text: "Verifying update…", percent: PROGRESS_DOWNLOAD_CAP + 2 });
+        pushUi({ text: `${PREP_PCT_DOWNLOAD_MAX}% — Download finished`, percent: PREP_PCT_DOWNLOAD_MAX });
 
-        if (meta.sha512) {
-          logUpdater("verify", "sha512 check (zip-latest)");
-          const hash = sha512Base64OfFile(zipPath);
-          if (hash !== meta.sha512) throw new Error("zip sha512 mismatch");
-          logUpdater("verify", "sha512 ok");
-        } else {
-          log(
-            "[updater] no sha512 manifest for zip (optional: add zip-latest.yml from cleanup for integrity check)",
-          );
+        let verifyHb = null;
+        try {
+          let vPct = PREP_PCT_DOWNLOAD_MAX + 1;
+          verifyHb = setInterval(() => {
+            vPct = Math.min(PREP_PCT_VERIFY_END - 1, vPct + 1);
+            pushUi({ text: `${vPct}% — Verifying update…`, percent: vPct });
+          }, 350);
+          pushUi({ text: `${PREP_PCT_DOWNLOAD_MAX + 1}% — Verifying update…`, percent: PREP_PCT_DOWNLOAD_MAX + 1 });
+
+          if (meta.sha512) {
+            logUpdater("verify", "sha512 check (zip-latest)");
+            const hash = sha512Base64OfFile(zipPath);
+            if (hash !== meta.sha512) throw new Error("zip sha512 mismatch");
+            logUpdater("verify", "sha512 ok");
+          } else {
+            log(
+              "[updater] no sha512 manifest for zip (optional: add zip-latest.yml from cleanup for integrity check)",
+            );
+          }
+        } finally {
+          if (verifyHb) clearInterval(verifyHb);
         }
+        pushUi({ text: `${PREP_PCT_VERIFY_END}% — Verifying update…`, percent: PREP_PCT_VERIFY_END });
 
-        const UNPACK_PROGRESS_LO = PROGRESS_DOWNLOAD_CAP + 8;
-        const UNPACK_PROGRESS_HI = 97;
         pushUi({
-          text: "Installing update (unpacking files)…",
-          percent: UNPACK_PROGRESS_LO,
+          text: `${PREP_UNPACK_LO}% — Unpacking update…`,
+          percent: PREP_UNPACK_LO,
         });
 
-        await extractPortableZipToDir(zipPath, extractDir, log, pushUi, UNPACK_PROGRESS_LO, UNPACK_PROGRESS_HI, {
+        await extractPortableZipToDir(zipPath, extractDir, log, pushUi, PREP_UNPACK_LO, PREP_UNPACK_HI, {
           verifyExeBase: exeBase,
         });
 
-        pushUi({ text: "Finalizing…", percent: 98 });
+        pushUi({ text: "99% — Finalizing…", percent: 99 });
 
         const contentRoot = resolveZipAppContentRoot(extractDir, exeBase);
         if (!contentRoot) throw new Error("extracted update has no app executable");
