@@ -1,4 +1,3 @@
-Windows protected your PC (Get certificate)<br>
 Updater: instant reload<br>
 Updater text area style<br>
 
@@ -21,6 +20,7 @@ AI chat page<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Demo state<br>
 readme.md<br>
+https://azure.microsoft.com/en-us/products/artifact-signing
 
 Issues:<br>
 Several chats async streaming<br>
