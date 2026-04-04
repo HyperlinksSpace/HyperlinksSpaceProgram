@@ -103,6 +103,7 @@ export default {
         getAdditionalConfig: () => ({
           oneClick: false,
           runAfterFinish: true,
+          perMachine: true,
         }),
       },
     },
