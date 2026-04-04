@@ -181,8 +181,9 @@ function getWindowsAppRootFromExecPath(execPath) {
 /**
  * Same exe names as NSIS `HspKillPackagedAppProcesses` / `HspAnyPackagedExeRunning`. Waiting only for
  * the main PID is not enough: Electron helpers keep handles on resources\\app.asar and robocopy then fails.
+ * Only the **running** pack's base name matters; killing every historic rebrand name serially costs ~1s each.
  */
-function windowsElectronProcessNamesForTaskKill() {
+function windowsElectronProcessNamesForTaskKillFromExe(exeBaseName) {
   const out = [];
   const seen = new Set();
   const add = (n) => {
@@ -191,14 +192,13 @@ function windowsElectronProcessNamesForTaskKill() {
       out.push(n);
     }
   };
-  for (const base of brand.allKnownExeBaseNames()) {
-    add(base);
-    const stem = base.replace(/\.exe$/i, "");
-    add(`${stem} Helper.exe`);
-    add(`${stem} Helper (GPU).exe`);
-    add(`${stem} Helper (Renderer).exe`);
-    add(`${stem} Helper (Plugin).exe`);
-  }
+  const base = exeBaseName || `${brand.productSlug}.exe`;
+  add(base);
+  const stem = base.replace(/\.exe$/i, "");
+  add(`${stem} Helper.exe`);
+  add(`${stem} Helper (GPU).exe`);
+  add(`${stem} Helper (Renderer).exe`);
+  add(`${stem} Helper (Plugin).exe`);
   return out;
 }
 
@@ -1138,7 +1138,7 @@ function setupAutoUpdater() {
         appRoot,
         targetVersionDir,
         currentLink,
-        processNamesToKill: windowsElectronProcessNamesForTaskKill(),
+        processNamesToKill: windowsElectronProcessNamesForTaskKillFromExe(exeName),
         installRootForKill: appRoot,
       };
       fs.writeFileSync(planPath, JSON.stringify(plan), "utf8");
@@ -1148,13 +1148,15 @@ function setupAutoUpdater() {
       /**
        * After PID exit: short settle (handles + DLL unload). Versioned layout: robocopy to
        * versions\<ver>, then replace the `current` junction (fast); flat layout: robocopy in place.
-       * Override: HSP_UPDATE_SETTLE_MS (ms, 0–5000). Default 400ms versioned, 500ms flat.
+       * Override: HSP_UPDATE_SETTLE_MS (ms, 0–5000). Default 300ms versioned, 250ms flat.
        *
        * After files are in place, optional relaunch delay so the old process fully releases the
        * single-instance mutex / file locks before Start-Process (avoids new instance exiting immediately).
-       * Override: HSP_UPDATE_RELAUNCH_DELAY_MS (ms, 0–10000). Default 1200ms.
+       * Override: HSP_UPDATE_RELAUNCH_DELAY_MS (ms, 0–10000). Default 400ms (lower = snappier reload).
+       *
+       * Brief pause before copying into Program Files (DLL handle release). Override: HSP_UPDATE_PRE_ROBOCOPY_MS.
        */
-      const defaultSettle = useVersionedLayout ? 400 : 500;
+      const defaultSettle = useVersionedLayout ? 300 : 250;
       const rawSettle = process.env.HSP_UPDATE_SETTLE_MS;
       let settleMs;
       if (rawSettle !== undefined && rawSettle !== "") {
@@ -1163,7 +1165,7 @@ function setupAutoUpdater() {
       } else {
         settleMs = Math.min(5000, Math.max(0, defaultSettle));
       }
-      const defaultRelaunchDelay = 1200;
+      const defaultRelaunchDelay = 400;
       const rawRelaunch = process.env.HSP_UPDATE_RELAUNCH_DELAY_MS;
       let relaunchDelayMs;
       if (rawRelaunch !== undefined && rawRelaunch !== "") {
@@ -1171,6 +1173,15 @@ function setupAutoUpdater() {
         relaunchDelayMs = Math.min(10000, Math.max(0, Number.isFinite(p) ? p : defaultRelaunchDelay));
       } else {
         relaunchDelayMs = defaultRelaunchDelay;
+      }
+      const defaultPreRobocopy = 250;
+      const rawPreRobo = process.env.HSP_UPDATE_PRE_ROBOCOPY_MS;
+      let preRobocopyMs;
+      if (rawPreRobo !== undefined && rawPreRobo !== "") {
+        const p = parseInt(rawPreRobo, 10);
+        preRobocopyMs = Math.min(5000, Math.max(0, Number.isFinite(p) ? p : defaultPreRobocopy));
+      } else {
+        preRobocopyMs = defaultPreRobocopy;
       }
       const ps1Body = [
         "param([string]$PlanPath, [string]$LogPath)",
@@ -1197,6 +1208,7 @@ function setupAutoUpdater() {
         "$LogFile = $plan.logPath",
         `$settleMs = ${settleMs}`,
         `$relaunchDelayMs = ${relaunchDelayMs}`,
+        `$preRobocopyMs = ${preRobocopyMs}`,
         "function Write-ApplyLog([string]$m) {",
         "  $ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')",
         '  Add-Content -LiteralPath $LogFile -Value ("[$ts] " + $m) -Encoding UTF8',
@@ -1209,7 +1221,15 @@ function setupAutoUpdater() {
         "  }",
         `  Write-ApplyLog "parent process ended (or timeout); settle delay ${settleMs}ms (HSP_UPDATE_SETTLE_MS)"`,
         "  if ($settleMs -gt 0) { Start-Sleep -Milliseconds $settleMs }",
-        '  Write-ApplyLog "taskkill: Electron helpers (unlock resources before robocopy - same idea as NSIS installer)"',
+        "  if ($plan.installRootForKill -and $plan.installRootForKill.Length -gt 0) {",
+        '    Write-ApplyLog "installRoot process sweep (Stop-Process under install dir)"',
+        "    $root = $plan.installRootForKill.ToLower()",
+        "    try {",
+        "      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath.ToLower().StartsWith($root)) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-ApplyLog (\"stopped pid=\" + $_.ProcessId + \" \" + $_.ExecutablePath) } catch {} }",
+        "    } catch { Write-ApplyLog (\"installRoot process sweep: \" + $_.Exception.Message) }",
+        "    Start-Sleep -Milliseconds 200",
+        "  }",
+        '  Write-ApplyLog "taskkill: current pack only (HSP: unlock resources; avoids ~15s serial kills for all rebrand names)"',
         "  $cmdExe = Join-Path $env:SystemRoot 'System32\\cmd.exe'",
         "  $names = @($plan.processNamesToKill)",
         "  if ($names.Count -gt 0) {",
@@ -1219,13 +1239,6 @@ function setupAutoUpdater() {
         '        Write-ApplyLog ("taskkill " + $im + " exit=" + $tk.ExitCode)',
         "      } catch { Write-ApplyLog (\"taskkill skip \" + $im + \": \" + $_.Exception.Message) }",
         "    }",
-        "  }",
-        "  if ($plan.installRootForKill -and $plan.installRootForKill.Length -gt 0) {",
-        "    $root = $plan.installRootForKill.ToLower()",
-        "    try {",
-        "      Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -and ($_.ExecutablePath.ToLower().StartsWith($root)) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; Write-ApplyLog (\"stopped pid=\" + $_.ProcessId + \" \" + $_.ExecutablePath) } catch {} }",
-        "    } catch { Write-ApplyLog (\"installRoot process sweep: \" + $_.Exception.Message) }",
-        "    Start-Sleep -Milliseconds 400",
         "  }",
         "  $src = $plan.stagingContent",
         "  if ($plan.useVersionedLayout) {",
@@ -1237,23 +1250,17 @@ function setupAutoUpdater() {
         '    Write-ApplyLog "robocopy target (flat): $dst"',
         "  }",
         '  Write-ApplyLog "robocopy/copy from $src to $dst"',
-        '  Write-ApplyLog "pre-robocopy settle 1s (release DLL locks in Program Files)"',
-        "  Start-Sleep -Seconds 1",
+        `  Write-ApplyLog "pre-robocopy settle ${preRobocopyMs}ms (HSP_UPDATE_PRE_ROBOCOPY_MS)"`,
+        "  if ($preRobocopyMs -gt 0) { Start-Sleep -Milliseconds $preRobocopyMs }",
         "  Get-ChildItem -LiteralPath $src -Force | ForEach-Object {",
         "    $item = $_",
         "    if ($item.Name -ne 'versions') {",
         "      $target = Join-Path $dst $item.Name",
         "      if ($item.PSIsContainer) {",
         "        $robocopyExe = Join-Path $env:SystemRoot 'System32\\robocopy.exe'",
-        "        $attempt = 0",
-        "        $lastExit = 16",
-        "        while ($attempt -lt 5 -and $lastExit -gt 7) {",
-        "          $attempt++",
-        "          if ($attempt -gt 1) { Write-ApplyLog (\"robocopy retry \" + $attempt + \" for \" + $item.Name); Start-Sleep -Seconds 2 }",
-        "          $p = Start-Process -FilePath $robocopyExe -ArgumentList @($item.FullName, $target, '/MIR', '/MT:8', '/R:6', '/W:3', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow",
-        "          $lastExit = $p.ExitCode",
-        "          Write-ApplyLog (\"robocopy dir \" + $item.Name + \" attempt \" + $attempt + \" exit=\" + $lastExit)",
-        "        }",
+        "        $p = Start-Process -FilePath $robocopyExe -ArgumentList @($item.FullName, $target, '/MIR', '/MT:16', '/R:2', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS') -Wait -PassThru -NoNewWindow",
+        "        $lastExit = $p.ExitCode",
+        "        Write-ApplyLog (\"robocopy dir \" + $item.Name + \" exit=\" + $lastExit)",
         "        if ($lastExit -gt 7) {",
         "          Write-ApplyLog (\"robocopy exit \" + $lastExit + \"; Copy-Item fallback for \" + $item.Name)",
         "          try {",
@@ -1305,7 +1312,10 @@ function setupAutoUpdater() {
       ].join("\r\n");
       // UTF-8 BOM so Windows PowerShell 5.1 parses multi-byte literals reliably in .ps1 files.
       fs.writeFileSync(ps1Path, `\uFEFF${ps1Body}`, "utf8");
-      logUpdater("apply", `wrote ps1 ${ps1Path} settleMs=${settleMs} relaunchDelayMs=${relaunchDelayMs}`);
+      logUpdater(
+        "apply",
+        `wrote ps1 ${ps1Path} settleMs=${settleMs} relaunchDelayMs=${relaunchDelayMs} preRobocopyMs=${preRobocopyMs}`,
+      );
 
       try {
         fs.appendFileSync(
