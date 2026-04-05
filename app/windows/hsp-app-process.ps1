@@ -1,4 +1,4 @@
-# Used by installer-hooks.nsi (ExecWait -File). Sync process names with package.json:
+# Used by installer-hooks.nsi (nsExec::Exec, no console). Sync process names with package.json:
 # build.productName, name (npm), product-brand portable slug, legacy "Hyperlinks Space App".
 param(
   [Parameter(Mandatory = $true)]

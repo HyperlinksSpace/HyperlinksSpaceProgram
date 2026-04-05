@@ -1816,6 +1816,32 @@ function createWindow() {
     show: false,
   });
 
+  // Windows: nativeImage.createFromPath(.exe) often returns an empty image; shell-extracted icons work for the taskbar.
+  if (process.platform === "win32" && app.isPackaged) {
+    const iconPaths = [resolveAppIconIcoPath(), process.execPath].filter(
+      (p) => p && (p === process.execPath || fs.existsSync(p)),
+    );
+    void (async () => {
+      for (const p of iconPaths) {
+        try {
+          const img = await app.getFileIcon(p, { size: "large" });
+          if (mainWindow.isDestroyed()) return;
+          if (!img.isEmpty()) {
+            mainWindow.setIcon(img);
+            return;
+          }
+        } catch (e) {
+          try {
+            log(`getFileIcon(${p}): ${e?.message || e}`);
+          } catch (_) {}
+        }
+      }
+      try {
+        log("warn: taskbar icon: getFileIcon found no usable image");
+      } catch (_) {}
+    })();
+  }
+
   mainWindow.once("ready-to-show", () => {
     // Fill the display work area by default (fresh install, after update, new window).
     try {

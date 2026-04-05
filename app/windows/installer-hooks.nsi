@@ -131,14 +131,21 @@ Function HspClearEnvInstDir
   System::Call 'kernel32::SetEnvironmentVariable(t, i) ("HSP_INSTDIR", 0)'
 FunctionEnd
 
-; PowerShell: -WindowStyle Hidden avoids flashing console windows (ExecWait still waits for exit).
+; PowerShell: use nsExec::Exec (not ExecWait). ExecWait always attaches a console to powershell.exe,
+; which flashes on screen even with -WindowStyle Hidden; nsExec runs the process with no console window.
 Function HspAnyPackagedExeRunning
   Call HspResolvePowerShellExe
   Call HspSetEnvInstDir
   IfFileExists "$PLUGINSDIR\hsp-app-process.ps1" 0 hspAnyExeNoScript
-    ExecWait '"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$PLUGINSDIR\hsp-app-process.ps1" -Action Test' $R4
+    nsExec::Exec `"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\hsp-app-process.ps1" -Action Test`
+    Pop $R4
     Call HspClearEnvInstDir
+    StrCmp $R4 "error" hspAnyExeNsFail
+    StrCmp $R4 "timeout" hspAnyExeNsFail
     IntCmp $R4 0 hspAnyExeYes
+    StrCpy $0 0
+    Return
+  hspAnyExeNsFail:
     StrCpy $0 0
     Return
   hspAnyExeNoScript:
@@ -168,7 +175,8 @@ Function HspKillPackagedAppProcesses
   Call HspResolvePowerShellExe
   Call HspSetEnvInstDir
   IfFileExists "$PLUGINSDIR\hsp-app-process.ps1" 0 hspKillNoScript
-    ExecWait '"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "$PLUGINSDIR\hsp-app-process.ps1" -Action Kill' $R4
+    nsExec::Exec `"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\hsp-app-process.ps1" -Action Kill`
+    Pop $R4
   hspKillNoScript:
   Call HspClearEnvInstDir
 FunctionEnd
@@ -319,7 +327,7 @@ hspCustomInstallAfterLaunch:
   !insertmacro HspAppendInstallerLog "[uninstaller] complete"
 !macroend
 
-; Runs before Section install (electron-builder prepends this include). Drops helper script for ExecWait -File.
+; Runs before Section install (electron-builder prepends this include). Drops helper script for nsExec::Exec -File.
 ; Use BUILD_RESOURCES_DIR so makensis finds the script when cwd is the NSIS cache dir (Forge/CI).
 !ifndef BUILD_UNINSTALLER
 Section "-hsp_app_process_ps1"
