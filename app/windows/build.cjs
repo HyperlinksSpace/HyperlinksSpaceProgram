@@ -1895,26 +1895,48 @@ async function resolveBrowserWindowIcon() {
   return fromFile;
 }
 
+const WINDOWS_USERDATA_ICON = "window-icon.ico";
+
 /**
- * Windows: BrowserWindow `icon` should be a path to a real .ico on disk (Electron docs). Paths inside
- * app.asar are not normal files for the shell — prefer unpacked, else copy from asar into userData.
+ * Absolute path to a real .ico on disk for Windows shell APIs. Prefer loose/unpacked files; if the only
+ * copy is inside app.asar, copy bytes with readFileSync/writeFileSync (copyFileSync can fail for asar).
  */
-function resolveWindowsIcoFilePathForBrowserWindow() {
+function ensureWindowsIcoFileOnDiskSync() {
   if (process.platform !== "win32" || !app.isPackaged) return null;
   const inAsarOnly = (p) => p.includes("app.asar") && !p.includes("app.asar.unpacked");
+  const dest = path.join(app.getPath("userData"), WINDOWS_USERDATA_ICON);
   for (const p of collectAppIconIcoCandidates()) {
     if (!p || !fs.existsSync(p) || !/\.ico$/i.test(p)) continue;
-    if (!inAsarOnly(p)) return p;
+    if (!inAsarOnly(p)) return path.resolve(p);
   }
-  const any = collectAppIconIcoCandidates().find((p) => p && fs.existsSync(p) && /\.ico$/i.test(p));
-  if (!any) return null;
+  for (const p of collectAppIconIcoCandidates()) {
+    if (!p || !fs.existsSync(p) || !/\.ico$/i.test(p)) continue;
+    try {
+      const buf = fs.readFileSync(p);
+      if (buf.length < 32) continue;
+      fs.writeFileSync(dest, buf);
+      if (fs.existsSync(dest) && fs.statSync(dest).size > 0) return path.resolve(dest);
+    } catch (e) {
+      try {
+        log(`ensureWindowsIcoFileOnDiskSync: ${e?.message || e}`);
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
+/** NativeImage for the main window: prefer createFromPath on real disk .ico; buffer decode as fallback. */
+function windowsPackagedWindowNativeIcon() {
+  const p = ensureWindowsIcoFileOnDiskSync();
+  if (!p) return null;
   try {
-    const dest = path.join(app.getPath("userData"), "window-icon.ico");
-    fs.copyFileSync(any, dest);
-    return dest;
+    let img = nativeImage.createFromPath(p);
+    if (!img.isEmpty()) return img;
+    img = nativeImage.createFromBuffer(fs.readFileSync(p));
+    return img.isEmpty() ? null : img;
   } catch (e) {
     try {
-      log(`window-icon copy to userData: ${e?.message || e}`);
+      log(`windowsPackagedWindowNativeIcon: ${e?.message || e}`);
     } catch (_) {}
     return null;
   }
@@ -1933,7 +1955,7 @@ async function createWindow() {
 
   let iconForWindow;
   if (process.platform === "win32" && app.isPackaged) {
-    iconForWindow = resolveWindowsIcoFilePathForBrowserWindow();
+    iconForWindow = windowsPackagedWindowNativeIcon();
     if (!iconForWindow) {
       const img = await resolveBrowserWindowIcon();
       iconForWindow = img && !img.isEmpty() ? img : undefined;
@@ -1986,10 +2008,7 @@ async function createWindow() {
     // Win32: ties this HWND to AppUserModelID + icon for the taskbar button (see Electron BrowserWindow.setAppDetails).
     if (process.platform === "win32" && fs.existsSync(process.execPath)) {
       try {
-        const detailsIcon =
-          typeof iconForWindow === "string" && fs.existsSync(iconForWindow)
-            ? iconForWindow
-            : resolveWindowsIcoFilePathForBrowserWindow() || process.execPath;
+        const detailsIcon = ensureWindowsIcoFileOnDiskSync() || process.execPath;
         if (detailsIcon && fs.existsSync(detailsIcon)) {
           mainWindow.setAppDetails({
             appId: WIN_APP_USER_MODEL_ID,
@@ -2006,8 +2025,8 @@ async function createWindow() {
     applyWindowIcon();
     try {
       mainWindow.maximize();
+      mainWindow.show();
     } catch (_) {}
-    mainWindow.show();
   });
 
   mainWindow.webContents.once("did-finish-load", applyWindowIcon);

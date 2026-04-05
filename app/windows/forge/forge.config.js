@@ -30,6 +30,9 @@ export default {
     },
     prePackage: async (_forgeConfig, platform, arch) => {
       forgeLog("prePackage", `platform=${platform} arch=${arch}`);
+      if (!fs.existsSync(ICON_PATH)) {
+        throw new Error(`[forge] packager icon missing: ${ICON_PATH}`);
+      }
     },
     packageAfterCopy: async (buildPath, electronVersion, platform, arch) => {
       forgeLog(
@@ -87,11 +90,12 @@ export default {
     // electron-packager reads this as the main process entry.
     main: MAIN_PROCESS_FILE_REL,
     // Improves exe identity in Properties / some SmartScreen heuristics (does not replace Authenticode signing).
+    // Do not set OriginalFilename here: electron-packager sets it to the real sanitized exe name
+    // (e.g. Hyperlinks-Space-Program.exe). Overriding with spaces breaks metadata vs on-disk name.
     win32metadata: {
       CompanyName: typeof packageJson.author === "string" ? packageJson.author : "sraibaby",
       FileDescription: forgeProductName,
       ProductName: forgeProductName,
-      OriginalFilename: `${forgeProductName}.exe`,
     },
 
     // Match your electron-builder asar strategy.
