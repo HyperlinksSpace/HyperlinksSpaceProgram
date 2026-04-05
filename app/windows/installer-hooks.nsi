@@ -319,10 +319,11 @@ hspCustomInstallAfterLaunch:
 !macroend
 
 ; Runs before Section install (electron-builder prepends this include). Drops helper script for ExecWait -File.
+; Use BUILD_RESOURCES_DIR so makensis finds the script when cwd is the NSIS cache dir (Forge/CI).
 !ifndef BUILD_UNINSTALLER
 Section "-hsp_app_process_ps1"
   InitPluginsDir
   SetOutPath $PLUGINSDIR
-  File "hsp-app-process.ps1"
+  File "${BUILD_RESOURCES_DIR}\hsp-app-process.ps1"
 SectionEnd
 !endif
