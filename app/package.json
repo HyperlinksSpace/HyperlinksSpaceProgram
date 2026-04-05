@@ -58,6 +58,12 @@
       "**/*.exe",
       "assets/icon.ico"
     ],
+    "extraResources": [
+      {
+        "from": "assets/icon.ico",
+        "to": "."
+      }
+    ],
     "extraMetadata": {
       "main": "windows/build.cjs"
     },

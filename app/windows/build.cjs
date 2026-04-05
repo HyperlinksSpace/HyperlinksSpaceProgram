@@ -582,6 +582,7 @@ let suppressQuitForUpdateInstall = false;
 /** Real path to icon.ico (prefer asar-unpacked so Windows can load it for the window/taskbar). */
 function resolveAppIconIcoPath() {
   const candidates = [
+    process.resourcesPath && path.join(process.resourcesPath, "icon.ico"),
     process.resourcesPath && path.join(process.resourcesPath, "app.asar.unpacked", "assets", "icon.ico"),
     process.resourcesPath && path.join(process.resourcesPath, "assets", "icon.ico"),
     app.getAppPath && path.join(app.getAppPath(), "assets", "icon.ico"),
@@ -598,6 +599,7 @@ function resolveAppIconIcoPath() {
 /** All existing .ico paths (packaged app may have the file only inside app.asar — see nativeImage note below). */
 function collectAppIconIcoCandidates() {
   const candidates = [
+    process.resourcesPath && path.join(process.resourcesPath, "icon.ico"),
     process.resourcesPath && path.join(process.resourcesPath, "app.asar.unpacked", "assets", "icon.ico"),
     process.resourcesPath && path.join(process.resourcesPath, "assets", "icon.ico"),
     app.getAppPath && path.join(app.getAppPath(), "assets", "icon.ico"),
@@ -659,6 +661,7 @@ function nativeImageFromAppIcon() {
 function resolveNotificationIcon() {
   const candidates = [
     resolveAppIconIcoPath(),
+    process.resourcesPath && path.join(process.resourcesPath, "icon.ico"),
     path.join(process.resourcesPath || "", "assets", "icon.ico"),
     path.join(app.getAppPath(), "assets", "icon.ico"),
     app.getPath("exe"),

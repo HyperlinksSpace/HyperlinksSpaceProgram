@@ -103,6 +103,8 @@ export default {
       smartUnpack: true,
     },
     asarUnpack: ["**/*.node", "**/*.dll", "**/*.exe", "assets/icon.ico"],
+    // Plain file next to app.asar (Program Files\...\resources\icon.ico) — shell APIs cannot read paths inside app.asar.
+    extraResource: [ICON_PATH],
   },
   makers: [
     {
