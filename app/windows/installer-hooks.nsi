@@ -327,6 +327,18 @@ hspCustomInstallAfterLaunch:
 !macroend
 
 !macro customUnInstall
+  ; Per-machine installs only remove SHELL_CONTEXT=HKLM keys. Legacy per-user installs also wrote
+  ; HKCU Uninstall + Software\{APP_GUID}; that leaves a duplicate "Installed apps" row. Clean HKCU when
+  ; uninstalling for all users. (Do not remove HKCU InstallLocation when uninstalling per-user —
+  ; InstFiles still reads MenuDirectory from HKCU in that mode.)
+  DetailPrint "[uninstaller] legacy HKCU registry cleanup (if any)"
+  DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY}"
+  !ifdef UNINSTALL_REGISTRY_KEY_2
+    DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY_2}"
+  !endif
+  ${if} $installMode == "all"
+    DeleteRegKey HKCU "${INSTALL_REGISTRY_KEY}"
+  ${endif}
   !insertmacro HspAppendInstallerLog "[uninstaller] start"
   !insertmacro HspAppendInstallerLog "[uninstaller] complete"
 !macroend

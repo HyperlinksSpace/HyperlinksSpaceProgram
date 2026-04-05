@@ -103,7 +103,8 @@
       "perMachine": true,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": false,
-      "warningsAsErrors": false
+      "warningsAsErrors": false,
+      "deleteAppDataOnUninstall": true
     },
     "directories": {
       "output": "releases/artifacts",
