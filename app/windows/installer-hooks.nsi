@@ -290,16 +290,8 @@ FunctionEnd
   RMDir /r /REBOOTOK "$R8\Programs\Hyperlinks Space App"
   RMDir /r /REBOOTOK "$R8\Programs\HyperlinksSpaceApp"
   !insertmacro HspInstallDetailPrint "[installer] removed legacy Hyperlinks Space App shortcuts (if present)"
-  SetRegView 64
-  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
-  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
-  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
-  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
-  SetRegView 32
-  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
-  DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
-  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
-  DeleteRegValue HKLM "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
+  ; Do NOT delete UninstallString / QuietUninstallString here — that breaks Windows Settings "Uninstall"
+  ; for this product and can leave a grayed-out Apps entry with no uninstall command.
   !insertmacro HspInstallDetailPrint "[installer] customInit complete"
 !macroend
 
