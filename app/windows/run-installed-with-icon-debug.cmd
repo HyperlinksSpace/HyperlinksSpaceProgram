@@ -8,7 +8,7 @@ if not exist "%ROOT%\" (
   echo [run-installed-with-icon-debug] Not found: "%ROOT%"
   exit /b 1
 )
-for %%N in ("Hyperlinks-Space-Program.exe" "HyperlinksSpaceProgram.exe" "Hyperlinks Space Program.exe") do (
+for %%N in ("Hyperlinks Space Program.exe" "Hyperlinks-Space-Program.exe" "HyperlinksSpaceProgram.exe") do (
   if exist "%ROOT%\%%~N" (
     echo [run-installed-with-icon-debug] Starting "%ROOT%\%%~N"
     start "" "%ROOT%\%%~N"
