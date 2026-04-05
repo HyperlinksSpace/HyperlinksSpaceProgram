@@ -1834,15 +1834,42 @@ function log(msg) {
   } catch (_) {}
 }
 
-/** Windows: resolve before the first show() or the taskbar often keeps a blank/generic icon. */
+/** Windows: resolve before the first show(); omit `icon` if empty so the shell can fall back to the exe. */
 async function resolveBrowserWindowIcon() {
   const fromFile = nativeImageFromAppIcon();
   if (fromFile && !fromFile.isEmpty()) return fromFile;
   if (process.platform !== "win32" || !app.isPackaged) return fromFile;
+
+  const thumbSize = { width: 256, height: 256 };
+  const inAsarOnly = (p) => p.includes("app.asar") && !p.includes("app.asar.unpacked");
+
+  // Shell-backed extraction: often works for the packaged .exe (embedded rcedit icon) when ICO buffer decode fails.
+  try {
+    if (fs.existsSync(process.execPath)) {
+      const img = await nativeImage.createThumbnailFromPath(process.execPath, thumbSize);
+      if (img && !img.isEmpty()) return img;
+    }
+  } catch (e) {
+    try {
+      log(`createThumbnailFromPath(exe): ${e?.message || e}`);
+    } catch (_) {}
+  }
+
+  for (const p of collectAppIconIcoCandidates()) {
+    if (!p || !fs.existsSync(p) || inAsarOnly(p)) continue;
+    try {
+      const img = await nativeImage.createThumbnailFromPath(p, thumbSize);
+      if (img && !img.isEmpty()) return img;
+    } catch (e) {
+      try {
+        log(`createThumbnailFromPath(${p}): ${e?.message || e}`);
+      } catch (_) {}
+    }
+  }
+
   const shellPaths = [process.execPath, ...collectAppIconIcoCandidates()].filter((p) => {
     if (!p || !fs.existsSync(p)) return false;
-    const inAsarArchive = p.includes("app.asar") && !p.includes("app.asar.unpacked");
-    return !inAsarArchive;
+    return !inAsarOnly(p);
   });
   for (const p of shellPaths) {
     for (const size of ["large", "normal", "small"]) {
@@ -1871,13 +1898,21 @@ async function createWindow() {
   }
 
   const windowIcon = await resolveBrowserWindowIcon();
-  if (process.platform === "win32" && app.isPackaged && (!windowIcon || windowIcon.isEmpty())) {
+  const iconForWindow = windowIcon && !windowIcon.isEmpty() ? windowIcon : undefined;
+  if (process.platform === "win32" && app.isPackaged && !iconForWindow) {
     try {
       log(
-        `warn: taskbar icon empty; candidates=${collectAppIconIcoCandidates().join(" | ")} exe=${process.execPath}`,
+        `warn: window icon unresolved; resourcesPath=${process.resourcesPath} ico=${collectAppIconIcoCandidates().join(" | ")} exe=${process.execPath}`,
       );
     } catch (_) {}
   }
+
+  const applyWindowIcon = () => {
+    if (!iconForWindow || mainWindow.isDestroyed()) return;
+    try {
+      mainWindow.setIcon(iconForWindow);
+    } catch (_) {}
+  };
 
   // NSIS close-app uses PRODUCT_NAME (package.json → build.productName). The window title must
   // match that string, not a URL — otherwise the installer cannot find/close the running app.
@@ -1888,7 +1923,7 @@ async function createWindow() {
     width: 1200,
     height: 800,
     title: windowTitle,
-    icon: windowIcon,
+    ...(iconForWindow ? { icon: iconForWindow } : {}),
     // Match app dark background (theme.ts); reduces flash and helps menu/client seam blend on Windows.
     backgroundColor: "#111111",
     webPreferences: {
@@ -1904,11 +1939,14 @@ async function createWindow() {
   } catch (_) {}
 
   mainWindow.once("ready-to-show", () => {
+    applyWindowIcon();
     try {
       mainWindow.maximize();
     } catch (_) {}
     mainWindow.show();
   });
+
+  mainWindow.webContents.once("did-finish-load", applyWindowIcon);
 
   mainWindow.webContents.on("page-title-updated", (e) => {
     e.preventDefault();
