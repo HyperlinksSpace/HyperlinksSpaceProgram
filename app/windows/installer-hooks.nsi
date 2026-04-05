@@ -278,6 +278,14 @@ FunctionEnd
 
 !macro customInit
   !insertmacro HspInstallDetailPrint "[installer] customInit start"
+  ; Remove stale Start Menu / Desktop shortcuts from older "Hyperlinks Space App" installs (new product: ${PRODUCT_NAME}).
+  Delete "$SMPROGRAMS\Hyperlinks Space App.lnk"
+  Delete "$COMMONPROGRAMS\Hyperlinks Space App.lnk"
+  Delete "$DESKTOP\Hyperlinks Space App.lnk"
+  Delete "$COMMONDESKTOP\Hyperlinks Space App.lnk"
+  RMDir /r /REBOOTOK "$SMPROGRAMS\Hyperlinks Space App"
+  RMDir /r /REBOOTOK "$COMMONPROGRAMS\Hyperlinks Space App"
+  !insertmacro HspInstallDetailPrint "[installer] removed legacy Hyperlinks Space App shortcuts (if present)"
   SetRegView 64
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "QuietUninstallString"
