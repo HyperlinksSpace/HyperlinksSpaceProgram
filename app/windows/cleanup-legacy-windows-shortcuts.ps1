@@ -41,3 +41,6 @@ if ($removed.Count -eq 0) {
 Write-Host ""
 Write-Host "If 'Hyperlinks Space App' still appears under Settings -> Apps, uninstall it there,"
 Write-Host "or run the current installer once (it also deletes legacy shortcuts in customInit)."
+Write-Host ""
+Write-Host "Old per-user installs may still exist under %LOCALAPPDATA%\Programs\. Run:"
+Write-Host "  powershell -ExecutionPolicy Bypass -File .\windows\cleanup-legacy-appdata-installs.ps1 -Force"

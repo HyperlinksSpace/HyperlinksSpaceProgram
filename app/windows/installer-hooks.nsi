@@ -285,6 +285,10 @@ FunctionEnd
   Delete "$COMMONDESKTOP\Hyperlinks Space App.lnk"
   RMDir /r /REBOOTOK "$SMPROGRAMS\Hyperlinks Space App"
   RMDir /r /REBOOTOK "$COMMONPROGRAMS\Hyperlinks Space App"
+  ; Old per-user installs (AppData\Local\Programs\...) when current build uses perMachine → Program Files.
+  ReadEnvStr $R8 "LOCALAPPDATA"
+  RMDir /r /REBOOTOK "$R8\Programs\Hyperlinks Space App"
+  RMDir /r /REBOOTOK "$R8\Programs\HyperlinksSpaceApp"
   !insertmacro HspInstallDetailPrint "[installer] removed legacy Hyperlinks Space App shortcuts (if present)"
   SetRegView 64
   DeleteRegValue HKCU "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
