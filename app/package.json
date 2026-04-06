@@ -10,6 +10,7 @@
   },
   "files": [
     "README.md",
+    "fullREADME.md",
     "npmReadMe.md",
     "app",
     "api",

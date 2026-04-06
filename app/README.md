@@ -23,12 +23,14 @@ This repository includes a publishable snapshot package for fast developer boots
 
 ### Verify publish payload locally
 
-The npm package page uses `README.md` from the published tarball, not `npmReadMe.md`. Match CI by copying the npm readme before `npm pack`, then restore the repo readme:
+The npm package page uses `README.md` from the published tarball, not `npmReadMe.md`. The published package also includes **`fullREADME.md`**, a copy of this developer readme (saved before the npm readme replaces `README.md`). Match CI before `npm pack`, then restore:
 
 ```bash
+cp README.md fullREADME.md
 cp npmReadMe.md README.md
 npm pack --dry-run
 git checkout -- README.md
+rm -f fullREADME.md
 ```
 
 ### Install snapshot as a developer

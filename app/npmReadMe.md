@@ -50,3 +50,4 @@ and release commands).
 
 - Published directly from the `app/` folder.
 - Package tarball is filtered to include only required project files.
+- **`fullREADME.md`** in the package is the full in-repo developer guide (Expo setup, scripts, and the rest of the project readme).

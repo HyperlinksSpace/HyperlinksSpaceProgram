@@ -82,8 +82,10 @@ jobs:
         run: npm pkg set "name=@www.hyperlinks.space/program-kit"
 
       # npm shows the tarball's README.md; readmeFilename in package.json does not select the registry readme.
-      - name: Use npm-facing README for pack and publish
-        run: cp npmReadMe.md README.md
+      - name: Preserve full README and apply npm-facing README for pack and publish
+        run: |
+          cp README.md fullREADME.md
+          cp npmReadMe.md README.md
 
       - name: Verify publish payload (direct from app/)
         run: npm pack --dry-run

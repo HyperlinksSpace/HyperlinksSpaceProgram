@@ -25,6 +25,9 @@ expo-env.d.ts
 # local reference (do not commit)
 build_ref.md
 
+# generated when mirroring CI before npm pack (see README Milestone snapshot section)
+fullREADME.md
+
 # debug
 npm-debug.*
 yarn-debug.*
