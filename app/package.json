@@ -8,7 +8,6 @@
   "bin": {
     "program-kit": "scripts/program-kit-init.cjs"
   },
-  "readmeFilename": "npmReadMe.md",
   "files": [
     "README.md",
     "npmReadMe.md",
