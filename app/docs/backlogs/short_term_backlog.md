@@ -1,7 +1,6 @@
-npm package<br>
-Bottom bar refactor<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>
+Bottom bar refactor<br>
 AI options page<br>
 Bottom bar icon review<br>
 AI chat page<br>
