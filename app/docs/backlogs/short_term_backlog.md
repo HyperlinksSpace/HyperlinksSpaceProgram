@@ -1,12 +1,14 @@
 Unistaller disappears after update<br>
+npm package
 Bottom bar refactor<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>
 AI options page<br>
 Bottom bar icon review<br>
 AI chat page<br>
-Demo state<br>
+Bring ./app to demo design state<br>
 readme.md<br>
+Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
 
 Issues:<br>
