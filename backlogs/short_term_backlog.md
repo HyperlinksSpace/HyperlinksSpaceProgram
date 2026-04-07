@@ -10,6 +10,7 @@ Bring repository root app to demo design state<br>
 readme.md<br>
 Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
+README.md: Project news, discussions, where to learn for contributions<br>
 
 Issues:<br>
 Several chats async streaming<br>

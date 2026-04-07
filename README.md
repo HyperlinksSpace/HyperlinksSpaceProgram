@@ -1,64 +1,94 @@
-# Welcome to your Expo app 👋
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+# Hyperlinks Space Program
 
-## Get started
+<u>**In progress.**</u>
 
-To start the app (and the Telegram bot in polling mode), run:
+This program is built upon [React Native](https://reactnative.dev/) by Meta and [Expo](https://expo.dev) multiplatform technologies, Windows build and executable creation achieved with [Electron Builder](https://www.electron.build/) and [Electron Forge](https://www.electronforge.io/), working in Telegram with help of [Telegram Mini Apps React SDK](http://telegram-mini-apps.com/) and [Bot API](https://core.telegram.org/bots). AI is backed by [OpenAI API](https://openai.com/ru-RU/api/), blockchain data is processed from [Swap.Coffee API](https://docs.swap.coffee/eng/user-guides/welcome).
+
+## Program Kit
+
+To give value for other developers we decided to launch an npm package that provides a ready starter for creating a multiplatform program in one command.
+
+```bash
+npx @www.hyperlinks.space/program-kit ./your-project
+```
+
+Link to the package: https://www.npmjs.com/package/@www.hyperlinks.space/program-kit
+
+## Program design
+
+Access [Figma](https://www.figma.com/design/53lDKAD6pRv3e0uef1DP18/TECHSYMBAL-Inc.?node-id=754-71&t=v3tmAlywNgXkTWMd-1) in real time for contributing. Contact [Seva](t.me/sevaaignatyev) in Telegram to discuss and implement.
+
+Copying fully or partially, usage as an inspiration for other developments are unpleasant, participation in our projects is appreciated. All core materials are available publicly for instant access worldwide and our project availability for newcomers.
+
+## How to fork and contribute?
+
+1. Install GitHub CLI and authorize to GitHub from CLI for instant work
+
+```
+winget install --id GitHub.cli
+gh auth login
+```
+
+2. Fork the repo, clone it and create a new branch and switch to it
+
+```
+gh repo fork https://github.com/HyperlinksSpace/HyperlinksSpaceBot.git --clone
+git checkout -b new-branch-for-an-update
+git switch -c new-branch-for-an-update
+```
+
+3. Make a commit (address unassigned issue or think yourself)
+
+```
+git add . # Stage changes on this branch
+git commit -m "Describe your change" # Commit on this branch
+```
+
+3. After making a commit, make a pull request, gh tool will already know the upstream remote
+
+```
+gh pr create --title "My new PR" --body "It is my best PR"
+```
+
+4. For subsequent commits (sync `main`, create a fresh branch, and commit there)
+
+```
+git checkout main # Return to main
+git fetch upstream # Fully sync with upstream main
+git reset --hard upstream/main # Reset local main to upstream/main
+git push origin main # Keep your fork main in sync too
+git switch -c new-branch-for-next-update # Create and switch to a new feature branch
+```
+
+**Move in loops starting from the step 3.**
+
+## Pull requests and commits requirements
+
+- Give pull requests and commits a proper name and description
+- Dedicate each pull request to an understandable area or field, each commit to a focused logical change
+- Check file changes in every commit pulled, no arbitrary files modifications should persist such as LF/CRLF line-ending conversion, broken/garbled text diffs, BOM added or removed, accidental "invisible" corruption from text filters
+- Add dependecies and packages step by step for security
+- An issue creation or following an existing before a pull request would be a good practice
+
+## Local deploy
+
+To start the full local stack, run:
 
 ```bash
 npm run start
 ```
 
-This runs both the Expo dev server and the bot. For Expo only (no bot), use `npm run start:expo`.
+This runs Expo dev server, the Telegram bot (polling mode), and local Vercel API (`vercel dev`).
+
+Isolated/local run options:
+
+- Expo only (no bot, no Vercel): `npm run start:expo`
+- Bot only (polling mode): `npm run bot:local`
+- Vercel API only: `npm run dev:vercel`
 
 ## Milestone snapshot package (npm)
 
-This repository includes a publishable snapshot package for fast developer bootstrap:
-
-- package source: repository root (published directly)
-- **npmjs (public):** `@www.hyperlinks.space/program-kit` — manage org and tokens: [www.hyperlinks.space on npm](https://www.npmjs.com/settings/www.hyperlinks.space/packages)
-- **GitHub Packages:** `@hyperlinksspace/program-kit` (same version; GitHub requires the package scope to match this repo’s owner)
-
-**npm ownership:** your token must be allowed to publish under scope `@www.hyperlinks.space` (org members or automation token with access to that org).
-
-### Verify publish payload locally
-
-The npm package page uses `README.md` from the published tarball, not `npmReadMe.md`. The published package also includes **`fullREADME.md`**, a copy of this developer readme (saved before the npm readme replaces `README.md`). Match CI before `npm pack`, then restore:
-
-```bash
-cp README.md fullREADME.md
-cp npmReadMe.md README.md
-npm pack --dry-run
-git checkout -- README.md
-rm -f fullREADME.md
-```
-
-### Install snapshot as a developer
-
-```bash
-npx @www.hyperlinks.space/program-kit ./my-hsp-app
-```
-
-The CLI materializes the bundled package payload into your target folder, then you run:
-
-```bash
-cd my-hsp-app
-npm install
-```
-
-### Release channels
-
-- `latest`: immutable stable snapshots (tag workflow `snapshot-vX.Y.Z`)
-- `next`: rolling snapshots from manual workflow dispatch
-
-In the output, you'll find options to open the app in:
-
-- [a development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [an Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [an iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+NPM release and snapshot details were moved to `docs/npm-release.md`.
 
 ### Local env setup
 
@@ -77,9 +107,22 @@ You can start developing by editing the files inside the **app** directory. This
 
 The `.env` file is gitignored; do not commit it.
 
-## Workflows
+## GitHub Actions
 
-This project is configured to use [EAS Workflows](https://docs.expo.dev/eas/workflows/get-started/) to automate some development and release processes. These commands are set up in [`package.json`](./package.json) and can be run using NPM scripts in your terminal.
+Current Actions workflows include:
+
+- `Vercel Deploy Test` (`.github/workflows/vercel-deploy-test-envs.yml`) - manual web deploy to Vercel.
+- `NPM Package Release` (`.github/workflows/npm-package-release.yml`) - npm/GitHub Packages release workflow.
+- `Electron EXE Release` and `Electron Forge EXE Release` - manual Windows release pipelines.
+- `EXPO Publish` (`.github/workflows/expo-publish.yml`) - manual OTA publish with EAS CLI.
+- `Lint errors check` (`.github/workflows/lint-errors-check.yml`) - manual lint check.
+
+## Expo Workflows
+
+This project uses two automation layers:
+
+- [EAS Workflows](https://docs.expo.dev/eas/workflows/get-started/) for Expo update/build/deploy flows (triggered via npm scripts from [`package.json`](./package.json)).
+- GitHub Actions for CI/CD tasks stored in `.github/workflows` (manual release/deploy jobs and checks).
 
 ### Previews
 
@@ -109,51 +152,26 @@ Deploying from repository root makes this folder the project root, so `api/bot` 
 
 ### Telegram bot (Grammy)
 
-A minimal bot that replies "Hello" is included. It is deployable on Vercel via webhook and runnable locally with getUpdates.
+The bot is extended beyond a basic "Hello" and "Start program" responder and now supports AI streaming and threads.
 
 **Vercel (webhook)**  
-- **Env for deploy:** In Vercel → **Settings → Environment Variables** add **`BOT_TOKEN`** (or `TELEGRAM_BOT_TOKEN`). Assign to **Production** (and to **Build** if your dashboard has that option) so the deploy-step webhook script can run. The webhook URL is built from Vercel’s `VERCEL_PROJECT_PRODUCTION_URL` or `VERCEL_URL`.
-- **Webhook on deploy:** Each build runs `scripts/set-webhook.ts` and calls Telegram `setWebhook` with the base URL + `/api/bot`. If the script fails (e.g. missing URL or Telegram error), the build fails so you see the error in the deploy log.
-- Telegram sends updates to **POST** `/api/bot`; the bot replies "Hello".
+- **Runtime path:** Telegram sends updates to `POST /api/bot`. This route proxies to the shared bot webhook handler in `bot/webhook`.
+- **Webhook setup:** `scripts/set-webhook.ts` sets `https://<base>/api/bot` using `VERCEL_PROJECT_PRODUCTION_URL` (preferred) or `VERCEL_URL`.
+- **Required env:** set `BOT_TOKEN` (or `TELEGRAM_BOT_TOKEN`) in Vercel project envs for production deploys.
+- **Deploy flow:** webhook mode is intended for Vercel deploys (CLI `vercel --prod` or the manual GitHub Action `Vercel Deploy (Test Envs)`).
 
 **Bot works locally but not on Vercel**  
-1. Open **GET** `https://<your-app>.vercel.app/api/bot` in a browser. The JSON shows:
-   - `bot: true` → BOT_TOKEN is set; `bot: false` → add BOT_TOKEN in Vercel → Settings → Environment Variables (Production), then redeploy.
-   - `expected_url` → URL we use for the webhook (from VERCEL_PROJECT_PRODUCTION_URL or VERCEL_URL).
-   - `telegram_has` → URL Telegram actually has. It must match your production URL (e.g. `https://hsbexpo.vercel.app/api/bot`). If it’s `(none)` or different, ensure the project’s production domain is set in Vercel and redeploy so set-webhook.ts runs with the correct URL.
-   - `webhook_set: true` → last setWebhook call succeeded.
-2. **Root directory:** If you deploy via Git (auto-deploy from the repo), set **Root Directory** to the repository root (leave it empty/default) in Vercel → Project Settings → General. If you run `vercel --prod` from the root, the CLI already uses the correct project root.
-3. **Logs:** After sending /start, check **Logs** for `[webhook] POST update` and any `[bot]` errors (e.g. handler_error, timeout).
-4. Don’t run the same bot in polling locally while testing the webhook (or Telegram may deliver updates to the wrong place).
+1. Confirm Vercel env has `BOT_TOKEN` and redeploy.
+2. Ensure the deployed URL is stable and matches the webhook target (`/api/bot`).
+3. Check deploy/runtime logs for `[set-webhook]` and `[webhook]` errors.
+4. Do not run local polling with the same token while validating webhook mode.
 
 **Local (getUpdates, no webhook)**  
-- Only `BOT_TOKEN` is required (in env or `.env`).
-- Run the bot in polling mode (do not use the same token with webhook set elsewhere):
-  ```bash
-  npx tsx scripts/run-bot-local.ts
-  ```
-- `npm run start` runs both Expo and the bot; or run the bot alone with `npm run bot:local`.
+- Only `BOT_TOKEN` is required (env or `.env`).
+- Run bot only: `npm run bot:local`
+- Run full local stack (Expo + bot + Vercel): `npm run start`
+- Keep production and local bot tokens separate when possible to avoid webhook/polling conflicts.
 
-## Get a fresh project
+## Where to discuss the project?
 
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This repository has [GitHub Discussions](https://github.com/HyperlinksSpace/HyperlinksSpaceProgram/discussions) opened, as well you can join our [Telegram Chat](https://t.me/HyperlinksSpaceChat) and [Channel](https://t.me/HyperlinksSpace).

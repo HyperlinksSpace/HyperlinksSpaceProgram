@@ -7,11 +7,12 @@ and deployed across popular platforms.
 ## What You Get
 
 - Expo + React Native app foundation
-- Telegram bot support (webhook + local bot scripts)
+- Telegram bot support (webhook + local bot scripts) with AI functionality
 - Telegram Mini App-ready client structure
-- Android and iOS workflow scripts
+- Android and iOS clients
 - Windows desktop packaging (`.exe`) with Electron Builder
 - CI-oriented release workflow and deployment helpers
+- OpenAI functionality and Swap.Coffee for blockchain data retrievement
 
 ## Install
 
@@ -38,7 +39,7 @@ npm install
 npm run start
 ```
 
-Then open the project `README.md` for full setup details (env vars, bot setup, build
+Then open the project **`fullREADME.md`** for details (env vars, bot setup, build
 and release commands).
 
 ## Release Channels
@@ -50,4 +51,3 @@ and release commands).
 
 - Published directly from the `app/` folder.
 - Package tarball is filtered to include only required project files.
-- **`fullREADME.md`** in the package is the full in-repo developer guide (Expo setup, scripts, and the rest of the project readme).
