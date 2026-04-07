@@ -1,30 +1,25 @@
-name: Unified Service Tests
+name: Root App Checks
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node
+        uses: actions/setup-node@v5
         with:
-          python-version: "3.11"
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
 
       - name: Install deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r services/unified/requirements.txt
-          pip install pytest
+        run: npm ci
 
-      - name: Run tests
-        env:
-          UNIFIED_MODE: forward
-          PYTHONPATH: services/unified
-        run: |
-          python -m pytest -q services/unified/tests
+      - name: Lint
+        run: npm run lint
