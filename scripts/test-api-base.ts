@@ -1,8 +1,8 @@
 /**
- * Quick check that api/base.ts works. Run: npx tsx scripts/test-api-base.ts
+ * Quick check that api/_base.ts works. Run: npx tsx scripts/test-api-base.ts
  * In Node (no window), getApiBaseUrl() uses Vercel env or falls back to http://localhost:3000.
  */
-import { getApiBaseUrl, buildApiUrl } from "../api/base.js";
+import { getApiBaseUrl, buildApiUrl } from "../api/_base.js";
 
 const base = getApiBaseUrl();
 const full = buildApiUrl("/api/telegram");

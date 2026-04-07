@@ -7,6 +7,7 @@ import {
   normalizeUsername,
   upsertUserFromTma,
 } from '../database/users.js';
+import { getDefaultWalletByUsername } from '../database/wallets.js';
 
 const LOG_TAG = '[api/telegram]';
 
@@ -302,10 +303,53 @@ export async function handlePost(
   const dbStart = Date.now();
   try {
     await upsertUserFromTma({ telegramUsername, locale });
+    const wallet = await getDefaultWalletByUsername(telegramUsername);
     log('db_upsert_done', {
       dbMs: Date.now() - dbStart,
       elapsedMs: Date.now() - startMs,
+      hasWallet: !!wallet,
     });
+
+    if (wallet) {
+      log('success', {
+        telegramUsername,
+        hasWallet: true,
+        totalMs: Date.now() - startMs,
+      });
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          telegram_username: telegramUsername,
+          has_wallet: true,
+          wallet: {
+            id: wallet.id,
+            wallet_address: wallet.wallet_address,
+            wallet_blockchain: wallet.wallet_blockchain,
+            wallet_net: wallet.wallet_net,
+            type: wallet.type,
+            label: wallet.label,
+            is_default: wallet.is_default,
+            source: wallet.source,
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+
+    log('success', {
+      telegramUsername,
+      hasWallet: false,
+      totalMs: Date.now() - startMs,
+    });
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        telegram_username: telegramUsername,
+        has_wallet: false,
+        wallet_required: true,
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
   } catch (e) {
     logErr('db_upsert_failed', e);
     return new Response(
@@ -317,12 +361,4 @@ export async function handlePost(
     );
   }
 
-  log('success', {
-    telegramUsername,
-    totalMs: Date.now() - startMs,
-  });
-  return new Response(
-    JSON.stringify({ ok: true, telegram_username: telegramUsername }),
-    { status: 200, headers: { 'content-type': 'application/json' } },
-  );
 }

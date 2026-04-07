@@ -14,7 +14,7 @@ import {
   resetTelegramLaunchCache,
   triggerHaptic as triggerHapticImpl,
 } from "./telegramWebApp";
-import { buildApiUrl } from "../../api/base";
+import { buildApiUrl } from "../../api/_base";
 
 let sdkInitialized = false;
 function ensureSdkInitialized() {
@@ -143,6 +143,19 @@ export type TelegramDebugInfo = {
 export type TelegramContextValue = {
   status: TelegramStatus;
   telegramUsername: string | null;
+  hasWallet: boolean | null;
+  walletRequired: boolean;
+  wallet: {
+    id: number;
+    wallet_address: string;
+    wallet_blockchain: string;
+    wallet_net: string;
+    type: string;
+    label: string | null;
+    is_default: boolean;
+    source: string | null;
+  } | null;
+  initData: string | null;
   error: string | null;
   isInTelegram: boolean;
   /**
@@ -184,6 +197,10 @@ const WEBAPP_POLL_MAX = 50; // 5s wait for Telegram to inject WebApp
 const defaultContext: TelegramContextValue = {
   status: "idle",
   telegramUsername: null,
+  hasWallet: null,
+  walletRequired: false,
+  wallet: null,
+  initData: null,
   error: null,
   isInTelegram: false,
   useTelegramTheme: false,
@@ -207,6 +224,10 @@ export function useTelegram() {
 export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<TelegramStatus>("idle");
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
+  const [walletRequired, setWalletRequired] = useState(false);
+  const [wallet, setWallet] = useState<TelegramContextValue["wallet"]>(null);
+  const [initData, setInitData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [debug, setDebug] = useState<TelegramDebugInfo>(defaultDebug);
   const hasRegisteredRef = useRef(false);
@@ -464,6 +485,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function registerWithBackend(initData: string) {
       if (hasRegisteredRef.current) return;
       hasRegisteredRef.current = true;
+      setInitData(initData);
 
       const url = buildApiUrl("/api/telegram");
       const fetchStartedAt = Date.now();
@@ -505,6 +527,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
             throw new Error(json?.error || `HTTP ${res.status}`);
           }
           setTelegramUsername(json.telegram_username ?? null);
+          setHasWallet(typeof json.has_wallet === "boolean" ? json.has_wallet : null);
+          setWalletRequired(Boolean(json.wallet_required));
+          setWallet(json?.wallet ?? null);
           setStatus("ok");
         })
         .catch((e) => {
@@ -626,6 +651,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const value: TelegramContextValue = {
     status,
     telegramUsername,
+    hasWallet,
+    walletRequired,
+    wallet,
+    initData,
     error,
     isInTelegram,
     useTelegramTheme,

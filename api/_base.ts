@@ -5,7 +5,7 @@
  * - EXPO_PUBLIC_API_BASE_URL (explicit override for any environment)
  * - React Native / Expo Go dev: derive from dev server host (port 3000)
  * - Browser:
- *   - In dev: map localhost/LAN + dev port (8081/19000/19006) → port 3000
+ *   - In dev: map localhost/LAN + dev port (8081/19000/19006) -> port 3000
  *   - In prod: window.location.origin (e.g. https://hsbexpo.vercel.app)
  * - Node (no window): Vercel host if available, otherwise http://localhost:3000
  */

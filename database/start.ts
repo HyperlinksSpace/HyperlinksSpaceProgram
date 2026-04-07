@@ -30,7 +30,6 @@ async function runSchemaMigrations() {
       last_tma_seen_at    TIMESTAMPTZ,
       locale              TEXT,
       time_zone           TEXT,
-      number_of_wallets   INTEGER NOT NULL DEFAULT 0,
       default_wallet      BIGINT
     );
   `;
