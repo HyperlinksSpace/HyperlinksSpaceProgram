@@ -19,13 +19,13 @@ and deployed across popular platforms.
 ### npmjs (public)
 
 ```bash
-npx @www.hyperlinks.space/program-kit ./my-new-program
+npx @www.hyperlinks.space/program-kit ./new-program
 ```
 
 ### GitHub Packages
 
 ```bash
-npx @hyperlinksspace/program-kit ./my-new-program
+npx @hyperlinksspace/program-kit ./new-program
 ```
 
 If you install from GitHub Packages, configure `.npmrc` with the `@hyperlinksspace`
@@ -34,7 +34,7 @@ registry and token.
 ## After Scaffold
 
 ```bash
-cd my-new-program
+cd new-program
 npm install
 npm run start
 ```

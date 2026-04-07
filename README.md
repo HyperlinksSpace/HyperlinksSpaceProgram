@@ -11,7 +11,7 @@ This program is built upon [React Native](https://reactnative.dev/) by Meta and 
 To give value for other developers we decided to launch an npm package that provides a ready starter for creating a multiplatform program in one command.
 
 ```bash
-npx @www.hyperlinks.space/program-kit ./your-project
+npx @www.hyperlinks.space/program-kit ./new-program
 ```
 
 Link to the package: https://www.npmjs.com/package/@www.hyperlinks.space/program-kit

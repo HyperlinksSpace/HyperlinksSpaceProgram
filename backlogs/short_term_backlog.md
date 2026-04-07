@@ -1,5 +1,3 @@
-Improve README.md
-Improve nmpReadMe.md
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>
 Bottom bar refactor<br>
