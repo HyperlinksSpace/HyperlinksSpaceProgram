@@ -1,10 +1,6 @@
 name: Vercel Deloy
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 jobs:

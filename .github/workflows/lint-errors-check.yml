@@ -1,6 +1,10 @@
 name: Lint errors check
 
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
