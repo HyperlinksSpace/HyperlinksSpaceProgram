@@ -1,6 +1,8 @@
+![Preview Image](https://raw.githubusercontent.com/HyperlinksSpace/HyperlinksSpaceProgram/refs/heads/main/assets/images/PreviewImage.png)
+
 # Hyperlinks Space Program
 
-<u>**In progress.**</u>
+<u>**In progress, contribute!**</u>
 
 This program is built upon [React Native](https://reactnative.dev/) by Meta and [Expo](https://expo.dev) multiplatform technologies, Windows build and executable creation achieved with [Electron Builder](https://www.electron.build/) and [Electron Forge](https://www.electronforge.io/), working in Telegram with help of [Telegram Mini Apps React SDK](http://telegram-mini-apps.com/) and [Bot API](https://core.telegram.org/bots). AI is backed by [OpenAI API](https://openai.com/ru-RU/api/), blockchain data is processed from [Swap.Coffee API](https://docs.swap.coffee/eng/user-guides/welcome).
 
@@ -150,7 +152,7 @@ vercel --prod
 
 Deploying from repository root makes this folder the project root, so `api/bot` is deployed and no Root Directory setting is needed. The project is configured so Vercel runs `npx expo export -p web` and serves the `dist/` output. Link the project first with `vercel` if needed.
 
-### Telegram bot (Grammy)
+## Telegram bot (Grammy)
 
 The bot is extended beyond a basic "Hello" and "Start program" responder and now supports AI streaming and threads.
 
