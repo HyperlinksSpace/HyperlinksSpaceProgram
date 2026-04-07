@@ -200,7 +200,7 @@
     "@vercel/functions": "^3.4.3",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
-    "dotenv": "^16.4.5",
+    "dotenv": "^16.6.1",
     "electron": "^41.0.4",
     "electron-builder": "^26.8.1",
     "electron-forge": "^5.2.4",
