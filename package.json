@@ -9,6 +9,7 @@
     "program-kit": "scripts/program-kit-init.cjs"
   },
   "files": [
+    ".env.example",
     "README.md",
     "fullREADME.md",
     "npmReadMe.md",

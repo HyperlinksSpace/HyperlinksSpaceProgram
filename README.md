@@ -81,6 +81,35 @@ git switch -c new-branch-for-next-update # Create and switch to a new feature br
 
 ## Local deploy
 
+`npm` package note: `.env.example` is included in the published package so you can use it as a reference for establishing your testing environment with `.env` file.
+
+Before local deploy / cloud deploy, prepare these env-backed services:
+
+1. **Neon PostgreSQL (`DATABASE_URL`)**
+   - Create an account/project at [Neon](https://neon.tech/).
+   - Create a database and copy the connection string.
+   - Put it into `.env` as `DATABASE_URL=...`.
+2. **OpenAI API (`OPENAI_API_KEY`)**
+   - Create an account at [OpenAI Platform](https://platform.openai.com/).
+   - Create an API key in the API Keys page.
+   - Put it into `.env` as `OPENAI_API_KEY=...`.
+3. **Telegram bot token (`BOT_TOKEN`)**
+   - In Telegram, open [@BotFather](https://t.me/BotFather), create a test bot with `/newbot`.
+   - Copy the bot token and put it into `.env` as `BOT_TOKEN=...`.
+4. **Vercel project envs (for comfortable deploy/testing)**
+   - Create a [Vercel](https://vercel.com/) account and import this repository as a project.
+   - In Project Settings -> Environment Variables, set at least:
+     - `DATABASE_URL`
+     - `OPENAI_API_KEY`
+     - `BOT_TOKEN` (or `TELEGRAM_BOT_TOKEN`)
+   - Pull envs locally when needed with `vercel env pull .env.local`.
+
+Copy env template locally:
+
+```bash
+cp .env.example .env
+```
+
 To start the full local stack, run:
 
 ```bash
