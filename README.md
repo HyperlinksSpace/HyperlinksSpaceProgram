@@ -24,7 +24,8 @@ All core materials are available publicly for сгккуте hyperlinks.space te
 - [`telegram`](./telegram) - Telegram-specific integration utilities and adapters.
 - [`windows`](./windows) - Electron desktop shell, NSIS installer config, and auto-update flow.
 - [`scripts`](./scripts) - developer/ops scripts (local run, migration, release helpers).
-- [`docs`](./docs) - project and operational documentation.
+- [`docs`](./docs) - project and operational documentation (architecture, releases, security reference, tooling).
+- [`research`](./research) - exploratory notes, investigations, and proposals not yet promoted to `docs/`.
 - [`backlogs`](./backlogs) - short-term planning notes and prioritized work items.
 - [`assets`](./assets) - static assets used by app, installer, and branding.
 - [`dist`](./dist) - generated web build output (export artifacts).
@@ -123,19 +124,16 @@ Isolated/local run options:
 - Bot only (polling mode): `npm run bot:local`
 - Vercel API only: `npm run dev:vercel`
 
-## Milestone snapshot package (npm)
-
-NPM release and snapshot details were moved to `docs/npm-release.md`.
-
 ## GitHub Actions
 
 Current Actions workflows include:
 
 - [`Vercel Deploy Test`](./.github/workflows/vercel-deploy-test-envs.yml) - manual web deploy to Vercel.
-- [`NPM Package Release`](./.github/workflows/npm-package-release.yml) - npm/GitHub Packages release workflow.
-- [`Electron EXE Release`](./.github/workflows/electron-exe-release.yml) and [`Electron Forge EXE Release`](./.github/workflows/electron-forge-exe-release.yml) - manual Windows release pipelines.
-- [`EXPO Publish`](./.github/workflows/expo-publish.yml) - manual OTA publish with EAS CLI.
+- [`Electron Forge EXE Release`](./.github/workflows/electron-forge-exe-release.yml) - manual Windows release pipeline.
+- [`Electron EXE Release`](./.github/workflows/electron-exe-release.yml) - manual Windows release pipeline.
 - [`Lint errors check`](./.github/workflows/lint-errors-check.yml) - manual lint check.
+- [`EXPO Publish`](./.github/workflows/expo-publish.yml) - manual OTA publish with EAS CLI.
+- [`NPM Package Release`](./.github/workflows/npm-package-release.yml) - npm/GitHub Packages release workflow.
 
 ## Deploy to Vercel
 
@@ -244,6 +242,8 @@ npx @www.hyperlinks.space/program-kit ./new-program
 ```
 
 Link to the package: https://www.npmjs.com/package/@www.hyperlinks.space/program-kit
+
+The **npm registry page** shows a separate package-oriented description: [`npmReadMe.md`](./npmReadMe.md) in the repo root. At publish time the [NPM Package Release](.github/workflows/npm-package-release.yml) workflow copies the main [`README.md`](./README.md) to `fullREADME.md`, then replaces `README.md` with the contents of `npmReadMe.md` so `npm pack` / `npm publish` ship the shorter readme as the package readme (npm always surfaces `README.md` from the tarball). Snapshot channels, tags, and local `npm pack` checks are in [`docs/npm-release.md`](./docs/npm-release.md).
 
 ## Project discussions
 

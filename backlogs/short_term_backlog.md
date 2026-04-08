@@ -1,3 +1,4 @@
+Polyfils refactoring<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>
 Bottom bar refactor<br>
@@ -5,6 +6,7 @@ AI options page<br>
 Bottom bar icon review<br>
 AI chat page<br>
 Bring repository root app to demo design state<br>
+GitHub and GitLab bidirectional mirroring<br>
 readme.md<br>
 Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
