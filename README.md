@@ -71,6 +71,44 @@ git switch -c new-branch-for-next-update # Create and switch to a new feature br
 
 **Move in loops starting from the step 3.**
 
+## GitLab access
+
+GitHub and GitLab repositories are identical. If you want to contribute through GitLab, get access from [@staindart](https://github.com/staindart).
+
+If you can push to **both** [GitHub](https://github.com/HyperlinksSpace/HyperlinksSpaceProgram) and [GitLab](https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram) directly, we ask you to configure Git so pushes keep **both** hosts in sync: the repositories are the same; avoid updating only one side.
+
+1. **Keep `origin` on GitHub for fetch and the first push URL.** If you cloned from GitHub, this is already true: `origin` is where `git pull` / `git fetch origin` get updates. We standardize on GitHub for **incoming** history from `origin` so your local `main` tracks `origin/main` on GitHub.
+
+2. **Register GitLab as a second push URL on `origin`.** Git allows multiple **push** URLs per remote name, but only one **fetch** URL. Adding GitLab here means a single `git push origin <branch>` (or the IDE **Sync** push step) sends the same commits to **both** GitHub and GitLab without a second command.
+
+   ```bash
+   git remote set-url --add --push origin https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
+   ```
+
+   Run this once per clone; it does not change where you fetch from.
+
+3. **Add a separate remote named `gitlab`.** Because `origin`’s fetch URL stays on GitHub, `git fetch origin` never downloads refs from GitLab. The extra remote lets you run `git fetch gitlab` when you need to compare or merge with the GitLab copy (for example if CI or another contributor updated GitLab only).
+
+   ```bash
+   git remote add gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
+   ```
+
+   Note, that GitHub and GitLab URL's are a little different :)
+
+   If `gitlab` already exists with a wrong URL, use `git remote set-url gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git` instead.
+
+4. **Verify** with `git remote -v`. You should see GitHub on fetch/push for `origin`, GitLab as the second `origin` push line, and `gitlab` for fetch/push to GitLab:
+
+   ```text
+   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (fetch)
+   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
+   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (fetch)
+   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (push)
+   origin  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
+   ```
+
+**GitLab HTTPS access:** GitLab.com does not use **fine-grained** personal access tokens for Git-over-HTTPS (`git push` / `git fetch`). Create a **legacy** personal access token under GitLab → **Edit profile** → **Access tokens** with scopes **`read_repository`** and **`write_repository`**, as described in the official guide: [Personal access tokens](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html). Use your GitLab username and the token as the password when Git prompts. GitHub authentication stays separate (for example `gh auth login` or your existing GitHub credential).
+
 ## Pull requests and commits requirements
 
 - Give pull requests and commits a proper name and description
