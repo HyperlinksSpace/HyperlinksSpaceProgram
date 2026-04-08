@@ -71,52 +71,6 @@ git switch -c new-branch-for-next-update # Create and switch to a new feature br
 
 **Move in loops starting from the step 3.**
 
-## GitLab access
-
-GitHub and GitLab repositories are identical. If you want to contribute through GitLab, get access from [@staindart](https://github.com/staindart).
-
-If you can push to **both** [GitHub](https://github.com/HyperlinksSpace/HyperlinksSpaceProgram) and [GitLab](https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram) directly, we ask you to configure Git so pushes keep **both** hosts in sync: the repositories are the same; avoid updating only one side.
-
-1. **Keep `origin` on GitHub for fetch and the first push URL.** If you cloned from GitHub, this is already true: `origin` is where `git pull` / `git fetch origin` get updates. We standardize on GitHub for **incoming** history from `origin` so your local `main` tracks `origin/main` on GitHub.
-
-2. **Register GitLab as a second push URL on `origin`.** Git allows multiple **push** URLs per remote name, but only one **fetch** URL. Adding GitLab here means a single `git push origin <branch>` (or the IDE **Sync** push step) sends the same commits to **both** GitHub and GitLab without a second command.
-
-   ```bash
-   git remote set-url --add --push origin https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
-   ```
-
-   Run this once per clone; it does not change where you fetch from.
-
-3. **Add a separate remote named `gitlab`.** Because `origin`’s fetch URL stays on GitHub, `git fetch origin` never downloads refs from GitLab. The extra remote lets you run `git fetch gitlab` when you need to compare or merge with the GitLab copy (for example if CI or another contributor updated GitLab only).
-
-   ```bash
-   git remote add gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
-   ```
-
-   Note, that GitHub and GitLab URL's are a little different :)
-
-   If `gitlab` already exists with a wrong URL, use `git remote set-url gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git` instead.
-
-4. **Verify** with `git remote -v`. You should see GitHub on fetch/push for `origin`, GitLab as the second `origin` push line, and `gitlab` for fetch/push to GitLab:
-
-   ```text
-   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (fetch)
-   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
-   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (fetch)
-   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (push)
-   origin  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
-   ```
-
-**GitLab HTTPS access:** GitLab.com does not use **fine-grained** personal access tokens for Git-over-HTTPS (`git push` / `git fetch`). Create a **legacy** personal access token under GitLab → **Edit profile** → **Access tokens** with scopes **`read_repository`** and **`write_repository`**, as described in the official guide: [Personal access tokens](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html). Use your GitLab username and the token as the password when Git prompts. GitHub authentication stays separate (for example `gh auth login` or your existing GitHub credential).
-
-## Pull requests and commits requirements
-
-- Give pull requests and commits a proper name and description
-- Dedicate each pull request to an understandable area or field, each commit to a focused logical change
-- Check file changes in every commit pulled, no arbitrary files modifications should persist such as LF/CRLF line-ending conversion, broken/garbled text diffs, BOM added or removed, accidental "invisible" corruption from text filters
-- Add dependecies and packages step by step for security
-- An issue creation or following an existing before a pull request would be a good practice
-
 ## Local deploy
 
 `npm` package note: `.env.example` is included in the published package so you can use it as a reference for establishing your testing environment with `.env` file.
@@ -173,23 +127,6 @@ Isolated/local run options:
 
 NPM release and snapshot details were moved to `docs/npm-release.md`.
 
-### Local env setup
-
-1. **Copy the example file** (from the repository root):
-   ```bash
-   cp .env.example .env
-   ```
-2. **Edit `.env`** and set at least:
-   - **`BOT_TOKEN`** – if you run the Telegram bot locally (`npm run bot:local`).
-3. **Expo app** – `npx expo start` reads env from the environment; for app-only env vars you can also put them in `.env` and use an Expo-compatible loader if you add one, or set them in the shell before running:
-   ```bash
-   export BOT_TOKEN=your_token
-   npx expo start
-   ```
-4. **Bot local** – `npm run bot:local` loads `.env` from the project root (optional; you can also set `BOT_TOKEN` in the shell).
-
-The `.env` file is gitignored; do not commit it.
-
 ## GitHub Actions
 
 Current Actions workflows include:
@@ -200,22 +137,7 @@ Current Actions workflows include:
 - [`EXPO Publish`](./.github/workflows/expo-publish.yml) - manual OTA publish with EAS CLI.
 - [`Lint errors check`](./.github/workflows/lint-errors-check.yml) - manual lint check.
 
-## Expo Workflows
-
-This project uses two automation layers:
-
-- [EAS Workflows](https://docs.expo.dev/eas/workflows/get-started/) for Expo update/build/deploy flows (triggered via npm scripts from [`package.json`](./package.json)).
-- GitHub Actions for CI/CD tasks stored in `.github/workflows` (manual release/deploy jobs and checks).
-
-### Previews
-
-Run `npm run draft` to [publish a preview update](https://docs.expo.dev/eas/workflows/examples/publish-preview-update/) of your project, which can be viewed in Expo Go or in a development build.
-
-### Development Builds
-
-Run `npm run development-builds` to [create a development build](https://docs.expo.dev/eas/workflows/examples/create-development-builds/). Note - you'll need to follow the [Prerequisites](https://docs.expo.dev/eas/workflows/examples/create-development-builds/#prerequisites) to ensure you have the correct emulator setup on your machine.
-
-### Deploy web build to Vercel
+## Deploy to Vercel
 
 From the repository root, deploy the static web build to Vercel production:
 
@@ -247,6 +169,72 @@ The bot is extended beyond a basic "Hello" and "Start program" responder and now
 - Run full local stack (Expo + bot + Vercel): `npm run start`
 - Keep production and local bot tokens separate when possible to avoid webhook/polling conflicts.
 
+## Pull requests and commits requirements
+
+- Give pull requests and commits a proper name and description
+- Dedicate each pull request to an understandable area or field, each commit to a focused logical change
+- Check file changes in every commit pulled, no arbitrary files modifications should persist such as LF/CRLF line-ending conversion, broken/garbled text diffs, BOM added or removed, accidental "invisible" corruption from text filters
+- Add dependecies and packages step by step for security
+- An issue creation or following an existing before a pull request would be a good practice
+
+## Expo Workflows
+
+[EAS Workflows](https://docs.expo.dev/eas/workflows/get-started/) are here for Expo update/build/deploy flows (triggered via npm scripts from [`package.json`](./package.json)).
+
+## Previews
+
+Run `npm run draft` to [publish a preview update](https://docs.expo.dev/eas/workflows/examples/publish-preview-update/) of your project, which can be viewed in Expo Go or in a development build.
+
+## Development Builds
+
+Run `npm run development-builds` to [create a development build](https://docs.expo.dev/eas/workflows/examples/create-development-builds/). Note - you'll need to follow the [Prerequisites](https://docs.expo.dev/eas/workflows/examples/create-development-builds/#prerequisites) to ensure you have the correct emulator setup on your machine.
+
+## Expo envs setup
+
+**Expo app** – `npx expo start` reads env from the environment; for app-only env vars you can also put them in `.env` and use an Expo-compatible loader if you add one, or set them in the shell before running:
+   ```bash
+   export BOT_TOKEN=your_token
+   npx expo start
+   ```
+
+## GitLab access
+
+GitHub and GitLab repositories are identical. If you want to contribute through GitLab, get access from [@staindart](https://github.com/staindart).
+
+If you can push to **both** [GitHub](https://github.com/HyperlinksSpace/HyperlinksSpaceProgram) and [GitLab](https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram) directly, we ask you to configure Git so pushes keep **both** hosts in sync: the repositories are the same; avoid updating only one side.
+
+1. **Keep `origin` on GitHub for fetch and the first push URL.** If you cloned from GitHub, this is already true: `origin` is where `git pull` / `git fetch origin` get updates. We standardize on GitHub for **incoming** history from `origin` so your local `main` tracks `origin/main` on GitHub.
+
+2. **Register GitLab as a second push URL on `origin`.** Git allows multiple **push** URLs per remote name, but only one **fetch** URL. Adding GitLab here means a single `git push origin <branch>` (or the IDE **Sync** push step) sends the same commits to **both** GitHub and GitLab without a second command.
+
+   ```bash
+   git remote set-url --add --push origin https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
+   ```
+
+   Run this once per clone; it does not change where you fetch from.
+
+3. **Add a separate remote named `gitlab`.** Because `origin`’s fetch URL stays on GitHub, `git fetch origin` never downloads refs from GitLab. The extra remote lets you run `git fetch gitlab` when you need to compare or merge with the GitLab copy (for example if CI or another contributor updated GitLab only).
+
+   ```bash
+   git remote add gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git
+   ```
+
+   Note, that GitHub and GitLab URL's are a little different :)
+
+   If `gitlab` already exists with a wrong URL, use `git remote set-url gitlab https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git` instead.
+
+4. **Verify** with `git remote -v`. You should see GitHub on fetch/push for `origin`, GitLab as the second `origin` push line, and `gitlab` for fetch/push to GitLab:
+
+   ```text
+   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (fetch)
+   gitlab  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
+   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (fetch)
+   origin  https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git (push)
+   origin  https://gitlab.com/hyperlinks.space/HyperlinksSpaceProgram.git (push)
+   ```
+
+**GitLab HTTPS access:** GitLab.com does not use **fine-grained** personal access tokens for Git-over-HTTPS (`git push` / `git fetch`). Create a **legacy** personal access token under GitLab → **Edit profile** → **Access tokens** with scopes **`read_repository`** and **`write_repository`**, as described in the official guide: [Personal access tokens](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html). Use your GitLab username and the token as the password when Git prompts. GitHub authentication stays separate (for example `gh auth login` or your existing GitHub credential).
+
 ## Program Kit
 
 To make it easier for developers to create multiplatform programs with us, we decided to launch an npm package that provides a ready starter for creating such a program basis in one command.
@@ -257,6 +245,6 @@ npx @www.hyperlinks.space/program-kit ./new-program
 
 Link to the package: https://www.npmjs.com/package/@www.hyperlinks.space/program-kit
 
-## Where to discuss the project?
+## Project discussions
 
 This repository has [GitHub Discussions](https://github.com/HyperlinksSpace/HyperlinksSpaceProgram/discussions) opened, as well you can join our [Telegram Chat](https://t.me/HyperlinksSpaceChat) and [Channel](https://t.me/HyperlinksSpace).
