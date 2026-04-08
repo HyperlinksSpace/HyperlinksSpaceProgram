@@ -14,6 +14,9 @@ type TelegramWebAppBridge = {
   SecureStorage?: {
     setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
   };
+  DeviceStorage?: {
+    setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
+  };
   CloudStorage?: {
     setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
   };
@@ -94,6 +97,92 @@ async function setTmaSecureStorageItem(key: string, value: string): Promise<bool
   });
 }
 
+/**
+ * DeviceStorage: persistent local KV inside the Telegram client (not Keychain/Keystore).
+ * Same callback shape as SecureStorage; some clients emit device_storage_* web events.
+ * @see https://core.telegram.org/bots/webapps#devicestorage
+ */
+async function setTmaDeviceStorageItem(key: string, value: string): Promise<boolean> {
+  const webApp = getTelegramWebApp();
+  if (!webApp) return false;
+  const storage = webApp.DeviceStorage;
+  const setItem = storage?.setItem;
+  if (typeof setItem !== "function") return false;
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ok);
+    };
+
+    const onDeviceStorageFailed = (payload?: unknown) => {
+      if (typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[wallet] device_storage_failed", payload);
+      }
+      finish(false);
+    };
+
+    const onDeviceStorageKeySaved = () => {
+      finish(true);
+    };
+
+    const cleanup = () => {
+      try {
+        webApp.offEvent?.("device_storage_failed", onDeviceStorageFailed);
+      } catch {
+        /* ignore */
+      }
+      try {
+        webApp.offEvent?.("device_storage_key_saved", onDeviceStorageKeySaved);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    try {
+      webApp.onEvent?.("device_storage_failed", onDeviceStorageFailed);
+      webApp.onEvent?.("device_storage_key_saved", onDeviceStorageKeySaved);
+    } catch {
+      /* older clients */
+    }
+
+    try {
+      setItem(key, value, (err: unknown, stored?: boolean) => {
+        if (err != null) {
+          finish(false);
+          return;
+        }
+        finish(stored !== false);
+      });
+    } catch {
+      cleanup();
+      resolve(false);
+    }
+  });
+}
+
+export type WalletMasterKeyStorageTier = "secure" | "device" | "none";
+
+/**
+ * Prefer hardware-backed SecureStorage; if missing or UNSUPPORTED, fall back to DeviceStorage
+ * so Desktop and older clients can still persist the key (weaker — see docs/security_raw.md).
+ */
+async function persistWalletMasterKey(masterKey: string): Promise<WalletMasterKeyStorageTier> {
+  const okSecure = await setTmaSecureStorageItem("wallet_master_key", masterKey);
+  if (okSecure) return "secure";
+
+  const okDevice = await setTmaDeviceStorageItem("wallet_master_key", masterKey);
+  if (okDevice) return "device";
+
+  if (typeof __DEV__ !== "undefined" && __DEV__) {
+    console.warn("[wallet] wallet_master_key not persisted (no SecureStorage nor DeviceStorage)");
+  }
+  return "none";
+}
+
 /** CloudStorage.setItem uses the same callback shape as SecureStorage. */
 async function setTmaCloudStorageItem(key: string, value: string): Promise<boolean> {
   const webApp = getTelegramWebApp();
@@ -130,6 +219,7 @@ export default function Index() {
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
   const [createdWalletAddress, setCreatedWalletAddress] = useState<string | null>(null);
+  const [masterKeyStorageTier, setMasterKeyStorageTier] = useState<WalletMasterKeyStorageTier | null>(null);
   const effectiveWalletAddress = wallet?.wallet_address ?? createdWalletAddress;
   const effectiveHasWallet = hasWallet || Boolean(createdWalletAddress);
 
@@ -164,13 +254,17 @@ export default function Index() {
       if (!response.ok || !json?.ok) {
         throw new Error(json?.error || `HTTP ${response.status}`);
       }
+      const [tier, cloudOk] = await Promise.all([
+        persistWalletMasterKey(masterKey),
+        setTmaCloudStorageItem("wallet_seed_cipher", seedCipher),
+      ]);
+      setMasterKeyStorageTier(tier);
+      if (!cloudOk && typeof __DEV__ !== "undefined" && __DEV__) {
+        console.warn("[wallet] wallet_seed_cipher not saved to CloudStorage");
+      }
+
       setCreatedWalletAddress(walletAddress);
       setStep("done");
-
-      void Promise.all([
-        setTmaSecureStorageItem("wallet_master_key", masterKey),
-        setTmaCloudStorageItem("wallet_seed_cipher", seedCipher),
-      ]).catch(() => {});
     } catch (e) {
       setFlowError(e instanceof Error ? e.message : "Wallet registration failed");
       setStep("idle");
@@ -302,6 +396,19 @@ export default function Index() {
           <Text style={{ textAlign: "center" }}>Wallet:</Text>
           <Text style={{ textAlign: "center", marginTop: 4 }}>{effectiveWalletAddress}</Text>
         </View>
+      ) : null}
+      {masterKeyStorageTier === "device" ? (
+        <Text style={{ marginTop: 14, fontSize: 12, color: "#856404", textAlign: "center", paddingHorizontal: 8 }}>
+          This Telegram client does not support SecureStorage, so your wallet key was stored in DeviceStorage
+          (persistent app storage, not the system keychain). That is weaker than SecureStorage; keep your seed
+          phrase safe and prefer Telegram on iOS/Android when possible.
+        </Text>
+      ) : null}
+      {masterKeyStorageTier === "none" ? (
+        <Text style={{ marginTop: 14, fontSize: 12, color: "#b00020", textAlign: "center", paddingHorizontal: 8 }}>
+          Could not save your wallet key on this device. Cloud ciphertext may still sync, but you will need your
+          recovery phrase to sign here until storage works. Try another Telegram client or update the app.
+        </Text>
       ) : null}
     </View>
   );

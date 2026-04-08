@@ -78,7 +78,7 @@ This file describes a practical implementation plan for the security model defin
     - Step 3: Show mnemonic & confirmation quiz.
     - Step 4:
       - Derive wallet master key from mnemonic.
-      - Store it via `Telegram.WebApp.SecureStorage.setItem('wallet_master_key', <key>)`.
+      - Store it via `SecureStorage.setItem('wallet_master_key', …)` when supported; if that fails (e.g. Desktop `UNSUPPORTED`), fall back to `DeviceStorage` and warn the user (see `docs/security_raw.md`).
       - Derive/encode wallet seed or root key, encrypt with master key → `seed_cipher`.
       - Store `seed_cipher` via `Telegram.WebApp.CloudStorage.setItem('wallet_seed_cipher', <cipher>)`.
       - Derive `wallet_address` from mnemonic/root key.

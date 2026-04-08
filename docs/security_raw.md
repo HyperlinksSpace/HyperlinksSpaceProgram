@@ -21,8 +21,19 @@ This document describes the current high-level design; it is not a formal audit.
 - **Wallet seed cipher**: Encrypted blob that contains the wallet seed (or a seed-derived secret), usable only together with the wallet master key.
 - **Telegram CloudStorage**: Per-user, per-bot key–value store synced via Telegram servers. Suitable for non-secret data or ciphertext.
 - **Telegram SecureStorage**: Per-device secure storage, backed by iOS Keychain / Android Keystore, intended for small sensitive values like tokens and keys (see [Mini Apps docs](https://core.telegram.org/bots/webapps#securestorage)).
+- **Telegram DeviceStorage**: Persistent **local** key–value storage inside the Telegram client for the bot (up to 5 MB per user). Telegram documents it as conceptually similar to browser `localStorage`, **not** as Keychain/Keystore-backed secure storage (see [DeviceStorage](https://core.telegram.org/bots/webapps#devicestorage)).
 
 We **never store raw mnemonics** on our backend or in Telegram CloudStorage.
+
+### SecureStorage vs DeviceStorage (product stance)
+
+- **SecureStorage** is the preferred place for the wallet master key: encrypted at rest and isolated using OS secure hardware where Telegram implements it.
+- Some clients (notably **Telegram Desktop** in common builds) report `secure_storage_failed` with errors such as **`UNSUPPORTED`**, meaning there is no SecureStorage bridge for that Mini App session.
+- **DeviceStorage fallback** (used only when SecureStorage fails) keeps the same split as the design (master key local, seed as ciphertext in CloudStorage), but the master key is **not** under the same hardware-backed guarantees. It is **stricter than random website `localStorage`** (scoped to the Telegram client and bot), yet **strictly weaker than SecureStorage** against threats that can read Mini App storage (e.g. XSS, compromised WebView, malware with access to Telegram’s local storage).
+
+**Alternative architectures** (not the default in this repo) include: **require** SecureStorage and **block** signing until the user opens the Mini App on a supported client, or a **Tonkeeper-style** model (password-encrypted secrets with persistence via CloudStorage only, with security bounded by password strength and KDF choice).
+
+The Mini App implementation tries **SecureStorage first**, then **DeviceStorage** for `wallet_master_key`, and surfaces a short in-app notice when the weaker path is used.
 
 ---
 
@@ -36,10 +47,8 @@ Flow when a user creates a wallet for the first time in the Telegram Mini App on
 
 2. **Derive wallet master key (device-local)**
    - From the mnemonic, the app derives a **wallet master key** (e.g. via a BIP-style KDF / HKDF).
-   - This master key is stored **only** in Telegram `SecureStorage` on that device.
-   - Because `SecureStorage` is backed by **Keychain / Keystore**, the key is:
-     - Encrypted at rest.
-     - Bound to this device + Telegram app.
+   - This master key is stored in Telegram **`SecureStorage` when available** (Keychain / Keystore on mobile).
+   - If SecureStorage is unavailable (`UNSUPPORTED` or failure), the app **falls back to `DeviceStorage`** and explains the weaker guarantee in the UI (see “SecureStorage vs DeviceStorage” above).
 
 3. **Create and store wallet seed cipher (cloud)**
    - The app creates a **wallet seed cipher**:
@@ -57,12 +66,12 @@ Flow when a user creates a wallet for the first time in the Telegram Mini App on
 **Properties**
 
 - The **first Telegram device** has everything needed to use the wallet:
-  - Master key in `SecureStorage`.
+  - Master key in `SecureStorage` or, on some clients, `DeviceStorage`.
   - Seed cipher in `CloudStorage`.
 - If the app is reinstalled on the **same device**, we can:
-  - Recover the master key from `SecureStorage` (if Telegram restores it).
+  - Recover the master key from the same Telegram local store (if Telegram restores it).
   - Decrypt the seed cipher for a smooth UX without re-entering the mnemonic.
-- If `SecureStorage` is wiped, the user must re-enter the mnemonic.
+- If local storage is wiped, the user must re-enter the mnemonic.
 
 ---
 
@@ -275,7 +284,7 @@ When the user taps the button in the bot message and opens the Mini App:
 On **Confirm** from the Mini App:
 
 1. Mini App reconstructs/derives the transaction to be signed using:
-   - The locally available wallet (seed/master key in `SecureStorage`).
+   - The locally available wallet (seed/master key in Telegram `SecureStorage` or `DeviceStorage` fallback).
    - The payload from `pending_transactions`.
 2. Mini App signs the transaction **locally** using the wallet key.
 3. Mini App sends a request to a serverless endpoint, e.g. `POST /api/tx/<id>/complete` with:
@@ -311,7 +320,7 @@ For users who click a **web URL** from the bot instead of the Mini App:
 - No private keys or mnemonics are ever stored or derived in serverless functions.
 - Bot pushes and confirmation flows are coordinated exclusively via:
   - Telegram Bot API (for notifications),
-  - Telegram Mini App (for secure signing with SecureStorage),
+  - Telegram Mini App (for signing with local master key in SecureStorage or DeviceStorage fallback),
   - Telegram Login (for identity on web / mobile).
 
 This model keeps transaction approvals **user‑driven and key‑local** (inside Telegram or another explicit wallet) while still fitting neatly into a serverless architecture. 
@@ -325,12 +334,12 @@ This model keeps transaction approvals **user‑driven and key‑local** (inside
   - Neither our backend nor Telegram can unilaterally move funds without the mnemonic / keys.
 
 - **Device-local keys:**
-  - Each device has its own **wallet master key** stored in that device’s secure storage (Telegram SecureStorage or OS keystore).
+  - Each device has its own **wallet master key** stored in Telegram **SecureStorage** when supported, else **DeviceStorage** (weaker).
   - Compromise of one device does **not** automatically compromise others.
 
 - **Cloud data is ciphertext only:**
-  - `Wallet Seed Cipher` in CloudStorage is encrypted with a master key that lives only in secure storage on a device.
-  - An attacker with only CloudStorage access cannot derive the mnemonic.
+  - `Wallet Seed Cipher` in CloudStorage is encrypted with the wallet master key, which should exist only on the user’s Telegram client for that device.
+  - An attacker with only CloudStorage access cannot derive the mnemonic without the master key.
 
 - **Cross-platform restore requires mnemonic:**
   - Any **new environment** (new Telegram device with empty SecureStorage or any non-Telegram platform) requires the mnemonic once.
@@ -341,5 +350,5 @@ This model keeps transaction approvals **user‑driven and key‑local** (inside
 
 - If the **mnemonic is lost**, there is no recovery (by design) – it is the self-custodial root.
 - If a device with a master key is compromised, an attacker can act as the owner from that device until the user moves funds to a new wallet.
-- Telegram `SecureStorage` is documented for **iOS and Android**; behavior on other Telegram clients may differ.
+- Telegram `SecureStorage` is documented for **iOS and Android**; **Desktop and some builds may not support it**, triggering fallback to `DeviceStorage` or leaving the key unsaved until the user uses a supported client or restores with the mnemonic.
 - Telegram Login for Websites is an **authentication mechanism only** – it does not give access to keys or the mnemonic itself, and cannot replace the mnemonic for wallet authorization.
