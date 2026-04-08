@@ -38,7 +38,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
+          # Tag runs: checkout by SHA; manual runs: use source_ref (branch/tag/SHA).
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Node
         uses: actions/setup-node@v5
@@ -74,7 +77,7 @@ jobs:
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
 
       - name: Set package metadata for publish
-        run: npm version "${{ steps.meta.outputs.version }}" --no-git-tag-version
+        run: npm pkg set "version=${{ steps.meta.outputs.version }}"
 
       # npmjs scope = your npm org (see https://www.npmjs.com/settings/www.hyperlinks.space/packages).
       - name: Set package name for npmjs
