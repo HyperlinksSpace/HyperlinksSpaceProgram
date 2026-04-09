@@ -1,3 +1,4 @@
+NPM Package Test<br>
 Polyfils refactoring<br>
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>
