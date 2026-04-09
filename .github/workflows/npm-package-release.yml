@@ -38,13 +38,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Tag runs: checkout the tag commit; manual runs: branch/tag from input.
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.sha }}
+          # Manual: checkout branch/tag from input. Tag push: use ref (refs/tags/...) so Git does not re-fetch tags unnecessarily (avoids noisy git 128 from fetch-tags).
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.source_ref || github.ref }}
           fetch-depth: 0
-          fetch-tags: true
+          fetch-tags: false
 
-      - name: Configure Git safe directory (npm pack uses git for gitHead)
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Configure Git for npm (safe.directory + gitHead / pack)
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          # Allow git subcommands npm may run from any path under the workspace (some runners still hit 128 without this).
+          git config --global --add safe.directory '*'
 
       - name: Setup Node
         uses: actions/setup-node@v5

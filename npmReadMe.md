@@ -56,3 +56,13 @@ and release commands).
 
 - Published from the repository root; the pack includes everything except patterns in [`.npmignore`](./.npmignore) (no `files` whitelist in `package.json`).
 - `.npmrc` cannot be published on npm; `npmrc.example` is included so you can copy it locally.
+
+## Matching local development
+
+Use the same setup you would after cloning this repo:
+
+1. **Node** — Prefer the version in [`.nvmrc`](./.nvmrc) (aligned with [`package.json`](./package.json) `engines`).
+2. **npm install** — Copy [`npmrc.example`](./npmrc.example) to `.npmrc`, then run `npm install` (same `legacy-peer-deps` behavior as a local checkout with a root `.npmrc`).
+3. **Env** — Copy [`.env.example`](./.env.example) to `.env` and fill variables (details in **`fullREADME.md`** after the CI readme swap, or in the main repo README).
+
+The tarball does not ship `package-lock.json` (by [`.npmignore`](./.npmignore)); the first install generates a lockfile for your machine, like cloning without a committed lock.

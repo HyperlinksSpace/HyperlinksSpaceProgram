@@ -2,7 +2,7 @@
   "name": "hyperlinks-space-program",
   "productName": "Hyperlinks Space Program",
   "description": "Hyperlinks Space Program",
-  "author": "sraibaby",
+  "author": "staindart <founder@hyperlinks.space>",
   "license": "0BSD",
   "private": false,
   "bin": {
