@@ -8,7 +8,6 @@ Bottom bar icon review<br>
 AI chat page<br>
 Bring repository root app to demo design state<br>
 GitHub and GitLab bidirectional mirroring<br>
-readme.md<br>
 Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
 README.md: Project news, discussions, where to learn for contributions<br>
