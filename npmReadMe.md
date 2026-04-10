@@ -36,21 +36,17 @@ registry and token.
 **Recommended, not required:** copy `npmrc.example` to `.npmrc` so installs match this repo (`legacy-peer-deps`; npm does not ship a real `.npmrc` in the tarball for security). Equivalent: skip the copy and run **`npm install --legacy-peer-deps`** (or plain **`npm install`** if it completes without peer errors).
 
 ```bash
-cd new-program
-cp npmrc.example .npmrc
-npm install
+npm i
 npm run start
 ```
-
-Then open the project **`README.md`** (or **`fullREADME.md`** if your scaffold renames it) for details (env vars, bot setup, build and release commands).
-
-### Vercel CLI and `npm run start`
 
 `npm run start` runs **`vercel dev`** alongside Expo and the bot. The Vercel CLI must be **logged in**; otherwise you may see errors such as **“The specified token is not valid”** or prompts that fail in non-interactive runs.
 
 - Run **`vercel login`** once in the project directory (use **`vercel link`** if the CLI asks to connect the folder to a project).
 - If the token is invalid or expired, run **`vercel login`** again.
 - To work **without** local Vercel, use **`npm run start:expo`** (Expo only) or run **`npm run bot:local`** / **`npm run dev:vercel`** separately as documented in **`README.md`**.
+
+Then open the project **`README.md`** (or **`fullREADME.md`** if your scaffold renames it) for details (env vars, bot setup, build and release commands).
 
 ## Release Channels
 
