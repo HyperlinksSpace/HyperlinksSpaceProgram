@@ -6,6 +6,8 @@
 
 This program is built upon [React Native](https://reactnative.dev/) by Meta and [Expo](https://expo.dev) multiplatform technologies, Windows build and executable creation achieved with [Electron Builder](https://www.electron.build/) and [Electron Forge](https://www.electronforge.io/), working in Telegram with help of [Telegram Mini Apps React SDK](http://telegram-mini-apps.com/), [Bot API](https://core.telegram.org/bots) and [Grammy](https://grammy.dev/). AI is backed by [OpenAI API](https://openai.com/ru-RU/api/), blockchain info is processed from [Swap.Coffee API](https://docs.swap.coffee/eng/user-guides/welcome). DB for the best user's experience we host on [Neon](https://neon.tech/).
 
+Check out our [Pitch Deck](./PitchDeck/PitchDeck.md).
+
 ## Program design
 
 Access [Figma](https://www.figma.com/design/53lDKAD6pRv3e0uef1DP18/TECHSYMBAL-Inc.?node-id=754-71&t=v3tmAlywNgXkTWMd-1) in real time for contributing. Contact [Seva](t.me/sevaaignatyev) in Telegram to discuss and implement.

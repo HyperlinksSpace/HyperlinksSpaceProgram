@@ -1,3 +1,5 @@
+Lead picture change<br>
+Pitch deck<br>
 NPM Package Test<br>
 Polyfils refactoring<br>
 Wallet: Telegram, Connected, Unhosted<br>
