@@ -1,17 +1,19 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";
+import { useColors } from "../../ui/theme";
 
 export default function AiScreen() {
+  const colors = useColors();
   const { prompt } = useLocalSearchParams<{ prompt?: string }>();
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>AI</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.primary }]}>AI</Text>
       {prompt ? (
-        <Text style={styles.prompt}>Prompt: {prompt}</Text>
+        <Text style={[styles.prompt, { color: colors.primary }]}>Prompt: {prompt}</Text>
       ) : (
-        <Text style={styles.hint}>No prompt</Text>
+        <Text style={[styles.hint, { color: colors.secondary }]}>No prompt</Text>
       )}
     </View>
   );
@@ -30,10 +32,8 @@ const styles = StyleSheet.create({
   },
   prompt: {
     fontSize: 14,
-    color: "#333",
   },
   hint: {
     fontSize: 14,
-    color: "#888",
   },
 });

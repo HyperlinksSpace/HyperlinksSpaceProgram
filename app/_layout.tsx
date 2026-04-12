@@ -2,6 +2,7 @@ import "../global.css";
 import { View, StyleSheet, Platform, KeyboardAvoidingView, AppState, Alert } from "react-native";
 import { Stack } from "expo-router";
 import * as Updates from "expo-updates";
+import { AuthProvider } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
@@ -20,17 +21,19 @@ export default function RootLayout() {
   useOtaUpdateChecks();
   return (
     <TelegramProvider>
-      {Platform.OS === "ios" ? (
-        <KeyboardAvoidingView
-          style={styles.keyboardAvoid}
-          behavior="padding"
-          keyboardVerticalOffset={0}
-        >
+      <AuthProvider>
+        {Platform.OS === "ios" ? (
+          <KeyboardAvoidingView
+            style={styles.keyboardAvoid}
+            behavior="padding"
+            keyboardVerticalOffset={0}
+          >
+            <RootContent />
+          </KeyboardAvoidingView>
+        ) : (
           <RootContent />
-        </KeyboardAvoidingView>
-      ) : (
-        <RootContent />
-      )}
+        )}
+      </AuthProvider>
     </TelegramProvider>
   );
 }
