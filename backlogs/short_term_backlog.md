@@ -1,3 +1,5 @@
+Login screen
+Dealing with pool count
 Change picture in Windows installer
 Wallet: Telegram, Connected, Unhosted<br>
 Username loaded without intermediate state<br>

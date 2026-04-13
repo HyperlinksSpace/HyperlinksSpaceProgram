@@ -25,9 +25,11 @@
     "forge": "./windows/forge/forge.config.js"
   },
   "scripts": {
-    "prestart": "npm run db:migrate",
+    "prestart": "node scripts/migrate-db-retry.mjs",
+    "prestart:full": "node scripts/migrate-db-retry.mjs",
     "build": "expo export -p web",
-    "start": "npx concurrently -n expo,bot,vercel \"expo start\" \"npx tsx scripts/run-bot-local.ts\" \"npm run dev:vercel\"",
+    "start": "node scripts/start-expo-managed.mjs",
+    "start:full": "npx concurrently -n expo,bot,vercel \"expo start\" \"npx tsx scripts/run-bot-local.ts\" \"npm run dev:vercel\"",
     "start:expo": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",

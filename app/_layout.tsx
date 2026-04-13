@@ -6,7 +6,6 @@ import { AuthProvider } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
-import { GlobalBottomBarWeb } from "../ui/components/GlobalBottomBarWeb";
 import { useColors } from "../ui/theme";
 import { useEffect, useRef } from "react";
 
@@ -14,8 +13,7 @@ import { useEffect, useRef } from "react";
  * Three-block column layout (same as Flutter):
  * 1. Logo bar (optional in TMA when not fullscreen)
  * 2. Main area (flex, scrollable per screen) – Stack updates on route change
- * 3. [Web only] Raw HTML textarea test (compare with GlobalBottomBar in TMA)
- * 4. AI & Search bar (fixed at bottom)
+ * 3. AI & Search bar (fixed at bottom, platform-specific internals)
  */
 export default function RootLayout() {
   useOtaUpdateChecks();
@@ -109,14 +107,10 @@ function RootContent() {
       <View style={styles.main}>
         <Stack screenOptions={{ headerShown: false }} />
       </View>
-      {Platform.OS === "web" ? (
-        // Avoid mounting textarea/DOM mirror before theme — kills dark flash from RN-web inputs.
-        !useTelegramTheme || themeBgReady ? (
-          <GlobalBottomBarWeb />
-        ) : null
-      ) : (
-        <GlobalBottomBar />
-      )}
+      {
+        // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
+        Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? <GlobalBottomBar /> : null
+      }
     </View>
   );
 }

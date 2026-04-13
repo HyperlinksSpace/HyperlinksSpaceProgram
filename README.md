@@ -4,7 +4,7 @@
 
 <u>**In progress, contribute!**</u>
 
-This program is built upon [React Native](https://reactnative.dev/) by Meta and [Expo](https://expo.dev) multiplatform technologies, Windows build and executable creation achieved with [Electron Builder](https://www.electron.build/) and [Electron Forge](https://www.electronforge.io/), working in Telegram with help of [Telegram Mini Apps React SDK](http://telegram-mini-apps.com/), [Bot API](https://core.telegram.org/bots) and [Grammy](https://grammy.dev/). AI is backed by [OpenAI API](https://openai.com/ru-RU/api/), blockchain info is processed from [Swap.Coffee API](https://docs.swap.coffee/eng/user-guides/welcome). DB for the best user's experience we host on [Neon](https://neon.tech/).
+This program is built upon [React Native](https://reactnative.dev/) by Meta and [Expo](https://expo.dev) multiplatform technologies, Windows build and executable creation achieved with [Electron Builder](https://www.electron.build/) and [Electron Forge](https://www.electronforge.io/), working in Telegram with help of [Telegram Mini Apps React SDK](http://telegram-mini-apps.com/), [Bot API](https://core.telegram.org/bots) and [Grammy](https://grammy.dev/). AI is backed by [OpenAI API](https://openai.com/ru-RU/api/), blockchain info is processed from [Swap.Coffee API](https://docs.swap.coffee/eng/user-guides/welcome). DB for the best user's experience we host on [Neon](https://neon.tech/). Keys are managed by [Google Cloud Key Management](https://cloud.google.com/security/products/security-key-management).
 
 Check out our [Pitch Deck](./PitchDeck/PitchDeck.md).
 

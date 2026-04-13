@@ -1,5 +1,5 @@
 /**
- * Web typography — used by native DOM in GlobalBottomBarWeb (textarea) + global.css.
+ * Web typography — used by the web textarea in GlobalBottomBar + global.css.
  *
  * **Brand intent:** Aeroport (geometric / grotesk-style sans). There are **no** `.otf`/`.ttf`
  * files in this Expo app repo yet, so `"Aeroport"` alone resolves to **nothing** and the

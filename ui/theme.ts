@@ -10,14 +10,16 @@ const sharedColors = {
 
 export const dark = {
   ...sharedColors,
-  background: "#111111",
-  primary: "#FAFAFA",
+  background: "#000000",
+  primary: "#FFFFFF",
+  highlight: "#515151",
 } as const;
 
 export const light = {
   ...sharedColors,
-  background: "#FAFAFA",
-  primary: "#111111",
+  background: "#FFFFFF",
+  primary: "#000000",
+  highlight: "#FAFAFA",
 } as const;
 
 export type ThemeName = "dark" | "light";

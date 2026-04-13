@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run db:migrate && npx expo export -p web && npx tsx scripts/set-webhook.ts",
-  "outputDirectory": "dist",
+  "buildCommand": "npm run db:migrate && npx expo export -p web --output-dir .vercel/output/static && npx tsx scripts/set-webhook.ts",
+  "outputDirectory": ".vercel/output/static",
   "framework": null,
   "installCommand": "npm install",
   "rewrites": [

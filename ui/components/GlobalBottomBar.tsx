@@ -1,385 +1,115 @@
-/**
- * Global AI & Search bar (bottom block).
- *
- * This mirrors the Flutter GlobalBottomBar behaviour:
- * - 20px line height, 20px top/bottom padding
- * - Bar grows from 1–7 lines, then caps at 180px and enables internal scroll
- * - Last line stays pinned 20px from the bottom while typing
- * - Apply icon is always 25px from the bottom
- */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  View,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
-  Pressable,
-  StyleSheet,
-  Keyboard,
-  ScrollView,
-  Platform,
-  type NativeSyntheticEvent,
-  type TextInputSubmitEditingEventData,
-  type TextInputContentSizeChangeEventData,
+  View,
   type NativeScrollEvent,
-  type NativeSyntheticEvent as RnNativeEvent,
+  type NativeSyntheticEvent,
+  type TextInputContentSizeChangeEventData,
+  type TextInputSubmitEditingEventData,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useTelegram } from "./Telegram";
 import Svg, { Path } from "react-native-svg";
+import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, icons, useColors } from "../theme";
+import { useTelegram } from "./Telegram";
+import { getBottomBarMetrics } from "./bottomBarMetrics";
+import { getPrimaryTextColorFromLaunch } from "./telegramWebApp";
 
 const { maxContentWidth } = layout;
 const {
-  barMinHeight: BAR_MIN_HEIGHT,
-  horizontalPadding: HORIZONTAL_PADDING,
-  verticalPadding: VERTICAL_PADDING,
-  applyIconBottom: APPLY_ICON_BOTTOM,
   lineHeight: LINE_HEIGHT,
+  horizontalPadding: HORIZONTAL_PADDING,
   maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
   maxBarHeight: MAX_BAR_HEIGHT,
 } = layout.bottomBar;
+
 const FONT_SIZE = 15;
-// Same as web: 20px gap above first line and below last line inside the input.
 const INNER_PADDING = 20;
 const AUTO_SCROLL_THRESHOLD = 30;
-const PREMADE_PROMPTS = [
-  "What is the universe?",
-  "Tell me about dogs token",
-];
+const SCROLLBAR_INSET = 5;
+const PREMADE_PROMPTS = ["What is the universe?", "Tell me about dogs token"];
 
-export function GlobalBottomBar() {
-  const router = useRouter();
-  const { triggerHaptic, themeBgReady } = useTelegram();
-  const colors = useColors();
-  const backgroundColor = themeBgReady ? colors.background : "transparent";
-  const [value, setValue] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<TextInput>(null);
-  const scrollRef = useRef<ScrollView>(null);
-  const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
-  // Height of a hidden mirrored Text used for shrink (web) and grow (native when contentSize is unreliable).
-  const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);
-  // Width of the input area so the mirror Text can wrap correctly on native (iOS/Android).
-  const [inputAreaWidth, setInputAreaWidth] = useState<number | null>(null);
-  const [scrollY, setScrollY] = useState(0);
-  const scrollYRef = useRef(0);
-  const contentHeightWithGapsRef = useRef(LINE_HEIGHT + INNER_PADDING * 2);
-  const wasNearBottomBeforeResizeRef = useRef(true);
-
-  const isTelegramIOSWeb =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    !!(window as any).Telegram?.WebApp &&
-    (window as any).Telegram.WebApp.platform === "ios";
-
-  // Web-only: wire up a native scroll listener on the underlying textarea
-  // rendered by TextInput so we can track manual scroll that React Native Web
-  // may not surface via onScroll.
-  useEffect(() => {
-    if (Platform.OS !== "web") return;
-    if (typeof document === "undefined") return;
-
-    const el = document.querySelector(
-      '[data-ai-input="true"]',
-    ) as HTMLElement | null;
-    if (!el) return;
-
-    const handleScroll = () => {
-      const scrollTop = (el as HTMLTextAreaElement).scrollTop;
-      if (typeof scrollTop !== "number") return;
-      setScrollY(scrollTop);
-    };
-
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
-
-  const submit = useCallback(() => {
-    triggerHaptic("heavy");
-    let text = value.trim();
-    if (!text && PREMADE_PROMPTS.length > 0) {
-      text =
-        PREMADE_PROMPTS[
-          Math.floor(Math.random() * PREMADE_PROMPTS.length)
-        ] ?? "";
-      setValue(text);
-    }
-    if (!text) return;
-    Keyboard.dismiss();
-    setValue("");
-    router.push({ pathname: "/ai" as any, params: { prompt: text } });
-  }, [value, router, triggerHaptic]);
-
-  const onSubmitEditing = useCallback(
-    (_e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
-      submit();
-    },
-    [submit]
-  );
-
-  const onContentSizeChange = useCallback(
-    (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
-      const h = e.nativeEvent.contentSize.height;
-      if (!Number.isFinite(h)) return;
-      setContentHeight(h);
-    },
-    []
-  );
-
-  const onChangeText = useCallback((text: string) => {
-    setValue(text);
-  }, []);
-
-  const onScroll = useCallback(
-    (e: RnNativeEvent<NativeScrollEvent>) => {
-      const y = e.nativeEvent.contentOffset.y;
-      scrollYRef.current = y;
-      setScrollY(y);
-    },
-    [],
-  );
-
-  // Same formula as GlobalBottomBarWeb: base height includes 20px top + bottom gaps.
-  // Mirror is given paddingVertical so mirrorHeight = content with gaps; else contentHeight is text-only from onContentSizeChange.
-  const baseHeight =
-    mirrorHeight != null
-      ? mirrorHeight
-      : contentHeight + INNER_PADDING * 2;
-  const effectiveTextHeight = Math.max(0, baseHeight - INNER_PADDING * 2);
-  const rawLines = Math.max(
-    1,
-    Math.floor(
-      (effectiveTextHeight + LINE_HEIGHT * 0.2) / LINE_HEIGHT,
-    ),
-  );
-  const visibleLines = Math.min(rawLines, MAX_LINES_BEFORE_SCROLL);
-  const dynamicHeight = Math.max(
-    60,
-    Math.min(
-      MAX_BAR_HEIGHT,
-      INNER_PADDING * 2 + visibleLines * LINE_HEIGHT,
-    ),
-  );
-
-  const barHeight = dynamicHeight;
-  const viewportHeight = barHeight;
-  const contentHeightWithGaps = baseHeight;
-  const scrollRange = Math.max(contentHeightWithGaps - viewportHeight, 0);
-  const isScrollMode =
-    contentHeightWithGaps > viewportHeight && scrollRange > 0;
-  const showScrollbar = isScrollMode;
-
-  let indicatorHeight = 0;
-  let topPosition = 0;
-  if (
-    showScrollbar &&
-    scrollRange > 0 &&
-    contentHeightWithGaps > 0 &&
-    barHeight != null
-  ) {
-    const indicatorHeightRatio = Math.min(
-      1,
-      Math.max(0, viewportHeight / contentHeightWithGaps),
-    );
-    indicatorHeight = Math.min(
-      barHeight,
-      Math.max(0, barHeight * indicatorHeightRatio),
-    );
-    const scrollPosition = Math.min(1, Math.max(0, scrollY / scrollRange));
-    const availableSpace = Math.min(
-      barHeight,
-      Math.max(0, barHeight - indicatorHeight),
-    );
-    topPosition = Math.min(
-      barHeight,
-      Math.max(0, scrollPosition * availableSpace),
-    );
-  }
-
-  // When the 7th line first appears (max bar height, no scroll yet), shift
-  // content up by one inner padding so the last visible line aligns with the arrow (same as web).
-  useEffect(() => {
-    if (
-      rawLines === 7 &&
-      dynamicHeight >= MAX_BAR_HEIGHT &&
-      scrollY === 0 &&
-      wasNearBottomBeforeResizeRef.current
-    ) {
-      scrollRef.current?.scrollTo({ y: INNER_PADDING, animated: false });
-    }
-  }, [rawLines, dynamicHeight, scrollY]);
-
-  // Snap the ScrollView to bottom whenever the content becomes taller than
-  // the visible viewport. Using onContentSizeChange ensures the scroll
-  // happens after iOS has laid out the content, so scrollToEnd is effective.
-  const onScrollViewContentSizeChange = useCallback(
-    (_w: number, h: number) => {
-      const previousScrollRange = Math.max(
-        contentHeightWithGapsRef.current - viewportHeight,
-        0,
-      );
-      const isNearBottomBeforeResize =
-        previousScrollRange <= 0 ||
-        scrollYRef.current >= previousScrollRange - AUTO_SCROLL_THRESHOLD;
-      wasNearBottomBeforeResizeRef.current = isNearBottomBeforeResize;
-      contentHeightWithGapsRef.current = h;
-
-      if (h > viewportHeight && scrollRef.current && isNearBottomBeforeResize) {
-        scrollRef.current.scrollToEnd({ animated: false });
-      }
-    },
-    [viewportHeight],
-  );
-
+// Shared UI primitives used by all platforms.
+function SendButton({ color, onPress }: { color: string; onPress: () => void }) {
   return (
-    <View style={[styles.wrapper, { height: barHeight, backgroundColor }]}>
-      <View style={[styles.container, { height: barHeight, backgroundColor }]}>
-        <View style={styles.inner}>
-          <View style={styles.row}>
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                height: viewportHeight,
-                justifyContent: "flex-start",
-              }}
-            >
-              <ScrollView
-                ref={scrollRef}
-                style={{ flex: 1 }}
-                contentContainerStyle={{
-                  paddingRight: 6,
-                  flexGrow: 1,
-                  justifyContent: "flex-start",
-                }}
-                onScroll={onScroll}
-                onContentSizeChange={onScrollViewContentSizeChange}
-                scrollEventThrottle={16}
-                showsVerticalScrollIndicator={false}
-              >
-                <View
-                  style={{
-                    flexGrow: 1,
-                    justifyContent: "flex-start",
-                    position: "relative",
-                  }}
-                  onLayout={
-                    Platform.OS !== "web"
-                      ? (e) => {
-                          const w = e.nativeEvent.layout.width;
-                          if (Number.isFinite(w) && w > 0) setInputAreaWidth(w);
-                        }
-                      : undefined
-                  }
-                >
-                  <TextInput
-                    ref={inputRef}
-                    style={[styles.input, styles.inputWeb, { color: colors.primary }]}
-                    placeholder={isFocused ? "" : "AI & Search"}
-                    placeholderTextColor={colors.primary}
-                    value={value}
-                    onChangeText={onChangeText}
-                    onSubmitEditing={onSubmitEditing}
-                    returnKeyType="send"
-                    blurOnSubmit={false}
-                    multiline
-                    maxLength={4096}
-                    onContentSizeChange={onContentSizeChange}
-                    scrollEnabled={false}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
-                    // @ts-expect-error dataSet is a valid prop on web (used for CSS targeting)
-                    dataSet={{ "ai-input": "true" }}
-                  />
-                  {Platform.OS === "web" && (
-                    <View
-                      pointerEvents="none"
-                      style={{
-                        position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        right: 0,
-                        // Wider gutter on Telegram iOS webview so the
-                        // native blue scroll thumb (if drawn) sits well
-                        // away from the caret and last characters.
-                        width: isTelegramIOSWeb ? 24 : 12,
-                        backgroundColor,
-                      }}
-                    />
-                  )}
-                  <Text
-                    style={[
-                      styles.input,
-                      styles.inputWeb,
-                      {
-                        position: "absolute",
-                        opacity: 0,
-                        pointerEvents: "none",
-                        left: 0,
-                        right: 0,
-                        paddingVertical: INNER_PADDING,
-                        // On native, give mirror explicit width so it wraps like the input and reports correct height.
-                        ...(Platform.OS !== "web" &&
-                          inputAreaWidth != null && { width: inputAreaWidth }),
-                      },
-                    ]}
-                    numberOfLines={0}
-                    onLayout={(e) => {
-                      const h = e.nativeEvent.layout.height;
-                      if (Number.isFinite(h) && h > 0) {
-                        setMirrorHeight(h);
-                      }
-                    }}
-                  >
-                    {value || " "}
-                  </Text>
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-          <Pressable
-            style={styles.applyWrap}
-            onPress={submit}
-            accessibilityRole="button"
-            accessibilityLabel="Send"
-          >
-            <Svg
-              width={icons.apply.width}
-              height={icons.apply.height}
-              viewBox="0 0 15 10"
-            >
-              <Path
-                d="M1 5H10M6 1L10 5L6 9"
-                stroke={colors.primary}
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </Svg>
-          </Pressable>
-        </View>
-      </View>
-      </View>
-      {showScrollbar && indicatorHeight > 0 && (
-        <View style={[styles.scrollbarContainer, { height: barHeight }]}>
-          <View
-            style={[
-              styles.scrollbarIndicator,
-              {
-                height: indicatorHeight,
-                marginTop: topPosition,
-                backgroundColor: colors.secondary,
-              },
-            ]}
-          />
-        </View>
-      )}
+    <Pressable
+      style={styles.sendWrap}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Send"
+    >
+      <Svg width={icons.apply.width} height={icons.apply.height} viewBox="0 0 15 10">
+        <Path
+          d="M1 5H10M6 1L10 5L6 9"
+          stroke={color}
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </Pressable>
+  );
+}
+
+function Scrollbar({
+  show,
+  height,
+  indicatorHeight,
+  topPosition,
+  color,
+}: {
+  show: boolean;
+  height: number;
+  indicatorHeight: number;
+  topPosition: number;
+  color: string;
+}) {
+  if (!show || indicatorHeight <= 0) return null;
+  return (
+    <View style={[styles.scrollbarContainer, { height }]}>
+      <View
+        style={[
+          styles.scrollbarIndicator,
+          { height: indicatorHeight, marginTop: topPosition, backgroundColor: color },
+        ]}
+      />
     </View>
   );
 }
 
-const SCROLLBAR_INSET = 5;
+// Shared entry point: chooses platform-specific implementation and shared colors.
+export function GlobalBottomBar() {
+  const colors = useColors();
+  const { themeBgReady } = useTelegram();
+  const backgroundColor = themeBgReady ? colors.background : "transparent";
+  const launchPrimary =
+    Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
+  const inputColor = themeBgReady ? colors.primary : launchPrimary ?? colors.primary;
+
+  if (Platform.OS === "web") {
+    return (
+      <WebBottomBar
+        backgroundColor={backgroundColor}
+        inputColor={inputColor}
+        scrollbarColor={colors.secondary}
+      />
+    );
+  }
+
+  return (
+    <NativeBottomBar
+      backgroundColor={backgroundColor}
+      inputColor={inputColor}
+      scrollbarColor={colors.secondary}
+    />
+  );
+}
 
 const styles = StyleSheet.create({
   wrapper: {
@@ -390,49 +120,39 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: maxContentWidth,
     alignSelf: "center",
-    // backgroundColor is applied dynamically via useColors()
-    paddingVertical: 0,
     paddingHorizontal: HORIZONTAL_PADDING,
-  },
-  inner: {
-    width: "100%",
   },
   row: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 5,
   },
+  inputWrap: {
+    flex: 1,
+    position: "relative",
+    justifyContent: "flex-start",
+  },
   input: {
     flex: 1,
     fontSize: FONT_SIZE,
-    color: "#000000",
     lineHeight: LINE_HEIGHT,
     paddingVertical: INNER_PADDING,
     paddingHorizontal: 0,
     borderWidth: 0,
     borderColor: "transparent",
     backgroundColor: "transparent",
-  },
-  // Baseline overrides: relax RN Web default minHeight (40) and rely on our
-  // dynamic height logic (inputDynamicStyle) instead.
-  inputWeb: {
     minHeight: 0,
-    // Base gutter so the caret and last characters never sit directly in the
-    // system scrollbar lane. On Telegram iOS we add extra right padding at
-    // runtime via the overlay width (see isTelegramIOSWeb logic).
     paddingRight: 12,
   },
-  applyWrap: {
-    // 25px padding from the bottom edge of the bar.
-    paddingBottom: 25,
+  nativeInputHost: {
+    flexGrow: 1,
+    justifyContent: "flex-start",
+    position: "relative",
+  },
+  sendWrap: {
     justifyContent: "center",
     alignItems: "center",
-  },
-  applyIcon: {
-    width: 15,
-    height: 10,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 1,
+    paddingBottom: 25,
   },
   scrollbarContainer: {
     position: "absolute",
@@ -445,3 +165,373 @@ const styles = StyleSheet.create({
     width: 1,
   },
 });
+
+// Platform-specific section: web-only input implementation.
+function WebBottomBar({
+  backgroundColor,
+  inputColor,
+  scrollbarColor,
+}: {
+  backgroundColor: string;
+  inputColor: string;
+  scrollbarColor: string;
+}) {
+  const [value, setValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const [domScrollRange, setDomScrollRange] = useState(0);
+  const [contentHeight, setContentHeight] = useState(LINE_HEIGHT);
+  const [domMirrorHeight, setDomMirrorHeight] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const domMirrorRef = useRef<HTMLDivElement | null>(null);
+  const wasNearBottomBeforeInputRef = useRef(true);
+
+  const measureAndResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    setContentHeight(el.scrollHeight);
+  }, []);
+
+  const handleInput = useCallback(
+    (e: React.FormEvent<HTMLTextAreaElement>) => {
+      const target = e.target as HTMLTextAreaElement;
+      const range = Math.max(0, target.scrollHeight - target.clientHeight);
+      wasNearBottomBeforeInputRef.current =
+        range <= 0 || target.scrollTop >= range - AUTO_SCROLL_THRESHOLD;
+      setValue(target.value);
+      requestAnimationFrame(measureAndResize);
+    },
+    [measureAndResize],
+  );
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const range = Math.max(0, el.scrollHeight - el.clientHeight);
+      wasNearBottomBeforeInputRef.current =
+        range <= 0 || el.scrollTop >= range - AUTO_SCROLL_THRESHOLD;
+      setScrollY(el.scrollTop);
+      setDomScrollRange(range);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [value]);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => measureAndResize());
+    return () => cancelAnimationFrame(id);
+  }, [measureAndResize]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    let mirror = domMirrorRef.current;
+    if (!mirror) {
+      mirror = document.createElement("div");
+      domMirrorRef.current = mirror;
+      mirror.style.position = "absolute";
+      mirror.style.visibility = "hidden";
+      mirror.style.pointerEvents = "none";
+      mirror.style.whiteSpace = "pre-wrap";
+      mirror.style.wordBreak = "break-word";
+      mirror.style.left = "-9999px";
+      mirror.style.top = "-9999px";
+      document.body.appendChild(mirror);
+    }
+
+    const host = textareaRef.current;
+    if (host) {
+      const rect = host.getBoundingClientRect();
+      const cs = window.getComputedStyle(host);
+      mirror.style.width = `${rect.width}px`;
+      mirror.style.boxSizing = cs.boxSizing;
+      mirror.style.paddingTop = cs.paddingTop;
+      mirror.style.paddingBottom = cs.paddingBottom;
+      mirror.style.paddingLeft = cs.paddingLeft;
+      mirror.style.paddingRight = cs.paddingRight;
+      mirror.style.border = cs.border;
+      mirror.style.outline = cs.outline;
+      mirror.style.fontFamily = cs.fontFamily;
+      mirror.style.fontSize = cs.fontSize;
+      mirror.style.fontWeight = cs.fontWeight as string;
+      mirror.style.lineHeight = cs.lineHeight;
+      mirror.style.letterSpacing = cs.letterSpacing;
+      mirror.style.textTransform = cs.textTransform;
+      mirror.style.direction = cs.direction;
+      mirror.style.textAlign = cs.textAlign;
+    }
+
+    mirror.textContent = value || " ";
+    const h = mirror.getBoundingClientRect().height;
+    setDomMirrorHeight(Number.isFinite(h) && h > 0 ? h : null);
+  }, [value]);
+
+  const baseHeight = domMirrorHeight ?? contentHeight;
+  const metrics = getBottomBarMetrics({
+    baseHeight,
+    scrollY,
+    scrollRangeOverride: domScrollRange,
+    lineHeight: LINE_HEIGHT,
+    innerPadding: INNER_PADDING,
+    maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
+    maxBarHeight: MAX_BAR_HEIGHT,
+  });
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const el = textareaRef.current;
+    if (!el) return;
+    if (
+      metrics.rawLines === 7 &&
+      metrics.barHeight >= MAX_BAR_HEIGHT &&
+      el.scrollTop === 0 &&
+      wasNearBottomBeforeInputRef.current
+    ) {
+      el.scrollTop = INNER_PADDING;
+    }
+  }, [metrics.rawLines, metrics.barHeight]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const el = textareaRef.current;
+    if (!el || !metrics.showScrollbar || !wasNearBottomBeforeInputRef.current) return;
+    const range = el.scrollHeight - el.clientHeight;
+    if (range <= 0) return;
+    const id = requestAnimationFrame(() => {
+      el.scrollTop = range;
+      setScrollY(range);
+      setDomScrollRange(range);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [value, metrics.showScrollbar]);
+
+  const handleSend = useCallback(() => {
+    const text = value.trim();
+    if (!text) return;
+    setValue("");
+  }, [value]);
+
+  return (
+    <View style={[styles.wrapper, { backgroundColor }]}>
+      <View style={[styles.container, { backgroundColor }]}>
+        <View style={[styles.row, { height: metrics.barHeight }]}>
+          <View style={styles.inputWrap}>
+            <textarea
+              ref={textareaRef}
+              data-global-bottom-bar-web
+              value={value}
+              onInput={handleInput}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              rows={1}
+              style={{
+                width: "100%",
+                minHeight: metrics.barHeight,
+                height: metrics.barHeight,
+                maxHeight: metrics.barHeight,
+                fontSize: FONT_SIZE,
+                lineHeight: `${LINE_HEIGHT}px`,
+                paddingTop: INNER_PADDING,
+                paddingBottom: INNER_PADDING,
+                paddingRight: 36,
+                boxSizing: "border-box",
+                resize: "none",
+                border: "none",
+                outline: "none",
+                color: inputColor,
+                backgroundColor: "transparent",
+                caretColor: inputColor,
+                ["--ai-placeholder-color" as string]: inputColor,
+                fontFamily: WEB_UI_SANS_STACK,
+                overflow:
+                  metrics.contentHeightWithGaps > metrics.viewportHeight ? "auto" : "hidden",
+              }}
+              placeholder={isFocused ? "" : "AI and search"}
+            />
+          </View>
+          <SendButton color={inputColor} onPress={handleSend} />
+        </View>
+      </View>
+      <Scrollbar
+        show={metrics.showScrollbar}
+        height={metrics.barHeight}
+        indicatorHeight={metrics.scrollbar.indicatorHeight}
+        topPosition={metrics.scrollbar.topPosition}
+        color={scrollbarColor}
+      />
+    </View>
+  );
+}
+
+// Platform-specific section: native (iOS/Android) input implementation.
+function NativeBottomBar({
+  backgroundColor,
+  inputColor,
+  scrollbarColor,
+}: {
+  backgroundColor: string;
+  inputColor: string;
+  scrollbarColor: string;
+}) {
+  const router = useRouter();
+  const { triggerHaptic } = useTelegram();
+  const [value, setValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
+  const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
+  const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);
+  const [inputAreaWidth, setInputAreaWidth] = useState<number | null>(null);
+  const [scrollY, setScrollY] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const contentHeightWithGapsRef = useRef(LINE_HEIGHT + INNER_PADDING * 2);
+  const wasNearBottomBeforeResizeRef = useRef(true);
+
+  const submit = useCallback(() => {
+    triggerHaptic("heavy");
+    let text = value.trim();
+    if (!text && PREMADE_PROMPTS.length > 0) {
+      text = PREMADE_PROMPTS[Math.floor(Math.random() * PREMADE_PROMPTS.length)] ?? "";
+      setValue(text);
+    }
+    if (!text) return;
+    Keyboard.dismiss();
+    setValue("");
+    router.push({ pathname: "/ai" as any, params: { prompt: text } });
+  }, [router, triggerHaptic, value]);
+
+  const onContentSizeChange = useCallback(
+    (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
+      const h = e.nativeEvent.contentSize.height;
+      if (Number.isFinite(h)) setContentHeight(h);
+    },
+    [],
+  );
+
+  const onSubmitEditing = useCallback(
+    (_e: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
+      submit();
+    },
+    [submit],
+  );
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    setScrollY(y);
+  }, []);
+
+  const baseHeight = mirrorHeight != null ? mirrorHeight : contentHeight + INNER_PADDING * 2;
+  const metrics = getBottomBarMetrics({
+    baseHeight,
+    scrollY,
+    lineHeight: LINE_HEIGHT,
+    innerPadding: INNER_PADDING,
+    maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
+    maxBarHeight: MAX_BAR_HEIGHT,
+  });
+
+  useEffect(() => {
+    if (
+      metrics.rawLines === 7 &&
+      metrics.barHeight >= MAX_BAR_HEIGHT &&
+      scrollY === 0 &&
+      wasNearBottomBeforeResizeRef.current
+    ) {
+      scrollRef.current?.scrollTo({ y: INNER_PADDING, animated: false });
+    }
+  }, [metrics.rawLines, metrics.barHeight, scrollY]);
+
+  const onScrollViewContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      const previousRange = Math.max(contentHeightWithGapsRef.current - metrics.viewportHeight, 0);
+      const nearBottom =
+        previousRange <= 0 || scrollYRef.current >= previousRange - AUTO_SCROLL_THRESHOLD;
+      wasNearBottomBeforeResizeRef.current = nearBottom;
+      contentHeightWithGapsRef.current = h;
+
+      if (h > metrics.viewportHeight && nearBottom) {
+        scrollRef.current?.scrollToEnd({ animated: false });
+      }
+    },
+    [metrics.viewportHeight],
+  );
+
+  return (
+    <View style={[styles.wrapper, { height: metrics.barHeight, backgroundColor }]}>
+      <View style={[styles.container, { height: metrics.barHeight, backgroundColor }]}>
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <View style={{ height: metrics.viewportHeight, justifyContent: "flex-start" }}>
+              <ScrollView
+                ref={scrollRef}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ paddingRight: 6, flexGrow: 1, justifyContent: "flex-start" }}
+                onScroll={onScroll}
+                onContentSizeChange={onScrollViewContentSizeChange}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
+              >
+                <View
+                  style={styles.nativeInputHost}
+                  onLayout={(e) => {
+                    const w = e.nativeEvent.layout.width;
+                    if (Number.isFinite(w) && w > 0) setInputAreaWidth(w);
+                  }}
+                >
+                  <TextInput
+                    style={[styles.input, { color: inputColor }]}
+                    placeholder={isFocused ? "" : "AI & Search"}
+                    placeholderTextColor={inputColor}
+                    value={value}
+                    onChangeText={setValue}
+                    onSubmitEditing={onSubmitEditing}
+                    returnKeyType="send"
+                    blurOnSubmit={false}
+                    multiline
+                    maxLength={4096}
+                    onContentSizeChange={onContentSizeChange}
+                    scrollEnabled={false}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                  />
+                  <Text
+                    style={[
+                      styles.input,
+                      {
+                        position: "absolute",
+                        opacity: 0,
+                        pointerEvents: "none",
+                        left: 0,
+                        right: 0,
+                        paddingVertical: INNER_PADDING,
+                        ...(inputAreaWidth != null ? { width: inputAreaWidth } : {}),
+                      },
+                    ]}
+                    numberOfLines={0}
+                    onLayout={(e) => {
+                      const h = e.nativeEvent.layout.height;
+                      if (Number.isFinite(h) && h > 0) setMirrorHeight(h);
+                    }}
+                  >
+                    {value || " "}
+                  </Text>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+          <SendButton color={inputColor} onPress={submit} />
+        </View>
+      </View>
+      <Scrollbar
+        show={metrics.showScrollbar}
+        height={metrics.barHeight}
+        indicatorHeight={metrics.scrollbar.indicatorHeight}
+        topPosition={metrics.scrollbar.topPosition}
+        color={scrollbarColor}
+      />
+    </View>
+  );
+}
+
