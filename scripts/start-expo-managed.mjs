@@ -55,7 +55,6 @@ async function main() {
     stdio: "inherit",
     env: {
       ...process.env,
-      SKIP_DB_MIGRATE: "1",
       TS_NODE_PROJECT: "api/tsconfig.json",
     },
   });
