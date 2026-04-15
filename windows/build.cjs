@@ -968,7 +968,7 @@ function setupAutoUpdater() {
     };
 
     const getVersionsStagingRoot = () => path.join(app.getPath("userData"), "pending-update-versions");
-    const logUpdaterStateSnapshot = (reason, extra = {}) => {
+    function logUpdaterStateSnapshot(reason, extra = {}) {
       let stagedVersions = [];
       try {
         const root = getVersionsStagingRoot();
@@ -1002,7 +1002,7 @@ function setupAutoUpdater() {
         ...extra,
       };
       logUpdater("state", safeJson(state, 1600));
-    };
+    }
 
     const restoreVersionsStagingFromDisk = () => {
       const root = getVersionsStagingRoot();
