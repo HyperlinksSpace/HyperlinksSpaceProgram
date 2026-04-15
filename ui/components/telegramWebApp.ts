@@ -110,6 +110,17 @@ export function ensureTelegramScript(onLoad?: () => void): void {
   document.head.appendChild(script);
 }
 
+/**
+ * True when `WebApp.platform` is a real Telegram client name, not the stub `"unknown"`.
+ * The official script sets `platform` to `"unknown"` outside Telegram (Electron, plain browser).
+ */
+export function isTelegramWebAppPlatformReal(): boolean {
+  const app = getWebApp();
+  const p = app?.platform;
+  if (typeof p !== "string" || !p.trim()) return false;
+  return p.trim() !== "unknown";
+}
+
 /** In Telegram: platform is not "unknown" and user with id exists. In browser: otherwise. */
 export function isActuallyInTelegram(): boolean {
   const app = getWebApp();

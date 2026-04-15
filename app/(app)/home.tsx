@@ -308,12 +308,18 @@ export default function HomeScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>hasWebApp: {String(debug.hasWebApp)}</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>webAppPoll: {debug.webAppPollCount}</Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>webAppApiPoll: {debug.webAppPollCount}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             initData: {debug.initDataLength != null ? debug.initDataLength : "—"}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>pollCount: {debug.pollCount}</Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>initDataPoll: {debug.initDataPollCount}</Text>
+          <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
+            initDataPoll only runs when a Telegram launch or real WebApp platform is detected; otherwise
+            we stop (no infinite poll outside Telegram).
+          </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
           </Text>
@@ -358,7 +364,11 @@ export default function HomeScreen() {
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            hasWebApp: {String(debug.hasWebApp)} · initData: {debug.initDataLength ?? "—"}
+            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)} ·
+            initData: {debug.initDataLength ?? "—"}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            webAppApiPoll: {debug.webAppPollCount} · initDataPoll: {debug.initDataPollCount}
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
@@ -405,10 +415,17 @@ export default function HomeScreen() {
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>hasWebApp: {String(debug.hasWebApp)}</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>webAppPoll: {debug.webAppPollCount}</Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>webAppApiPoll: {debug.webAppPollCount}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             initData: {debug.initDataLength != null ? debug.initDataLength : "—"}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>initDataPoll: {debug.initDataPollCount}</Text>
+          <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
+            initDataPoll only runs when a Telegram launch or real WebApp platform is detected; otherwise
+            we stop (no infinite poll outside Telegram).
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}

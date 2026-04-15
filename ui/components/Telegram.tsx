@@ -9,7 +9,9 @@ import {
   getPlatformFromHash,
   getThemeParamsFromLaunch,
   getWebAppVersionFromHash,
+  isActuallyInTelegram,
   isAvailable,
+  isTelegramWebAppPlatformReal,
   readyAndExpand,
   resetTelegramLaunchCache,
   triggerHaptic as triggerHapticImpl,
@@ -42,8 +44,11 @@ function isLikelyInTma(): boolean {
   }
 }
 
-/** Sync signals only (hash / UA / WebApp presence). Do not use for API calls. */
-function isTelegramLikelyAtStartup(): boolean {
+/**
+ * Hash / UA / launch params suggest Telegram opened this URL — does **not** treat
+ * "WebApp script loaded" alone as Telegram (avoids Electron / plain browser false positives).
+ */
+function isTelegramLaunchHint(): boolean {
   if (typeof window === "undefined") return false;
   try {
     if (getThemeParamsFromLaunch() != null) return true;
@@ -67,7 +72,17 @@ function isTelegramLikelyAtStartup(): boolean {
   } catch {
     // ignore
   }
-  return isAvailable();
+  return false;
+}
+
+/** Sync signals only (hash / UA / WebApp presence). Do not use for API calls. */
+function isTelegramLikelyAtStartup(): boolean {
+  return isTelegramLaunchHint() || isAvailable();
+}
+
+/** Whether init data may still arrive (real client or Telegram launch URL). */
+function shouldPollForInitData(): boolean {
+  return isTelegramLaunchHint() || isTelegramWebAppPlatformReal();
 }
 
 function normalizeHexBg(raw: unknown): string | null {
@@ -123,13 +138,30 @@ function initialThemeBgReadyFromBootstrap(): boolean {
   return false;
 }
 
+/** Merge debug patch and refresh `inTelegramClient` from live WebApp state. */
+function patchTelegramDebug(
+  prev: TelegramDebugInfo,
+  patch: Partial<TelegramDebugInfo>,
+): TelegramDebugInfo {
+  return {
+    ...prev,
+    ...patch,
+    inTelegramClient: isActuallyInTelegram(),
+  };
+}
+
 type TelegramStatus = "idle" | "loading" | "ok" | "error" | "dev";
 
 export type TelegramDebugInfo = {
-  hasWebApp: boolean;
+  /** True after `window.Telegram.WebApp` exists (script loaded; may be true in Electron without Telegram). */
+  hasWebAppApi: boolean;
+  /** True when WebApp has a real Telegram user session (not a stub). */
+  inTelegramClient: boolean;
+  /** Poll ticks waiting for `Telegram.WebApp` (script injection). */
   webAppPollCount: number;
   initDataLength: number | null;
-  pollCount: number;
+  /** Poll ticks waiting for init data string (every 100ms after WebApp attach). */
+  initDataPollCount: number;
   apiStatus: number | null;
   apiMessage: string | null;
   /** URL we POST to (to verify origin/routing). */
@@ -180,10 +212,11 @@ export type TelegramContextValue = {
 };
 
 const defaultDebug: TelegramDebugInfo = {
-  hasWebApp: false,
+  hasWebAppApi: false,
+  inTelegramClient: false,
   webAppPollCount: 0,
   initDataLength: null,
-  pollCount: 0,
+  initDataPollCount: 0,
   apiStatus: null,
   apiMessage: null,
   apiUrl: null,
@@ -193,6 +226,8 @@ const defaultDebug: TelegramDebugInfo = {
 
 const WEBAPP_POLL_MS = 100;
 const WEBAPP_POLL_MAX = 50; // 5s wait for Telegram to inject WebApp
+/** Same window: init data should appear once WebApp is real; cap avoids infinite wait on odd clients. */
+const INIT_DATA_POLL_MAX = WEBAPP_POLL_MAX;
 
 const defaultContext: TelegramContextValue = {
   status: "idle",
@@ -471,7 +506,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      setDebug((d) => ({ ...d, hasWebApp: false, apiMessage: "no window" }));
+      setDebug((d) => patchTelegramDebug(d, { hasWebAppApi: false, apiMessage: "no window" }));
       setStatus("dev");
       return;
     }
@@ -490,13 +525,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       const url = buildApiUrl("/api/telegram");
       const fetchStartedAt = Date.now();
 
-      setDebug((d) => ({
-        ...d,
-        initDataLength: initData.length,
-        apiUrl: url,
-        fetchDurationMs: null,
-        lastLog: "fetch start",
-      }));
+      setDebug((d) =>
+        patchTelegramDebug(d, {
+          initDataLength: initData.length,
+          apiUrl: url,
+          fetchDurationMs: null,
+          lastLog: "fetch start",
+        }),
+      );
       console.log(`${LOG_PREFIX} fetch start url=${url} initDataLength=${initData.length}`);
 
       const controller = new AbortController();
@@ -514,13 +550,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           const json = await res.json().catch(() => ({}));
           const apiMsg = json?.error ?? (json?.ok ? "ok" : String(res.status));
 
-          setDebug((d) => ({
-            ...d,
-            apiStatus: res.status,
-            apiMessage: apiMsg,
-            fetchDurationMs: durationMs,
-            lastLog: `status ${res.status} ${durationMs}ms`,
-          }));
+          setDebug((d) =>
+            patchTelegramDebug(d, {
+              apiStatus: res.status,
+              apiMessage: apiMsg,
+              fetchDurationMs: durationMs,
+              lastLog: `status ${res.status} ${durationMs}ms`,
+            }),
+          );
           console.log(`${LOG_PREFIX} response status=${res.status} durationMs=${durationMs} body=${apiMsg}`);
 
           if (!res.ok || !json?.ok) {
@@ -541,13 +578,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
             ? `timeout after ${durationMs}ms`
             : `error ${durationMs}ms: ${msg}`;
 
-          setDebug((d) => ({
-            ...d,
-            apiStatus: null,
-            apiMessage: msg,
-            fetchDurationMs: durationMs,
-            lastLog,
-          }));
+          setDebug((d) =>
+            patchTelegramDebug(d, {
+              apiStatus: null,
+              apiMessage: msg,
+              fetchDurationMs: durationMs,
+              lastLog,
+            }),
+          );
           console.error(`${LOG_PREFIX} failed ${lastLog}`, e);
 
           setError(isTimeout ? "Request timed out" : (e?.message ?? "Failed to register Telegram user"));
@@ -585,14 +623,31 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         registerWithBackend(initDataStr);
         return () => {};
       }
-      let pollCount = 0;
+      // Do not poll forever when init data cannot arrive (Electron / browser stub: platform "unknown", no launch hash).
+      if (!shouldPollForInitData()) {
+        setDebug((d) =>
+          patchTelegramDebug(d, {
+            apiMessage: "no init data (not in Telegram client)",
+            initDataPollCount: 0,
+          }),
+        );
+        setStatus("dev");
+        return () => {};
+      }
+      let initDataPollCount = 0;
       const initInterval = setInterval(() => {
-        pollCount += 1;
-        setDebug((d) => ({ ...d, pollCount }));
+        initDataPollCount += 1;
+        setDebug((d) => patchTelegramDebug(d, { initDataPollCount }));
         initDataStr = getInitDataString();
         if (initDataStr) {
           clearInterval(initInterval);
           registerWithBackend(initDataStr);
+          return;
+        }
+        if (initDataPollCount >= INIT_DATA_POLL_MAX) {
+          clearInterval(initInterval);
+          setDebug((d) => patchTelegramDebug(d, { apiMessage: "no init data (timeout)" }));
+          setStatus("dev");
         }
       }, WEBAPP_POLL_MS);
       return () => clearInterval(initInterval);
@@ -607,7 +662,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         clearInterval(webAppInterval);
         webAppInterval = undefined;
       }
-      setDebug((d) => ({ ...d, hasWebApp: true }));
+      setDebug((d) => patchTelegramDebug(d, { hasWebAppApi: true }));
       initPollCleanupRef.current = runTmaFlow();
       return true;
     }
@@ -616,14 +671,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     if (!tryAttachWebApp()) {
       webAppInterval = setInterval(() => {
         webAppPollCount += 1;
-        setDebug((d) => ({ ...d, webAppPollCount }));
+        setDebug((d) => patchTelegramDebug(d, { webAppPollCount }));
 
         if (tryAttachWebApp()) return;
 
         if (webAppPollCount >= WEBAPP_POLL_MAX) {
           if (webAppInterval != null) clearInterval(webAppInterval);
           webAppInterval = undefined;
-          setDebug((d) => ({ ...d, apiMessage: "no WebApp (timeout)" }));
+          setDebug((d) => patchTelegramDebug(d, { apiMessage: "no WebApp (timeout)" }));
           setStatus("dev");
         }
       }, WEBAPP_POLL_MS);
