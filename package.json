@@ -16,7 +16,7 @@
     "url": "https://github.com/HyperlinksSpace/HyperlinksSpaceProgram.git"
   },
   "main": "index.js",
-  "version": "53.0.1394",
+  "version": "53.0.1395",
   "type": "module",
   "engines": {
     "node": ">=18 <=22"
