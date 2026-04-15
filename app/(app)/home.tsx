@@ -424,8 +424,8 @@ export default function HomeScreen() {
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>initDataPoll: {debug.initDataPollCount}</Text>
           <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
-            initDataPoll only runs when a Telegram launch or real WebApp platform is detected; otherwise
-            we stop (no infinite poll outside Telegram).
+            initDataPoll only runs when Telegram launch or real WebApp platform is detected; otherwise
+            we stop (no infinite polling outside Telegram).
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
