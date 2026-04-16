@@ -121,12 +121,35 @@ export function isTelegramWebAppPlatformReal(): boolean {
   return p.trim() !== "unknown";
 }
 
-/** In Telegram: platform is not "unknown" and user with id exists. In browser: otherwise. */
+/** True after we start POST /api/telegram with initData (WebApp/hash can diverge later). */
+let miniAppRegistrationStarted = false;
+
+/** Call once when Mini App registration begins; keeps debug `inTelegram` aligned with backend flow. */
+export function markMiniAppRegistrationStarted(): void {
+  miniAppRegistrationStarted = true;
+}
+
+/**
+ * Strong signal we're in a real Mini App session.
+ * - Fast path: real `platform` + `initDataUnsafe.user` (when the bridge is fully synced).
+ * - Otherwise: non-empty init data from `WebApp.initData` **or** `tgWebAppData` in the URL hash.
+ *   Some clients keep `platform === "unknown"` and/or only populate hash launch params while `app.initData`
+ *   is still empty — same init string is what we POST to `/api/telegram`, so treat it as in-session.
+ */
 export function isActuallyInTelegram(): boolean {
+  if (miniAppRegistrationStarted) {
+    return true;
+  }
   const app = getWebApp();
   if (!app) return false;
   try {
     const platform = app.platform;
+    const platformReal =
+      platform != null &&
+      typeof platform === "string" &&
+      platform.trim() !== "" &&
+      platform !== "unknown";
+
     const unsafe = app.initDataUnsafe;
     const user = unsafe?.user;
     const hasValidUser =
@@ -134,11 +157,17 @@ export function isActuallyInTelegram(): boolean {
       typeof user === "object" &&
       "id" in user &&
       (user as { id?: unknown }).id != null;
-    const ok =
-      platform != null &&
-      platform !== "unknown" &&
-      hasValidUser;
-    return !!ok;
+
+    if (platformReal && hasValidUser) {
+      return true;
+    }
+
+    const initDataStr = getInitDataString();
+    if (typeof initDataStr === "string" && initDataStr.trim().length > 0) {
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

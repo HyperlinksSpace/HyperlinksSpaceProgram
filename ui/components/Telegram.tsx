@@ -12,6 +12,7 @@ import {
   isActuallyInTelegram,
   isAvailable,
   isTelegramWebAppPlatformReal,
+  markMiniAppRegistrationStarted,
   readyAndExpand,
   resetTelegramLaunchCache,
   triggerHaptic as triggerHapticImpl,
@@ -520,6 +521,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function registerWithBackend(initData: string) {
       if (hasRegisteredRef.current) return;
       hasRegisteredRef.current = true;
+      markMiniAppRegistrationStarted();
       setInitData(initData);
 
       const url = buildApiUrl("/api/telegram");
