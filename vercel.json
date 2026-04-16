@@ -24,6 +24,10 @@
     {
       "source": "/api/kms-roundtrip",
       "destination": "/api/wallet-envelope-roundtrip"
+    },
+    {
+      "source": "/((?!api/|_expo/|assets/|.*\\..*).*)",
+      "destination": "/index.html"
     }
   ],
   "functions": {
