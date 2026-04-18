@@ -74,12 +74,6 @@ function run(command, args, opts = {}) {
     // Never publish from this script: CI has no GH_TOKEN unless set, and releases are created via gh workflow + cleanup (latest.yml).
     console.log(`\nBuild: ${layout.buildName}  stamp: ${layout.buildStamp}`);
     console.log(`Output: ${relForConfig(layout.ebOutputDir)}`);
-    console.log("Running: windows/generate-installer-bmps.cjs\n");
-    await run("node", [path.join(__dirname, "generate-installer-bmps.cjs")], {
-      pipeOutput: true,
-      env: ebEnv,
-      shell: false,
-    });
     console.log("Running: electron-builder --win --publish never\n");
     await run(process.execPath, [ebCli, "--win", "--publish", "never", outArg], {
       pipeOutput: true,

@@ -1,4 +1,4 @@
-const { spawn, spawnSync } = require("child_process");
+const { spawn } = require("child_process");
 const path = require("path");
 
 function pad2(n) {
@@ -30,15 +30,6 @@ function run() {
     ...process.env,
     BUILD_STAMP,
   };
-
-  const gen = spawnSync(process.execPath, [path.join(appDir, "windows", "generate-installer-bmps.cjs")], {
-    cwd: appDir,
-    env,
-    stdio: "inherit",
-  });
-  if (gen.status !== 0) {
-    process.exit(gen.status === null ? 1 : gen.status);
-  }
 
   const args = [cliPath, "make", "--platform", "win32"];
   if (isVerbose) args.push("--verbose");

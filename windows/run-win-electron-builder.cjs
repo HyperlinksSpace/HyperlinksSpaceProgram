@@ -4,17 +4,6 @@
  */
 const { spawnSync } = require("child_process");
 const path = require("path");
-
-function generateInstallerBmps(appDir) {
-  const gen = spawnSync(process.execPath, [path.join(__dirname, "generate-installer-bmps.cjs")], {
-    cwd: appDir,
-    env: process.env,
-    stdio: "inherit",
-  });
-  if (gen.status !== 0) {
-    process.exit(gen.status === null ? 1 : gen.status);
-  }
-}
 const { RELEASE_BUILD_DEV_DIRNAME, resolveBuildLayout, ensureCleanEbOutput } = require("./build-layout.cjs");
 
 const appDir = path.join(__dirname, "..");
@@ -38,8 +27,6 @@ const env = {
 console.log(`[win-eb] build=${layout.buildName} stamp=${layout.buildStamp}`);
 console.log(`[win-eb] staging → ${relForConfig(layout.ebOutputDir)} (removed after cleanup)`);
 console.log(`[win-eb] final → releases/builder/${layout.buildName}/<installer>.exe + ${RELEASE_BUILD_DEV_DIRNAME}/`);
-
-generateInstallerBmps(appDir);
 
 const r = spawnSync(process.execPath, [ebCli, "--win", "--publish", "never", outArg], {
   cwd: appDir,

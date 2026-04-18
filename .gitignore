@@ -8,10 +8,6 @@ node_modules/
 dist/
 web-build/
 releases/
-
-# NSIS installer BMPs generated from assets/images/installer*.svg (windows/generate-installer-bmps.cjs)
-windows/installerHeader.bmp
-windows/installerSidebar.bmp
 expo-env.d.ts
 
 # Native
