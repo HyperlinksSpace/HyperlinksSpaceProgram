@@ -91,6 +91,7 @@ export function GlobalBottomBar() {
   const launchPrimary =
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
   const inputColor = themeBgReady ? colors.primary : launchPrimary ?? colors.primary;
+  const topBorderColor = colors.highlight;
 
   if (Platform.OS === "web") {
     return (
@@ -98,6 +99,7 @@ export function GlobalBottomBar() {
         backgroundColor={backgroundColor}
         inputColor={inputColor}
         scrollbarColor={colors.secondary}
+        topBorderColor={topBorderColor}
       />
     );
   }
@@ -107,6 +109,7 @@ export function GlobalBottomBar() {
       backgroundColor={backgroundColor}
       inputColor={inputColor}
       scrollbarColor={colors.secondary}
+      topBorderColor={topBorderColor}
     />
   );
 }
@@ -171,10 +174,12 @@ function WebBottomBar({
   backgroundColor,
   inputColor,
   scrollbarColor,
+  topBorderColor,
 }: {
   backgroundColor: string;
   inputColor: string;
   scrollbarColor: string;
+  topBorderColor: string;
 }) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -314,7 +319,12 @@ function WebBottomBar({
   }, [value]);
 
   return (
-    <View style={[styles.wrapper, { backgroundColor }]}>
+    <View
+      style={[
+        styles.wrapper,
+        { backgroundColor, borderTopWidth: 1, borderTopColor: topBorderColor },
+      ]}
+    >
       <View style={[styles.container, { backgroundColor }]}>
         <View style={[styles.row, { height: metrics.barHeight }]}>
           <View style={styles.inputWrap}>
@@ -370,10 +380,12 @@ function NativeBottomBar({
   backgroundColor,
   inputColor,
   scrollbarColor,
+  topBorderColor,
 }: {
   backgroundColor: string;
   inputColor: string;
   scrollbarColor: string;
+  topBorderColor: string;
 }) {
   const router = useRouter();
   const { triggerHaptic } = useTelegram();
@@ -459,7 +471,17 @@ function NativeBottomBar({
   );
 
   return (
-    <View style={[styles.wrapper, { height: metrics.barHeight, backgroundColor }]}>
+    <View
+      style={[
+        styles.wrapper,
+        {
+          height: metrics.barHeight,
+          backgroundColor,
+          borderTopWidth: 1,
+          borderTopColor: topBorderColor,
+        },
+      ]}
+    >
       <View style={[styles.container, { height: metrics.barHeight, backgroundColor }]}>
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
