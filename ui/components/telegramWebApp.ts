@@ -397,3 +397,14 @@ export function getStartParam(): string | null {
   return s.length > 0 && START_PARAM_REGEX.test(s) ? s : null;
 }
 
+/**
+ * Mobile browser / WebView (e.g. Telegram Mini App on phone). False on SSR / non-browser.
+ * Used to align header UX with the home page on mobile TMA.
+ */
+export function isMobileWebUserAgent(): boolean {
+  if (typeof navigator === "undefined" || !navigator.userAgent) return false;
+  return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent,
+  );
+}
+

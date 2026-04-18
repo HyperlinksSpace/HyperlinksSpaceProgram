@@ -3,13 +3,16 @@
  * All Telegram data from useTelegram() (single source: Telegram.ts / Telegram.tsx).
  */
 import React, { useMemo } from "react";
-import { View, Pressable, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { View, Pressable, StyleSheet, Platform } from "react-native";
+import { useRouter, usePathname } from "expo-router";
 import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
+import { isMobileWebUserAgent } from "./telegramWebApp";
 import { useColors } from "../theme";
 
 const LOGO_HEIGHT = 32;
+const WELCOME_LOGO_HEIGHT = 40;
+const WELCOME_VERTICAL_INDENT = 15;
 const BOTTOM_PADDING = 10;
 const HORIZONTAL_PADDING = 15;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
@@ -27,8 +30,11 @@ function useLogoTopPadding(
   }, [safeAreaInsetTop, contentSafeAreaInsetTop]);
 }
 
+const WELCOME_BORDER = { borderBottomWidth: 1 as const, borderBottomColor: "#818181" as const };
+
 export function GlobalLogoBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const colors = useColors();
   const {
     isInTelegram,
@@ -42,12 +48,23 @@ export function GlobalLogoBar() {
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
   const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
-  const blockHeight = topPadding + LOGO_HEIGHT + BOTTOM_PADDING;
+  const isWelcome = pathname === "/welcome";
+  const logoBlockHeight = isWelcome ? WELCOME_LOGO_HEIGHT : LOGO_HEIGHT;
+  const innerPaddingTop = isWelcome ? WELCOME_VERTICAL_INDENT : topPadding;
+  const innerPaddingBottom = isWelcome ? WELCOME_VERTICAL_INDENT : BOTTOM_PADDING;
+  const blockHeight = innerPaddingTop + logoBlockHeight + innerPaddingBottom;
+
+  const isMobileTmaWeb = useMemo(
+    () => Platform.OS === "web" && isMobileWebUserAgent(),
+    [],
+  );
 
   const shouldShow = useMemo(() => {
     if (!isInTelegram) return true;
-    return isFullscreen;
-  }, [isInTelegram, isFullscreen]);
+    if (isFullscreen) return true;
+    if (isMobileTmaWeb) return true;
+    return false;
+  }, [isInTelegram, isFullscreen, isMobileTmaWeb]);
 
   const onPress = () => {
     triggerHaptic("light");
@@ -58,14 +75,16 @@ export function GlobalLogoBar() {
     return <View style={[styles.container, { height: 0, backgroundColor }]} />;
   }
 
+  const welcomeBottomBorder = isWelcome ? WELCOME_BORDER : null;
+
   return (
-    <View style={[styles.container, { height: blockHeight, backgroundColor }]}>
+    <View style={[styles.container, { height: blockHeight, backgroundColor }, welcomeBottomBorder]}>
       <View
         style={[
           styles.inner,
           {
-            paddingTop: topPadding,
-            paddingBottom: BOTTOM_PADDING,
+            paddingTop: innerPaddingTop,
+            paddingBottom: innerPaddingBottom,
             paddingHorizontal: HORIZONTAL_PADDING,
           },
         ]}
@@ -76,8 +95,8 @@ export function GlobalLogoBar() {
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <View style={styles.logoBox}>
-            <HyperlinksSpaceLogo width={LOGO_HEIGHT} height={LOGO_HEIGHT} />
+          <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
+            <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
           </View>
         </Pressable>
       </View>
