@@ -463,24 +463,52 @@ export default function HomeScreen() {
     <View
       style={{
         flex: 1,
+        width: "100%",
+        alignSelf: "stretch",
         justifyContent: "center",
         alignItems: "center",
         padding: 16,
         backgroundColor: colors.background,
       }}
     >
-      <Text style={{ fontWeight: "600", marginBottom: 8, color: colors.primary }}>
+      <Text
+        style={{
+          fontWeight: "600",
+          marginBottom: 8,
+          color: colors.primary,
+          fontSize: 18,
+          lineHeight: 24,
+          textAlign: "center",
+        }}
+      >
         HyperlinksSpace Wallet
       </Text>
       {telegramUsername ? (
-        <Text style={{ textAlign: "center", marginBottom: 8, color: colors.primary }}>
-          You are logged in via Telegram as @{telegramUsername}.
-        </Text>
+        <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
+          <Text
+            style={{
+              textAlign: "center",
+              color: colors.primary,
+              fontSize: 16,
+              lineHeight: 24,
+            }}
+          >
+            You are logged in via Telegram as @{telegramUsername}.
+          </Text>
+        </View>
       ) : null}
       {effectiveWalletAddress ? (
-        <View style={{ alignItems: "center" }}>
-          <Text style={{ textAlign: "center", color: colors.primary }}>Wallet:</Text>
-          <Text style={{ textAlign: "center", marginTop: 4, color: colors.primary }}>
+        <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch" }}>
+          <Text style={{ textAlign: "center", color: colors.primary, lineHeight: 22 }}>Wallet:</Text>
+          <Text
+            style={{
+              textAlign: "center",
+              marginTop: 4,
+              color: colors.primary,
+              fontSize: 15,
+              lineHeight: 22,
+            }}
+          >
             {effectiveWalletAddress}
           </Text>
         </View>

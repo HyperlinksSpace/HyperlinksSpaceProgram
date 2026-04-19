@@ -34,10 +34,10 @@ type LogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
 function resolveLogoBarVariant(
   pathname: string,
   isInTelegram: boolean,
-  isFullscreen: boolean,
+  mergedImmersiveFullscreen: boolean,
 ): LogoBarVariant {
   if (pathname !== "/welcome") return "default";
-  const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, isFullscreen);
+  const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
   // Immersive TMA welcome (minimalistic centered logo) wins over the web marketing row.
   if (isInTelegram && immersiveWelcome) {
     return "welcomeImmersiveTma";
@@ -121,14 +121,15 @@ export function GlobalLogoBar() {
     triggerHaptic,
     safeAreaInsetTop,
     contentSafeAreaInsetTop,
-    isFullscreen,
+    layoutStartup,
     isExpanded,
     themeBgReady,
   } = useTelegram();
+  const mergedImmersiveFullscreen = layoutStartup.mergedImmersiveFullscreen;
 
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
-  const variant = resolveLogoBarVariant(pathname, isInTelegram, isFullscreen);
+  const variant = resolveLogoBarVariant(pathname, isInTelegram, mergedImmersiveFullscreen);
   const isWelcome = pathname === "/welcome";
 
   useEffect(() => {
@@ -136,11 +137,14 @@ export function GlobalLogoBar() {
     console.log("[GlobalLogoBar] /welcome header variant", {
       variant,
       isInTelegram,
-      isFullscreenContext: isFullscreen,
-      showDefaultLogoOnWelcomeTma: showGlobalLogoBarOnWelcomeTma(isInTelegram, isFullscreen),
+      isFullscreenContext: mergedImmersiveFullscreen,
+      showDefaultLogoOnWelcomeTma: showGlobalLogoBarOnWelcomeTma(
+        isInTelegram,
+        mergedImmersiveFullscreen,
+      ),
       initAndWebApp: getTmaInitAndWebAppDebugSnapshot(),
     });
-  }, [pathname, variant, isInTelegram, isFullscreen]);
+  }, [pathname, variant, isInTelegram, mergedImmersiveFullscreen]);
 
   const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
   const useWelcomeCenteredLogoLayout = variant === "welcomeImmersiveTma";
@@ -155,10 +159,10 @@ export function GlobalLogoBar() {
     }
     if (!isInTelegram) return true;
     if (pathname === "/welcome") {
-      return showGlobalLogoBarOnWelcomeTma(isInTelegram, isFullscreen);
+      return showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
     }
     return isExpanded;
-  }, [isInTelegram, pathname, isFullscreen, isExpanded, isWelcome]);
+  }, [isInTelegram, pathname, mergedImmersiveFullscreen, isExpanded, isWelcome]);
 
   const onPressLogoHome = () => {
     triggerHaptic("light");

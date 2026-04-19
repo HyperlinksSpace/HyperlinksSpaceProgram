@@ -125,19 +125,27 @@ function RootContent() {
   useWebViewportAllowsPageZoom();
   const pathname = useResolvedPathname();
   const colors = useColors();
-  const { themeBgReady, useTelegramTheme, isInTelegram, isFullscreen, isExpanded } = useTelegram();
+  const { themeBgReady, useTelegramTheme, isInTelegram, isExpanded, layoutStartup } = useTelegram();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   // Stronger than opacity:0 — avoids one frame of dark RN-web compositing before themeBgReady.
   const hideWebUntilTheme =
     Platform.OS === "web" && useTelegramTheme && !themeBgReady;
 
-  const showGlobalLogoBar =
-    pathname == null || pathname === ""
-      ? true
-      : pathname !== "/welcome"
-        ? !isInTelegram || isExpanded
-        : Platform.OS === "web" ||
-          showGlobalLogoBarOnWelcomeTma(isInTelegram, isFullscreen);
+  const showGlobalLogoBar = useMemo(() => {
+    if (pathname == null || pathname === "") {
+      return true;
+    }
+    if (pathname === "/welcome") {
+      return (
+        Platform.OS === "web" ||
+        showGlobalLogoBarOnWelcomeTma(isInTelegram, layoutStartup.mergedImmersiveFullscreen)
+      );
+    }
+    if (isInTelegram && layoutStartup.isTelegramMiniAppDesktop) {
+      return false;
+    }
+    return !isInTelegram || isExpanded;
+  }, [pathname, isInTelegram, layoutStartup, isExpanded]);
 
   return (
     <View
@@ -284,6 +292,7 @@ function MainWebScrollColumn({
       <ScrollView
         ref={scrollRef}
         style={styles.mainScroll}
+        contentContainerStyle={styles.mainScrollContent}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onLayout={onLayout}
@@ -338,6 +347,10 @@ const styles = StyleSheet.create({
   },
   mainScroll: {
     flex: 1,
+  },
+  /** Lets `flex: 1` screens fill at least the column height so centered content is not clipped (RN-web). */
+  mainScrollContent: {
+    flexGrow: 1,
   },
   scrollIndicatorWrap: {
     position: "absolute",

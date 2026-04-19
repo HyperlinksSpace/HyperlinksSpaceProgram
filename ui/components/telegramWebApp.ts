@@ -1,3 +1,5 @@
+import { viewport } from "@tma.js/sdk-react";
+
 /**
  * Client-only Telegram WebApp helpers (single source of truth for TMA data).
  * Aligned with Telegram Launch Parameters, Init Data, and Start Parameter docs:
@@ -390,6 +392,29 @@ export function parseViewportChangedFullscreenFlag(payload: unknown): boolean | 
 }
 
 /**
+ * tma.js `viewport.isFullscreen` may be a signal/computed — unwrap for merges with WebApp.
+ * Used only from {@link computeTelegramLayoutStartupSnapshot} and Telegram.tsx viewport sync.
+ */
+export function readTmaSdkViewportIsFullscreen(): boolean | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = viewport.isFullscreen as unknown;
+    if (typeof raw === "boolean") return raw;
+    if (raw && typeof raw === "object" && "value" in raw) {
+      const v = (raw as { value: unknown }).value;
+      if (typeof v === "boolean") return v;
+    }
+    if (typeof raw === "function") {
+      const v = (raw as () => unknown)();
+      if (typeof v === "boolean") return v;
+    }
+  } catch {
+    // ignore (SDK not mounted / outside Mini App)
+  }
+  return undefined;
+}
+
+/**
  * Immersive fullscreen if Telegram.WebApp **or** the TMA SDK viewport **or** bridge
  * `viewport_changed` **or** launch hash `tgWebAppFullscreen` says so.
  * Important: do not use `viewport.isFullscreen ?? getIsFullscreen()` — when the SDK reports
@@ -531,6 +556,111 @@ export function isMobileWebUserAgent(): boolean {
   return /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
     navigator.userAgent,
   );
+}
+
+/** Layout / chrome: everything read in {@link computeTelegramLayoutStartupSnapshot}. */
+export type TelegramLayoutStartupSnapshot = {
+  readonly webAppPresent: boolean;
+  readonly platformFromWebApp: string | null;
+  readonly platformFromHash: string | null;
+  /** Prefer live `WebApp.platform`, then `tgWebAppPlatform` from hash (before script loads). */
+  readonly platformEffective: string | null;
+  readonly webAppVersionFromHash: string | null;
+  readonly isMobileWebUserAgent: boolean;
+  /** Desktop-class TMA (Telegram Desktop, macOS, Unigram, or web on desktop UA). */
+  readonly isTelegramMiniAppDesktop: boolean;
+  readonly webAppIsExpanded: boolean;
+  readonly webAppIsFullscreen: boolean;
+  readonly launchHashFullscreenPositive: boolean;
+  /** Same merge as theme/viewport code: WebApp + SDK viewport + launch hash. */
+  readonly mergedImmersiveFullscreen: boolean;
+  readonly startParam: string | null;
+  /** Hash query contains any `tgWebApp*` launch key. */
+  readonly hasTgWebAppInHash: boolean;
+};
+
+export function getEmptyTelegramLayoutStartupSnapshot(): TelegramLayoutStartupSnapshot {
+  return {
+    webAppPresent: false,
+    platformFromWebApp: null,
+    platformFromHash: null,
+    platformEffective: null,
+    webAppVersionFromHash: null,
+    isMobileWebUserAgent: false,
+    isTelegramMiniAppDesktop: false,
+    webAppIsExpanded: true,
+    webAppIsFullscreen: false,
+    launchHashFullscreenPositive: false,
+    mergedImmersiveFullscreen: false,
+    startParam: null,
+    hasTgWebAppInHash: false,
+  };
+}
+
+function computePlatformEffective(web: string | null, hash: string | null): string | null {
+  const w = web?.trim();
+  if (w) return w;
+  const h = hash?.trim();
+  return h || null;
+}
+
+function computeIsTelegramMiniAppDesktop(platformEffective: string | null, mobileUa: boolean): boolean {
+  const pe = platformEffective?.trim();
+  if (!pe) {
+    return !mobileUa;
+  }
+  const p = pe.toLowerCase();
+  if (p === "ios" || p === "android") return false;
+  if (p === "tdesktop" || p === "macos" || p === "unigram") return true;
+  return !mobileUa;
+}
+
+/**
+ * **Single entry point** for startup signals that affect layout (platform, UA, expanded/fullscreen merges,
+ * start_param, hash presence). Read hash + WebApp + SDK viewport together; drive UI from React context.
+ */
+export function computeTelegramLayoutStartupSnapshot(): TelegramLayoutStartupSnapshot {
+  if (typeof window === "undefined") {
+    return getEmptyTelegramLayoutStartupSnapshot();
+  }
+
+  const app = getWebApp();
+  const webAppPresent = app != null;
+  const platformFromWebApp = typeof app?.platform === "string" ? app.platform : null;
+  const params = getLaunchParamsFromHash();
+  const platformFromHash = params?.get("tgWebAppPlatform") ?? null;
+  const webAppVersionFromHash = params?.get("tgWebAppVersion") ?? null;
+  const hasTgWebAppInHash = params
+    ? Array.from(params.keys()).some((k) => k.startsWith("tgWebApp"))
+    : false;
+
+  const mobileUa = isMobileWebUserAgent();
+  const platformEffective = computePlatformEffective(platformFromWebApp, platformFromHash);
+  const isDesktop = computeIsTelegramMiniAppDesktop(platformEffective, mobileUa);
+
+  const sdkFs = readTmaSdkViewportIsFullscreen();
+  const mergedImmersive = getIsImmersiveFullscreenMerged(sdkFs, undefined);
+
+  return {
+    webAppPresent,
+    platformFromWebApp,
+    platformFromHash,
+    platformEffective,
+    webAppVersionFromHash,
+    isMobileWebUserAgent: mobileUa,
+    isTelegramMiniAppDesktop: isDesktop,
+    webAppIsExpanded: getIsExpanded(),
+    webAppIsFullscreen: getIsFullscreen(),
+    launchHashFullscreenPositive: getLaunchHashFullscreenPositive(),
+    mergedImmersiveFullscreen: mergedImmersive,
+    startParam: getStartParam(),
+    hasTgWebAppInHash,
+  };
+}
+
+/** Prefer `useTelegram().layoutStartup.isTelegramMiniAppDesktop`. Uses {@link computeTelegramLayoutStartupSnapshot}. */
+export function isTelegramMiniAppDesktopContext(): boolean {
+  return computeTelegramLayoutStartupSnapshot().isTelegramMiniAppDesktop;
 }
 
 /**

@@ -1,5 +1,7 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
+import { useAuth } from "../../auth/AuthContext";
 import { useColors } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
@@ -44,9 +46,22 @@ const ROWS: { id: keyof typeof ICONS; label: string }[] = [
  * Light theme → black icons on `undercover`; dark → white icons.
  */
 export function WelcomeAuthButtons() {
+  const router = useRouter();
+  const { signIn } = useAuth();
   const colors = useColors();
-  const { colorScheme } = useTelegram();
+  const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
   const useBlackIcons = colorScheme === "light";
+
+  const onProviderPress = (id: (typeof ROWS)[number]["id"]) => {
+    if (id === "telegram") {
+      if (!isInTelegram) return;
+      triggerHaptic("light");
+      signIn();
+      router.replace("/home");
+      return;
+    }
+    /* wired when auth flows land */
+  };
 
   return (
     <View style={styles.column}>
@@ -57,9 +72,7 @@ export function WelcomeAuthButtons() {
             key={row.id}
             accessibilityRole="button"
             accessibilityLabel={row.label}
-            onPress={() => {
-              /* wired when auth flows land */
-            }}
+            onPress={() => onProviderPress(row.id)}
             style={({ pressed }) => [
               styles.button,
               {
