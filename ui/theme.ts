@@ -13,7 +13,7 @@ export const dark = {
   background: "#000000",
   primary: "#FFFFFF",
   highlight: "#515151",
-  undercover: "#111111",
+  undercover: "#272727",
 } as const;
 
 export const light = {
@@ -21,7 +21,7 @@ export const light = {
   background: "#FFFFFF",
   primary: "#000000",
   highlight: "#AAAAAA",
-  undercover: "#F1F1F1",
+  undercover: "#CECECE",
 } as const;
 
 export type ThemeName = "dark" | "light";

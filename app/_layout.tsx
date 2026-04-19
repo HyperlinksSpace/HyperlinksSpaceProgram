@@ -164,7 +164,7 @@ function RootContent() {
     >
       {showGlobalLogoBar ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <MainWebScrollColumn indicatorColor={colors.secondary}>
+        <MainWebScrollColumn indicatorColor={colors.highlight}>
           <Stack screenOptions={{ headerShown: false }} />
         </MainWebScrollColumn>
       ) : (
@@ -182,7 +182,7 @@ function RootContent() {
 
 /**
  * Web: `global.css` keeps vertical overflow in the app column; root allows horizontal overflow when zoomed.
- * Custom indicator: 1px vertical line, theme secondary color, 3px inset from the right of this column.
+ * Custom indicator: 1px vertical line, theme highlight color, 3px inset from the right of this column.
  * Hidden until content height is known and exceeds the viewport (web: DOM sync on load + ResizeObserver).
  */
 function MainWebScrollColumn({

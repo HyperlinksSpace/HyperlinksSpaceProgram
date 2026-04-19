@@ -35,10 +35,17 @@ function resolveLogoBarVariant(
   pathname: string,
   isInTelegram: boolean,
   mergedImmersiveFullscreen: boolean,
+  isTelegramMiniAppDesktop: boolean,
 ): LogoBarVariant {
   if (pathname !== "/welcome") return "default";
+
+  // Mobile TMA: never the marketing row (wordmark + About); logo-only — default or immersive.
+  if (isInTelegram && !isTelegramMiniAppDesktop) {
+    const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
+    return immersiveWelcome ? "welcomeImmersiveTma" : "default";
+  }
+
   const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
-  // Immersive TMA welcome (minimalistic centered logo) wins over the web marketing row.
   if (isInTelegram && immersiveWelcome) {
     return "welcomeImmersiveTma";
   }
@@ -126,10 +133,16 @@ export function GlobalLogoBar() {
     themeBgReady,
   } = useTelegram();
   const mergedImmersiveFullscreen = layoutStartup.mergedImmersiveFullscreen;
+  const isTelegramMiniAppDesktop = layoutStartup.isTelegramMiniAppDesktop;
 
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
-  const variant = resolveLogoBarVariant(pathname, isInTelegram, mergedImmersiveFullscreen);
+  const variant = resolveLogoBarVariant(
+    pathname,
+    isInTelegram,
+    mergedImmersiveFullscreen,
+    isTelegramMiniAppDesktop,
+  );
   const isWelcome = pathname === "/welcome";
 
   useEffect(() => {
@@ -159,10 +172,20 @@ export function GlobalLogoBar() {
     }
     if (!isInTelegram) return true;
     if (pathname === "/welcome") {
+      if (!isTelegramMiniAppDesktop) {
+        return true;
+      }
       return showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
     }
     return isExpanded;
-  }, [isInTelegram, pathname, mergedImmersiveFullscreen, isExpanded, isWelcome]);
+  }, [
+    isInTelegram,
+    pathname,
+    mergedImmersiveFullscreen,
+    isExpanded,
+    isWelcome,
+    isTelegramMiniAppDesktop,
+  ]);
 
   const onPressLogoHome = () => {
     triggerHaptic("light");

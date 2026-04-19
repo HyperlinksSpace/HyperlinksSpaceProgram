@@ -3,15 +3,16 @@ import { useColors } from "../../ui/theme";
 import { WelcomeAuthButtons } from "../../ui/components/WelcomeAuthButtons";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
-const HEADING_TO_SUBTITLE_GAP = 20;
 const H_PADDING = 20;
 /** Max width for welcome heading + subtitle copy. */
 const MAX_TEXT_WIDTH = 360;
 const WIDE_LAYOUT_MIN_WIDTH = 480;
 const GAP_ABOVE_AUTH_BUTTONS = 20;
 
-/** Wide headline metrics — keep in StyleSheet so RN-web emits stable classes (not 80px line-height). */
+/** Wide headline metrics — keep in StyleSheet so RN-web emits stable classes. */
 const HEADING_FONT_WIDE = 35;
+/** Thin screens: heading line height; wide screens use {@link HEADING_LINE_WIDE}. */
+const HEADING_LINE_NARROW = 30;
 const HEADING_LINE_WIDE = 40;
 
 /**
@@ -42,7 +43,7 @@ export default function WelcomeScreen() {
             Welcome to our program
           </Text>
         </View>
-        <View style={[styles.subtitleBlock, { marginTop: HEADING_TO_SUBTITLE_GAP }]}>
+        <View style={styles.subtitleBlock}>
           <Text
             style={[
               styles.subtitleText,
@@ -96,7 +97,7 @@ const styles = StyleSheet.create({
   },
   headingTextNarrow: {
     fontSize: 25,
-    lineHeight: Math.round(25 * 1.3),
+    lineHeight: HEADING_LINE_NARROW,
   },
   authBlock: {
     width: "100%",
