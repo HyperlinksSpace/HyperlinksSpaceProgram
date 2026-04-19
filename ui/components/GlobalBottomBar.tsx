@@ -138,6 +138,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: FONT_SIZE,
+    fontWeight: "400",
     lineHeight: LINE_HEIGHT,
     paddingVertical: INNER_PADDING,
     paddingHorizontal: 0,
@@ -355,6 +356,7 @@ function WebBottomBar({
                 caretColor: inputColor,
                 ["--ai-placeholder-color" as string]: inputColor,
                 fontFamily: WEB_UI_SANS_STACK,
+                fontWeight: 400,
                 overflow:
                   metrics.contentHeightWithGaps > metrics.viewportHeight ? "auto" : "hidden",
               }}

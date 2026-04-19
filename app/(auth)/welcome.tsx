@@ -1,5 +1,6 @@
 import { View, Text, useWindowDimensions, StyleSheet } from "react-native";
 import { useColors } from "../../ui/theme";
+import { WelcomeAuthButtons } from "../../ui/components/WelcomeAuthButtons";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
 const HEADING_TO_SUBTITLE_GAP = 20;
@@ -7,6 +8,7 @@ const H_PADDING = 20;
 /** Max width for welcome heading + subtitle copy. */
 const MAX_TEXT_WIDTH = 360;
 const WIDE_LAYOUT_MIN_WIDTH = 480;
+const GAP_ABOVE_AUTH_BUTTONS = 20;
 
 /** Wide headline metrics — keep in StyleSheet so RN-web emits stable classes (not 80px line-height). */
 const HEADING_FONT_WIDE = 35;
@@ -50,6 +52,9 @@ export default function WelcomeScreen() {
             This is the best way to earn and spend
           </Text>
         </View>
+        <View style={styles.authBlock}>
+          <WelcomeAuthButtons />
+        </View>
       </View>
     </View>
   );
@@ -92,5 +97,11 @@ const styles = StyleSheet.create({
   headingTextNarrow: {
     fontSize: 25,
     lineHeight: Math.round(25 * 1.3),
+  },
+  authBlock: {
+    width: "100%",
+    maxWidth: MAX_TEXT_WIDTH,
+    marginTop: GAP_ABOVE_AUTH_BUTTONS,
+    alignItems: "center",
   },
 });

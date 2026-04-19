@@ -1,3 +1,5 @@
+horizontal scroll
+Login buttons functionality on Welcome screen.
 Login screen
 Updates on launch test
 Change picture in Windows installer

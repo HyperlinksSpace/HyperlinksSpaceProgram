@@ -27,7 +27,7 @@ const BOTTOM_PADDING = 10;
 const HORIZONTAL_PADDING = 15;
 const MARKETING_HORIZONTAL_PADDING = 16;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
-const ABOUT_URL = "https://www.hyperlinks.space";
+const ABOUT_URL = "https://landing.app.hyperlinks.space/";
 
 type LogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
 
@@ -103,7 +103,7 @@ function WelcomeMarketingBarContent({
           style={styles.aboutHit}
           accessibilityRole="link"
           accessibilityLabel="About"
-          accessibilityHint="Opens hyperlinks.space in the browser"
+          accessibilityHint="Opens the Hyperlinks Space Program landing page in the browser"
         >
           <Text style={[styles.aboutText, { color: colors.primary }]}>About</Text>
         </Pressable>

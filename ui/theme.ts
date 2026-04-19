@@ -13,6 +13,7 @@ export const dark = {
   background: "#000000",
   primary: "#FFFFFF",
   highlight: "#515151",
+  undercover: "#111111",
 } as const;
 
 export const light = {
@@ -20,6 +21,7 @@ export const light = {
   background: "#FFFFFF",
   primary: "#000000",
   highlight: "#AAAAAA",
+  undercover: "#F1F1F1",
 } as const;
 
 export type ThemeName = "dark" | "light";
@@ -28,6 +30,8 @@ export type ThemeColors = {
   primary: string;
   secondary: string;
   highlight: string;
+  /** Filled surfaces / buttons (theme `undercover` in Dart palette). */
+  undercover: string;
 };
 
 export function getColorsForTheme(name: ThemeName | undefined | null): ThemeColors {
@@ -74,7 +78,7 @@ export function useColors(): ThemeColors {
         // eslint-disable-next-line no-console
         console.log("[useColors] telegram pre-ready palette", preReady);
       }
-      return { ...preReady, highlight: dark.highlight };
+      return { ...dark, ...preReady, highlight: dark.highlight };
     }
     return TELEGRAM_PRE_READY_FALLBACK;
   }

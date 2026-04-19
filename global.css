@@ -1,17 +1,21 @@
 /* Global web-only overrides */
 
-/* Lock the app column to the viewport so the whole block is not scrollable (avoids logo bar jump in TMA when keyboard opens). */
+/*
+ * Document may scroll when the user zooms the page (browser pinch / Ctrl+wheel) so content can be panned
+ * in both axes. Inner app column still uses its own ScrollView for vertical flow.
+ */
 html {
   height: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
+  overflow: auto;
+  /* Let zoomed page scroll vertically; inner RN ScrollView still handles main column. */
+  overscroll-behavior: auto;
   background-color: var(--tg-theme-bg-color, transparent);
 }
 body {
   height: var(--tg-viewport-height, 100%);
   min-height: var(--tg-viewport-height, 100%);
-  overflow: hidden;
-  overscroll-behavior: none;
+  overflow: auto;
+  overscroll-behavior: auto;
   /* TMA: Telegram sets --tg-theme-bg-color early; fills gap before React shows the app (no dark flash). */
   background-color: var(--tg-theme-bg-color, transparent);
 }
@@ -21,7 +25,9 @@ body {
 [data-expo-root] {
   height: var(--tg-viewport-height, 100%);
   min-height: var(--tg-viewport-height, 100%);
-  overflow: hidden;
+  /* `overflow: hidden` on y blocked inner ScrollView + browser pan when zoomed; auto allows both axes when needed. */
+  overflow: auto;
+  min-width: 100%;
   background-color: var(--tg-theme-bg-color, transparent);
 }
 
