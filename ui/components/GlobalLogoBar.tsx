@@ -133,6 +133,8 @@ export function GlobalLogoBar() {
     themeBgReady,
   } = useTelegram();
   const mergedImmersiveFullscreen = layoutStartup.mergedImmersiveFullscreen;
+  const stableWelcomeImmersiveFullscreen =
+    layoutStartup.mergedImmersiveFullscreen || layoutStartup.launchHashFullscreenPositive;
   const isTelegramMiniAppDesktop = layoutStartup.isTelegramMiniAppDesktop;
 
   const backgroundColor = themeBgReady ? colors.background : "transparent";
@@ -140,7 +142,7 @@ export function GlobalLogoBar() {
   const variant = resolveLogoBarVariant(
     pathname,
     isInTelegram,
-    mergedImmersiveFullscreen,
+    stableWelcomeImmersiveFullscreen,
     isTelegramMiniAppDesktop,
   );
   const isWelcome = pathname === "/welcome";
@@ -153,11 +155,11 @@ export function GlobalLogoBar() {
       isFullscreenContext: mergedImmersiveFullscreen,
       showDefaultLogoOnWelcomeTma: showGlobalLogoBarOnWelcomeTma(
         isInTelegram,
-        mergedImmersiveFullscreen,
+        stableWelcomeImmersiveFullscreen,
       ),
       initAndWebApp: getTmaInitAndWebAppDebugSnapshot(),
     });
-  }, [pathname, variant, isInTelegram, mergedImmersiveFullscreen]);
+  }, [pathname, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
 
   const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
   const useWelcomeCenteredLogoLayout = variant === "welcomeImmersiveTma";
@@ -175,13 +177,13 @@ export function GlobalLogoBar() {
       if (!isTelegramMiniAppDesktop) {
         return true;
       }
-      return showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
+      return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
     }
     return isExpanded;
   }, [
     isInTelegram,
     pathname,
-    mergedImmersiveFullscreen,
+    stableWelcomeImmersiveFullscreen,
     isExpanded,
     isWelcome,
     isTelegramMiniAppDesktop,
@@ -207,7 +209,7 @@ export function GlobalLogoBar() {
     );
   }
 
-  const welcomeBottomBorder = useWelcomeCenteredLogoLayout
+  const welcomeBottomBorder = isWelcome
     ? { borderBottomWidth: 1 as const, borderBottomColor: colors.highlight }
     : null;
 

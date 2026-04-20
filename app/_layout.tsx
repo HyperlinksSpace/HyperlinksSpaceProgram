@@ -19,9 +19,9 @@ import { AuthProvider } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
+import { FloatingShield } from "../ui/components/FloatingShield";
 import { useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
-import { showGlobalLogoBarOnWelcomeTma } from "../ui/components/telegramWebApp";
 import {
   useCallback,
   useEffect,
@@ -136,10 +136,9 @@ function RootContent() {
       return true;
     }
     if (pathname === "/welcome") {
-      return (
-        Platform.OS === "web" ||
-        showGlobalLogoBarOnWelcomeTma(isInTelegram, layoutStartup.mergedImmersiveFullscreen)
-      );
+      // Keep header mounted on /welcome and let GlobalLogoBar choose the variant.
+      // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
+      return true;
     }
     if (isInTelegram && layoutStartup.isTelegramMiniAppDesktop) {
       return false;
@@ -176,6 +175,7 @@ function RootContent() {
         // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
         Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? <GlobalBottomBar /> : null
       }
+      <FloatingShield />
     </View>
   );
 }
