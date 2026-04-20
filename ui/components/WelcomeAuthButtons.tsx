@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
@@ -14,6 +14,9 @@ const ICON_SIZE = 16;
 const GAP_BEFORE_EMAIL_BLOCK = 20;
 const EMAIL_LABEL_TO_INPUT_GAP = 10;
 const INPUT_TO_EMAIL_BUTTON_GAP = 20;
+/** Text inset from the left inside the field (per design: 110px). */
+const EMAIL_INPUT_TEXT_INSET_LEFT = 10;
+const EMAIL_INPUT_FONT_SIZE = 15;
 
 const ICONS = {
   google: {
@@ -91,22 +94,25 @@ export function WelcomeAuthButtons() {
       })}
       <View style={[styles.emailBlock, { marginTop: GAP_BEFORE_EMAIL_BLOCK }]}>
         <Text style={[styles.emailTitle, { color: colors.primary }]}>Sign in with email</Text>
-        <TextInput
+        <View
           style={[
-            styles.emailInput,
+            styles.emailInputShell,
             {
               backgroundColor: colors.undercover,
               borderColor: colors.highlight,
-              color: colors.primary,
               marginTop: EMAIL_LABEL_TO_INPUT_GAP,
             },
           ]}
-          placeholder="Your email address"
-          placeholderTextColor={colors.secondary}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        >
+          <TextInput
+            style={[styles.emailInputInner, { color: colors.primary }]}
+            placeholder="Your email address"
+            placeholderTextColor={colors.secondary}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Sign in"
@@ -164,14 +170,47 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     fontWeight: "400",
   },
-  emailInput: {
+  /**
+   * Single undercover strip + one border. TextInput fills it (no nested box / second border).
+   */
+  emailInputShell: {
     width: "100%",
     maxWidth: WELCOME_AUTH_MAX_WIDTH,
     height: BUTTON_HEIGHT,
-    paddingHorizontal: BUTTON_H_PADDING,
     borderWidth: 1,
-    fontSize: 15,
+    overflow: "hidden",
+    ...Platform.select({
+      web: {
+        boxSizing: "border-box",
+        minHeight: BUTTON_HEIGHT,
+        maxHeight: BUTTON_HEIGHT,
+      },
+      default: {},
+    }),
+  },
+  emailInputInner: {
+    flex: 1,
+    alignSelf: "stretch",
+    width: "100%",
+    minHeight: BUTTON_HEIGHT,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    paddingLeft: EMAIL_INPUT_TEXT_INSET_LEFT,
+    paddingRight: BUTTON_H_PADDING,
+    paddingVertical: 0,
+    margin: 0,
+    fontSize: EMAIL_INPUT_FONT_SIZE,
+    lineHeight: EMAIL_INPUT_FONT_SIZE,
     fontWeight: "400",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+    ...Platform.select({
+      web: {
+        outlineWidth: 0,
+        boxSizing: "border-box",
+      },
+      default: {},
+    }),
   },
   emailSignInButton: {
     width: "100%",

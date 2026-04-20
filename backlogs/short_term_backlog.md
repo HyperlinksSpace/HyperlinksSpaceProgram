@@ -1,4 +1,5 @@
-horizontal scroll
+Forms validation
+Linking all accounts
 Login buttons functionality on Welcome screen.
 Login screen
 Updates on launch test

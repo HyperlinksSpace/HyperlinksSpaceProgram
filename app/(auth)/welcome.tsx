@@ -8,12 +8,14 @@ const H_PADDING = 20;
 const MAX_TEXT_WIDTH = 360;
 const WIDE_LAYOUT_MIN_WIDTH = 480;
 const GAP_ABOVE_AUTH_BUTTONS = 20;
+/** Wide layout only: space above the subtitle line under the main heading. */
+const SUBTITLE_TOP_INDENT_WIDE = 10;
 
 /** Wide headline metrics — keep in StyleSheet so RN-web emits stable classes. */
 const HEADING_FONT_WIDE = 35;
 /** Thin screens: heading line height; wide screens use {@link HEADING_LINE_WIDE}. */
-const HEADING_LINE_NARROW = 30;
-const HEADING_LINE_WIDE = 40;
+const HEADING_LINE_NARROW = 40;
+const HEADING_LINE_WIDE = 42;
 
 /**
  * Welcome screen: top header is rendered by GlobalLogoBar (marketing vs default by route + TMA mode).
@@ -43,13 +45,8 @@ export default function WelcomeScreen() {
             Welcome to our program
           </Text>
         </View>
-        <View style={styles.subtitleBlock}>
-          <Text
-            style={[
-              styles.subtitleText,
-              { color: colors.secondary, lineHeight: Math.round(15 * 1.35) },
-            ]}
-          >
+        <View style={[styles.subtitleBlock, isWideLayout && styles.subtitleBlockWide]}>
+          <Text style={[styles.subtitleText, { color: colors.secondary }]}>
             This is the best way to earn and spend
           </Text>
         </View>
@@ -72,8 +69,12 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: MAX_TEXT_WIDTH,
   },
+  subtitleBlockWide: {
+    marginTop: SUBTITLE_TOP_INDENT_WIDE,
+  },
   subtitleText: {
     fontSize: 15,
+    lineHeight: 30,
     fontWeight: "400",
     textAlign: "center",
     includeFontPadding: false,
