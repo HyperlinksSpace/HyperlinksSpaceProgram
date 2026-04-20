@@ -38,10 +38,10 @@ const ICONS = {
 } as const;
 
 const ROWS: { id: keyof typeof ICONS; label: string }[] = [
-  { id: "google", label: "Sign in with Google" },
-  { id: "github", label: "Sign in with GitHub" },
-  { id: "apple", label: "Sign in with Apple" },
-  { id: "telegram", label: "Sign in with Telegram" },
+  { id: "google", label: "Access with Google" },
+  { id: "github", label: "Access with GitHub" },
+  { id: "apple", label: "Access with Apple" },
+  { id: "telegram", label: "Access with Telegram" },
 ];
 
 /**
@@ -93,7 +93,7 @@ export function WelcomeAuthButtons() {
         );
       })}
       <View style={[styles.emailBlock, { marginTop: GAP_BEFORE_EMAIL_BLOCK }]}>
-        <Text style={[styles.emailTitle, { color: colors.primary }]}>Sign in with email</Text>
+        <Text style={[styles.emailTitle, { color: colors.primary }]}>Access with email</Text>
         <View
           style={[
             styles.emailInputShell,
@@ -101,10 +101,17 @@ export function WelcomeAuthButtons() {
               backgroundColor: colors.undercover,
               borderColor: colors.highlight,
               marginTop: EMAIL_LABEL_TO_INPUT_GAP,
+              ...(Platform.OS === "web"
+                ? ({
+                    "--welcome-email-autofill-bg": colors.undercover,
+                    "--welcome-email-autofill-fg": colors.primary,
+                  } as Record<string, string>)
+                : {}),
             },
           ]}
         >
           <TextInput
+            {...(Platform.OS === "web" ? { id: "welcome-email-input" } : {})}
             style={[styles.emailInputInner, { color: colors.primary }]}
             placeholder="Your email address"
             placeholderTextColor={colors.secondary}
@@ -115,7 +122,7 @@ export function WelcomeAuthButtons() {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Sign in"
+          accessibilityLabel="Access"
           onPress={() => {
             /* wired when auth flows land */
           }}
@@ -128,7 +135,7 @@ export function WelcomeAuthButtons() {
             },
           ]}
         >
-          <Text style={[styles.label, { color: colors.primary }]}>Sign in</Text>
+          <Text style={[styles.label, { color: colors.primary }]}>Access</Text>
         </Pressable>
       </View>
       <WelcomeAppPreviews />
