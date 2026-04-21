@@ -110,6 +110,94 @@ async function runSchemaMigrations() {
       ON messages(user_telegram, thread_id, type, telegram_update_id)
       WHERE telegram_update_id IS NOT NULL;
   `;
+
+  // Telegram OIDC/browser login attempts (state/nonce/PKCE replay protection).
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_login_attempts (
+      id                  TEXT PRIMARY KEY,
+      provider            TEXT NOT NULL,
+      state_hash          TEXT NOT NULL UNIQUE,
+      nonce_hash          TEXT NOT NULL,
+      pkce_verifier       TEXT NOT NULL,
+      redirect_uri        TEXT NOT NULL,
+      status              TEXT NOT NULL CHECK (status IN ('created', 'consumed', 'expired', 'failed')),
+      ip                  TEXT,
+      user_agent          TEXT,
+      error_code          TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at          TIMESTAMPTZ NOT NULL,
+      consumed_at         TIMESTAMPTZ
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_login_attempts_status_exp
+      ON auth_login_attempts(status, expires_at);
+  `;
+
+  // Stable external auth mapping (Telegram subject -> local username).
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_identities (
+      id                  BIGSERIAL PRIMARY KEY,
+      provider            TEXT NOT NULL,
+      provider_subject    TEXT NOT NULL,
+      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
+      telegram_id         TEXT,
+      username            TEXT,
+      display_name        TEXT,
+      picture_url         TEXT,
+      phone_number        TEXT,
+      claims_version      TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at       TIMESTAMPTZ
+    );
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_identities_provider_subject
+      ON auth_identities(provider, provider_subject);
+  `;
+
+  // Auditable auth lifecycle events (no token bodies).
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_login_events (
+      id                  BIGSERIAL PRIMARY KEY,
+      attempt_id          TEXT,
+      provider            TEXT NOT NULL,
+      event_type          TEXT NOT NULL,
+      telegram_username   TEXT,
+      provider_subject    TEXT,
+      request_id          TEXT,
+      ip                  TEXT,
+      user_agent          TEXT,
+      meta_json           JSONB,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_login_events_attempt
+      ON auth_login_events(attempt_id, created_at);
+  `;
+
+  // Browser/app session store (cookie token hash -> telegram username).
+  await sql`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      session_hash        TEXT PRIMARY KEY,
+      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at          TIMESTAMPTZ NOT NULL,
+      last_seen_at        TIMESTAMPTZ,
+      ip                  TEXT,
+      user_agent          TEXT
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_auth_sessions_exp
+      ON auth_sessions(expires_at);
+  `;
 }
 
 let schemaInitPromise: Promise<void> | null = null;

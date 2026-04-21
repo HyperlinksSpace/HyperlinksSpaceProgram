@@ -293,6 +293,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [debug, setDebug] = useState<TelegramDebugInfo>(defaultDebug);
   const hasRegisteredRef = useRef(false);
+  const browserSessionHydratedRef = useRef(false);
   const initPollCleanupRef = useRef<(() => void) | null>(null);
   /** Block SDK/bridge theme events until runTmaFlow has applied WebApp theme (avoids stale dark WebApp). */
   const tmaInitialThemeResolvedRef = useRef(false);
@@ -313,10 +314,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   // Client starts hidden (themeBgReady false) until plain-web unlock (useLayoutEffect) or TMA runTmaFlow.
   const [themeBgReady, setThemeBgReady] = useState<boolean>(initialThemeBgReadyFromBootstrap);
   const [clientHydrated, setClientHydrated] = useState(false);
-  const [layoutStartup, setLayoutStartup] = useState<TelegramLayoutStartupSnapshot>(() =>
-    typeof window !== "undefined"
-      ? computeTelegramLayoutStartupSnapshot()
-      : getEmptyTelegramLayoutStartupSnapshot(),
+  // SSR/client parity: start with empty snapshot and compute after mount.
+  const [layoutStartup, setLayoutStartup] = useState<TelegramLayoutStartupSnapshot>(
+    getEmptyTelegramLayoutStartupSnapshot(),
   );
   useEffect(() => {
     setClientHydrated(true);
@@ -639,6 +639,18 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (!isMiniAppContext()) {
+      setDebug((d) =>
+        patchTelegramDebug(d, {
+          hasWebAppApi: false,
+          apiMessage: "outside_telegram_context",
+          lastLog: "skipped_tma_polling",
+        }),
+      );
+      setStatus("dev");
+      return;
+    }
+
     setStatus("loading");
     ensureTelegramScript();
 
@@ -844,10 +856,46 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     setThemeBgReady(true);
   }, [status]);
 
-  const isInTelegram = status !== "dev";
-  const useTelegramTheme =
-    status !== "dev" ||
-    (typeof window !== "undefined" && (isTelegramLikelyAtStartup() || isAvailable()));
+  // Browser OIDC session bootstrap (outside TMA): if a server session exists, hydrate
+  // Telegram-facing user fields so /home can render account data after callback redirect.
+  useEffect(() => {
+    if (status !== "dev") return;
+    if (isMiniAppContext()) return;
+    if (browserSessionHydratedRef.current) return;
+    browserSessionHydratedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(buildApiUrl("/api/auth/session"), {
+          method: "GET",
+          credentials: "include",
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+          telegram_username?: string;
+          has_wallet?: boolean;
+          wallet_required?: boolean;
+          wallet?: TelegramContextValue["wallet"];
+        };
+        if (!response.ok || !json?.authenticated || cancelled) return;
+        setTelegramUsername(json.telegram_username ?? null);
+        setHasWallet(typeof json.has_wallet === "boolean" ? json.has_wallet : null);
+        setWalletRequired(Boolean(json.wallet_required));
+        setWallet(json.wallet ?? null);
+        setStatus("ok");
+      } catch {
+        // keep dev fallback UI
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  const miniAppContext =
+    typeof window !== "undefined" && (isTelegramLikelyAtStartup() || isAvailable());
+  const isInTelegram = status !== "dev" && miniAppContext;
+  const useTelegramTheme = miniAppContext;
 
   useEffect(() => {
     refreshLayoutStartup();

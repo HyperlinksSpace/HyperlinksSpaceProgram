@@ -1,6 +1,11 @@
-import { View, Text, useWindowDimensions, StyleSheet } from "react-native";
+import { View, Text, useWindowDimensions, StyleSheet, Platform } from "react-native";
+import { useEffect, useState } from "react";
+import { Redirect } from "expo-router";
+import { buildApiUrl } from "../../api/_base";
+import { useAuth } from "../../auth/AuthContext";
 import { useColors } from "../../ui/theme";
 import { WelcomeAuthButtons } from "../../ui/components/WelcomeAuthButtons";
+import { isTelegramMiniAppEnvironment } from "../../ui/components/telegramWebApp";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
 const H_PADDING = 20;
@@ -19,12 +24,58 @@ const HEADING_LINE_WIDE = 42;
 
 /**
  * Welcome screen: top header is rendered by GlobalLogoBar (marketing vs default by route + TMA mode).
+ *
+ * Defer welcome UI and `/home` redirect until `authReady` and client mount — static export can ship
+ * pre-rendered welcome HTML; redirecting in `useEffect` made the client tree differ → React #418.
  */
 export default function WelcomeScreen() {
   const colors = useColors();
+  const { signIn, isAuthenticated, authReady } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
+  const [hydrated, setHydrated] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
 
-  const isWideLayout = windowWidth > WIDE_LAYOUT_MIN_WIDTH;
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
+
+  /** Web: OAuth may finish in another tab — recheck session when this tab becomes visible. */
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void (async () => {
+        try {
+          const response = await fetch(buildApiUrl("/api/auth/session"), {
+            method: "GET",
+            credentials: "include",
+          });
+          const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
+          if (response.ok && json?.authenticated === true) {
+            signIn();
+          }
+        } catch {
+          /* ignore */
+        }
+      })();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [signIn]);
+
+  if (!authReady || !clientReady) {
+    return null;
+  }
+
+  if (isAuthenticated && !isTelegramMiniAppEnvironment()) {
+    return <Redirect href="/home" />;
+  }
+
+  const isWideLayout = hydrated && windowWidth > WIDE_LAYOUT_MIN_WIDTH;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>

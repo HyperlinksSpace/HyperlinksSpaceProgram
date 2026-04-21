@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { Platform, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useEffect, useState } from "react";
 import { light, useColors } from "../theme";
 
 /** Use `white/` previews only on a light app surface — not `primary` alone (TMA merge can set black text without a light bg). */
@@ -82,13 +83,19 @@ function previewKindForWidth(windowWidth: number): keyof typeof PREVIEW_ASSETS {
 export function WelcomeAppPreviews() {
   const { width: windowWidth } = useWindowDimensions();
   const colors = useColors();
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   const useLightPreviews = useLightPreviewAssets(colors);
 
-  const kind = previewKindForWidth(windowWidth);
+  const effectiveWidth = hydrated ? windowWidth : 0;
+  const kind = previewKindForWidth(effectiveWidth);
   const variant = PREVIEW_ASSETS[kind];
   const spec = useLightPreviews ? variant.light : variant.dark;
   const maxW = MAX_WIDTH_BY_KIND[kind];
-  const fromViewport = windowWidth * PREVIEW_WIDTH_FRACTION;
+  const fromViewport = effectiveWidth * PREVIEW_WIDTH_FRACTION;
   const previewWidth = Math.max(
     1,
     Math.round(Math.min(fromViewport, maxW, spec.width)),

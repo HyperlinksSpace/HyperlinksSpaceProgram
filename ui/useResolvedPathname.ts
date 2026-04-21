@@ -1,5 +1,6 @@
 import { usePathname } from "expo-router";
 import { Platform } from "react-native";
+import { useEffect, useState } from "react";
 
 /**
  * Expo Router can briefly report null/empty pathname on web before the route hydrates.
@@ -9,10 +10,14 @@ import { Platform } from "react-native";
  */
 export function useResolvedPathname(): string {
   const pathname = usePathname();
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
   if (pathname != null && pathname !== "") {
     return pathname;
   }
-  if (Platform.OS === "web" && typeof window !== "undefined") {
+  if (hydrated && Platform.OS === "web" && typeof window !== "undefined") {
     return window.location.pathname || "/";
   }
   return pathname ?? "/";

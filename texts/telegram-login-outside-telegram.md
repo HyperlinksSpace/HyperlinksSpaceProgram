@@ -1,120 +1,215 @@
-# Login with Telegram outside the Mini App (browser & native shells)
+# Telegram Login outside TMA (browser-first plan + DB writes)
 
-This document describes **how to authenticate users with Telegram when they are not inside the Telegram Mini App (TMA)** — for example on the **Welcome** screen in a normal browser, or inside **iOS/Android** when the app opens a WebView or system browser.
+This document defines the integration for **Telegram login outside Telegram Mini App** (normal browser first, then native wrappers).  
+Goal: on `/welcome` in browser, Telegram button uses Telegram OAuth/OIDC and writes a verified identity to our DB.
 
 It complements:
 
-- [`login-and-telegram-messages-architecture.md`](login-and-telegram-messages-architecture.md) — TMA uses signed **`initData`**; outside TMA you use a **different** Telegram mechanism.
-- [`security_plan_raw.md`](security_plan_raw.md) — phased plan including `api/_lib/telegram_login.ts` and `POST /api/login/telegram`.
+- `login-and-telegram-messages-architecture.md` — in-TMA auth via `initData`.
+- `security_plan_raw.md` — security envelope and auth hardening.
 
 ---
 
-## 1. Two different “Telegram logins” (do not mix them)
+## 1) Keep flows separate (critical)
 
-| Context | What Telegram gives you | How you verify |
-|--------|-------------------------|----------------|
-| **Inside Telegram (Mini App)** | `Telegram.WebApp.initData` (string) | HMAC validation of **init data** (Bot API / [Web Apps docs](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)) |
-| **Outside Telegram (website / WebView)** | Callback payload from the **Login Widget** (`id`, `username`, `auth_date`, `hash`, …) | HMAC validation of **widget** data ([Login Widget](https://core.telegram.org/widgets/login)) |
+| Context | Proof format | Verification |
+|---|---|---|
+| Inside Telegram Mini App | `Telegram.WebApp.initData` | HMAC validation for Mini Apps |
+| Outside Telegram (browser/webview) | OIDC `code` -> `id_token` (or login JS callback payload) | OIDC token validation (issuer/audience/signature/exp/nonce) |
 
-Same **Telegram user id** (`id` in the widget payload) can map to the same **`provider = telegram`** identity in your DB as TMA, but the **wire format and verification code** are **not** interchangeable with `initData`.
-
----
-
-## 2. Official building block: Telegram Login for Websites
-
-**Documentation:** [Telegram Login Widget](https://core.telegram.org/widgets/login)
-
-### 2.1 BotFather setup
-
-1. Create a bot with [@BotFather](https://t.me/BotFather) if you do not have one.
-2. Use **/setdomain** (or the BotFather UI for the bot) to set the **domain** allowed to embed the widget — e.g. `app.hyperlinks.space` or your Vercel preview domain for staging.
-3. Only the **exact origin** you configure can load the widget in a way Telegram will accept for that bot (same bot can power Mini App + website login).
-
-### 2.2 What the widget does
-
-- Renders a **“Log in with Telegram”** button (or custom embed).
-- When the user authorizes, Telegram redirects the client with **user fields + `hash` + `auth_date`** (see official field list).
-- You handle the result in the browser via **`data-onauth`** (script embed) or redirect URL parameters (depending on integration style).
-
-### 2.3 Client flow (web)
-
-1. **Embed** the widget on a page you control (e.g. `/welcome` or dedicated `/login/telegram` route on the same registered domain).
-2. On success, the callback receives an object with at least: `id`, `first_name`, `hash`, `auth_date`, and optionally `username`, `last_name`, `photo_url`.
-3. **Immediately send that payload to your backend** over HTTPS — do **not** treat the client as trusted until the server verifies `hash`.
+Both can map to the same app identity (`provider = telegram`, same Telegram user), but **verification code is different** and must not be mixed.
 
 ---
 
-## 3. Server-side verification (required)
+## 2) Browser integration choice
 
-**Rule:** Only your **server** may decide “this Telegram user is authenticated.” The browser only forwards the payload.
+Use **Authorization Code Flow + PKCE** (Telegram OIDC endpoints), with optional Telegram login JS button for UX trigger.
 
-Per [Login Widget](https://core.telegram.org/widgets/login#checking-authorization):
+- Authorization endpoint: `https://oauth.telegram.org/auth`
+- Token endpoint: `https://oauth.telegram.org/token`
+- JWKS: `https://oauth.telegram.org/.well-known/jwks.json`
+- Discovery: `https://oauth.telegram.org/.well-known/openid-configuration`
 
-1. Build the **data-check string** from all received fields **except** `hash`, sorted **alphabetically**, as `key=value` lines joined with `\n`.
-2. Compute **secret key** = `SHA256(bot_token)` (binary).
-3. Compute `HMAC-SHA256(secret_key, data_check_string)` and compare to `hash` (hex).
-4. Enforce **`auth_date` freshness** (e.g. reject if older than 5 minutes or 24 hours — pick a policy and document it).
+Why this path:
 
-Implementation options:
-
-- A small shared helper in `api/_lib/telegram_login.ts` (as in `security_plan_raw.md`).
-- Community libraries (e.g. Node packages for “telegram login widget”) — still verify against the official algorithm above.
-
-After verification, you trust **`id`** (Telegram user id) as the stable subject for `provider = telegram`.
+- standard server-side code exchange
+- cleaner replay protection with `state` + PKCE + `nonce`
+- straightforward identity verification and audit trails
 
 ---
 
-## 4. Mapping to your app session
+## 3) BotFather and web prerequisites
 
-After the server validates the widget payload:
-
-1. **Upsert user / identity** — link `telegram_user_id` to your internal `user_id` (same as TMA path, different proof).
-2. **Issue a session** — HTTP-only cookie, JWT, or Supabase session — same as other OAuth providers on Welcome.
-3. Return success to the client so Expo Router can navigate to `/(app)` (e.g. `/home`).
-
-**Linking:** If the user already has an account via Google/email, use **verified linking** flows (see centralized auth plan) before merging identities.
-
----
-
-## 5. Expo / React Native (outside browser)
-
-Telegram does not ship a native “Sign in with Telegram” SDK comparable to Google/Firebase. Common patterns:
-
-| Approach | Pros | Cons |
-|----------|------|------|
-| **In-app WebView** loading your **HTTPS** page with the widget | Reuses exact web flow + same backend | WebView settings, cookie/session handling, Apple ATS |
-| **System browser** (`Linking.openURL`) to `https://your-domain/login/telegram` with **PKCE/state** or short-lived nonce | Strong separation, familiar OAuth-like UX | Return path via deep link / universal link |
-| **Telegram deep link** `https://t.me/yourbot?start=...` | Brings user into Telegram | Does not by itself prove identity in your app — still need TMA or widget on web |
-
-For “Login with Telegram” on native, the **widget on your domain + WebView or browser** is the standard approach referenced in internal docs (`security_plan_raw.md` §2.3).
+1. Configure bot in `@BotFather` Web Login.
+2. Register allowed browser origins and callback URLs:
+   - `https://<prod-domain>`
+   - `https://<prod-domain>/auth/telegram/callback`
+   - staging equivalents
+3. Store secrets server-side only:
+   - `TELEGRAM_CLIENT_ID`
+   - `TELEGRAM_CLIENT_SECRET`
+4. If using Telegram login JS popup, ensure `Cross-Origin-Opener-Policy` is compatible (`same-origin-allow-popups`).
 
 ---
 
-## 6. UX and product notes
+## 4) Browser auth flow (exact)
 
-- **Labeling:** On web, “Sign in with Telegram” should open the **widget** flow; in TMA, “Continue with Telegram” should use **initData** (already aligned in product docs).
-- **No wallet secrets:** Widget proves **identity** only — wallet keys remain governed by [`texts/final-security-model.md`](final-security-model.md) and wallet docs.
-- **Rate limits / abuse:** Same as any login endpoint — throttle `POST /api/login/telegram`, log failures, optional CAPTCHA later.
+1. User taps **Sign in with Telegram** on `/welcome`.
+2. Frontend requests `POST /api/auth/telegram/start`.
+3. Backend creates login attempt:
+   - `state` (random, single use)
+   - `nonce` (random, single use)
+   - PKCE `code_verifier` and `code_challenge` (S256)
+   - `redirect_uri` (whitelisted)
+   - stores attempt in DB with TTL
+4. Backend returns authorization URL.
+5. Browser navigates to Telegram auth URL.
+6. Telegram redirects to `/auth/telegram/callback?code=...&state=...`.
+7. Backend callback handler:
+   - validates `state` and attempt status
+   - exchanges `code` at token endpoint (server-to-server)
+   - validates `id_token` using JWKS (signature + `iss` + `aud` + `exp` + `nonce`)
+   - extracts identity claims
+   - upserts user + telegram identity
+   - issues app session
+8. Backend redirects to app route (`/home`) as authenticated user.
 
 ---
 
-## 7. Checklist for this repository
+## 5) Database write model
 
-- [ ] BotFather **domain** matches production (and staging) web origins.
-- [ ] `POST /api/login/telegram` (or equivalent) validates **`hash` + `auth_date`** per official docs.
-- [ ] Welcome screen **“Sign in with Telegram”** (non-TMA) triggers widget embed or navigates to widget page — **no-op** until this exists (current stub behavior outside TMA is intentional).
-- [ ] Session issuance aligned with Google/GitHub/email once Supabase or custom auth is wired.
-- [ ] Optional: E2E test on a domain-allowed preview deployment (widget refuses wrong domain).
+Use three write targets to make auth debuggable and safe.
+
+### 5.1 `auth_login_attempts` (ephemeral, anti-replay)
+
+Fields:
+
+- `id` (uuid, primary key)
+- `provider` (`telegram`)
+- `state_hash` (store hash, not raw state)
+- `nonce_hash`
+- `pkce_verifier_enc` (encrypted at rest) or hashed + retrievable strategy
+- `redirect_uri`
+- `status` (`created|consumed|expired|failed`)
+- `created_at`, `expires_at`, `consumed_at`
+- `ip`, `user_agent`
+- `error_code` (nullable)
+
+Rules:
+
+- single-use attempt
+- strict TTL (e.g. 10 min)
+- mark consumed atomically
+
+### 5.2 `auth_identities` (long-lived external identity link)
+
+Fields:
+
+- `id`
+- `user_id` (internal FK)
+- `provider` (`telegram`)
+- `provider_subject` (Telegram `sub` or stable Telegram user id as string)
+- `telegram_id` (optional denormalized numeric/string id)
+- `username`, `display_name`, `picture_url`, `phone_number` (nullable, last known)
+- `claims_version`
+- `created_at`, `updated_at`, `last_login_at`
+- unique index on (`provider`, `provider_subject`)
+
+Rules:
+
+- upsert by (`provider`, `provider_subject`)
+- never trust profile fields without verified token path
+
+### 5.3 `auth_login_events` (audit trail)
+
+Fields:
+
+- `id`
+- `attempt_id`
+- `provider`
+- `event_type` (`start|callback_received|token_exchanged|token_validated|session_issued|failure`)
+- `user_id` (nullable)
+- `provider_subject` (nullable)
+- `request_id`, `ip`, `user_agent`
+- `meta_json` (sanitized error details)
+- `created_at`
+
+Rules:
+
+- no raw tokens in logs
+- store reason codes for failures (invalid_state, token_exchange_failed, invalid_signature, nonce_mismatch, expired_token)
 
 ---
 
-## 8. References (external)
+## 6) Token validation policy (server)
 
-- [Telegram Login Widget](https://core.telegram.org/widgets/login) — embed, fields, verification algorithm.
-- [Mini Apps / init data](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app) — **only** for inside-TMA flows.
+For every `id_token`:
+
+- verify JWS signature with JWKS key by `kid`
+- `iss === https://oauth.telegram.org`
+- `aud === TELEGRAM_CLIENT_ID`
+- `exp` and `iat` are valid (clock skew tolerance <= 120s)
+- `nonce` matches DB attempt
+- reject reused `state` or attempt not in `created` state
+
+Optional hardening:
+
+- cache JWKS with short TTL and fallback refresh on unknown `kid`
+- bind callback to same-origin CSRF cookie (double submit)
 
 ---
 
-## 9. Summary
+## 7) API shape for this repository
 
-**Outside Telegram**, “Login with Telegram” means the **Telegram Login for Websites** widget (or redirect variant) plus **server-side hash verification**, then issuing your normal app session. It is **not** `initData` from `Telegram.WebApp`. Unifying the **user record** on `telegram_user_id` keeps Mini App and web logins consistent while keeping verification code **separate and correct** for each surface.
+- `POST /api/auth/telegram/start`
+  - input: optional return path
+  - output: `{ authUrl }`
+  - writes: `auth_login_attempts(start)` + `auth_login_events(start)`
+
+- `GET /api/auth/telegram/callback`
+  - input: `code`, `state`
+  - internal: token exchange + id_token validation + upsert identity + create session
+  - writes: attempts status, identity upsert, events
+  - output: redirect to app page
+
+- `POST /api/auth/telegram/link` (later)
+  - link Telegram to an already-authenticated account with re-auth proof
+
+---
+
+## 8) Frontend behavior on browser
+
+- In `WelcomeAuthButtons`, when **not in TMA**, Telegram button should call `/api/auth/telegram/start` and then navigate to returned `authUrl`.
+- Keep existing TMA button behavior untouched (still `initData` flow).
+- Show compact loading/error states:
+  - popup blocked
+  - cancelled auth
+  - callback validation failed
+
+---
+
+## 9) Native later (iOS/Android)
+
+Reuse the same backend flow. Open auth URL in system browser / custom tab, return via universal link/deep link to callback endpoint.  
+No separate identity format is needed once OIDC callback path is live.
+
+---
+
+## 10) Implementation checklist
+
+- [ ] BotFather allowed URLs configured for prod + staging.
+- [ ] Add DB tables: `auth_login_attempts`, `auth_identities`, `auth_login_events`.
+- [ ] Implement `/api/auth/telegram/start`.
+- [ ] Implement `/api/auth/telegram/callback` with full token validation.
+- [ ] Add browser branch in welcome Telegram button.
+- [ ] Add rate limiting for start/callback routes.
+- [ ] Add tests: success, invalid state, nonce mismatch, expired token, bad signature.
+
+---
+
+## 11) References
+
+- [Telegram OpenID configuration](https://oauth.telegram.org/.well-known/openid-configuration)
+- [Telegram JWKS](https://oauth.telegram.org/.well-known/jwks.json)
+- [Telegram Login docs](https://oauth.telegram.org/js/telegram-login.js?3)
+- [Mini Apps initData validation](https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app)

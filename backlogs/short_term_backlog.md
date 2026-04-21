@@ -1,3 +1,4 @@
+Switch to Telegram on Open in Telegram on native auth page
 Forms validation
 Linking all accounts
 Login buttons functionality on Welcome screen.

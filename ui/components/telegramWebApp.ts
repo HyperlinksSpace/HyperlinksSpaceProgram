@@ -78,6 +78,27 @@ export function isAvailable(): boolean {
   return getInitDataFromHash() != null;
 }
 
+/**
+ * True when the page is (or will be) a Telegram Mini App session — do **not** start browser OIDC.
+ * Broader than {@link isActuallyInTelegram}: includes launch hash / UA while initData is still loading.
+ */
+export function isTelegramMiniAppEnvironment(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isAvailable()) return true;
+  try {
+    const hash = window.location.hash ?? "";
+    if (hash.includes("tgWebApp")) return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    if ((window.navigator?.userAgent ?? "").toLowerCase().includes("telegram")) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
 /** Load Telegram Web App script if missing (script is not auto-injected; page must include or load it). */
 export function ensureTelegramScript(onLoad?: () => void): void {
   if (typeof window === "undefined" || typeof document === "undefined") return;

@@ -1,10 +1,13 @@
 import { Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
+import { useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
+import { buildApiUrl } from "../../api/_base";
 import { useColors } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
+import { isTelegramMiniAppEnvironment } from "./telegramWebApp";
 
 const BUTTON_HEIGHT = 40;
 const BUTTON_GAP = 20;
@@ -38,10 +41,10 @@ const ICONS = {
 } as const;
 
 const ROWS: { id: keyof typeof ICONS; label: string }[] = [
-  { id: "google", label: "Access with Google" },
-  { id: "github", label: "Access with GitHub" },
-  { id: "apple", label: "Access with Apple" },
-  { id: "telegram", label: "Access with Telegram" },
+  { id: "google", label: "Sign in with Google" },
+  { id: "github", label: "Sign in with GitHub" },
+  { id: "apple", label: "Sign in with Apple" },
+  { id: "telegram", label: "Sign in with Telegram" },
 ];
 
 /**
@@ -53,10 +56,38 @@ export function WelcomeAuthButtons() {
   const { signIn } = useAuth();
   const colors = useColors();
   const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
+  const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
-  const onProviderPress = (id: (typeof ROWS)[number]["id"]) => {
+  /** OIDC only in a normal browser / desktop web — never inside Telegram Mini App. */
+  const useTelegramBrowserOidc =
+    Platform.OS === "web" && typeof window !== "undefined" && !isTelegramMiniAppEnvironment();
+
+  const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
     if (id === "telegram") {
+      if (useTelegramBrowserOidc) {
+        try {
+          setTelegramBrowserPending(true);
+          const response = await fetch(buildApiUrl("/api/auth/telegram/start"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              source: "welcome",
+            }),
+          });
+          const json = (await response.json().catch(() => ({}))) as { authUrl?: string; error?: string };
+          if (!response.ok || !json?.authUrl) {
+            throw new Error(json?.error || `HTTP_${response.status}`);
+          }
+          window.location.assign(json.authUrl);
+          return;
+        } catch (error) {
+          console.error("[welcome] telegram browser auth start failed", error);
+        } finally {
+          setTelegramBrowserPending(false);
+        }
+        return;
+      }
       if (!isInTelegram) return;
       triggerHaptic("light");
       signIn();
@@ -81,7 +112,12 @@ export function WelcomeAuthButtons() {
               {
                 backgroundColor: colors.undercover,
                 marginTop: index === 0 ? 0 : BUTTON_GAP,
-                opacity: pressed ? 0.85 : 1,
+                opacity:
+                  row.id === "telegram" && telegramBrowserPending
+                    ? 0.6
+                    : pressed
+                      ? 0.85
+                      : 1,
               },
             ]}
           >
@@ -93,7 +129,7 @@ export function WelcomeAuthButtons() {
         );
       })}
       <View style={[styles.emailBlock, { marginTop: GAP_BEFORE_EMAIL_BLOCK }]}>
-        <Text style={[styles.emailTitle, { color: colors.primary }]}>Access with email</Text>
+        <Text style={[styles.emailTitle, { color: colors.primary }]}>Sign in with email</Text>
         <View
           style={[
             styles.emailInputShell,
@@ -122,7 +158,7 @@ export function WelcomeAuthButtons() {
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Access"
+          accessibilityLabel="Sign in"
           onPress={() => {
             /* wired when auth flows land */
           }}
@@ -135,7 +171,7 @@ export function WelcomeAuthButtons() {
             },
           ]}
         >
-          <Text style={[styles.label, { color: colors.primary }]}>Access</Text>
+          <Text style={[styles.label, { color: colors.primary }]}>Sign in</Text>
         </Pressable>
       </View>
       <WelcomeAppPreviews />

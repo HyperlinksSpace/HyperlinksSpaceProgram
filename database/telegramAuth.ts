@@ -1,0 +1,216 @@
+import { sql } from "./start.js";
+
+export type LoginAttemptStatus = "created" | "consumed" | "expired" | "failed";
+
+export type TelegramSessionRow = {
+  telegram_username: string;
+  expires_at: string;
+};
+
+export async function createLoginAttempt(input: {
+  id: string;
+  provider: "telegram";
+  stateHash: string;
+  nonceHash: string;
+  pkceVerifier: string;
+  redirectUri: string;
+  expiresAtIso: string;
+  ip: string | null;
+  userAgent: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_login_attempts (
+      id, provider, state_hash, nonce_hash, pkce_verifier, redirect_uri, status, ip, user_agent, expires_at
+    )
+    VALUES (
+      ${input.id},
+      ${input.provider},
+      ${input.stateHash},
+      ${input.nonceHash},
+      ${input.pkceVerifier},
+      ${input.redirectUri},
+      'created',
+      ${input.ip},
+      ${input.userAgent},
+      ${input.expiresAtIso}::timestamptz
+    );
+  `;
+}
+
+export async function getLoginAttemptByStateHash(stateHash: string): Promise<
+  | {
+      id: string;
+      nonce_hash: string;
+      pkce_verifier: string;
+      redirect_uri: string;
+      status: LoginAttemptStatus;
+      expires_at: string;
+    }
+  | null
+> {
+  const rows = await sql<
+    {
+      id: string;
+      nonce_hash: string;
+      pkce_verifier: string;
+      redirect_uri: string;
+      status: LoginAttemptStatus;
+      expires_at: string;
+    }[]
+  >`
+    SELECT id, nonce_hash, pkce_verifier, redirect_uri, status, expires_at
+    FROM auth_login_attempts
+    WHERE state_hash = ${stateHash}
+    LIMIT 1;
+  `;
+  return rows[0] ?? null;
+}
+
+export async function markLoginAttemptStatus(input: {
+  id: string;
+  status: LoginAttemptStatus;
+  errorCode?: string | null;
+}): Promise<void> {
+  const consumedAt = input.status === "consumed" ? new Date().toISOString() : null;
+  await sql`
+    UPDATE auth_login_attempts
+    SET status = ${input.status},
+        error_code = ${input.errorCode ?? null},
+        consumed_at = ${consumedAt}::timestamptz
+    WHERE id = ${input.id};
+  `;
+}
+
+export async function logLoginEvent(input: {
+  attemptId: string | null;
+  provider: "telegram";
+  eventType: string;
+  telegramUsername?: string | null;
+  providerSubject?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  metaJson?: Record<string, unknown> | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_login_events (
+      attempt_id, provider, event_type, telegram_username, provider_subject, ip, user_agent, meta_json
+    )
+    VALUES (
+      ${input.attemptId},
+      ${input.provider},
+      ${input.eventType},
+      ${input.telegramUsername ?? null},
+      ${input.providerSubject ?? null},
+      ${input.ip ?? null},
+      ${input.userAgent ?? null},
+      ${input.metaJson ? JSON.stringify(input.metaJson) : null}::jsonb
+    );
+  `;
+}
+
+export async function upsertTelegramIdentity(input: {
+  providerSubject: string;
+  telegramUsername: string;
+  telegramId: string | null;
+  username: string | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+  phoneNumber: string | null;
+  claimsVersion: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_identities (
+      provider,
+      provider_subject,
+      telegram_username,
+      telegram_id,
+      username,
+      display_name,
+      picture_url,
+      phone_number,
+      claims_version,
+      created_at,
+      updated_at,
+      last_login_at
+    )
+    VALUES (
+      'telegram',
+      ${input.providerSubject},
+      ${input.telegramUsername},
+      ${input.telegramId},
+      ${input.username},
+      ${input.displayName},
+      ${input.pictureUrl},
+      ${input.phoneNumber},
+      ${input.claimsVersion},
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT (provider, provider_subject) DO UPDATE
+      SET telegram_username = EXCLUDED.telegram_username,
+          telegram_id = EXCLUDED.telegram_id,
+          username = EXCLUDED.username,
+          display_name = EXCLUDED.display_name,
+          picture_url = EXCLUDED.picture_url,
+          phone_number = EXCLUDED.phone_number,
+          claims_version = EXCLUDED.claims_version,
+          updated_at = NOW(),
+          last_login_at = NOW();
+  `;
+}
+
+export async function createSession(input: {
+  sessionHash: string;
+  telegramUsername: string;
+  expiresAtIso: string;
+  ip: string | null;
+  userAgent: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_sessions (
+      session_hash, telegram_username, created_at, expires_at, last_seen_at, ip, user_agent
+    )
+    VALUES (
+      ${input.sessionHash},
+      ${input.telegramUsername},
+      NOW(),
+      ${input.expiresAtIso}::timestamptz,
+      NOW(),
+      ${input.ip},
+      ${input.userAgent}
+    )
+    ON CONFLICT (session_hash) DO UPDATE
+      SET telegram_username = EXCLUDED.telegram_username,
+          expires_at = EXCLUDED.expires_at,
+          last_seen_at = NOW(),
+          ip = EXCLUDED.ip,
+          user_agent = EXCLUDED.user_agent;
+  `;
+}
+
+export async function getSessionByHash(sessionHash: string): Promise<TelegramSessionRow | null> {
+  const rows = await sql<TelegramSessionRow[]>`
+    SELECT telegram_username, expires_at
+    FROM auth_sessions
+    WHERE session_hash = ${sessionHash}
+    LIMIT 1;
+  `;
+  return rows[0] ?? null;
+}
+
+export async function touchSession(sessionHash: string): Promise<void> {
+  await sql`
+    UPDATE auth_sessions
+    SET last_seen_at = NOW()
+    WHERE session_hash = ${sessionHash};
+  `;
+}
+
+export async function deleteSession(sessionHash: string): Promise<void> {
+  await sql`
+    DELETE FROM auth_sessions
+    WHERE session_hash = ${sessionHash};
+  `;
+}
+

@@ -4,6 +4,9 @@
  */
 
 import aiHandler from './_handlers/ai.js';
+import authSessionHandler from './_handlers/auth-session.js';
+import authTelegramCallbackHandler from './_handlers/auth-telegram-callback.js';
+import authTelegramStartHandler from './_handlers/auth-telegram-start.js';
 import blockchainHandler from './_handlers/blockchain.js';
 import botHandler from './_handlers/bot.js';
 import pingHandler from './_handlers/ping.js';
@@ -28,6 +31,9 @@ const ROUTES: Record<string, ApiHandler> = {
   ping: pingHandler as ApiHandler,
   bot: botHandler as ApiHandler,
   ai: aiHandler as ApiHandler,
+  'auth/session': authSessionHandler as ApiHandler,
+  'auth/telegram/start': authTelegramStartHandler as ApiHandler,
+  'auth/telegram/callback': authTelegramCallbackHandler as ApiHandler,
   blockchain: blockchainHandler as ApiHandler,
   telegram: telegramHandler as ApiHandler,
   releases: releasesHandler as ApiHandler,
