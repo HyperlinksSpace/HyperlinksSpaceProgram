@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../api/_base";
+import { logPageDisplay } from "../ui/pageDisplayLog";
 
 export type AuthContextValue = {
   isAuthenticated: boolean;
@@ -17,19 +18,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
+      const startedAt = Date.now();
+      const sessionUrl = buildApiUrl("/api/auth/session");
+      logPageDisplay("auth_bootstrap_start", {
+        sessionUrl,
+      });
       try {
-        const response = await fetch(buildApiUrl("/api/auth/session"), {
+        const response = await fetch(sessionUrl, {
           method: "GET",
           credentials: "include",
         });
         const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
+        logPageDisplay("auth_bootstrap_response", {
+          ok: response.ok,
+          status: response.status,
+          authenticated: json?.authenticated === true,
+          elapsedMs: Date.now() - startedAt,
+        });
         if (!cancelled && response.ok && json?.authenticated === true) {
           setAuthenticated(true);
         }
-      } catch {
+      } catch (error) {
+        logPageDisplay("auth_bootstrap_error", {
+          elapsedMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        });
         // Ignore bootstrap errors; app can still sign in via interactive flow.
       } finally {
-        if (!cancelled) setAuthReady(true);
+        if (!cancelled) {
+          setAuthReady(true);
+          logPageDisplay("auth_bootstrap_ready", {
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
       }
     }
     void bootstrap();

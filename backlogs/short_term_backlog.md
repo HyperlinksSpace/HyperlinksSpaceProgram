@@ -1,4 +1,3 @@
-Forms validation
 Icons loading on start
 Plans
 Log out from the seccion

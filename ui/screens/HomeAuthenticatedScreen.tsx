@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Text, View } from "react-native";
 import { useTelegram } from "../components/Telegram";
+import { logPageDisplay } from "../pageDisplayLog";
 import { useColors } from "../theme";
 import {
   createSeedCipher,
@@ -226,6 +227,16 @@ export function HomeAuthenticatedScreen() {
   const [masterKeyStorageTier, setMasterKeyStorageTier] = useState<WalletMasterKeyStorageTier | null>(null);
   const effectiveWalletAddress = wallet?.wallet_address ?? createdWalletAddress;
   const effectiveHasWallet = hasWallet || Boolean(createdWalletAddress);
+  const homePhase =
+    status === "idle" || status === "loading"
+      ? "telegram_loading_or_polling"
+      : status === "error"
+        ? "telegram_error"
+        : status === "dev"
+          ? "telegram_dev_mode"
+          : walletRequired && !effectiveHasWallet
+            ? "wallet_setup"
+            : "home_ready";
 
   const createAndRegisterWalletFlow = useCallback(async () => {
     if (!initData) {
@@ -287,6 +298,36 @@ export function HomeAuthenticatedScreen() {
       void createAndRegisterWalletFlow();
     }
   }, [status, walletRequired, hasWallet, createdWalletAddress, step, initData, createAndRegisterWalletFlow]);
+
+  useEffect(() => {
+    logPageDisplay("home_authenticated_phase", {
+      phase: homePhase,
+      status,
+      walletRequired,
+      hasWallet,
+      effectiveHasWallet,
+      hasInitData: Boolean(initData),
+      debug: {
+        webAppPollCount: debug.webAppPollCount,
+        initDataPollCount: debug.initDataPollCount,
+        apiStatus: debug.apiStatus,
+        apiMessage: debug.apiMessage,
+        fetchDurationMs: debug.fetchDurationMs,
+      },
+    });
+  }, [
+    homePhase,
+    status,
+    walletRequired,
+    hasWallet,
+    effectiveHasWallet,
+    initData,
+    debug.webAppPollCount,
+    debug.initDataPollCount,
+    debug.apiStatus,
+    debug.apiMessage,
+    debug.fetchDurationMs,
+  ]);
 
   if (status === "idle" || status === "loading") {
     return (
