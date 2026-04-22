@@ -76,7 +76,7 @@ function buildSessionCookie(token: string, secure: boolean): string {
 
 function resolvePostAuthRedirect(request: AnyRequest): string {
   const origin = getRequestUrl(request).origin;
-  return `${origin}/home`;
+  return `${origin}/`;
 }
 
 function resolvePostAuthRedirectFromCallback(
@@ -85,7 +85,7 @@ function resolvePostAuthRedirectFromCallback(
 ): string {
   try {
     const callbackUrl = new URL(callbackRedirectUri);
-    callbackUrl.pathname = "/home";
+    callbackUrl.pathname = "/";
     callbackUrl.search = "";
     callbackUrl.hash = "";
     return callbackUrl.toString();
@@ -107,7 +107,7 @@ function resolveTelegramUsername(claims: {
 
 function failRedirect(request: AnyRequest, reason: string): Response {
   const url = new URL(resolvePostAuthRedirect(request));
-  url.pathname = "/welcome";
+  url.pathname = "/";
   url.searchParams.set("telegramAuthError", reason);
   return Response.redirect(url.toString(), 302);
 }

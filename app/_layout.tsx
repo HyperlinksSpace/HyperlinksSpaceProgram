@@ -20,6 +20,7 @@ import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { FloatingShield } from "../ui/components/FloatingShield";
+import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
@@ -126,17 +127,59 @@ function RootContent() {
   const pathname = useResolvedPathname();
   const colors = useColors();
   const { themeBgReady, useTelegramTheme, isInTelegram, isExpanded, layoutStartup } = useTelegram();
-  const backgroundColor = themeBgReady ? colors.background : "transparent";
+  const shellLogKeyRef = useRef<string | null>(null);
+  // Outside Telegram theme, use app palette immediately (avoids SSR/client mismatch from bootstrapping
+  // themeBgReady true on client only). In TMA, wait for WebApp theme before painting.
+  const shellPaintReady = themeBgReady || !useTelegramTheme;
+  const backgroundColor = shellPaintReady ? colors.background : "transparent";
   // Stronger than opacity:0 — avoids one frame of dark RN-web compositing before themeBgReady.
   const hideWebUntilTheme =
     Platform.OS === "web" && useTelegramTheme && !themeBgReady;
+
+  useEffect(() => {
+    logBuildSnapshotOnce("root_layout_mount");
+  }, []);
+
+  useEffect(() => {
+    const key = [
+      pathname ?? "",
+      shellPaintReady,
+      themeBgReady,
+      useTelegramTheme,
+      hideWebUntilTheme,
+    ].join("|");
+    if (shellLogKeyRef.current === key) return;
+    shellLogKeyRef.current = key;
+    logPageDisplay("root_shell", {
+      pathname: pathname ?? null,
+      shellPaintReady,
+      themeBgReady,
+      useTelegramTheme,
+      hideWebUntilTheme,
+      isInTelegram,
+      isExpanded,
+    });
+  }, [
+    pathname,
+    shellPaintReady,
+    themeBgReady,
+    useTelegramTheme,
+    hideWebUntilTheme,
+    isInTelegram,
+    isExpanded,
+  ]);
 
   const showGlobalLogoBar = useMemo(() => {
     if (pathname == null || pathname === "") {
       return true;
     }
-    if (pathname === "/welcome") {
-      // Keep header mounted on /welcome and let GlobalLogoBar choose the variant.
+    if (
+      pathname === "/welcome" ||
+      pathname === "/home" ||
+      pathname === "/" ||
+      pathname === ""
+    ) {
+      // Keep header mounted on root / legacy routes and let GlobalLogoBar choose the variant.
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
@@ -153,8 +196,8 @@ function RootContent() {
         Platform.OS === "web" ? styles.rootWeb : styles.rootOverflowHidden,
         {
           backgroundColor,
-          opacity: themeBgReady ? 1 : 0,
-          pointerEvents: themeBgReady ? "auto" : "none",
+          opacity: shellPaintReady ? 1 : 0,
+          pointerEvents: shellPaintReady ? "auto" : "none",
           ...(Platform.OS === "web"
             ? { display: hideWebUntilTheme ? "none" : "flex" }
             : {}),

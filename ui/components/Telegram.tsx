@@ -152,7 +152,8 @@ function initialColorSchemeFromBootstrap(): "dark" | "light" {
 }
 
 function initialThemeBgReadyFromBootstrap(): boolean {
-  // Must match server + client. SSR returned true here while client used false → React #418 + wrong tree.
+  // Must match server + client — always false here. Root layout uses `themeBgReady || !useTelegramTheme`
+  // so plain browser (no TMA palette) is visible without a hydration mismatch.
   return false;
 }
 
@@ -764,16 +765,18 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         );
         if (bg) {
           setColorScheme(classifyThemeFromBgColor(bg));
-          setThemeBgReady((prev) => {
-            if (prev) return prev;
-            console.log("[TMA theme] themeBgReady=true");
-            return true;
-          });
         }
       } catch {
         // ignore; keep default "dark"
       } finally {
         tmaInitialThemeResolvedRef.current = true;
+        // Always unlock after snapshot — missing bg_color or a thrown helper would otherwise leave
+        // themeBgReady false forever (opacity:0 root).
+        setThemeBgReady((prev) => {
+          if (prev) return prev;
+          console.log("[TMA theme] themeBgReady=true");
+          return true;
+        });
       }
 
       let initDataStr = getInitDataString();
@@ -857,7 +860,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   }, [status]);
 
   // Browser OIDC session bootstrap (outside TMA): if a server session exists, hydrate
-  // Telegram-facing user fields so /home can render account data after callback redirect.
+  // Telegram-facing user fields so root `/` can render account data after callback redirect.
   useEffect(() => {
     if (status !== "dev") return;
     if (isMiniAppContext()) return;

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
 import { useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -7,13 +7,14 @@ import { buildApiUrl } from "../../api/_base";
 import { useColors } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
-import { isTelegramMiniAppEnvironment } from "./telegramWebApp";
+import { isActuallyInTelegram } from "./telegramWebApp";
 
 const BUTTON_HEIGHT = 40;
 const BUTTON_GAP = 20;
 export const WELCOME_AUTH_MAX_WIDTH = 360;
 const BUTTON_H_PADDING = 20;
 const ICON_SIZE = 16;
+const ICON_GAP = 10;
 const GAP_BEFORE_EMAIL_BLOCK = 20;
 const EMAIL_LABEL_TO_INPUT_GAP = 10;
 const INPUT_TO_EMAIL_BUTTON_GAP = 20;
@@ -50,6 +51,10 @@ const ROWS: { id: keyof typeof ICONS; label: string }[] = [
 /**
  * Stacked auth provider rows: label + icon (reference: assets/networks/auth.png).
  * Light theme → black icons on `undercover`; dark → white icons.
+ *
+ * Row is `justifyContent: "center"` with [text, icon]. If an icon is slow or fails to render,
+ * only the text measures — the label stays centered in the full button. When the icon appears,
+ * the centered group may shift slightly (acceptable tradeoff).
  */
 export function WelcomeAuthButtons() {
   const router = useRouter();
@@ -59,9 +64,14 @@ export function WelcomeAuthButtons() {
   const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
-  /** OIDC only in a normal browser / desktop web — never inside Telegram Mini App. */
+  /**
+   * Browser OIDC (`/api/auth/telegram/start`) when not in a **real** Mini App session.
+   * Do not use `isTelegramMiniAppEnvironment()` here: it is true whenever `Telegram.WebApp`
+   * exists (e.g. script on localhost), which wrongly disabled OIDC and caused a silent no-op
+   * (`!isInTelegram` return) in normal browsers.
+   */
   const useTelegramBrowserOidc =
-    Platform.OS === "web" && typeof window !== "undefined" && !isTelegramMiniAppEnvironment();
+    Platform.OS === "web" && typeof window !== "undefined" && !isActuallyInTelegram();
 
   const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
     if (id === "telegram") {
@@ -88,10 +98,16 @@ export function WelcomeAuthButtons() {
         }
         return;
       }
-      if (!isInTelegram) return;
+      if (!isInTelegram) {
+        Alert.alert(
+          "Sign in with Telegram",
+          "Open this page inside the Telegram app to continue, or use a normal web browser (not an in-app preview that mimics Telegram).",
+        );
+        return;
+      }
       triggerHaptic("light");
       signIn();
-      router.replace("/home");
+      router.replace("/");
       return;
     }
     /* wired when auth flows land */
@@ -193,7 +209,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: ICON_GAP,
   },
   label: {
     fontSize: 15,

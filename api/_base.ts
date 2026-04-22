@@ -8,6 +8,11 @@
  *   - In dev: map localhost/LAN + dev port (8081/19000/19006) -> port 3000
  *   - In prod: window.location.origin (e.g. https://hsbexpo.vercel.app)
  * - Node (no window): Vercel host if available, otherwise http://localhost:3000
+ *
+ * Local web: `/api/*` is served by `vercel dev` (default http://localhost:3000). If you only run
+ * `expo start --web` (port 8081) without Vercel, API fetches to :3000 return 404 or connection
+ * errors — use `npm start`, `npm run web`, or `npm run dev:vercel` in another terminal. Static
+ * export previews (e.g. `npx serve` on :3000) do not include serverless routes.
  */
 
 function normalizeBase(base: string): string {

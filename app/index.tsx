@@ -1,20 +1,37 @@
-import { Redirect } from "expo-router";
+import { useEffect, useRef } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { WelcomeContent } from "../ui/components/WelcomeContent";
+import { getBuildDisplaySnapshot, logPageDisplay } from "../ui/pageDisplayLog";
+import { HomeAuthenticatedScreen } from "../ui/screens/HomeAuthenticatedScreen";
 
 /**
- * Entry: send users to Welcome or Home. Replace stub auth in `auth/AuthContext.tsx` with real sessions.
- * Wait for bootstrap so we don't redirect before session state is known (avoids route flicker).
+ * Root URL `http://localhost:3000/` (path `/`): welcome when signed out, main app when signed in.
+ * Same URL for both — only session state chooses the screen; legacy `/home` redirects here.
+ *
+ * Welcome is shown immediately on first paint; session bootstrap runs in parallel (`AuthProvider`).
+ * If the session is valid, we switch to the authenticated home once `authReady` (brief welcome → home
+ * only for returning signed-in users).
  */
 export default function Index() {
   const { isAuthenticated, authReady } = useAuth();
+  const lastLoggedVariantRef = useRef<string | null>(null);
 
-  if (!authReady) {
-    return null;
+  useEffect(() => {
+    const variant =
+      authReady && isAuthenticated ? "home_authenticated" : "welcome";
+    if (lastLoggedVariantRef.current === variant) return;
+    lastLoggedVariantRef.current = variant;
+    logPageDisplay("index_route", {
+      variant,
+      sessionPending: !authReady,
+      authReady,
+      isAuthenticated,
+      build: getBuildDisplaySnapshot(),
+    });
+  }, [authReady, isAuthenticated]);
+
+  if (authReady && isAuthenticated) {
+    return <HomeAuthenticatedScreen />;
   }
-
-  if (isAuthenticated) {
-    return <Redirect href="/home" />;
-  }
-
-  return <Redirect href="/welcome" />;
+  return <WelcomeContent />;
 }

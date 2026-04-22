@@ -1,12 +1,16 @@
 /**
- * Single Vercel serverless entry for all /api/* routes (Hobby plan function limit).
- * Concrete handlers live in api/_handlers/* (private — not deployed as separate routes).
+ * Single Vercel serverless entry for **single-segment** `/api/:segment` routes (Hobby plan limit).
+ * Concrete handlers live in api/_handlers/*.
+ *
+ * Vercel does not send multi-segment paths (e.g. `/api/auth/session`) to this file — only one
+ * dynamic segment after `/api/`. Those URLs need real files such as `api/auth/session.ts` or a
+ * `vercel.json` rewrite to a single segment (see `/api/kms/ping` → `/api/wallet-envelope-ping`).
+ *
+ * `vercel dev` on Windows may spawn extra workers for both this catch-all and explicit `api/auth/*`
+ * files; if a worker crashes (exit 3221226505), use `npm run web` or WSL.
  */
 
 import aiHandler from './_handlers/ai.js';
-import authSessionHandler from './_handlers/auth-session.js';
-import authTelegramCallbackHandler from './_handlers/auth-telegram-callback.js';
-import authTelegramStartHandler from './_handlers/auth-telegram-start.js';
 import blockchainHandler from './_handlers/blockchain.js';
 import botHandler from './_handlers/bot.js';
 import pingHandler from './_handlers/ping.js';
@@ -31,9 +35,6 @@ const ROUTES: Record<string, ApiHandler> = {
   ping: pingHandler as ApiHandler,
   bot: botHandler as ApiHandler,
   ai: aiHandler as ApiHandler,
-  'auth/session': authSessionHandler as ApiHandler,
-  'auth/telegram/start': authTelegramStartHandler as ApiHandler,
-  'auth/telegram/callback': authTelegramCallbackHandler as ApiHandler,
   blockchain: blockchainHandler as ApiHandler,
   telegram: telegramHandler as ApiHandler,
   releases: releasesHandler as ApiHandler,
@@ -75,7 +76,7 @@ async function router(
       ok: false,
       error: 'not_found',
       path: key || '(empty)',
-      hint: 'All API routes are served from this single function; see api/_handlers/',
+      hint: 'See api/[...path].ts (single-segment routes) and api/**/*.ts for multi-segment paths; handlers in api/_handlers/',
     });
     if (res) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');

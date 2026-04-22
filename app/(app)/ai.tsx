@@ -1,9 +1,18 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
+import { useAuth } from "../../auth/AuthContext";
 import { useColors } from "../../ui/theme";
 
 export default function AiScreen() {
+  const { isAuthenticated, authReady } = useAuth();
+  if (!authReady) {
+    return null;
+  }
+  if (!isAuthenticated) {
+    return <Redirect href="/" />;
+  }
+
   const colors = useColors();
   const { prompt } = useLocalSearchParams<{ prompt?: string }>();
 

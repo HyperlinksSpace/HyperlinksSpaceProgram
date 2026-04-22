@@ -1,5 +1,7 @@
-Switch to Telegram on Open in Telegram on native auth page
+icons loading on start
 Forms validation
+Log out from the seccion
+Switch to Telegram on Open in Telegram on native auth page
 Linking all accounts
 Login buttons functionality on Welcome screen.
 Login screen

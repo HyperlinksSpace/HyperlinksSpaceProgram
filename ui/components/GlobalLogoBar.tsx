@@ -17,6 +17,7 @@ import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
 import { dark, light, useColors } from "../theme";
+import { useAuth } from "../../auth/AuthContext";
 import { useResolvedPathname } from "../useResolvedPathname";
 
 const LOGO_HEIGHT = 32;
@@ -32,12 +33,12 @@ const ABOUT_URL = "https://landing.app.hyperlinks.space/";
 type LogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
 
 function resolveLogoBarVariant(
-  pathname: string,
+  isWelcomeLayout: boolean,
   isInTelegram: boolean,
   mergedImmersiveFullscreen: boolean,
   isTelegramMiniAppDesktop: boolean,
 ): LogoBarVariant {
-  if (pathname !== "/welcome") return "default";
+  if (!isWelcomeLayout) return "default";
 
   // Mobile TMA: never the marketing row (wordmark + About); logo-only — default or immersive.
   if (isInTelegram && !isTelegramMiniAppDesktop) {
@@ -122,6 +123,15 @@ function WelcomeMarketingBarContent({
 export function GlobalLogoBar() {
   const router = useRouter();
   const pathname = useResolvedPathname();
+  const { isAuthenticated, authReady } = useAuth();
+  const isRootPath =
+    pathname === "/" || pathname === "" || pathname === null;
+  // On `/` (and legacy welcome/home while signed out), use welcome chrome before session resolves
+  // so the first paint matches `WelcomeContent` instead of default header → welcome flash.
+  const isWelcomeLayout =
+    pathname === "/welcome" ||
+    (isRootPath && (!authReady || !isAuthenticated)) ||
+    (pathname === "/home" && (!authReady || !isAuthenticated));
   const colors = useColors();
   const {
     isInTelegram,
@@ -140,16 +150,15 @@ export function GlobalLogoBar() {
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
   const variant = resolveLogoBarVariant(
-    pathname,
+    isWelcomeLayout,
     isInTelegram,
     stableWelcomeImmersiveFullscreen,
     isTelegramMiniAppDesktop,
   );
-  const isWelcome = pathname === "/welcome";
 
   useEffect(() => {
-    if (pathname !== "/welcome") return;
-    console.log("[GlobalLogoBar] /welcome header variant", {
+    if (!isWelcomeLayout) return;
+    const payload = {
       variant,
       isInTelegram,
       isFullscreenContext: mergedImmersiveFullscreen,
@@ -158,8 +167,13 @@ export function GlobalLogoBar() {
         stableWelcomeImmersiveFullscreen,
       ),
       initAndWebApp: getTmaInitAndWebAppDebugSnapshot(),
-    });
-  }, [pathname, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
+    };
+    try {
+      console.log("[GlobalLogoBar] welcome header variant", JSON.stringify(payload));
+    } catch {
+      console.log("[GlobalLogoBar] welcome header variant", payload);
+    }
+  }, [isWelcomeLayout, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
 
   const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
   const useWelcomeCenteredLogoLayout = variant === "welcomeImmersiveTma";
@@ -169,11 +183,11 @@ export function GlobalLogoBar() {
   const blockHeight = innerPaddingTop + logoBlockHeight + innerPaddingBottom;
 
   const shouldShow = useMemo(() => {
-    if (isWelcome && Platform.OS === "web") {
+    if (isWelcomeLayout && Platform.OS === "web") {
       return true;
     }
     if (!isInTelegram) return true;
-    if (pathname === "/welcome") {
+    if (isWelcomeLayout) {
       if (!isTelegramMiniAppDesktop) {
         return true;
       }
@@ -182,10 +196,9 @@ export function GlobalLogoBar() {
     return isExpanded;
   }, [
     isInTelegram,
-    pathname,
     stableWelcomeImmersiveFullscreen,
     isExpanded,
-    isWelcome,
+    isWelcomeLayout,
     isTelegramMiniAppDesktop,
   ]);
 
@@ -209,7 +222,7 @@ export function GlobalLogoBar() {
     );
   }
 
-  const welcomeBottomBorder = isWelcome
+  const welcomeBottomBorder = isWelcomeLayout
     ? { borderBottomWidth: 1 as const, borderBottomColor: colors.highlight }
     : null;
 

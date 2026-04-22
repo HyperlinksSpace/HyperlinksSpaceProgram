@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Expo Router can briefly report null/empty pathname on web before the route hydrates.
- * Root layout used that to always show GlobalLogoBar — wrong on `/welcome` in TMA.
+ * Root layout used that to always show GlobalLogoBar — wrong on welcome-style layout at `/` (and legacy `/home` / `/welcome`) in TMA.
  * Sync read `window.location.pathname` when the router path is missing so the first paint
  * matches the real URL.
  */
