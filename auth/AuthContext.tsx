@@ -5,6 +5,7 @@ import { logPageDisplay } from "../ui/pageDisplayLog";
 export type AuthContextValue = {
   isAuthenticated: boolean;
   authReady: boolean;
+  authHydrated: boolean;
   signIn: () => void;
   signOut: () => void;
 };
@@ -37,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // SSR/client parity: never read localStorage in initial render (React hydration mismatch #418).
   const [isAuthenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [authHydrated, setAuthHydrated] = useState(false);
 
   useLayoutEffect(() => {
     const hint = readAuthHint();
@@ -45,6 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(hintedAuth);
     setAuthReady(true);
     logPageDisplay("auth_hint_applied", { hintedAuth });
+  }, []);
+
+  useLayoutEffect(() => {
+    setAuthHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -112,8 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, authReady, signIn, signOut }),
-    [isAuthenticated, authReady, signIn, signOut],
+    () => ({ isAuthenticated, authReady, authHydrated, signIn, signOut }),
+    [isAuthenticated, authReady, authHydrated, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

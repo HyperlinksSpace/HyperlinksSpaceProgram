@@ -123,15 +123,14 @@ function WelcomeMarketingBarContent({
 export function GlobalLogoBar() {
   const router = useRouter();
   const pathname = useResolvedPathname();
-  const { isAuthenticated, authReady } = useAuth();
+  const { isAuthenticated, authHydrated, authReady } = useAuth();
   const isRootPath =
     pathname === "/" || pathname === "" || pathname === null;
-  // On `/`, follow the same decision as app/index: signed-out state shows welcome chrome.
-  // authReady is intentionally ignored here so header/body variants stay in sync on first paint.
+  // Keep root header neutral until auth is fully known to avoid wrong-header flashes.
   const isWelcomeLayout =
     pathname === "/welcome" ||
-    (isRootPath && !isAuthenticated) ||
-    (pathname === "/home" && !isAuthenticated);
+    (isRootPath && authHydrated && authReady && !isAuthenticated) ||
+    (pathname === "/home" && authHydrated && authReady && !isAuthenticated);
   const colors = useColors();
   const {
     isInTelegram,

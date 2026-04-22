@@ -15,7 +15,7 @@ import {
 import type { ComponentRef } from "react";
 import { Stack } from "expo-router";
 import * as Updates from "expo-updates";
-import { AuthProvider } from "../auth/AuthContext";
+import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
@@ -125,6 +125,7 @@ function useWebViewportAllowsPageZoom() {
 function RootContent() {
   useWebViewportAllowsPageZoom();
   const pathname = useResolvedPathname();
+  const { authHydrated, authReady } = useAuth();
   const colors = useColors();
   const { themeBgReady, useTelegramTheme, isInTelegram, isExpanded, layoutStartup } = useTelegram();
   const shellLogKeyRef = useRef<string | null>(null);
@@ -188,6 +189,9 @@ function RootContent() {
     }
     return !isInTelegram || isExpanded;
   }, [pathname, isInTelegram, layoutStartup, isExpanded]);
+  const isRootBootstrapPending =
+    (pathname === "/" || pathname === "" || pathname == null) &&
+    (!authHydrated || !authReady);
 
   return (
     <View
@@ -204,7 +208,7 @@ function RootContent() {
         },
       ]}
     >
-      {showGlobalLogoBar ? <GlobalLogoBarWithFallback /> : null}
+      {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
         <MainWebScrollColumn indicatorColor={colors.highlight}>
           <Stack screenOptions={{ headerShown: false }} />

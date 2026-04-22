@@ -335,7 +335,13 @@ export function HomeAuthenticatedScreen() {
     debug.fetchDurationMs,
   ]);
 
-  if (status === "idle" || status === "loading" || isBrowserSessionHydrating) {
+  if (isBrowserSessionHydrating) {
+    // Signed-in browser reload: keep this phase visually neutral while Telegram provider hydrates
+    // session-backed fields, so users do not see a temporary "other page".
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+  }
+
+  if (status === "idle" || status === "loading") {
     return (
       <View
         style={{
@@ -346,9 +352,7 @@ export function HomeAuthenticatedScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <Text style={{ marginBottom: 12, color: colors.primary }}>
-          {isBrowserSessionHydrating ? "Loading your session…" : "Loading…"}
-        </Text>
+        <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
         <View
           style={{
             padding: 8,
