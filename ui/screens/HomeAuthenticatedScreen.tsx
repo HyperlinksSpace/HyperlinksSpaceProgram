@@ -227,8 +227,14 @@ export function HomeAuthenticatedScreen() {
   const [masterKeyStorageTier, setMasterKeyStorageTier] = useState<WalletMasterKeyStorageTier | null>(null);
   const effectiveWalletAddress = wallet?.wallet_address ?? createdWalletAddress;
   const effectiveHasWallet = hasWallet || Boolean(createdWalletAddress);
+  const isBrowserSessionHydrating =
+    status === "dev" &&
+    !initData &&
+    telegramUsername == null &&
+    hasWallet == null &&
+    wallet == null;
   const homePhase =
-    status === "idle" || status === "loading"
+    status === "idle" || status === "loading" || isBrowserSessionHydrating
       ? "telegram_loading_or_polling"
       : status === "error"
         ? "telegram_error"
@@ -329,7 +335,7 @@ export function HomeAuthenticatedScreen() {
     debug.fetchDurationMs,
   ]);
 
-  if (status === "idle" || status === "loading") {
+  if (status === "idle" || status === "loading" || isBrowserSessionHydrating) {
     return (
       <View
         style={{
@@ -340,7 +346,9 @@ export function HomeAuthenticatedScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
+        <Text style={{ marginBottom: 12, color: colors.primary }}>
+          {isBrowserSessionHydrating ? "Loading your session…" : "Loading…"}
+        </Text>
         <View
           style={{
             padding: 8,

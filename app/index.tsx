@@ -17,8 +17,7 @@ export default function Index() {
   const lastLoggedVariantRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const variant =
-      authReady && isAuthenticated ? "home_authenticated" : "welcome";
+    const variant = isAuthenticated ? "home_authenticated" : "welcome";
     if (lastLoggedVariantRef.current === variant) return;
     lastLoggedVariantRef.current = variant;
     logPageDisplay("index_route", {
@@ -30,7 +29,7 @@ export default function Index() {
     });
   }, [authReady, isAuthenticated]);
 
-  if (authReady && isAuthenticated) {
+  if (isAuthenticated) {
     return <HomeAuthenticatedScreen />;
   }
   return <WelcomeContent />;

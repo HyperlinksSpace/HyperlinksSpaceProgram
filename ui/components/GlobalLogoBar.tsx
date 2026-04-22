@@ -126,12 +126,12 @@ export function GlobalLogoBar() {
   const { isAuthenticated, authReady } = useAuth();
   const isRootPath =
     pathname === "/" || pathname === "" || pathname === null;
-  // On `/` (and legacy welcome/home while signed out), use welcome chrome before session resolves
-  // so the first paint matches `WelcomeContent` instead of default header → welcome flash.
+  // On `/`, follow the same decision as app/index: signed-out state shows welcome chrome.
+  // authReady is intentionally ignored here so header/body variants stay in sync on first paint.
   const isWelcomeLayout =
     pathname === "/welcome" ||
-    (isRootPath && (!authReady || !isAuthenticated)) ||
-    (pathname === "/home" && (!authReady || !isAuthenticated));
+    (isRootPath && !isAuthenticated) ||
+    (pathname === "/home" && !isAuthenticated);
   const colors = useColors();
   const {
     isInTelegram,
