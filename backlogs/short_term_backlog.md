@@ -1,5 +1,6 @@
-icons loading on start
 Forms validation
+Icons loading on start
+Plans
 Log out from the seccion
 Switch to Telegram on Open in Telegram on native auth page
 Linking all accounts

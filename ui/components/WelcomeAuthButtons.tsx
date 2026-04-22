@@ -18,6 +18,9 @@ const ICON_GAP = 10;
 const GAP_BEFORE_EMAIL_BLOCK = 20;
 const EMAIL_LABEL_TO_INPUT_GAP = 10;
 const INPUT_TO_EMAIL_BUTTON_GAP = 20;
+const INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR = 10;
+const EMAIL_ERROR_LINE_HEIGHT = 30;
+const EMAIL_INVALID_COLOR = "#FF0000";
 /** Text inset from the left inside the field (per design: 110px). */
 const EMAIL_INPUT_TEXT_INSET_LEFT = 10;
 const EMAIL_INPUT_FONT_SIZE = 15;
@@ -56,12 +59,20 @@ const ROWS: { id: keyof typeof ICONS; label: string }[] = [
  * only the text measures — the label stays centered in the full button. When the icon appears,
  * the centered group may shift slightly (acceptable tradeoff).
  */
+function isValidBasicEmail(value: string): boolean {
+  const email = value.trim();
+  // Basic structure only: local@domain.zone (no provider allow-list).
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export function WelcomeAuthButtons() {
   const router = useRouter();
   const { signIn } = useAuth();
   const colors = useColors();
   const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
   const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
+  const [email, setEmail] = useState("");
+  const [emailInvalid, setEmailInvalid] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
   /**
@@ -170,19 +181,34 @@ export function WelcomeAuthButtons() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            value={email}
+            onChangeText={(next) => {
+              setEmail(next);
+              if (emailInvalid) setEmailInvalid(false);
+            }}
           />
         </View>
+        {emailInvalid ? (
+          <Text style={[styles.emailInvalidText, { color: EMAIL_INVALID_COLOR }]}>Invalid email</Text>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Sign in"
           onPress={() => {
+            if (!isValidBasicEmail(email)) {
+              setEmailInvalid(true);
+              return;
+            }
+            setEmailInvalid(false);
             /* wired when auth flows land */
           }}
           style={({ pressed }) => [
             styles.emailSignInButton,
             {
               backgroundColor: colors.undercover,
-              marginTop: INPUT_TO_EMAIL_BUTTON_GAP,
+              marginTop: emailInvalid
+                ? INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR
+                : INPUT_TO_EMAIL_BUTTON_GAP,
               opacity: pressed ? 0.85 : 1,
             },
           ]}
@@ -270,6 +296,11 @@ const styles = StyleSheet.create({
       },
       default: {},
     }),
+  },
+  emailInvalidText: {
+    lineHeight: EMAIL_ERROR_LINE_HEIGHT,
+    fontSize: 15,
+    fontWeight: "400",
   },
   emailSignInButton: {
     width: "100%",
