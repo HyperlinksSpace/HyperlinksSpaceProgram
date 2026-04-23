@@ -94,6 +94,7 @@ function WelcomeMarketingBarContent({
           paddingBottom: WELCOME_VERTICAL_INDENT,
           paddingHorizontal: MARKETING_HORIZONTAL_PADDING,
           backgroundColor,
+          borderTopColor: borderBottomColor,
           borderBottomColor,
         },
       ]}
@@ -222,7 +223,12 @@ export function GlobalLogoBar() {
   }
 
   const welcomeBottomBorder = isWelcomeLayout
-    ? { borderBottomWidth: 1 as const, borderBottomColor: colors.highlight }
+    ? {
+        borderTopWidth: 1 as const,
+        borderTopColor: colors.highlight,
+        borderBottomWidth: 1 as const,
+        borderBottomColor: colors.highlight,
+      }
     : null;
 
   return (
@@ -282,6 +288,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
     flexShrink: 0,
+    borderTopWidth: 1,
     borderBottomWidth: 1,
   },
   marketingRow: {

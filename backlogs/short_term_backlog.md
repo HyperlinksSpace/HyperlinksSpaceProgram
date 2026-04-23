@@ -1,3 +1,6 @@
+Fix previews
+light theme colors
+Update on logo press
 Icons loading on start
 Plans
 Log out from the seccion

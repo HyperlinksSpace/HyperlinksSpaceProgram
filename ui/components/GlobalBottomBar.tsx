@@ -119,6 +119,14 @@ const styles = StyleSheet.create({
     width: "100%",
     position: "relative",
   },
+  bottomDivider: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    pointerEvents: "none",
+  },
   container: {
     width: "100%",
     maxWidth: maxContentWidth,
@@ -323,7 +331,13 @@ function WebBottomBar({
     <View
       style={[
         styles.wrapper,
-        { backgroundColor, borderTopWidth: 1, borderTopColor: topBorderColor },
+        {
+          backgroundColor,
+          borderTopWidth: 1,
+          borderTopColor: topBorderColor,
+          borderBottomWidth: 1,
+          borderBottomColor: topBorderColor,
+        },
       ]}
     >
       <View style={[styles.container, { backgroundColor }]}>
@@ -373,6 +387,7 @@ function WebBottomBar({
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
       />
+      <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
     </View>
   );
 }
@@ -481,6 +496,8 @@ function NativeBottomBar({
           backgroundColor,
           borderTopWidth: 1,
           borderTopColor: topBorderColor,
+          borderBottomWidth: 1,
+          borderBottomColor: topBorderColor,
         },
       ]}
     >
@@ -555,6 +572,7 @@ function NativeBottomBar({
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
       />
+      <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
     </View>
   );
 }
