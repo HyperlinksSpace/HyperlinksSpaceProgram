@@ -28,7 +28,7 @@ export function FloatingShield() {
   const powerColor = colors.primary === "#000000" ? "#000000" : "#FFFFFF";
 
   return (
-    <View pointerEvents="none" style={[styles.host, { bottom: layout.bottomBar.barMinHeight + 20 }]}>
+    <View style={[styles.host, { bottom: layout.bottomBar.barMinHeight + 20, pointerEvents: "none" }]}>
       <View
         style={[
           styles.settingsCircle,

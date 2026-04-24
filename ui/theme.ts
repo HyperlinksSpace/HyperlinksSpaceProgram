@@ -7,7 +7,7 @@ import {
 export const dark = {
   background: "#000000",
   primary: "#FFFFFF",
-  /** Muted UI / hints — same family as `highlight` (not Telegram `hint_color` / #818181). */
+  /** Muted UI / hints — same as `highlight` (not hard-coded #818181 / Telegram `hint_color`). */
   secondary: "#515151",
   highlight: "#515151",
   undercover: "#272727",
@@ -33,7 +33,6 @@ export type ThemeColors = {
 
 export function getColorsForTheme(name: ThemeName | undefined | null): ThemeColors {
   if (name === "light") return light;
-  // Default + fallback: dark
   return dark;
 }
 
@@ -43,11 +42,9 @@ const TELEGRAM_PRE_READY_FALLBACK: ThemeColors = {
   background: "transparent",
 };
 
-// Convenience hook: derive palette when used in React, using Telegram theme in TMA
-// and dark theme as default/fallback elsewhere.
 export function useColors(): ThemeColors {
-  // Lazy import to avoid a hard dependency when this is used outside React.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // Lazy require so importers of only `dark` / `light` do not load the TMA / Telegram module graph.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- see above
   const { useTelegram } = require("./components/Telegram") as {
     useTelegram: () => {
       colorScheme: ThemeName;
@@ -57,11 +54,8 @@ export function useColors(): ThemeColors {
       clientHydrated: boolean;
     };
   };
-  const { colorScheme, isInTelegram, useTelegramTheme, themeBgReady, clientHydrated } =
-    useTelegram();
+  const { colorScheme, useTelegramTheme, themeBgReady, clientHydrated } = useTelegram();
 
-  // TMA before themeBgReady: never use app dark (#111). Until clientHydrated, match SSR exactly
-  // (React #418 if server HTML used different colors / themeBgReady than first client render).
   if (useTelegramTheme && !themeBgReady) {
     if (!clientHydrated) {
       return TELEGRAM_PRE_READY_FALLBACK;
@@ -71,30 +65,13 @@ export function useColors(): ThemeColors {
       getThemeColorsFromWebAppThemeParams() ??
       getThemeColorsFromLaunchThemeParams();
     if (preReady) {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log("[useColors] telegram pre-ready palette", preReady);
-      }
-      // Do not let Telegram `hint_color` (`preReady.secondary`) paint app chrome as #818181.
       return { ...dark, ...preReady, highlight: dark.highlight, secondary: dark.secondary };
     }
     return TELEGRAM_PRE_READY_FALLBACK;
   }
 
-  // Plain web: default dark. TMA after themeBgReady: colorScheme from WebApp.
   const themeName: ThemeName =
     !useTelegramTheme ? "dark" : themeBgReady ? colorScheme : "dark";
-
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log("[useColors] resolved", {
-      isInTelegram,
-      useTelegramTheme,
-      themeBgReady,
-      colorScheme,
-      themeName,
-    });
-  }
 
   return getColorsForTheme(themeName);
 }
@@ -118,4 +95,3 @@ export const icons = {
     height: 10,
   },
 };
-

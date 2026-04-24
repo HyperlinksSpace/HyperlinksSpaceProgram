@@ -92,7 +92,6 @@ export function logPageDisplay(
     ...details,
   };
   // One string so minified builds / collapsed DevTools still show payload (not only "Object").
-  // eslint-disable-next-line no-console
   console.log(`${PAGE_DISPLAY_LOG_PREFIX} ${stringifyForConsole(line)}`);
 }
 

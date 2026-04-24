@@ -52,9 +52,10 @@ export async function createSeedCipher(
   masterKey: string,
   seed: string,
 ): Promise<string> {
+  const rawKey = new Uint8Array(await sha256Bytes(masterKey));
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    await sha256Bytes(masterKey),
+    rawKey,
     { name: "AES-GCM" },
     false,
     ["encrypt"],

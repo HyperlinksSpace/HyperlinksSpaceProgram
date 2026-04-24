@@ -135,7 +135,6 @@ function classifyThemeFromBgColor(bgColor: string | undefined | null): "dark" | 
   const b = parseInt(hex.slice(4, 6), 16);
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   const scheme = luminance < 128 ? "dark" : "light";
-  // eslint-disable-next-line no-console
   console.log("[TMA theme] classify", { bgColor: bgColor.trim(), luminance, scheme });
   return scheme;
 }
@@ -374,7 +373,6 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function updateScheme(next: "dark" | "light") {
       setColorScheme((prev) => {
         if (prev === next) return prev;
-        // eslint-disable-next-line no-console
         console.log("[TMA theme] update colorScheme", { from: prev, to: next });
         return next;
       });
@@ -383,7 +381,6 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function markThemeBgReady(): void {
       setThemeBgReady((prev) => {
         if (prev) return prev;
-        // eslint-disable-next-line no-console
         console.log("[TMA theme] themeBgReady=true");
         return true;
       });

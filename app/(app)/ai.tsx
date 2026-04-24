@@ -6,15 +6,15 @@ import { useColors } from "../../ui/theme";
 
 export default function AiScreen() {
   const { isAuthenticated, authReady } = useAuth();
+  const colors = useColors();
+  const { prompt } = useLocalSearchParams<{ prompt?: string }>();
+
   if (!authReady) {
     return null;
   }
   if (!isAuthenticated) {
     return <Redirect href="/" />;
   }
-
-  const colors = useColors();
-  const { prompt } = useLocalSearchParams<{ prompt?: string }>();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

@@ -48,21 +48,20 @@ export async function getLoginAttemptByStateHash(stateHash: string): Promise<
     }
   | null
 > {
-  const rows = await sql<
-    {
-      id: string;
-      nonce_hash: string;
-      pkce_verifier: string;
-      redirect_uri: string;
-      status: LoginAttemptStatus;
-      expires_at: string;
-    }[]
-  >`
+  type LoginAttemptRow = {
+    id: string;
+    nonce_hash: string;
+    pkce_verifier: string;
+    redirect_uri: string;
+    status: LoginAttemptStatus;
+    expires_at: string;
+  };
+  const rows = (await sql`
     SELECT id, nonce_hash, pkce_verifier, redirect_uri, status, expires_at
     FROM auth_login_attempts
     WHERE state_hash = ${stateHash}
     LIMIT 1;
-  `;
+  `) as LoginAttemptRow[];
   return rows[0] ?? null;
 }
 
@@ -190,12 +189,12 @@ export async function createSession(input: {
 }
 
 export async function getSessionByHash(sessionHash: string): Promise<TelegramSessionRow | null> {
-  const rows = await sql<TelegramSessionRow[]>`
+  const rows = (await sql`
     SELECT telegram_username, expires_at
     FROM auth_sessions
     WHERE session_hash = ${sessionHash}
     LIMIT 1;
-  `;
+  `) as TelegramSessionRow[];
   return rows[0] ?? null;
 }
 

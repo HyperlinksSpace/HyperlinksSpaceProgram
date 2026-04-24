@@ -374,7 +374,7 @@ function MainWebScrollColumn({
         {children}
       </ScrollView>
       {indicator.show ? (
-        <View style={styles.scrollIndicatorWrap} pointerEvents="none">
+        <View style={styles.scrollIndicatorWrap}>
           <View
             style={[
               styles.scrollIndicatorThumb,
@@ -431,6 +431,7 @@ const styles = StyleSheet.create({
     right: 3,
     width: 1,
     zIndex: 20,
+    pointerEvents: "none",
   },
   scrollIndicatorThumb: {
     position: "absolute",

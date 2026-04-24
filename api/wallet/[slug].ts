@@ -64,7 +64,7 @@ async function router(
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
     });
   }
-  return handler(request, res);
+  return handler(request);
 }
 
 export default router;

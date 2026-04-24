@@ -53,7 +53,7 @@ export async function listWalletsByUsername(
   const username = normalizeUsername(telegramUsername);
   if (!username) return [];
 
-  const rows = await sql<WalletRow[]>`
+  const rows = (await sql`
     SELECT
       id,
       telegram_username,
@@ -72,7 +72,7 @@ export async function listWalletsByUsername(
     FROM wallets
     WHERE telegram_username = ${username}
     ORDER BY is_default DESC, created_at ASC;
-  `;
+  `) as WalletRow[];
   return rows;
 }
 
@@ -82,7 +82,7 @@ export async function getDefaultWalletByUsername(
   const username = normalizeUsername(telegramUsername);
   if (!username) return null;
 
-  const rows = await sql<WalletRow[]>`
+  const rows = (await sql`
     SELECT
       id,
       telegram_username,
@@ -102,7 +102,7 @@ export async function getDefaultWalletByUsername(
     WHERE telegram_username = ${username}
     ORDER BY is_default DESC, created_at ASC
     LIMIT 1;
-  `;
+  `) as WalletRow[];
 
   return rows[0] ?? null;
 }
@@ -129,7 +129,7 @@ export async function setDefaultWallet(opts: {
     WHERE telegram_username = ${username};
   `;
 
-  const rows = await sql<WalletRow[]>`
+  const rows = (await sql`
     UPDATE wallets
     SET is_default = TRUE,
         updated_at = NOW()
@@ -152,7 +152,7 @@ export async function setDefaultWallet(opts: {
       updated_at,
       last_used_at,
       last_seen_balance_at;
-  `;
+  `) as WalletRow[];
 
   const selected = rows[0] ?? null;
   if (!selected) return null;
@@ -189,7 +189,7 @@ export async function registerWallet(
     return null;
   }
 
-  const rows = await sql<WalletRow[]>`
+  const rows = (await sql`
     INSERT INTO wallets (
       telegram_username,
       wallet_address,
@@ -238,7 +238,7 @@ export async function registerWallet(
       updated_at,
       last_used_at,
       last_seen_balance_at;
-  `;
+  `) as WalletRow[];
 
   const wallet = rows[0] ?? null;
   if (!wallet) return null;
