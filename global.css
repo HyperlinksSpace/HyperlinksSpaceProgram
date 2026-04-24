@@ -72,9 +72,14 @@ textarea[data-ai-input="true"] {
 }
 
 /*
- * Chrome / Edge: autofill paints a light blue background unless overridden.
- * Inset box-shadow + text-fill matches theme (vars set on welcome email shell in WelcomeAuthButtons).
+ * Web TextInput: kill UA border/outline so the only stroke is the shell (theme highlight).
+ * Without this, some engines draw a default gray border that matches `secondary` (#818181).
  */
+#welcome-email-input {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
 #welcome-email-input:-webkit-autofill,
 #welcome-email-input:-webkit-autofill:hover,
 #welcome-email-input:-webkit-autofill:focus,

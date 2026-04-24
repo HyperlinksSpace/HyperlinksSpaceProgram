@@ -86,20 +86,22 @@ function Scrollbar({
 // Shared entry point: chooses platform-specific implementation and shared colors.
 export function GlobalBottomBar() {
   const colors = useColors();
-  const { themeBgReady } = useTelegram();
+  const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   const launchPrimary =
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
   const inputColor = themeBgReady ? colors.primary : launchPrimary ?? colors.primary;
   const topBorderColor = colors.highlight;
+  const hideFooterBottomBorder = isInTelegram && !layoutStartup.isTelegramMiniAppDesktop;
 
   if (Platform.OS === "web") {
     return (
       <WebBottomBar
         backgroundColor={backgroundColor}
         inputColor={inputColor}
-        scrollbarColor={colors.secondary}
+        scrollbarColor={topBorderColor}
         topBorderColor={topBorderColor}
+        hideBottomBorder={hideFooterBottomBorder}
       />
     );
   }
@@ -108,8 +110,9 @@ export function GlobalBottomBar() {
     <NativeBottomBar
       backgroundColor={backgroundColor}
       inputColor={inputColor}
-      scrollbarColor={colors.secondary}
+      scrollbarColor={topBorderColor}
       topBorderColor={topBorderColor}
+      hideBottomBorder={hideFooterBottomBorder}
     />
   );
 }
@@ -184,11 +187,13 @@ function WebBottomBar({
   inputColor,
   scrollbarColor,
   topBorderColor,
+  hideBottomBorder,
 }: {
   backgroundColor: string;
   inputColor: string;
   scrollbarColor: string;
   topBorderColor: string;
+  hideBottomBorder: boolean;
 }) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -335,7 +340,7 @@ function WebBottomBar({
           backgroundColor,
           borderTopWidth: 1,
           borderTopColor: topBorderColor,
-          borderBottomWidth: 1,
+          borderBottomWidth: hideBottomBorder ? 0 : 1,
           borderBottomColor: topBorderColor,
         },
       ]}
@@ -387,7 +392,9 @@ function WebBottomBar({
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
       />
-      <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
+      {!hideBottomBorder ? (
+        <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
+      ) : null}
     </View>
   );
 }
@@ -398,11 +405,13 @@ function NativeBottomBar({
   inputColor,
   scrollbarColor,
   topBorderColor,
+  hideBottomBorder,
 }: {
   backgroundColor: string;
   inputColor: string;
   scrollbarColor: string;
   topBorderColor: string;
+  hideBottomBorder: boolean;
 }) {
   const router = useRouter();
   const { triggerHaptic } = useTelegram();
@@ -496,7 +505,7 @@ function NativeBottomBar({
           backgroundColor,
           borderTopWidth: 1,
           borderTopColor: topBorderColor,
-          borderBottomWidth: 1,
+          borderBottomWidth: hideBottomBorder ? 0 : 1,
           borderBottomColor: topBorderColor,
         },
       ]}
@@ -572,7 +581,9 @@ function NativeBottomBar({
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
       />
-      <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
+      {!hideBottomBorder ? (
+        <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
+      ) : null}
     </View>
   );
 }

@@ -4,22 +4,19 @@ import {
   getThemeColorsFromWebAppThemeParams,
 } from "./components/telegramWebApp";
 
-const sharedColors = {
-  secondary: "#818181",
-} as const;
-
 export const dark = {
-  ...sharedColors,
   background: "#000000",
   primary: "#FFFFFF",
+  /** Muted UI / hints — same family as `highlight` (not Telegram `hint_color` / #818181). */
+  secondary: "#515151",
   highlight: "#515151",
   undercover: "#272727",
 } as const;
 
 export const light = {
-  ...sharedColors,
   background: "#FFFFFF",
   primary: "#000000",
+  secondary: "#AAAAAA",
   highlight: "#AAAAAA",
   undercover: "#F1F1F1",
 } as const;
@@ -78,7 +75,8 @@ export function useColors(): ThemeColors {
         // eslint-disable-next-line no-console
         console.log("[useColors] telegram pre-ready palette", preReady);
       }
-      return { ...dark, ...preReady, highlight: dark.highlight };
+      // Do not let Telegram `hint_color` (`preReady.secondary`) paint app chrome as #818181.
+      return { ...dark, ...preReady, highlight: dark.highlight, secondary: dark.secondary };
     }
     return TELEGRAM_PRE_READY_FALLBACK;
   }

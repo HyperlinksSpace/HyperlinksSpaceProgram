@@ -1,24 +1,33 @@
 /**
  * Fallback logo bar when TMA SDK is not available (e.g. browser).
- * Same layout: 30px top padding, 32px logo, 10px bottom, 15px horizontal.
+ * Same layout: 30px top padding, 24×24 logo on narrow viewports (≤480px), 32×32 otherwise, 10px bottom, 15px horizontal.
  */
-import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet, Platform, useWindowDimensions } from "react-native";
+import { useMemo } from "react";
 import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 
-const LOGO_HEIGHT = 32;
+const LOGO_HEIGHT_DESKTOP = 32;
+const LOGO_HEIGHT_MOBILE = 24;
+const HEADER_NARROW_MAX_WIDTH = 480;
 const BOTTOM_PADDING = 10;
 const HORIZONTAL_PADDING = 15;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
-const BLOCK_HEIGHT =
-  BROWSER_FALLBACK_TOP_PADDING + LOGO_HEIGHT + BOTTOM_PADDING;
 
 export function GlobalLogoBarFallback() {
   const router = useRouter();
+  const { width: dimensionsWidth } = useWindowDimensions();
+  const windowWidth = useMemo(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      return Math.max(dimensionsWidth, window.innerWidth || 0);
+    }
+    return dimensionsWidth;
+  }, [dimensionsWidth]);
+  const logoHeight = windowWidth <= HEADER_NARROW_MAX_WIDTH ? LOGO_HEIGHT_MOBILE : LOGO_HEIGHT_DESKTOP;
+  const blockHeight = BROWSER_FALLBACK_TOP_PADDING + logoHeight + BOTTOM_PADDING;
 
   return (
-    <View style={[styles.container, { height: BLOCK_HEIGHT }]}>
+    <View style={[styles.container, { height: blockHeight }]}>
       <View
         style={[
           styles.inner,
@@ -35,8 +44,8 @@ export function GlobalLogoBarFallback() {
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <View style={styles.logoBox}>
-            <HyperlinksSpaceLogo width={LOGO_HEIGHT} height={LOGO_HEIGHT} />
+          <View style={[styles.logoBox, { width: logoHeight, height: logoHeight }]}>
+            <HyperlinksSpaceLogo width={logoHeight} height={logoHeight} />
           </View>
         </Pressable>
       </View>
@@ -60,7 +69,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   logoBox: {
-    width: LOGO_HEIGHT,
-    height: LOGO_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

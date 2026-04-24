@@ -292,7 +292,7 @@ export function getThemeColorsFromTelegramCssVars(): TelegramCssThemeColors | nu
       return {
         background: bg,
         primary: text || "#000000",
-        secondary: hint || "#818181",
+        secondary: hint || "#515151",
       };
     }
   }
@@ -319,7 +319,7 @@ export function getThemeColorsFromThemeParamsObject(
   return {
     background: bg,
     primary: text || "#000000",
-    secondary: hint || "#818181",
+    secondary: hint || "#515151",
   };
 }
 

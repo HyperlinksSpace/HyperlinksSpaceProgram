@@ -12,7 +12,6 @@ import {
   type NativeSyntheticEvent,
   type ViewStyle,
 } from "react-native";
-import type { ComponentRef } from "react";
 import { Stack } from "expo-router";
 import * as Updates from "expo-updates";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
@@ -30,6 +29,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentRef,
   type ReactNode,
 } from "react";
 
@@ -210,7 +210,10 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <MainWebScrollColumn indicatorColor={colors.highlight}>
+        <MainWebScrollColumn
+          indicatorColor={colors.highlight}
+          scrollTrackColor={backgroundColor}
+        >
           <Stack screenOptions={{ headerShown: false }} />
         </MainWebScrollColumn>
       ) : (
@@ -235,9 +238,12 @@ function RootContent() {
 function MainWebScrollColumn({
   children,
   indicatorColor,
+  scrollTrackColor,
 }: {
   children: ReactNode;
   indicatorColor: string;
+  /** Scrollbar track: usually app background so the thumb (highlight) is the only accent. */
+  scrollTrackColor: string;
 }) {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
@@ -269,6 +275,25 @@ function MainWebScrollColumn({
     });
     return () => cancelAnimationFrame(id);
   }, [syncScrollMetricsFromDom, children]);
+
+  /** Theme the native OS scrollbar (still shown when `overflow: auto`); uses highlight thumb, not hint/secondary. */
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web") return;
+    const run = () => {
+      const instance = scrollRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (el?.style) {
+        el.style.setProperty("scrollbar-color", `${indicatorColor} ${scrollTrackColor}`);
+      }
+    };
+    const id = requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [indicatorColor, scrollTrackColor, children]);
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   useEffect(() => {

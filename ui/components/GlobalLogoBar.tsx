@@ -10,6 +10,7 @@ import {
   Platform,
   Text,
   Linking,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useTelegram } from "./Telegram";
@@ -22,7 +23,10 @@ import { useResolvedPathname } from "../useResolvedPathname";
 
 const LOGO_HEIGHT = 32;
 const WELCOME_LOGO_HEIGHT = 40;
-const WELCOME_WORDMARK_WIDTH = (104 / 40) * WELCOME_LOGO_HEIGHT;
+/** Match `WelcomeContent` wide layout: at or below this width, header logo is 24×24. */
+const HEADER_NARROW_MAX_WIDTH = 480;
+const MOBILE_LOGO_SIZE = 24;
+const WORDMARK_ASPECT = 104 / 40;
 const WELCOME_VERTICAL_INDENT = 15;
 const BOTTOM_PADDING = 10;
 const HORIZONTAL_PADDING = 15;
@@ -72,13 +76,18 @@ function useLogoTopPadding(
 function WelcomeMarketingBarContent({
   backgroundColor,
   borderBottomColor,
+  hideTopBorder,
+  wordmarkHeight,
 }: {
   backgroundColor: string;
   borderBottomColor: string;
+  hideTopBorder: boolean;
+  wordmarkHeight: number;
 }) {
   const { triggerHaptic } = useTelegram();
   const colors = useColors();
   const logoTextColor = colors.primary === light.primary ? dark.background : light.background;
+  const wordmarkWidth = WORDMARK_ASPECT * wordmarkHeight;
 
   const onAbout = () => {
     triggerHaptic("light");
@@ -96,14 +105,15 @@ function WelcomeMarketingBarContent({
           backgroundColor,
           borderTopColor: borderBottomColor,
           borderBottomColor,
+          borderTopWidth: hideTopBorder ? 0 : 1,
         },
       ]}
     >
       <View style={styles.marketingRow}>
         <View style={styles.marketingLeft} accessible accessibilityLabel="Hyperlinks Space">
           <LogoWordmark
-            width={WELCOME_WORDMARK_WIDTH}
-            height={WELCOME_LOGO_HEIGHT}
+            width={wordmarkWidth}
+            height={wordmarkHeight}
             textColor={logoTextColor}
           />
         </View>
@@ -147,6 +157,17 @@ export function GlobalLogoBar() {
     layoutStartup.mergedImmersiveFullscreen || layoutStartup.launchHashFullscreenPositive;
   const isTelegramMiniAppDesktop = layoutStartup.isTelegramMiniAppDesktop;
 
+  const { width: dimensionsWidth } = useWindowDimensions();
+  const windowWidth = useMemo(() => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      return Math.max(dimensionsWidth, window.innerWidth || 0);
+    }
+    return dimensionsWidth;
+  }, [dimensionsWidth]);
+  const isNarrowHeader = windowWidth <= HEADER_NARROW_MAX_WIDTH;
+  const defaultLogoSize = isNarrowHeader ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
+  const welcomeImmersiveLogoSize = isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
+
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
   const variant = resolveLogoBarVariant(
@@ -155,6 +176,7 @@ export function GlobalLogoBar() {
     stableWelcomeImmersiveFullscreen,
     isTelegramMiniAppDesktop,
   );
+  const hideHeaderTopBorder = isInTelegram && !isTelegramMiniAppDesktop;
 
   useEffect(() => {
     if (!isWelcomeLayout) return;
@@ -177,7 +199,7 @@ export function GlobalLogoBar() {
 
   const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
   const useWelcomeCenteredLogoLayout = variant === "welcomeImmersiveTma";
-  const logoBlockHeight = useWelcomeCenteredLogoLayout ? WELCOME_LOGO_HEIGHT : LOGO_HEIGHT;
+  const logoBlockHeight = useWelcomeCenteredLogoLayout ? welcomeImmersiveLogoSize : defaultLogoSize;
   const innerPaddingTop = useWelcomeCenteredLogoLayout ? WELCOME_VERTICAL_INDENT : topPadding;
   const innerPaddingBottom = useWelcomeCenteredLogoLayout ? WELCOME_VERTICAL_INDENT : BOTTOM_PADDING;
   const blockHeight = innerPaddingTop + logoBlockHeight + innerPaddingBottom;
@@ -217,6 +239,8 @@ export function GlobalLogoBar() {
         <WelcomeMarketingBarContent
           backgroundColor={backgroundColor}
           borderBottomColor={colors.highlight}
+          hideTopBorder={hideHeaderTopBorder}
+          wordmarkHeight={isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT}
         />
       </View>
     );
@@ -224,7 +248,7 @@ export function GlobalLogoBar() {
 
   const welcomeBottomBorder = isWelcomeLayout
     ? {
-        borderTopWidth: 1 as const,
+        borderTopWidth: hideHeaderTopBorder ? (0 as const) : (1 as const),
         borderTopColor: colors.highlight,
         borderBottomWidth: 1 as const,
         borderBottomColor: colors.highlight,

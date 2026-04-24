@@ -177,7 +177,7 @@ export function WelcomeAuthButtons() {
             {...(Platform.OS === "web" ? { id: "welcome-email-input" } : {})}
             style={[styles.emailInputInner, { color: colors.primary }]}
             placeholder="Your email address"
-            placeholderTextColor={colors.secondary}
+            placeholderTextColor={colors.highlight}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -263,6 +263,7 @@ const styles = StyleSheet.create({
     maxWidth: WELCOME_AUTH_MAX_WIDTH,
     height: BUTTON_HEIGHT,
     borderWidth: 1,
+    borderStyle: "solid",
     overflow: "hidden",
     ...Platform.select({
       web: {

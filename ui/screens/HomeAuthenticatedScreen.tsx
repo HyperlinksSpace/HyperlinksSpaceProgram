@@ -359,7 +359,7 @@ export function HomeAuthenticatedScreen() {
             borderRadius: 8,
             alignSelf: "stretch",
             borderWidth: 1,
-            borderColor: colors.secondary,
+            borderColor: colors.highlight,
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
@@ -414,7 +414,7 @@ export function HomeAuthenticatedScreen() {
             borderRadius: 8,
             alignSelf: "stretch",
             borderWidth: 1,
-            borderColor: colors.secondary,
+            borderColor: colors.highlight,
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
@@ -466,7 +466,7 @@ export function HomeAuthenticatedScreen() {
             borderRadius: 8,
             alignSelf: "stretch",
             borderWidth: 1,
-            borderColor: colors.secondary,
+            borderColor: colors.highlight,
           }}
         >
           <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
