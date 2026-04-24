@@ -1,12 +1,31 @@
 import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
+import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
 
-const SHIELD_ICON = require("../../assets/Shield.svg");
 const SETTINGS_ICON = require("../../assets/Settings.svg");
+
+function ShieldIcon({ powerColor }: { powerColor: string }) {
+  return (
+    <Svg width={20} height={22} viewBox="0 0 20 22" fill="none">
+      <Path d="M10 22C20.0414 16 20 4 20 4L10 0L0 4C0 4 0 16 10 22Z" fill="#FF0000" />
+      <G transform="translate(4 3.5)">
+        <Path
+          d="M5.99938 10.8864C3.30306 10.8864 1.10938 8.68896 1.10938 5.98824C1.10938 4.5201 1.75001 3.14364 2.86695 2.21385C2.91911 2.17018 2.97936 2.13722 3.04427 2.11686C3.10918 2.09651 3.17746 2.08916 3.24522 2.09523C3.31297 2.1013 3.37886 2.12068 3.43912 2.15226C3.49937 2.18383 3.5528 2.22698 3.59635 2.27924C3.6399 2.33149 3.67272 2.39182 3.69292 2.45678C3.71312 2.52174 3.72031 2.59004 3.71407 2.65778C3.70784 2.72551 3.6883 2.79136 3.65658 2.85153C3.62486 2.91171 3.58158 2.96503 3.52922 3.00846C2.64878 3.74194 2.1438 4.82806 2.1438 5.98824C2.1438 8.11863 3.8734 9.85196 5.99938 9.85196C8.12535 9.85196 9.85495 8.11863 9.85495 5.98824C9.85489 5.41888 9.72873 4.85661 9.48553 4.34181C9.24233 3.82701 8.88813 3.37246 8.44837 3.01081C8.3939 2.96829 8.34851 2.91528 8.31486 2.85491C8.28122 2.79455 8.26002 2.72806 8.25251 2.65936C8.245 2.59067 8.25133 2.52116 8.27112 2.45496C8.29092 2.38875 8.32379 2.32718 8.36778 2.27389C8.41178 2.2206 8.466 2.17666 8.52726 2.14467C8.58852 2.11269 8.65556 2.0933 8.72444 2.08766C8.79331 2.08202 8.86262 2.09024 8.92827 2.11184C8.99391 2.13343 9.05457 2.16796 9.10664 2.21338C9.66413 2.67189 10.1131 3.2482 10.4214 3.90088C10.7296 4.55357 10.8894 5.26643 10.8894 5.98824C10.8894 8.68896 8.69569 10.8864 5.99938 10.8864Z"
+          fill={powerColor}
+        />
+        <Path
+          d="M6.00159 6.37555C5.86441 6.37555 5.73286 6.32106 5.63586 6.22406C5.53887 6.12706 5.48438 5.99551 5.48438 5.85833V1.62659C5.48438 1.48941 5.53887 1.35786 5.63586 1.26086C5.73286 1.16387 5.86441 1.10937 6.00159 1.10938C6.13876 1.10937 6.27031 1.16387 6.36731 1.26086C6.46431 1.35786 6.5188 1.48941 6.5188 1.62659V5.85833C6.5188 5.99551 6.46431 6.12706 6.36731 6.22406C6.27031 6.32106 6.13876 6.37555 6.00159 6.37555Z"
+          fill={powerColor}
+        />
+      </G>
+    </Svg>
+  );
+}
 
 export function FloatingShield() {
   const colors = useColors();
+  const powerColor = colors.primary === "#000000" ? "#000000" : "#FFFFFF";
 
   return (
     <View pointerEvents="none" style={[styles.host, { bottom: layout.bottomBar.barMinHeight + 20 }]}>
@@ -21,7 +40,9 @@ export function FloatingShield() {
       <View
         style={[styles.circle, { backgroundColor: colors.undercover, borderColor: colors.highlight }]}
       >
-        <Image source={SHIELD_ICON} style={styles.icon} contentFit="contain" />
+        <View style={styles.iconWrap}>
+          <ShieldIcon powerColor={powerColor} />
+        </View>
         <Text style={[styles.label, { color: colors.primary }]}>Shield</Text>
       </View>
     </View>
@@ -57,10 +78,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
   },
-  icon: {
+  iconWrap: {
+    marginTop: 6,
     width: 20,
     height: 22,
-    marginTop: 6,
   },
   label: {
     marginTop: 4,
