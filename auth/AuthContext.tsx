@@ -15,16 +15,6 @@ const AUTH_HINT_STORAGE_KEY = "hs_auth_hint_v1";
 
 type AuthHint = "in" | "out";
 
-function readAuthHint(): AuthHint | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(AUTH_HINT_STORAGE_KEY);
-    return raw === "in" || raw === "out" ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
 function writeAuthHint(value: AuthHint): void {
   if (typeof window === "undefined") return;
   try {
@@ -35,19 +25,14 @@ function writeAuthHint(value: AuthHint): void {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // SSR/client parity: never read localStorage in initial render (React hydration mismatch #418).
+  // SSR / first paint: keep default state. Do not read the stored auth hint before session:
+  // a stale "in" hint flashed `HomeAuthenticatedScreen` before `GET /api/auth/session` returned
+  // (welcome blink) and could participate in client/server tree mismatch (React #418). Session
+  // is the only source of truth for initial `isAuthenticated`; we still `writeAuthHint` after
+  // bootstrap and on signIn/signOut for a soft cache only.
   const [isAuthenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
-
-  useLayoutEffect(() => {
-    const hint = readAuthHint();
-    if (hint == null) return;
-    const hintedAuth = hint === "in";
-    setAuthenticated(hintedAuth);
-    setAuthReady(true);
-    logPageDisplay("auth_hint_applied", { hintedAuth });
-  }, []);
 
   useLayoutEffect(() => {
     setAuthHydrated(true);

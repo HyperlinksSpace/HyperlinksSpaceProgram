@@ -19,6 +19,7 @@ import { LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
 import { dark, light, useColors } from "../theme";
 import { useAuth } from "../../auth/AuthContext";
+import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
 
 const LOGO_HEIGHT = 32;
@@ -33,6 +34,27 @@ const HORIZONTAL_PADDING = 15;
 const MARKETING_HORIZONTAL_PADDING = 16;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
 const ABOUT_URL = "https://landing.app.hyperlinks.space/";
+
+/**
+ * TMA / web top offset for a header glyph, matching `prev-main` Flutter `GlobalLogoBar._getLogoTopPadding`:
+ * `safeAreaInsetTop + (contentSafeAreaInsetTop / 2) - (contentGlyphHeight / 2)`.
+ * The container height is `top + contentGlyphHeight + bottomPadding` with the glyph centered
+ * in the same way as Flutter’s `Container` + `Center` (tight content box, not a separate flex band).
+ */
+function useLogoTopOffset(
+  safeAreaInsetTop: number,
+  contentSafeAreaInsetTop: number,
+  contentGlyphHeight: number,
+): number {
+  return useMemo(() => {
+    if (safeAreaInsetTop === 0 && contentSafeAreaInsetTop === 0) {
+      return BROWSER_FALLBACK_TOP_PADDING;
+    }
+    const half = Number.isFinite(contentGlyphHeight) ? contentGlyphHeight / 2 : 16;
+    const value = safeAreaInsetTop + contentSafeAreaInsetTop / 2 - half;
+    return Number.isFinite(value) ? value : BROWSER_FALLBACK_TOP_PADDING;
+  }, [safeAreaInsetTop, contentSafeAreaInsetTop, contentGlyphHeight]);
+}
 
 type LogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
 
@@ -60,29 +82,20 @@ function resolveLogoBarVariant(
   return "default";
 }
 
-function useLogoTopPadding(
-  safeAreaInsetTop: number,
-  contentSafeAreaInsetTop: number,
-): number {
-  return useMemo(() => {
-    if (safeAreaInsetTop === 0 && contentSafeAreaInsetTop === 0) {
-      return BROWSER_FALLBACK_TOP_PADDING;
-    }
-    const value = safeAreaInsetTop + contentSafeAreaInsetTop / 2 - 16;
-    return Number.isFinite(value) ? value : BROWSER_FALLBACK_TOP_PADDING;
-  }, [safeAreaInsetTop, contentSafeAreaInsetTop]);
-}
-
 function WelcomeMarketingBarContent({
   backgroundColor,
   borderBottomColor,
   hideTopBorder,
   wordmarkHeight,
+  contentPaddingTop,
+  contentPaddingBottom,
 }: {
   backgroundColor: string;
   borderBottomColor: string;
   hideTopBorder: boolean;
   wordmarkHeight: number;
+  contentPaddingTop: number;
+  contentPaddingBottom: number;
 }) {
   const { triggerHaptic } = useTelegram();
   const colors = useColors();
@@ -99,8 +112,8 @@ function WelcomeMarketingBarContent({
       style={[
         styles.marketingBar,
         {
-          paddingTop: WELCOME_VERTICAL_INDENT,
-          paddingBottom: WELCOME_VERTICAL_INDENT,
+          paddingTop: contentPaddingTop,
+          paddingBottom: contentPaddingBottom,
           paddingHorizontal: MARKETING_HORIZONTAL_PADDING,
           backgroundColor,
           borderTopColor: borderBottomColor,
@@ -134,14 +147,9 @@ function WelcomeMarketingBarContent({
 export function GlobalLogoBar() {
   const router = useRouter();
   const pathname = useResolvedPathname();
-  const { isAuthenticated, authHydrated, authReady } = useAuth();
-  const isRootPath =
-    pathname === "/" || pathname === "" || pathname === null;
+  const auth = useAuth();
   // Keep root header neutral until auth is fully known to avoid wrong-header flashes.
-  const isWelcomeLayout =
-    pathname === "/welcome" ||
-    (isRootPath && authHydrated && authReady && !isAuthenticated) ||
-    (pathname === "/home" && authHydrated && authReady && !isAuthenticated);
+  const isWelcomeLayout = isWelcomeLayoutRoute(pathname, auth);
   const colors = useColors();
   const {
     isInTelegram,
@@ -166,7 +174,6 @@ export function GlobalLogoBar() {
   }, [dimensionsWidth]);
   const isNarrowHeader = windowWidth <= HEADER_NARROW_MAX_WIDTH;
   const defaultLogoSize = isNarrowHeader ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
-  const welcomeImmersiveLogoSize = isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
 
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
@@ -176,6 +183,9 @@ export function GlobalLogoBar() {
     stableWelcomeImmersiveFullscreen,
     isTelegramMiniAppDesktop,
   );
+  /** Immersive fullscreen on Telegram Desktop: same full wordmark as browser marketing (no N-only). */
+  const isDesktopTmaImmersiveWelcome =
+    variant === "welcomeImmersiveTma" && isInTelegram && isTelegramMiniAppDesktop;
   const hideHeaderTopBorder = isInTelegram && !isTelegramMiniAppDesktop;
 
   useEffect(() => {
@@ -197,12 +207,33 @@ export function GlobalLogoBar() {
     }
   }, [isWelcomeLayout, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
 
-  const topPadding = useLogoTopPadding(safeAreaInsetTop, contentSafeAreaInsetTop);
-  const useWelcomeCenteredLogoLayout = variant === "welcomeImmersiveTma";
-  const logoBlockHeight = useWelcomeCenteredLogoLayout ? welcomeImmersiveLogoSize : defaultLogoSize;
-  const innerPaddingTop = useWelcomeCenteredLogoLayout ? WELCOME_VERTICAL_INDENT : topPadding;
-  const innerPaddingBottom = useWelcomeCenteredLogoLayout ? WELCOME_VERTICAL_INDENT : BOTTOM_PADDING;
-  const blockHeight = innerPaddingTop + logoBlockHeight + innerPaddingBottom;
+  /**
+   * Logo-only bar (signed-in home + TMA welcome): one rhythm — same glyph size and Telegram top offset
+   * as the home header. The old `welcomeImmersiveTma` path used 15px bands + 40px logo and looked
+   * misaligned next to the native TMA title row compared to the wallet home screen.
+   */
+  const logoBlockHeight = defaultLogoSize;
+  const wordmarkForMarketing = isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
+  const headerContentHeight = isDesktopTmaImmersiveWelcome ? wordmarkForMarketing : logoBlockHeight;
+  /** Same as Flutter: offset matches the glyph you’re placing (N logo, wordmark, or welcome size). */
+  const contentGlyphForTopOffset =
+    variant === "welcomeMarketing" ? wordmarkForMarketing : headerContentHeight;
+  const baseTelegramStyleTop = useLogoTopOffset(
+    safeAreaInsetTop,
+    contentSafeAreaInsetTop,
+    contentGlyphForTopOffset,
+  );
+  /**
+   * Desktop TMA (Telegram Desktop, etc.): `safeArea` / `contentSafeArea` from WebApp are often
+   * relative to a viewport that already sits below the client’s titlebar — applying the full
+   * Flutter-style offset adds a second band of empty space above the bar.
+   */
+  const isDesktopTma = isInTelegram && isTelegramMiniAppDesktop;
+  const logoBarTopOffset = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
+
+  const belowLogoPad = BOTTOM_PADDING;
+  const topPadGlyph = logoBarTopOffset;
+  const blockHeight = topPadGlyph + headerContentHeight + belowLogoPad;
 
   const shouldShow = useMemo(() => {
     if (isWelcomeLayout && Platform.OS === "web") {
@@ -229,6 +260,9 @@ export function GlobalLogoBar() {
     router.replace("/");
   };
 
+  const logoWordmarkTextColor = colors.primary === light.primary ? dark.background : light.background;
+  const desktopImmersiveWordmarkWidth = WORDMARK_ASPECT * wordmarkForMarketing;
+
   if (!shouldShow) {
     return <View style={[styles.container, { height: 0, backgroundColor }]} />;
   }
@@ -240,48 +274,61 @@ export function GlobalLogoBar() {
           backgroundColor={backgroundColor}
           borderBottomColor={colors.highlight}
           hideTopBorder={hideHeaderTopBorder}
-          wordmarkHeight={isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT}
+          wordmarkHeight={wordmarkForMarketing}
+          contentPaddingTop={
+            isInTelegram && !isTelegramMiniAppDesktop
+              ? baseTelegramStyleTop
+              : WELCOME_VERTICAL_INDENT
+          }
+          contentPaddingBottom={WELCOME_VERTICAL_INDENT}
         />
       </View>
     );
   }
 
-  const welcomeBottomBorder = isWelcomeLayout
-    ? {
-        borderTopWidth: hideHeaderTopBorder ? (0 as const) : (1 as const),
-        borderTopColor: colors.highlight,
-        borderBottomWidth: 1 as const,
-        borderBottomColor: colors.highlight,
-      }
-    : null;
+  /** Single hairline under the logo bar on home and welcome (marketing row uses its own chrome). */
+  const logoBarBottomSeparator = { borderBottomWidth: 1 as const, borderBottomColor: colors.highlight };
 
   return (
     <View
       style={[
         styles.container,
         { height: blockHeight, backgroundColor },
-        welcomeBottomBorder,
+        logoBarBottomSeparator,
       ]}
     >
       <View
         style={[
           styles.inner,
+          isDesktopTmaImmersiveWelcome && styles.innerAlignStart,
           {
-            paddingTop: innerPaddingTop,
-            paddingBottom: innerPaddingBottom,
-            paddingHorizontal: HORIZONTAL_PADDING,
+            paddingTop: topPadGlyph,
+            paddingBottom: belowLogoPad,
+            paddingHorizontal: isDesktopTmaImmersiveWelcome
+              ? MARKETING_HORIZONTAL_PADDING
+              : HORIZONTAL_PADDING,
           },
         ]}
       >
         <Pressable
           onPress={onPressLogoHome}
-          style={styles.logoWrap}
+          style={[styles.logoWrap, isDesktopTmaImmersiveWelcome && styles.logoWrapAlignStart]}
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
-            <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
-          </View>
+          {isDesktopTmaImmersiveWelcome ? (
+            <View accessible accessibilityLabel="Hyperlinks Space">
+              <LogoWordmark
+                width={desktopImmersiveWordmarkWidth}
+                height={wordmarkForMarketing}
+                textColor={logoWordmarkTextColor}
+              />
+            </View>
+          ) : (
+            <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
+              <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
+            </View>
+          )}
         </Pressable>
       </View>
     </View>
@@ -299,10 +346,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  /** Match ordinary desktop TMA marketing row: content starts at the same horizontal band. */
+  innerAlignStart: {
+    alignItems: "flex-start",
+    justifyContent: "center",
+  },
   logoWrap: {
     maxWidth: 600,
     alignItems: "center",
     justifyContent: "center",
+  },
+  logoWrapAlignStart: {
+    alignItems: "flex-start",
+    alignSelf: "flex-start",
   },
   logoBox: {
     width: LOGO_HEIGHT,

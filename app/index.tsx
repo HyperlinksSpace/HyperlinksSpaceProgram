@@ -10,9 +10,9 @@ import { useColors } from "../ui/theme";
  * Root URL `http://localhost:3000/` (path `/`): welcome when signed out, main app when signed in.
  * Same URL for both — only session state chooses the screen; legacy `/home` redirects here.
  *
- * Welcome is shown immediately on first paint; session bootstrap runs in parallel (`AuthProvider`).
- * If the session is valid, we switch to the authenticated home once `authReady` (brief welcome → home
- * only for returning signed-in users).
+ * Waits for `authHydrated` + `authReady` (session `GET` finished); no optimistic route from
+ * `localStorage` so we do not flash the authenticated home when the server session is missing.
+ * When the session is valid, we show home after bootstrap.
  */
 export default function Index() {
   const colors = useColors();

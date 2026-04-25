@@ -1,4 +1,5 @@
 light theme colors
+Header configurations and visibility
 Update on logo press
 Icons loading on start
 Plans

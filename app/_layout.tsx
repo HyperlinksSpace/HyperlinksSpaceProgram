@@ -20,6 +20,7 @@ import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFal
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
+import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import { useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
@@ -125,7 +126,8 @@ function useWebViewportAllowsPageZoom() {
 function RootContent() {
   useWebViewportAllowsPageZoom();
   const pathname = useResolvedPathname();
-  const { authHydrated, authReady } = useAuth();
+  const auth = useAuth();
+  const { authHydrated, authReady, isAuthenticated } = auth;
   const colors = useColors();
   const { themeBgReady, useTelegramTheme, isInTelegram, isExpanded, layoutStartup } = useTelegram();
   const shellLogKeyRef = useRef<string | null>(null);
@@ -225,7 +227,9 @@ function RootContent() {
         // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
         Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? <GlobalBottomBar /> : null
       }
-      <FloatingShield />
+      {authHydrated && authReady && (isAuthenticated || isWelcomeLayoutRoute(pathname, auth)) ? (
+        <FloatingShield />
+      ) : null}
     </View>
   );
 }
