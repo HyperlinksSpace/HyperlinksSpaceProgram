@@ -87,9 +87,10 @@ export function logPageDisplay(
   event: string,
   details?: Record<string, unknown>,
 ): void {
+  // details may contain `event` (e.g. flow sub-steps); first arg is always the page-display key.
   const line = {
-    event,
     ...details,
+    event,
   };
   // One string so minified builds / collapsed DevTools still show payload (not only "Object").
   console.log(`${PAGE_DISPLAY_LOG_PREFIX} ${stringifyForConsole(line)}`);

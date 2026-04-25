@@ -1,10 +1,13 @@
-import { useEffect, useRef } from "react";
-import { View } from "react-native";
+import { useEffect, useRef, type ComponentType } from "react";
+import type { ViewProps } from "react-native";
+import { Platform, View } from "react-native";
+
+/** react-native-web forwards this to the DOM; RN `View` typings omit it. */
+const ShellView = View as ComponentType<ViewProps & { suppressHydrationWarning?: boolean }>;
 import { useAuth } from "../auth/AuthContext";
 import { WelcomeContent } from "../ui/components/WelcomeContent";
 import { getBuildDisplaySnapshot, logPageDisplay } from "../ui/pageDisplayLog";
 import { HomeAuthenticatedScreen } from "../ui/screens/HomeAuthenticatedScreen";
-import { useColors } from "../ui/theme";
 
 /**
  * Root URL `http://localhost:3000/` (path `/`): welcome when signed out, main app when signed in.
@@ -14,8 +17,10 @@ import { useColors } from "../ui/theme";
  * `localStorage` so we do not flash the authenticated home when the server session is missing.
  * When the session is valid, we show home after bootstrap.
  */
+/** Stable first paint on web so server HTML and client hydration match (avoids React #418). */
+const INDEX_WEB_HYDRATE_BG = "#000000";
+
 export default function Index() {
-  const colors = useColors();
   const { isAuthenticated, authReady, authHydrated } = useAuth();
   const lastLoggedVariantRef = useRef<string | null>(null);
 
@@ -40,11 +45,24 @@ export default function Index() {
   }, [authHydrated, authReady, isAuthenticated]);
 
   if (!authHydrated || !authReady) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+    return (
+      <ShellView
+        suppressHydrationWarning
+        style={{ flex: 1, backgroundColor: INDEX_WEB_HYDRATE_BG }}
+      />
+    );
   }
 
   if (isAuthenticated) {
-    return <HomeAuthenticatedScreen />;
+    return (
+      <ShellView suppressHydrationWarning style={{ flex: 1 }}>
+        <HomeAuthenticatedScreen />
+      </ShellView>
+    );
   }
-  return <WelcomeContent />;
+  return (
+    <ShellView suppressHydrationWarning style={{ flex: 1 }}>
+      <WelcomeContent />
+    </ShellView>
+  );
 }

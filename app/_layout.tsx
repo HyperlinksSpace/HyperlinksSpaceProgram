@@ -124,6 +124,19 @@ function useWebViewportAllowsPageZoom() {
 }
 
 function RootContent() {
+  /**
+   * Web: render a single static shell on the server + on the client's first commit so prerendered HTML
+   * matches hydration. The real tree (theme, pathname, Stack) only mounts after useLayoutEffect — that
+   * subtree is then a client-only paint, which avoids React #418 from TMA / auth / router divergence.
+   * Native: no split (always ready).
+   */
+  const [webHydrationReady, setWebHydrationReady] = useState(Platform.OS !== "web");
+  useLayoutEffect(() => {
+    if (Platform.OS === "web") {
+      setWebHydrationReady(true);
+    }
+  }, []);
+
   useWebViewportAllowsPageZoom();
   const pathname = useResolvedPathname();
   const auth = useAuth();
@@ -195,8 +208,19 @@ function RootContent() {
     (pathname === "/" || pathname === "" || pathname == null) &&
     (!authHydrated || !authReady);
 
+  if (Platform.OS === "web" && !webHydrationReady) {
+    return (
+      <View
+        {...(Platform.OS === "web" ? { suppressHydrationWarning: true } : {})}
+        style={[styles.root, styles.rootWeb, { backgroundColor: "#000000" }]}
+      />
+    );
+  }
+
   return (
     <View
+      // TMA / Vercel web: theme and display toggles after mount can mismatch pre-hydration HTML (React #418).
+      {...(Platform.OS === "web" ? { suppressHydrationWarning: true } : {})}
       style={[
         styles.root,
         Platform.OS === "web" ? styles.rootWeb : styles.rootOverflowHidden,

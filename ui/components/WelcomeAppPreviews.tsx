@@ -41,7 +41,7 @@ const PREVIEW_ASSETS = {
     light: {
       src: require("../../assets/previews/white/full.svg"),
       width: 1920,
-      height: 953,
+      height: 1080,
     },
     dark: {
       src: require("../../assets/previews/black/full.svg"),

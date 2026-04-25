@@ -190,21 +190,24 @@ export type TelegramDebugInfo = {
   lastLog: string | null;
 };
 
+/** Public wallet row from /api/telegram and /api/wallet/register. */
+export type TelegramWalletRow = {
+  id: number;
+  wallet_address: string;
+  wallet_blockchain: string;
+  wallet_net: string;
+  type: string;
+  label: string | null;
+  is_default: boolean;
+  source: string | null;
+};
+
 export type TelegramContextValue = {
   status: TelegramStatus;
   telegramUsername: string | null;
   hasWallet: boolean | null;
   walletRequired: boolean;
-  wallet: {
-    id: number;
-    wallet_address: string;
-    wallet_blockchain: string;
-    wallet_net: string;
-    type: string;
-    label: string | null;
-    is_default: boolean;
-    source: string | null;
-  } | null;
+  wallet: TelegramWalletRow | null;
   initData: string | null;
   error: string | null;
   isInTelegram: boolean;
@@ -234,6 +237,11 @@ export type TelegramContextValue = {
   layoutStartup: TelegramLayoutStartupSnapshot;
   /** On-screen debug (no console needed in TMA). */
   debug: TelegramDebugInfo;
+  /**
+   * After successful POST /api/wallet/register, apply the returned `wallet` row so UI matches the
+   * server without waiting for a full /api/telegram or local storage.
+   */
+  applyServerWalletAfterRegister: (wallet: TelegramWalletRow) => void;
 };
 
 const defaultDebug: TelegramDebugInfo = {
@@ -275,6 +283,7 @@ const defaultContext: TelegramContextValue = {
   startParam: null,
   layoutStartup: getEmptyTelegramLayoutStartupSnapshot(),
   debug: defaultDebug,
+  applyServerWalletAfterRegister: () => {},
 };
 
 const TelegramContext = createContext<TelegramContextValue>(defaultContext);
@@ -300,14 +309,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
   const [safeAreaInsetTop, setSafeAreaInsetTop] = useState(0);
   const [contentSafeAreaInsetTop, setContentSafeAreaInsetTop] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return getIsImmersiveFullscreenMerged(undefined, undefined);
-    } catch {
-      return false;
-    }
-  });
+  // Always start false (matches SSR / pre-hydration). Reading `window` here caused React #418 when
+  // the client snapshot differed from server HTML; `runTmaFlow` / viewport sync set the real value.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [colorScheme, setColorScheme] = useState<"dark" | "light">(initialColorSchemeFromBootstrap);
 
@@ -324,6 +328,12 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
   const refreshLayoutStartup = useCallback(() => {
     setLayoutStartup(computeTelegramLayoutStartupSnapshot());
+  }, []);
+
+  const applyServerWalletAfterRegister = useCallback((w: TelegramWalletRow) => {
+    setWallet(w);
+    setHasWallet(true);
+    setWalletRequired(false);
   }, []);
 
   useLayoutEffect(() => {
@@ -922,6 +932,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     startParam: layoutStartup.startParam,
     layoutStartup,
     debug,
+    applyServerWalletAfterRegister,
   };
 
   return (

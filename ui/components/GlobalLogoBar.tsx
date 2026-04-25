@@ -24,7 +24,7 @@ import { useResolvedPathname } from "../useResolvedPathname";
 
 const LOGO_HEIGHT = 32;
 const WELCOME_LOGO_HEIGHT = 40;
-/** Match `WelcomeContent` wide layout: at or below this width, header logo is 24×24. */
+/** When also in phone TMA, use a smaller 24px header glyph; width alone is not enough (see `useCompactHeaderGlyph`). */
 const HEADER_NARROW_MAX_WIDTH = 480;
 const MOBILE_LOGO_SIZE = 24;
 const WORDMARK_ASPECT = 104 / 40;
@@ -103,7 +103,9 @@ function WelcomeMarketingBarContent({
   const wordmarkWidth = WORDMARK_ASPECT * wordmarkHeight;
 
   const onAbout = () => {
-    triggerHaptic("light");
+    if (Platform.OS !== "web") {
+      triggerHaptic("light");
+    }
     void Linking.openURL(ABOUT_URL);
   };
 
@@ -173,7 +175,8 @@ export function GlobalLogoBar() {
     return dimensionsWidth;
   }, [dimensionsWidth]);
   const isNarrowHeader = windowWidth <= HEADER_NARROW_MAX_WIDTH;
-  const defaultLogoSize = isNarrowHeader ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
+  const useCompactHeaderGlyph = isNarrowHeader && isInTelegram && !isTelegramMiniAppDesktop;
+  const defaultLogoSize = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
 
   const backgroundColor = themeBgReady ? colors.background : "transparent";
 
@@ -213,7 +216,7 @@ export function GlobalLogoBar() {
    * misaligned next to the native TMA title row compared to the wallet home screen.
    */
   const logoBlockHeight = defaultLogoSize;
-  const wordmarkForMarketing = isNarrowHeader ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
+  const wordmarkForMarketing = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
   const headerContentHeight = isDesktopTmaImmersiveWelcome ? wordmarkForMarketing : logoBlockHeight;
   /** Same as Flutter: offset matches the glyph you’re placing (N logo, wordmark, or welcome size). */
   const contentGlyphForTopOffset =
@@ -256,7 +259,9 @@ export function GlobalLogoBar() {
   ]);
 
   const onPressLogoHome = () => {
-    triggerHaptic("light");
+    if (Platform.OS !== "web") {
+      triggerHaptic("light");
+    }
     router.replace("/");
   };
 

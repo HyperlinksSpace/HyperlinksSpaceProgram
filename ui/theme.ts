@@ -56,10 +56,14 @@ export function useColors(): ThemeColors {
   };
   const { colorScheme, useTelegramTheme, themeBgReady, clientHydrated } = useTelegram();
 
+  // SSR has no `window`, so `useTelegramTheme` is false and we use `dark`. On the client, TMA would
+  // otherwise take the branch below with `transparent` before `clientHydrated` — different from
+  // server HTML and triggers React #418 on web (e.g. index bootstrap `backgroundColor`).
+  if (!clientHydrated) {
+    return getColorsForTheme("dark");
+  }
+
   if (useTelegramTheme && !themeBgReady) {
-    if (!clientHydrated) {
-      return TELEGRAM_PRE_READY_FALLBACK;
-    }
     const preReady =
       getThemeColorsFromTelegramCssVars() ??
       getThemeColorsFromWebAppThemeParams() ??

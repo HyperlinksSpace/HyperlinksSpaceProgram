@@ -33,6 +33,12 @@
   "functions": {
     "api/[...path].ts": {
       "maxDuration": 60
+    },
+    "api/wallet/[slug].ts": {
+      "maxDuration": 60
+    },
+    "api/auth/session.ts": {
+      "maxDuration": 30
     }
   }
 }

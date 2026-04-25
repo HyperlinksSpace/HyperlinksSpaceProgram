@@ -427,7 +427,9 @@ function NativeBottomBar({
   const wasNearBottomBeforeResizeRef = useRef(true);
 
   const submit = useCallback(() => {
-    triggerHaptic("heavy");
+    if (Platform.OS !== "web") {
+      triggerHaptic("heavy");
+    }
     let text = value.trim();
     if (!text && PREMADE_PROMPTS.length > 0) {
       text = PREMADE_PROMPTS[Math.floor(Math.random() * PREMADE_PROMPTS.length)] ?? "";

@@ -116,7 +116,11 @@ export function WelcomeAuthButtons() {
         );
         return;
       }
-      triggerHaptic("light");
+      // Web / TMA: any Telegram haptic (sync or deferred) can desync react-native-web’s touch bank on
+      // tdesktop. Native keeps haptics; web skips.
+      if (Platform.OS !== "web") {
+        triggerHaptic("light");
+      }
       signIn();
       router.replace("/");
       return;

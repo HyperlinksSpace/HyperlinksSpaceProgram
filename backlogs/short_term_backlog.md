@@ -1,5 +1,7 @@
-light theme colors
+Storage way
 Header configurations and visibility
+Slide to email field
+light theme colors
 Update on logo press
 Icons loading on start
 Plans
