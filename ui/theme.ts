@@ -82,6 +82,11 @@ export function useColors(): ThemeColors {
 
 export const layout = {
   maxContentWidth: 600,
+  /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
+  floatingShield: {
+    settingsDiameter: 30,
+    shieldDiameter: 50,
+  },
   bottomBar: {
     barMinHeight: 59,
     lineHeight: 20,

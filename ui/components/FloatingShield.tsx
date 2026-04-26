@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
+import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 
 const SETTINGS_ICON = require("../../assets/Settings.svg");
 
@@ -25,26 +26,31 @@ function ShieldIcon({ powerColor }: { powerColor: string }) {
 
 export function FloatingShield() {
   const colors = useColors();
-  const powerColor = colors.primary === "#000000" ? "#000000" : "#FFFFFF";
+  const isLightTheme = colors.primary === "#000000";
+  const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
 
   return (
     <View style={[styles.host, { bottom: layout.bottomBar.barMinHeight + 20, pointerEvents: "none" }]}>
-      <View
-        style={[
-          styles.settingsCircle,
-          { backgroundColor: colors.undercover, borderColor: colors.highlight },
-        ]}
-      >
-        <Image source={SETTINGS_ICON} style={styles.settingsIcon} contentFit="contain" />
+      <View style={styles.settingsSlot}>
+        <LiquidGlassShaderUndercover
+          size={layout.floatingShield.settingsDiameter}
+          phaseOffset={0.08}
+          isLightTheme={isLightTheme}
+        >
+          <Image source={SETTINGS_ICON} style={styles.settingsIcon} contentFit="contain" />
+        </LiquidGlassShaderUndercover>
       </View>
-      <View
-        style={[styles.circle, { backgroundColor: colors.undercover, borderColor: colors.highlight }]}
+      <LiquidGlassShaderUndercover
+        size={layout.floatingShield.shieldDiameter}
+        phaseOffset={0.41}
+        isLightTheme={isLightTheme}
+        contentAlign="top"
       >
         <View style={styles.iconWrap}>
           <ShieldIcon powerColor={powerColor} />
         </View>
         <Text style={[styles.label, { color: colors.primary }]}>Shield</Text>
-      </View>
+      </LiquidGlassShaderUndercover>
     </View>
   );
 }
@@ -57,11 +63,7 @@ const styles = StyleSheet.create({
     elevation: 1000,
     alignItems: "flex-end",
   },
-  settingsCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
+  settingsSlot: {
     marginBottom: 10,
     marginRight: -10,
     alignItems: "center",
@@ -70,13 +72,6 @@ const styles = StyleSheet.create({
   settingsIcon: {
     width: 20,
     height: 20,
-  },
-  circle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: 1,
-    alignItems: "center",
   },
   iconWrap: {
     marginTop: 6,
