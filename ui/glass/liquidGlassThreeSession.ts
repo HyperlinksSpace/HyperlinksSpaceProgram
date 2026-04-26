@@ -62,20 +62,20 @@ void main() {
   vec3 V = vec3(0.0, 0.0, 1.0);
   float ndv = clamp(dot(N, V), 0.0, 1.0);
 
-  float F0l = 0.028;
+  float F0l = 0.02;
   float F0d = 0.052;
   float F0 = mix(F0d, F0l, uIsLight);
-  float fresnel = F0 + (1.0 - F0) * pow(1.0 - ndv, 4.65);
+  float fresnel = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);
 
   vec2 refr = normalize(pu + vec2(1e-5));
-  float px = (1.0 - ndv) * 0.145;
+  float px = (1.0 - ndv) * mix(0.145, 0.125, uIsLight);
   float rR = length(pw + refr * px * 0.11 + vec2(0.006 * (1.0 - ndv), 0.0));
   float rG = length(pw + refr * px * 0.11);
   float rB = length(pw + refr * px * 0.11 - vec2(0.006 * (1.0 - ndv), 0.0));
 
-  // Light: keep center and rim close to white — dark rims read as "dirty" on white UI
-  vec3 envInL = vec3(0.97, 0.975, 0.98);
-  vec3 envOutL = vec3(0.84, 0.87, 0.92);
+  // Light: colorless clarity — env ≈ white; interior uses scalar blend (no RGB fringing)
+  vec3 envInL = vec3(0.998, 0.998, 1.0);
+  vec3 envOutL = vec3(0.972, 0.976, 0.985);
   vec3 envInD = vec3(0.148, 0.15, 0.155);
   vec3 envOutD = vec3(0.24, 0.25, 0.29);
 
@@ -84,88 +84,92 @@ void main() {
   float sR = smoothstep(0.0, 0.5, rR);
   float sG = smoothstep(0.0, 0.5, rG);
   float sB = smoothstep(0.0, 0.5, rB);
-  vec3 env = vec3(
+  float sUni = (sR + sG + sB) / 3.0;
+  vec3 envChr = vec3(
     mix(envIn.r, envOut.r, sR),
     mix(envIn.g, envOut.g, sG),
     mix(envIn.b, envOut.b, sB)
   );
+  vec3 envFlat = mix(envIn, envOut, sUni);
+  vec3 env = mix(envChr, envFlat, uIsLight);
 
-  vec3 frostC = mix(vec3(0.18, 0.19, 0.22), vec3(0.985, 0.988, 0.992), uIsLight);
-  float frostAmt = (1.0 - ndv) * mix(0.44, 0.34, uIsLight);
+  // Almost no “frost” on light — that milky gray reads cartoon, not clear glass
+  vec3 frostC = mix(vec3(0.18, 0.19, 0.22), vec3(0.996, 0.997, 1.0), uIsLight);
+  float frostAmt = (1.0 - ndv) * mix(0.44, 0.07, uIsLight);
   env = mix(env, frostC, frostAmt);
-  // Center lift: brighter crown (convex bulk)
   float crown = pow(ndv, 2.2);
-  env += mix(vec3(0.02, 0.022, 0.028), vec3(0.035, 0.036, 0.039), uIsLight) * crown;
+  env += mix(vec3(0.02, 0.022, 0.028), vec3(0.008, 0.008, 0.01), uIsLight) * crown;
 
   float caust = sin(pw.y * 14.0 + t * 0.55) * cos(pw.x * 12.0 - t * 0.42);
-  float caustWt = mix(0.036, 0.01, uIsLight);
   vec3 caustCol =
-    mix(vec3(0.48, 0.72, 1.0), vec3(0.93, 0.95, 0.98), uIsLight) * caust * caustWt * (1.0 - smoothstep(0.28, 0.52, rw));
+    vec3(0.48, 0.72, 1.0) * caust * mix(0.036, 0.0, uIsLight) * (1.0 - smoothstep(0.28, 0.52, rw));
 
   vec3 Lk = normalize(vec3(-0.38, 0.62, 1.0));
-  float specT = pow(max(dot(N, Lk), 0.0), 118.0);
-  float specB = pow(max(dot(N, Lk), 0.0), 18.0) * 0.24;
-  float specAmt = mix(0.52, 0.48, uIsLight);
+  float ndl = max(dot(N, Lk), 0.0);
+  float specT = pow(ndl, mix(118.0, 220.0, uIsLight));
+  float specB = pow(ndl, 18.0) * mix(0.24, 0.07, uIsLight);
+  float specAmt = mix(0.52, 0.42, uIsLight);
 
   vec3 reflL = vec3(1.0, 1.0, 1.0);
   vec3 reflD = vec3(0.84, 0.91, 1.0);
   vec3 refl = mix(reflD, reflL, uIsLight);
 
   vec3 body = env + caustCol;
-  float fresMix = mix(0.76, 0.82, uIsLight);
+  float fresMix = mix(0.76, 0.58, uIsLight);
   vec3 col = mix(body, refl, fresnel * fresMix);
   col += vec3((specT + specB) * specAmt);
 
-  // Azimuth toward top-left (screen) — asymmetric rim for WWDC-style light legibility
+  // Azimuth toward top-left (screen)
   float rPu = length(pu);
   vec2 puN = rPu > 1e-4 ? pu / rPu : vec2(0.0);
   float rimAz = dot(puN, normalize(vec2(-0.72, -0.69)));
 
-  // Studio key + tight glint from top-left
+  // Sharp optical highlights (reference): small, bright, not broad gray blooms
   vec2 hlUv = vUv - vec2(0.26, 0.19);
-  float hl = exp(-dot(hlUv, hlUv) * 11.5) * (0.11 + 0.16 * uIsLight);
+  float hl = exp(-dot(hlUv, hlUv) * mix(11.5, 22.0, uIsLight)) * mix(0.11, 0.2, uIsLight);
   col += vec3(hl);
   vec2 glUv = vUv - vec2(0.30, 0.24);
-  float glint = exp(-dot(glUv, glUv) * 38.0) * (0.09 + 0.14 * uIsLight);
+  float glint = exp(-dot(glUv, glUv) * mix(38.0, 58.0, uIsLight)) * mix(0.09, 0.16, uIsLight);
   col += vec3(glint);
+  float grazingSpec = pow(1.0 - ndv, mix(5.0, 12.0, uIsLight)) * uIsLight * 0.42;
+  col += vec3(grazingSpec) * (0.55 + 0.45 * smoothstep(-0.15, 0.88, rimAz));
 
-  // Soft inner shadow toward bottom-right (thickness)
+  // Very subtle thickness on light (reference inner shadow)
   vec2 brLit = normalize(vec2(0.58, -0.46));
   float innerSh = smoothstep(0.12, 0.5, rw) * max(0.0, dot(puN, brLit));
-  col *= 1.0 - innerSh * mix(0.12, 0.085, uIsLight);
+  col *= 1.0 - innerSh * mix(0.12, 0.045, uIsLight);
 
-  // Bright edge bead + thin dispersion ring at silhouette
   float dEdge = rEdge - r0;
-  float bead = smoothstep(0.0, 0.022, dEdge) * (1.0 - smoothstep(0.022, 0.058, dEdge));
+  // Thin silhouette specular — not a thick cartoon stroke
+  float bead = smoothstep(0.0, 0.014, dEdge) * (1.0 - smoothstep(0.014, 0.045, dEdge));
   float beadAsym = mix(0.88, 1.0, uIsLight * smoothstep(-0.35, 0.92, rimAz));
-  col += vec3(1.0) * bead * beadAsym * (0.38 + 0.42 * uIsLight);
+  col += vec3(1.0) * bead * beadAsym * mix(0.38, 0.22, uIsLight);
 
-  // Light: crisp edge via thin bright ring + cool tint (no subtractive gray "smudge")
   float rimDef = exp(-dEdge * 58.0) * smoothstep(0.006, 0.042, dEdge) * (1.0 - smoothstep(0.05, 0.11, dEdge));
-  float rimBright = rimDef * uIsLight * (0.22 + 0.35 * smoothstep(-0.2, 0.95, rimAz));
+  float rimBright = rimDef * uIsLight * (0.12 + 0.22 * smoothstep(-0.2, 0.95, rimAz));
   col += vec3(1.0) * rimBright;
-  col += vec3(0.02, 0.028, 0.038) * rimDef * uIsLight;
   col += vec3(0.07, 0.085, 0.11) * rimDef * (1.0 - uIsLight);
 
-  float disp = (1.0 - smoothstep(0.0, 0.028, dEdge)) * fresnel * mix(1.0, 0.32, uIsLight);
+  float dispEdge = (1.0 - smoothstep(0.0, 0.018, dEdge)) * fresnel;
+  float disp = dispEdge * mix(1.0, 0.12, uIsLight);
   col.r += disp * 0.055;
   col.b += disp * 0.04;
   col.g -= disp * 0.025;
 
   float iris = smoothstep(rEdge - 0.16, rEdge - 0.02, r0) * smoothstep(0.2, 0.85, sin(theta * 0.5 + 0.8));
-  col += vec3(1.0, 0.85, 0.95) * iris * 0.045 * sin(t * 1.2 + theta * 2.5) * mix(1.0, 0.22, uIsLight);
+  col += vec3(1.0, 0.85, 0.95) * iris * 0.045 * sin(t * 1.2 + theta * 2.5) * (1.0 - uIsLight);
 
-  // Soft ground shadow (depth); light mode stays minimal so the drop stays clean
-  float sh = smoothstep(-0.15, 0.35, pu.y) * (1.0 - ndv) * mix(0.075, 0.028, uIsLight);
+  float sh = smoothstep(-0.15, 0.35, pu.y) * (1.0 - ndv) * mix(0.075, 0.018, uIsLight);
   col *= (1.0 - sh);
 
-  float fill = mix(0.5, 0.62, uIsLight);
-  fill += clamp((46.0 - uChipPx) / 46.0, 0.0, 1.0) * 0.085;
-  float aFres = fresnel * mix(0.19, 0.175, uIsLight);
-  float aBody = (1.0 - ndv) * mix(0.058, 0.082, uIsLight);
+  // Light: mostly edge alpha + low bulk tint — reads clear on white like reference glass
+  float fill = mix(0.5, 0.34, uIsLight);
+  fill += clamp((46.0 - uChipPx) / 46.0, 0.0, 1.0) * mix(0.085, 0.045, uIsLight);
+  float aFres = fresnel * mix(0.19, 0.22, uIsLight);
+  float aBody = (1.0 - ndv) * mix(0.058, 0.028, uIsLight);
   float alpha = fill + aFres + aBody;
   alpha *= edgeMask;
-  alpha = clamp(alpha, 0.0, 0.88);
+  alpha = clamp(alpha, 0.0, mix(0.88, 0.58, uIsLight));
 
   gl_FragColor = vec4(col, alpha);
 }
