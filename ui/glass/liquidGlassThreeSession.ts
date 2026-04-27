@@ -62,33 +62,49 @@ float ltHash3(vec3 p) {
   return fract((p.x + p.y) * p.z);
 }
 
-float distSeg3(vec3 p, vec3 a, vec3 b) {
-  vec3 ab = b - a;
-  float denom = dot(ab, ab);
-  float t = denom > 1e-8 ? clamp(dot(p - a, ab) / denom, 0.0, 1.0) : 0.0;
-  return length(p - (a + t * ab));
-}
-
-vec3 boltPoint3(float u, float seed, float time, float rad) {
-  float jig = sin(u * 24.0 + seed * 7.0 + time * 4.8) * 0.095;
-  float a = u * 4.5 + time * 0.88 + seed * 1.7 + jig * 3.0;
-  float rr = rad * (0.28 + 0.62 * u + 0.12 * sin(u * 16.0 + time * 2.8 + seed));
-  float x = cos(a) * rr;
-  float y = sin(a * 0.91 + seed * 0.4) * rr;
-  float z = rad * (0.12 + 0.58 * sin(3.14159265 * u * 0.92 + seed)
-    + 0.11 * sin(time * 3.1 + u * 21.0 + seed * 3.0));
-  return vec3(x, y, max(z, 0.0));
-}
-
-float lightningPolyDist(vec3 p, float seed, float time, float rad) {
-  vec3 p0 = boltPoint3(0.0, seed, time, rad);
-  vec3 p1 = boltPoint3(0.34, seed + 1.1, time, rad);
-  vec3 p2 = boltPoint3(0.67, seed + 2.2, time, rad);
-  vec3 p3 = boltPoint3(1.0, seed + 3.3, time, rad);
-  float d = distSeg3(p, p0, p1);
-  d = min(d, distSeg3(p, p1, p2));
-  d = min(d, distSeg3(p, p2, p3));
-  return d;
+/* One chaotic bolt from p relative to wandering origin; maxLen01 scales how far it reaches (chip units).
+ * beamThin: multiply into exp() distance — smaller on tiny chips (30px) so the stroke stays ~1px visible. */
+void addChaosBolt(vec2 p, float ang, float ltTime, float k, float maxLen01, float weight, float beamThin, inout float sh, inout float gl) {
+  float rp = length(p);
+  if (rp < 1e-5) return;
+  float a = atan(p.y, p.x);
+  float da0 = a - ang;
+  da0 = da0 - 6.2831853 * floor((da0 + 3.14159265) / 6.2831853);
+  float along = cos(da0) * rp;
+  if (along < 0.0) return;
+  float bend = sin(along * 35.0 + ltTime * (2.05 + fract(k * 0.31) * 2.15) + k * 2.45) * 0.36;
+  bend += sin(along * 10.2 - ltTime * 1.22 + k * 1.58) * 0.16;
+  bend += along * (0.12 + 0.10 * sin(ltTime * 1.02 + k * 2.75));
+  bend += sin(along * 58.0 + ltTime * 4.35 + k * 3.1) * 0.048;
+  float angCur = ang + bend;
+  float daB = a - angCur;
+  daB = daB - 6.2831853 * floor((daB + 3.14159265) / 6.2831853);
+  float perp = abs(sin(daB)) * rp;
+  float wig = sin(along * 88.0 + ltTime * (6.5 + fract(k * 0.37) * 4.0) + k * 3.4) * 0.0029;
+  wig += sin(along * 205.0 - ltTime * (5.1 + fract(k * 0.19) * 3.0) + k * 5.2) * 0.00125;
+  wig += sin(along * 47.0 + ltTime * 2.7 + k * 1.9) * 0.0011;
+  perp += abs(wig) * clamp(rp, 0.008, 0.16) * 0.9;
+  float lenWobble = sin(ltTime * 3.8 + k * 2.6) * 0.034 + sin(ltTime * 7.1 + along * 22.0) * 0.018;
+  float lenCap = maxLen01 * 0.51 + lenWobble;
+  lenCap = clamp(lenCap, 0.12, 0.58);
+  float lenChop = (1.0 - smoothstep(lenCap * 0.82, lenCap * 1.06, along)) * smoothstep(0.012, 0.052, along);
+  float br = abs(sin(daB - 0.14 * sin(along * 18.0 + k * 2.1 + ltTime * 1.7))) * rp;
+  float w = max(weight, 0.0);
+  float uBr1 = along * (84.0 + fract(k * 0.47) * 38.0) + ltTime * (13.8 + fract(k * 0.23) * 10.5) + k * 5.05;
+  float uBr2 = along * (31.0 + fract(k * 0.33) * 17.0) - ltTime * (10.3 + fract(k * 0.31) * 7.8) + k * 2.33;
+  float uBr3 = along * (118.0 + fract(k * 0.19) * 44.0) + ltTime * (17.5 + fract(k * 0.41) * 12.0) + k * 7.15;
+  float uBr4 = along * (9.2 + fract(k * 0.27) * 5.5) + ltTime * 0.88 + k * 1.05;
+  float brFine = pow(0.5 + 0.5 * sin(uBr1), 3.05);
+  float brMed = pow(0.5 + 0.5 * sin(uBr2 + 0.6 * sin(uBr1 * 0.31)), 1.95);
+  float brCoarse = smoothstep(0.12, 0.88, 0.5 + 0.5 * sin(uBr3));
+  float brChunk = step(0.44, fract(uBr4)) * step(fract(uBr4 + 0.37), 0.72);
+  float broken = clamp(brFine * brMed * (0.18 + 0.82 * brCoarse) * (0.28 + 0.72 * max(brChunk, 0.35 + 0.65 * brFine)), 0.0, 1.0);
+  float brokenCore = mix(0.22, 1.0, pow(broken, 0.60));
+  float brokenGlow = 0.44 + 0.56 * sqrt(broken);
+  float pe = perp * beamThin;
+  float be = br * beamThin;
+  sh += (exp(-pe * pe * 18800.0) + exp(-be * be * 15200.0) * 0.38) * lenChop * w * 1.28 * brokenCore;
+  gl += (exp(-pe * pe * 268.0) * 1.05 + exp(-be * be * 172.0) * 0.36) * lenChop * w * 1.42 * brokenGlow;
 }
 
 void main() {
@@ -226,45 +242,121 @@ void main() {
   float sh = smoothstep(-0.15, 0.35, pu.y) * (1.0 - ndv) * mix(0.075, 0.018, uIsLight);
   col *= (1.0 - sh);
 
-  // Volumetric lightning: electric-blue arcs (wider falloff so strokes stay visible on small chips)
+  /* Slightly dim the glass shell so bolts read through the “drop” all the way to the chip rim. */
+  float ltShell = smoothstep(0.15, 0.41, r0) * (1.0 - smoothstep(0.44, 0.53, r0));
+  col *= 1.0 - ltShell * mix(0.32, 0.27, uIsLight);
+
+  vec3 glassCol = col;
+
+  // As thin as possible in UV, but widen for small drawing buffers (30–50px chips) so ~1px still reads.
+  float ltBeamThin = clamp(uChipPx / 52.0, 0.52, 1.0);
+  float ltSmallChip = clamp((46.0 - uChipPx) / 22.0, 0.0, 1.0);
+
+  // Few chaotic bolts from a wandering micro-origin — no full-disc fan, no big central glow sphere.
   float ltSeed = ltHash3(vec3(uPhase * 6.18, 2.71, 0.42));
-  float ltTime = t * 5.8 + uPhase * 9.0;
-  float ltBreathe = 0.68 + 0.32 * sin(uTime * 7.5 + uPhase * 2.1);
-  float distOut = max(0.0, rw - rEdge);
-  float spillMax = 0.023;
-  float spillFade = 1.0 - smoothstep(0.0, spillMax, distOut);
-  float zVol = hz * (0.12 + 0.78 * (0.5 + 0.5 * sin(pw.x * 11.0 + pw.y * 8.3 + ltTime * 1.05 + ltSeed * 6.0)));
-  float zSpill = cap * 0.11 * spillFade * exp(-distOut * 95.0);
-  vec3 ip = vec3(pw.x, pw.y, max(zVol, zSpill));
-  float radBolt = cap * 1.02;
-  float hzGate = max(step(0.018, hz), 0.56 * spillFade);
-  float interiorW = 1.0 - smoothstep(rEdge - 0.12, rEdge + 0.035, rw);
-  float outsideRing = spillFade * smoothstep(0.0015, 0.014, distOut) * 0.64;
-  float inVol = interiorW * hzGate + outsideRing;
-  float dL = lightningPolyDist(ip, ltSeed * 40.0, ltTime, radBolt);
-  float dL2 = lightningPolyDist(ip, ltSeed * 40.0 + 19.0, ltTime * 1.07 + 1.8, radBolt * 0.88);
-  float dL3 = lightningPolyDist(ip, ltSeed * 40.0 + 37.0, ltTime * 0.91 + 3.4, radBolt * 0.93);
-  dL = min(dL, min(dL2 * 1.06, dL3 * 1.04));
-  float flick = 0.42 + 0.58 * pow(0.5 + 0.5 * sin(ltTime * 22.0 + ltSeed * 90.0), 2.0);
-  flick *= 0.55 + 0.45 * pow(0.5 + 0.5 * sin(ltTime * 35.0 + dL * 95.0), 3.0);
-  float thin = exp(-dL * dL * 950.0);
-  float halo = exp(-dL * dL * 195.0);
-  vec3 blueCore = vec3(0.35, 0.72, 1.0);
-  vec3 blueHot = vec3(0.62, 0.88, 1.0);
-  vec3 blueIon = vec3(0.12, 0.42, 1.0);
-  vec3 coreCol = mix(blueCore, blueHot, pow(thin, 0.35)) * thin * mix(3.4, 4.35, uIsLight);
-  vec3 ionCol = blueIon * halo * mix(0.95, 1.05, uIsLight);
-  float ltGain = mix(1.15, 1.22, uIsLight);
-  col += (coreCol + ionCol) * inVol * flick * ltGain * ltBreathe;
-  float ltAlpha = (thin * 2.4 + halo * 0.55) * inVol * flick * ltGain * ltBreathe * spillFade * mix(0.38, 0.42, uIsLight);
+  float ltTime = t * 5.2 + uPhase * 9.0;
+  float ltBreathe = 0.55 + 0.45 * sin(uTime * 6.2 + uPhase * 2.4);
+  float R_CHIP = 0.5;
+  float boltSpillRim = 1.0 - smoothstep(R_CHIP - 0.022, R_CHIP + 0.055, r0);
+  float boltSpill = boltSpillRim;
+  float piercePastLiquid = 1.0 + 0.55 * smoothstep(rEdge - 0.02, rEdge + 0.09, r0);
+  vec2 ltOrig = vec2(
+    sin(ltTime * 0.41 + ltSeed * 5.7) * 0.021 + sin(ltTime * 0.11 + uPhase * 3.1) * 0.011,
+    cos(ltTime * 0.35 + ltSeed * 4.2) * 0.019 + cos(ltTime * 0.095 + uPhase * 2.7) * 0.010
+  );
+  vec2 pLt = pu - ltOrig;
+  float rLt = length(pLt);
+  float flick = 0.42 + 0.58 * pow(0.5 + 0.5 * sin(ltTime * 22.0 + ltSeed * 73.0), 2.4);
+  float accSharp = 0.0;
+  float accGlow = 0.0;
+  float fi = 0.0;
+  float hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  float hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  float hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  float ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  float maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  float w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 1.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 2.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 3.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 4.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 5.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  fi = 6.0;
+  hA = ltHash3(vec3(ltSeed, fi * 1.618, 0.413));
+  hB = ltHash3(vec3(ltSeed, fi * 2.718, 9.069));
+  hC = ltHash3(vec3(ltSeed, fi * 4.201, 3.331));
+  ang = hA * 6.2831853 + sin(ltTime * (0.62 + hB * 1.4) + hB * 6.2831853) * 0.42 + sin(ltTime * (0.21 + hA * 0.9) + fi * 1.77) * 0.19 + ltTime * (0.11 + hB * 0.13);
+  maxLen = mix(0.26, 0.98, hB) * (0.88 + 0.24 * sin(ltTime * 2.9 + fi * 1.3 + hA * 12.0));
+  w0 = step(0.12, hC) * (0.50 + 0.50 * pow(0.5 + 0.5 * sin(ltTime * (28.0 + hA * 22.0) + fi * 5.1), 1.72)) * (0.52 + 0.48 * pow(0.5 + 0.5 * sin(ltTime * (17.0 + hC * 31.0) + hB * 18.0), 2.05)) * ltBreathe * (0.58 + 0.42 * hC) * 1.22;
+  addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
+  accSharp = clamp(accSharp, 0.0, 13.5);
+  accGlow = clamp(accGlow, 0.0, 22.0);
+  float pin = exp(-dot(pLt, pLt) * 3600.0) * (0.13 + 0.10 * sin(ltTime * 33.0 + ltSeed * 50.0)) * (1.0 + 0.20 * ltSmallChip);
+  vec3 hot = vec3(1.0, 0.99, 1.0);
+  vec3 purp = vec3(0.62, 0.38, 1.0);
+  vec3 ionB = vec3(0.32, 0.58, 1.0);
+  float pierce = smoothstep(0.006, 0.040, rLt) * smoothstep(0.004, 0.032, r0) * boltSpill * piercePastLiquid;
+  float outsideBoost = 1.0 + 0.75 * smoothstep(rEdge + 0.002, rEdge + 0.09, r0) + 0.35 * smoothstep(R_CHIP - 0.1, R_CHIP - 0.02, r0);
+  float rayStretch = 1.0 + 0.88 * smoothstep(0.17, 0.48, r0);
+  float sharpVis = accSharp * pierce * flick * outsideBoost * rayStretch * (1.0 + 0.15 * ltSmallChip);
+  float glowVis = accGlow * pierce * flick * outsideBoost * rayStretch * (1.0 + 0.15 * ltSmallChip);
+  vec3 ltRgb = hot * (sharpVis * mix(2.38, 3.02, uIsLight) + pin * mix(1.18, 1.42, uIsLight));
+  ltRgb += mix(purp, ionB, 0.45) * glowVis * mix(0.30, 0.24, uIsLight);
+  float ltAlphaBolt = (sharpVis * mix(0.98, 0.91, uIsLight) + glowVis * 0.34 + pin * 0.54) * boltSpill * mix(0.56, 0.50, uIsLight);
+  float annulusRay = smoothstep(rEdge - 0.02, rEdge + 0.12, r0) * (1.0 - smoothstep(R_CHIP - 0.02, R_CHIP + 0.06, r0));
+  float outsideRay = annulusRay * boltSpill * (accGlow * 0.23 + accSharp * 0.078) * flick * piercePastLiquid * rayStretch;
+  float ltAlpha = ltAlphaBolt + outsideRay * mix(0.84, 0.72, uIsLight);
+  float rimAtBoost = smoothstep(R_CHIP - 0.14, R_CHIP - 0.03, r0) * boltSpill * flick * mix(0.20, 0.16, uIsLight);
+  float At = clamp(ltAlpha + rimAtBoost, 0.0, 0.84);
 
   // Light: mostly edge alpha + low bulk tint — reads clear on white like reference glass
   float fill = mix(0.5, 0.46, uIsLight);
   fill += clamp((46.0 - uChipPx) / 46.0, 0.0, 1.0) * mix(0.085, 0.055, uIsLight);
   float aFres = fresnel * mix(0.19, 0.26, uIsLight);
   float aBody = (1.0 - ndv) * mix(0.058, 0.045, uIsLight);
-  float alpha = (fill + aFres + aBody) * edgeMask + ltAlpha;
+  float Ag = clamp((fill + aFres + aBody) * edgeMask, 0.0, mix(0.88, 0.78, uIsLight));
+  /* Non-premul blend does out = src.rgb * src.a + dst * (1-src.a). Summing glassA + ltAlpha into one a
+   * while src.rgb = glass + lightning under-scales bolts when edgeMask → 0. Composite lightning over glass. */
+  vec3 premulOut = ltRgb * At + glassCol * Ag * (1.0 - At);
+  float alpha = At + Ag * (1.0 - At);
   alpha = clamp(alpha, 0.0, mix(0.88, 0.78, uIsLight));
+  col = premulOut / max(alpha, 0.00035);
 
   col *= mix(vec3(1.0), vec3(0.94, 0.97, 1.04), uIsLight * 0.55);
   gl_FragColor = vec4(col, alpha);
