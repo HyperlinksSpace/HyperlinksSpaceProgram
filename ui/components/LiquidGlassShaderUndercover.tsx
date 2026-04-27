@@ -78,12 +78,12 @@ export function LiquidGlassShaderUndercover({
   // Shadow on outer wrapper only — `overflow: hidden` on the same view clips iOS shadows.
   const outerLift = isLightTheme
     ? {
-        // Neutral, soft — blue-gray shadows read "muddy" on white
+        // No lift on white — any shadow reads as a dirty gray ring around the glass
         shadowColor: "#000000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: Math.max(5, size * 0.11),
-        elevation: 4,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
       }
     : {
         shadowColor: "#000",
@@ -153,6 +153,7 @@ export function LiquidGlassShaderUndercover({
 const styles = StyleSheet.create({
   glUnderlay: {
     zIndex: 0,
+    backgroundColor: "transparent",
   },
   /** RN-web: promote canvas compositing above default stacking quirks in overflow clips. */
   glLayerWeb: {
