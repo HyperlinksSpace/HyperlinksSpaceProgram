@@ -4,6 +4,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import {
   liquidGlassContentInsetPx,
   liquidGlassDebugLogging,
+  liquidGlassRayMarginPx,
   startLiquidGlassGl,
   type LiquidGlassGlOptions,
 } from "../glass/liquidGlassThreeSession";
@@ -91,9 +92,12 @@ export function LiquidGlassShaderUndercover({
         shadowRadius: Math.max(4, size * 0.1),
         elevation: 4,
       };
+  const rayPad = liquidGlassRayMarginPx(size);
+  const viewSize = size + 2 * rayPad;
   const outerWrap = {
     width: size,
     height: size,
+    overflow: "visible" as const,
     borderRadius: size / 2,
     ...outerLift,
   };
@@ -115,12 +119,21 @@ export function LiquidGlassShaderUndercover({
       ? [StyleSheet.absoluteFill, styles.glLayerWeb]
       : StyleSheet.absoluteFill;
 
+  const glExpand = {
+    position: "absolute" as const,
+    left: -rayPad,
+    top: -rayPad,
+    width: viewSize,
+    height: viewSize,
+    zIndex: 0,
+  };
+
   return (
     <View style={outerWrap} collapsable={false}>
+      <View style={[glExpand, styles.glUnderlay]} pointerEvents="none" collapsable={false}>
+        <GLView style={glLayerStyle} onContextCreate={onContextCreate} />
+      </View>
       <View style={clip} collapsable={false}>
-        <View style={[clip, styles.glUnderlay]} pointerEvents="none" collapsable={false}>
-          <GLView style={glLayerStyle} onContextCreate={onContextCreate} />
-        </View>
         <View
           style={[
             styles.foreground,

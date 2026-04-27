@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 1000,
     alignItems: "flex-end",
+    overflow: "visible",
   },
   settingsSlot: {
     marginBottom: 10,
