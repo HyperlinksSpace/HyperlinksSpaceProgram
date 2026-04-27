@@ -18,6 +18,7 @@ import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
+import { BottomBarLayoutProvider } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
@@ -45,17 +46,19 @@ export default function RootLayout() {
   return (
     <TelegramProvider>
       <AuthProvider>
-        {Platform.OS === "ios" ? (
-          <KeyboardAvoidingView
-            style={styles.keyboardAvoid}
-            behavior="padding"
-            keyboardVerticalOffset={0}
-          >
+        <BottomBarLayoutProvider>
+          {Platform.OS === "ios" ? (
+            <KeyboardAvoidingView
+              style={styles.keyboardAvoid}
+              behavior="padding"
+              keyboardVerticalOffset={0}
+            >
+              <RootContent />
+            </KeyboardAvoidingView>
+          ) : (
             <RootContent />
-          </KeyboardAvoidingView>
-        ) : (
-          <RootContent />
-        )}
+          )}
+        </BottomBarLayoutProvider>
       </AuthProvider>
     </TelegramProvider>
   );

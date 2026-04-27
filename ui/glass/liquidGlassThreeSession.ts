@@ -132,6 +132,7 @@ void main() {
   float viewScale = uViewPx / uChipPx;
   vec2 pu = puFull * viewScale;
   float studioHlGate = step(43.0, uChipPx);
+  /* Chips <43px (settings): key light + fresnel read as one bright patch on dark theme — tame using studioHlGate. */
   float r0 = length(pu);
   float theta = atan(pu.y, pu.x);
   float t = uTime + uPhase * 6.2831853;
@@ -198,13 +199,15 @@ void main() {
   // Almost no “frost” on light — that milky gray reads cartoon, not clear glass
   vec3 frostC = mix(vec3(0.18, 0.19, 0.22), vec3(0.998, 0.999, 1.0), uIsLight);
   float frostAmt = (1.0 - ndv) * mix(0.44, 0.018, uIsLight);
+  frostAmt *= mix(0.38, 1.0, studioHlGate);
   env = mix(env, frostC, frostAmt);
   float crown = pow(ndv, 2.2);
-  env += mix(vec3(0.02, 0.022, 0.028), vec3(0.004, 0.0045, 0.006), uIsLight) * crown;
+  env += mix(vec3(0.02, 0.022, 0.028), vec3(0.004, 0.0045, 0.006), uIsLight) * crown * mix(0.12, 1.0, studioHlGate);
 
   float caust = sin(pw.y * 14.0 + t * 0.55) * cos(pw.x * 12.0 - t * 0.42);
   vec3 caustCol =
     vec3(0.48, 0.72, 1.0) * caust * mix(0.036, 0.0, uIsLight) * (1.0 - smoothstep(0.28, 0.52, rw));
+  caustCol *= mix(0.15, 1.0, studioHlGate);
 
   vec3 Lk = normalize(vec3(-0.38, 0.62, 1.0));
   float ndl = max(dot(N, Lk), 0.0);
@@ -218,8 +221,8 @@ void main() {
 
   vec3 body = env + caustCol;
   float fresMix = mix(0.76, 0.54, uIsLight);
-  vec3 col = mix(body, refl, fresnel * fresMix);
-  col += vec3((specT + specB) * specAmt) * mix(0.5, 1.0, studioHlGate);
+  vec3 col = mix(body, refl, fresnel * fresMix * mix(0.40, 1.0, studioHlGate));
+  col += vec3((specT + specB) * specAmt) * mix(0.14, 1.0, studioHlGate);
 
   // Azimuth toward top-left (screen)
   float rPu = length(pu);
@@ -234,7 +237,7 @@ void main() {
   float glint = exp(-dot(glUv, glUv) * mix(38.0, 58.0, uIsLight)) * mix(0.09, 0.05, uIsLight) * studioHlGate;
   col += vec3(glint);
   float grazingSpec = pow(1.0 - ndv, mix(5.0, 12.0, uIsLight)) * (1.0 - uIsLight) * 0.26;
-  col += vec3(grazingSpec) * (0.55 + 0.45 * smoothstep(-0.15, 0.88, rimAz));
+  col += vec3(grazingSpec) * (0.55 + 0.45 * smoothstep(-0.15, 0.88, rimAz)) * mix(0.18, 1.0, studioHlGate);
 
   // Very subtle thickness on light (reference inner shadow)
   vec2 brLit = normalize(vec2(0.58, -0.46));
@@ -245,15 +248,15 @@ void main() {
   // Thin silhouette specular — not a thick cartoon stroke
   float bead = smoothstep(0.0, 0.014, dEdge) * (1.0 - smoothstep(0.014, 0.045, dEdge));
   float beadAsym = mix(0.88, 1.0, uIsLight * smoothstep(-0.35, 0.92, rimAz));
-  col += vec3(1.0) * bead * beadAsym * mix(0.38, 0.14, uIsLight);
+  col += vec3(1.0) * bead * beadAsym * mix(0.38, 0.14, uIsLight) * mix(0.1, 1.0, studioHlGate);
 
   float rimDef = exp(-dEdge * 58.0) * smoothstep(0.006, 0.042, dEdge) * (1.0 - smoothstep(0.05, 0.11, dEdge));
-  float rimBright = rimDef * uIsLight * (0.05 + 0.10 * smoothstep(-0.2, 0.95, rimAz));
+  float rimBright = rimDef * uIsLight * (0.05 + 0.10 * smoothstep(-0.2, 0.95, rimAz)) * studioHlGate;
   col += vec3(1.0) * rimBright;
-  col += vec3(0.07, 0.085, 0.11) * rimDef * (1.0 - uIsLight);
+  col += vec3(0.07, 0.085, 0.11) * rimDef * (1.0 - uIsLight) * mix(0.45, 1.0, studioHlGate);
 
   float dispEdge = (1.0 - smoothstep(0.0, 0.018, dEdge)) * fresnel;
-  float disp = dispEdge * mix(1.0, 0.05, uIsLight);
+  float disp = dispEdge * mix(1.0, 0.05, uIsLight) * mix(0.35, 1.0, studioHlGate);
   col.r += disp * 0.055;
   col.b += disp * 0.04;
   col.g -= disp * 0.025;
@@ -359,7 +362,7 @@ void main() {
   addChaosBolt(pLt, ang, ltTime, fi * 2.17 + ltSeed * 8.3, maxLen, w0, ltBeamThin, accSharp, accGlow);
   accSharp = clamp(accSharp, 0.0, 13.5);
   accGlow = clamp(accGlow, 0.0, 22.0);
-  float pin = exp(-dot(pLt, pLt) * 3600.0) * (0.13 + mix(0.10, 0.045, uIsLight) * sin(ltTime * 33.0 + ltSeed * 50.0)) * (1.0 + 0.20 * ltSmallChip);
+  float pin = exp(-dot(pLt, pLt) * 3600.0) * (0.13 + mix(0.10, 0.045, uIsLight) * sin(ltTime * 33.0 + ltSeed * 50.0)) * (1.0 + 0.20 * ltSmallChip) * mix(0.22, 1.0, studioHlGate);
   vec3 ltCol = mix(vec3(1.0, 1.0, 1.0), vec3(0.0, 0.0, 1.0), uIsLight);
   float pierce = smoothstep(0.006, 0.040, rLt) * smoothstep(0.004, 0.032, r0) * boltSpill * piercePastLiquid;
   float outsideBoost = 1.0 + 0.75 * smoothstep(rEdge + 0.002, rEdge + 0.09, r0) + 0.35 * smoothstep(R_DROP - 0.1, R_DROP - 0.02, r0);

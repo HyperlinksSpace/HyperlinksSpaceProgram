@@ -2,9 +2,13 @@ import { StyleSheet, Text, View } from "react-native";
 import { Image } from "expo-image";
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
+import { useBottomBarLayout } from "./BottomBarLayoutContext";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 
 const SETTINGS_ICON = require("../../assets/Settings.svg");
+
+/** Space between the footer's top border and the bottom of this floating stack. */
+const FOOTER_TOP_GAP_PX = 20;
 
 function ShieldIcon({ powerColor }: { powerColor: string }) {
   return (
@@ -26,11 +30,17 @@ function ShieldIcon({ powerColor }: { powerColor: string }) {
 
 export function FloatingShield() {
   const colors = useColors();
+  const { barHeight: bottomBarHeight } = useBottomBarLayout();
   const isLightTheme = colors.primary === "#000000";
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
 
   return (
-    <View style={[styles.host, { bottom: layout.bottomBar.barMinHeight + 20, pointerEvents: "none" }]}>
+    <View
+      style={[
+        styles.host,
+        { bottom: bottomBarHeight + FOOTER_TOP_GAP_PX, pointerEvents: "none" },
+      ]}
+    >
       <View style={styles.settingsSlot}>
         <LiquidGlassShaderUndercover
           size={layout.floatingShield.settingsDiameter}

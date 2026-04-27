@@ -18,6 +18,7 @@ import Svg, { Path } from "react-native-svg";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, icons, useColors } from "../theme";
 import { useTelegram } from "./Telegram";
+import { BottomBarHeightReporter } from "./BottomBarLayoutContext";
 import { getBottomBarMetrics } from "./bottomBarMetrics";
 import { getPrimaryTextColorFromLaunch } from "./telegramWebApp";
 
@@ -345,6 +346,7 @@ function WebBottomBar({
         },
       ]}
     >
+      <BottomBarHeightReporter height={metrics.barHeight} />
       <View style={[styles.container, { backgroundColor }]}>
         <View style={[styles.row, { height: metrics.barHeight }]}>
           <View style={styles.inputWrap}>
@@ -512,6 +514,7 @@ function NativeBottomBar({
         },
       ]}
     >
+      <BottomBarHeightReporter height={metrics.barHeight} />
       <View style={[styles.container, { height: metrics.barHeight, backgroundColor }]}>
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
