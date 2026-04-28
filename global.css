@@ -29,6 +29,12 @@ body {
   overflow: auto;
   min-width: 100%;
   background-color: var(--tg-theme-bg-color, transparent);
+  /*
+   * RN-web `Text` without `line-height` uses UA "normal" (often asymmetric). Too-tight values (e.g. 1)
+   * clip descenders (g, j, y) when ancestors use overflow hidden. Unitless 1.28 inherits as 1.28×
+   * each element's font-size — enough room for glyphs without the old "floating low" line box.
+   */
+  line-height: 1.28;
 }
 
 /* Hide native textarea scrollbars (React Native Web TextInput) while keeping scroll behaviour. */

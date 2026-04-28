@@ -4,7 +4,7 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
-import { useColors } from "../theme";
+import { useColors, typographyRect15 } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
@@ -242,8 +242,7 @@ const styles = StyleSheet.create({
     gap: ICON_GAP,
   },
   label: {
-    fontSize: 15,
-    fontWeight: "400",
+    ...typographyRect15,
     flexShrink: 1,
   },
   icon: {
@@ -279,6 +278,7 @@ const styles = StyleSheet.create({
     }),
   },
   emailInputInner: {
+    ...typographyRect15,
     flex: 1,
     alignSelf: "stretch",
     width: "100%",
@@ -289,11 +289,6 @@ const styles = StyleSheet.create({
     paddingRight: BUTTON_H_PADDING,
     paddingVertical: 0,
     margin: 0,
-    fontSize: EMAIL_INPUT_FONT_SIZE,
-    lineHeight: EMAIL_INPUT_FONT_SIZE,
-    fontWeight: "400",
-    textAlignVertical: "center",
-    includeFontPadding: false,
     ...Platform.select({
       web: {
         outlineWidth: 0,

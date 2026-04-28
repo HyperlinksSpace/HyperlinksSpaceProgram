@@ -1,3 +1,4 @@
+import type { TextStyle } from "react-native";
 import {
   getThemeColorsFromLaunchThemeParams,
   getThemeColorsFromTelegramCssVars,
@@ -103,4 +104,19 @@ export const icons = {
     width: 15,
     height: 10,
   },
+};
+
+/**
+ * Single-line labels in fixed-height rows (auth buttons, undercover strips, etc.).
+ *
+ * `lineHeight` must exceed `fontSize` slightly so descenders (g, y, p) are not clipped when parents
+ * use `overflow: hidden`. Matches `layout.bottomBar.lineHeight` (20). Global web: `#root` uses
+ * unitless `line-height` in `global.css`; Android: `applyPlatformTextDefaults()` clears font padding.
+ */
+export const typographyRect15: TextStyle = {
+  fontSize: 15,
+  lineHeight: 20,
+  fontWeight: "400",
+  includeFontPadding: false,
+  textAlignVertical: "center",
 };

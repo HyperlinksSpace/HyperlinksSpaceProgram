@@ -1,4 +1,5 @@
 import "../global.css";
+import { applyPlatformTextDefaults } from "../ui/platformTextDefaults";
 import {
   View,
   StyleSheet,
@@ -34,6 +35,8 @@ import {
   type ComponentRef,
   type ReactNode,
 } from "react";
+
+applyPlatformTextDefaults();
 
 /**
  * Three-block column layout (same as Flutter):
