@@ -23,7 +23,7 @@ import { BottomBarLayoutProvider } from "../ui/components/BottomBarLayoutContext
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
-import { useColors } from "../ui/theme";
+import { layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
   useCallback,
@@ -266,7 +266,7 @@ function RootContent() {
 
 /**
  * Web: `global.css` keeps vertical overflow in the app column; root allows horizontal overflow when zoomed.
- * Custom indicator: 1px vertical line, theme highlight color, 3px inset from the right of this column.
+ * Custom indicator: 1px vertical line, theme highlight color, inset `layout.bottomBar.scrollbarRightInsetPx` from the right.
  * Hidden until content height is known and exceeds the viewport (web: DOM sync on load + ResizeObserver).
  */
 function MainWebScrollColumn({
@@ -462,7 +462,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     bottom: 0,
-    right: 3,
+    right: layout.bottomBar.scrollbarRightInsetPx,
     width: 1,
     zIndex: 20,
     pointerEvents: "none",

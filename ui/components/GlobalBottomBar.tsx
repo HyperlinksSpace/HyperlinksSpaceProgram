@@ -26,6 +26,7 @@ const { maxContentWidth } = layout;
 const {
   lineHeight: LINE_HEIGHT,
   horizontalPadding: HORIZONTAL_PADDING,
+  scrollbarRightInsetPx: SCROLLBAR_RIGHT_INSET,
   maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
   maxBarHeight: MAX_BAR_HEIGHT,
 } = layout.bottomBar;
@@ -33,7 +34,6 @@ const {
 const FONT_SIZE = 15;
 const INNER_PADDING = 20;
 const AUTO_SCROLL_THRESHOLD = 30;
-const SCROLLBAR_INSET = 5;
 const PREMADE_PROMPTS = ["What is the universe?", "Tell me about dogs token"];
 
 // Shared UI primitives used by all platforms.
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
   },
   scrollbarContainer: {
     position: "absolute",
-    right: SCROLLBAR_INSET,
+    right: SCROLLBAR_RIGHT_INSET,
     top: 0,
     alignItems: "flex-start",
     justifyContent: "flex-start",

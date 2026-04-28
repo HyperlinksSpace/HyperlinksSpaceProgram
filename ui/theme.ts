@@ -96,6 +96,8 @@ export const layout = {
     maxLinesBeforeScroll: 7,
     maxBarHeight: 190,
     horizontalPadding: 15,
+    /** Custom 1px scroll-thumb columns (main web column + bottom bar); separate from `horizontalPadding`. */
+    scrollbarRightInsetPx: 5,
   },
 };
 
