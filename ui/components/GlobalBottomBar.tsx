@@ -217,8 +217,13 @@ function WebBottomBar({
     (e: React.FormEvent<HTMLTextAreaElement>) => {
       const target = e.target as HTMLTextAreaElement;
       const range = Math.max(0, target.scrollHeight - target.clientHeight);
+      /** Paste/typing at end leaves `scrollTop === 0` until layout catches up — still "near bottom". */
+      const caretAtEnd =
+        target.selectionStart === target.value.length && target.selectionEnd === target.value.length;
       wasNearBottomBeforeInputRef.current =
-        range <= 0 || target.scrollTop >= range - AUTO_SCROLL_THRESHOLD;
+        range <= 0 ||
+        target.scrollTop >= range - AUTO_SCROLL_THRESHOLD ||
+        caretAtEnd;
       setValue(target.value);
       requestAnimationFrame(measureAndResize);
     },
