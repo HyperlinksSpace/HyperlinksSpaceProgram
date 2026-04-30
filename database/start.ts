@@ -76,6 +76,20 @@ async function runSchemaMigrations() {
       ON wallets(telegram_username);
   `;
 
+  // Wallet secret: AES-GCM payload (Neon) + DEK wrapped by Cloud KMS (not plaintext mnemonic).
+  await sql`
+    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS envelope_ciphertext TEXT;
+  `;
+  await sql`
+    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS envelope_nonce TEXT;
+  `;
+  await sql`
+    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS wrapped_dek TEXT;
+  `;
+  await sql`
+    ALTER TABLE wallets ADD COLUMN IF NOT EXISTS envelope_alg TEXT;
+  `;
+
   await sql`
     CREATE INDEX IF NOT EXISTS idx_pending_tx_user
       ON pending_transactions(telegram_username);
@@ -91,7 +105,7 @@ async function runSchemaMigrations() {
     CREATE TABLE IF NOT EXISTS messages (
       id                  BIGSERIAL PRIMARY KEY,
       created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      user_telegram       TEXT NOT NULL REFERENCES users(telegram_username),
+      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
       thread_id           BIGINT NOT NULL,
       type                TEXT NOT NULL CHECK (type IN ('bot', 'app')),
       role                TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
@@ -101,13 +115,27 @@ async function runSchemaMigrations() {
   `;
 
   await sql`
+    DO $rename_messages_user_col$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'messages'
+          AND column_name = 'user_telegram'
+      ) THEN
+        ALTER TABLE messages RENAME COLUMN user_telegram TO telegram_username;
+      END IF;
+    END $rename_messages_user_col$;
+  `;
+
+  await sql`
     CREATE INDEX IF NOT EXISTS idx_messages_thread
-      ON messages(user_telegram, thread_id, type, created_at);
+      ON messages(telegram_username, thread_id, type, created_at);
   `;
 
   await sql`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_bot_update_id
-      ON messages(user_telegram, thread_id, type, telegram_update_id)
+      ON messages(telegram_username, thread_id, type, telegram_update_id)
       WHERE telegram_update_id IS NOT NULL;
   `;
 

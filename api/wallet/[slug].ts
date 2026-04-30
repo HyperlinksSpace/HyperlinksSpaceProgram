@@ -5,6 +5,7 @@
 
 import registerHandler from '../_handlers/wallet-register.js';
 import statusHandler from '../_handlers/wallet-status.js';
+import envelopeVerifyHandler from '../_handlers/wallet-envelope-verify.js';
 
 type NodeRes = {
   setHeader(name: string, value: string): void;
@@ -15,6 +16,7 @@ type NodeRes = {
 const HANDLERS: Record<string, typeof registerHandler> = {
   register: registerHandler,
   status: statusHandler,
+  'envelope-verify': envelopeVerifyHandler,
 };
 
 function pathnameFromRequest(request: Request): string {
@@ -51,7 +53,7 @@ async function router(
       ok: false,
       error: 'not_found',
       path: `wallet/${segment || '(empty)'}`,
-      hint: 'Use /api/wallet/register or /api/wallet/status',
+      hint: 'Use /api/wallet/register, /api/wallet/status, or /api/wallet/envelope-verify',
     });
     if (res) {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');

@@ -16,6 +16,14 @@ export type WalletRow = {
   is_default: boolean;
   source: string | null;
   notes: string | null;
+  /** base64 AES-GCM ciphertext (includes auth tag) — mnemonic JSON, see walletEnvelopeClient */
+  envelope_ciphertext: string | null;
+  /** base64 12-byte IV */
+  envelope_nonce: string | null;
+  /** base64 KMS-wrapped DEK */
+  wrapped_dek: string | null;
+  /** e.g. aes-256-gcm-v1 */
+  envelope_alg: string | null;
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
@@ -32,6 +40,11 @@ export type RegisterWalletInput = {
   source?: string | null;
   notes?: string | null;
   isDefault?: boolean;
+  /** Server fills after KMS wrap — pass from API handler */
+  envelopeCiphertextB64?: string | null;
+  envelopeNonceB64?: string | null;
+  wrappedDekB64?: string | null;
+  envelopeAlg?: string | null;
 };
 
 function normalizeText(raw: unknown): string {
@@ -65,6 +78,10 @@ export async function listWalletsByUsername(
       is_default,
       source,
       notes,
+      envelope_ciphertext,
+      envelope_nonce,
+      wrapped_dek,
+      envelope_alg,
       created_at,
       updated_at,
       last_used_at,
@@ -94,6 +111,10 @@ export async function getDefaultWalletByUsername(
       is_default,
       source,
       notes,
+      envelope_ciphertext,
+      envelope_nonce,
+      wrapped_dek,
+      envelope_alg,
       created_at,
       updated_at,
       last_used_at,
@@ -148,6 +169,10 @@ export async function setDefaultWallet(opts: {
       is_default,
       source,
       notes,
+      envelope_ciphertext,
+      envelope_nonce,
+      wrapped_dek,
+      envelope_alg,
       created_at,
       updated_at,
       last_used_at,
@@ -178,6 +203,10 @@ export async function registerWallet(
   const label = normalizeText(input.label ?? '');
   const source = normalizeText(input.source ?? '');
   const notes = normalizeText(input.notes ?? '');
+  const envelopeCiphertext = normalizeText(input.envelopeCiphertextB64 ?? '');
+  const envelopeNonce = normalizeText(input.envelopeNonceB64 ?? '');
+  const wrappedDek = normalizeText(input.wrappedDekB64 ?? '');
+  const envelopeAlg = normalizeText(input.envelopeAlg ?? '') || 'aes-256-gcm-v1';
 
   if (
     !telegramUsername ||
@@ -199,6 +228,10 @@ export async function registerWallet(
       label,
       source,
       notes,
+      envelope_ciphertext,
+      envelope_nonce,
+      wrapped_dek,
+      envelope_alg,
       is_default,
       created_at,
       updated_at
@@ -212,6 +245,10 @@ export async function registerWallet(
       ${label || null},
       ${source || null},
       ${notes || null},
+      ${envelopeCiphertext || null},
+      ${envelopeNonce || null},
+      ${wrappedDek || null},
+      ${envelopeCiphertext && envelopeNonce && wrappedDek ? envelopeAlg : null},
       FALSE,
       NOW(),
       NOW()
@@ -222,6 +259,10 @@ export async function registerWallet(
       label = EXCLUDED.label,
       source = EXCLUDED.source,
       notes = EXCLUDED.notes,
+      envelope_ciphertext = EXCLUDED.envelope_ciphertext,
+      envelope_nonce = EXCLUDED.envelope_nonce,
+      wrapped_dek = EXCLUDED.wrapped_dek,
+      envelope_alg = EXCLUDED.envelope_alg,
       updated_at = NOW()
     RETURNING
       id,
@@ -234,6 +275,10 @@ export async function registerWallet(
       is_default,
       source,
       notes,
+      envelope_ciphertext,
+      envelope_nonce,
+      wrapped_dek,
+      envelope_alg,
       created_at,
       updated_at,
       last_used_at,

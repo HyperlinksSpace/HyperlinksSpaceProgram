@@ -10,7 +10,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export interface Message {
   id: number;
   created_at: Date;
-  user_telegram: string;
+  telegram_username: string;
   thread_id: number;
   type: MessageType;
   role: MessageRole;
@@ -19,7 +19,7 @@ export interface Message {
 }
 
 export interface InsertMessageOpts {
-  user_telegram: string;
+  telegram_username: string;
   thread_id: number;
   type: MessageType;
   role: MessageRole;
@@ -36,7 +36,7 @@ export async function insertMessage(
   opts: InsertMessageOpts,
 ): Promise<{ id: number } | null> {
   const {
-    user_telegram,
+    telegram_username,
     thread_id,
     type,
     role,
@@ -46,8 +46,8 @@ export async function insertMessage(
 
   try {
     const rows = await sql`
-      INSERT INTO messages (user_telegram, thread_id, type, role, content, telegram_update_id)
-      VALUES (${user_telegram}, ${thread_id}, ${type}, ${role}, ${content}, ${telegram_update_id})
+      INSERT INTO messages (telegram_username, thread_id, type, role, content, telegram_update_id)
+      VALUES (${telegram_username}, ${thread_id}, ${type}, ${role}, ${content}, ${telegram_update_id})
       RETURNING id;
     `;
     const row = rows[0] as { id: string } | undefined;
@@ -65,17 +65,17 @@ export async function insertMessage(
  */
 export async function getThreadHistory(
   opts: {
-    user_telegram: string;
+    telegram_username: string;
     thread_id: number;
     type: MessageType;
     limit?: number;
   },
 ): Promise<Message[]> {
-  const { user_telegram, thread_id, type, limit = 100 } = opts;
+  const { telegram_username, thread_id, type, limit = 100 } = opts;
   const rows = await sql`
-    SELECT id, created_at, user_telegram, thread_id, type, role, content, telegram_update_id
+    SELECT id, created_at, telegram_username, thread_id, type, role, content, telegram_update_id
     FROM messages
-    WHERE user_telegram = ${user_telegram} AND thread_id = ${thread_id} AND type = ${type}
+    WHERE telegram_username = ${telegram_username} AND thread_id = ${thread_id} AND type = ${type}
     ORDER BY created_at ASC
     LIMIT ${limit};
   `;
@@ -88,14 +88,14 @@ export async function getThreadHistory(
  * Returns null if no user messages with telegram_update_id in the thread.
  */
 export async function getMaxTelegramUpdateIdForThread(
-  user_telegram: string,
+  telegram_username: string,
   thread_id: number,
   type: MessageType,
 ): Promise<number | null> {
   const rows = await sql`
     SELECT MAX(telegram_update_id) AS max_id
     FROM messages
-    WHERE user_telegram = ${user_telegram} AND thread_id = ${thread_id} AND type = ${type}
+    WHERE telegram_username = ${telegram_username} AND thread_id = ${thread_id} AND type = ${type}
       AND role = 'user' AND telegram_update_id IS NOT NULL;
   `;
   const row = rows[0] as { max_id: string | null } | undefined;
@@ -106,7 +106,7 @@ export async function getMaxTelegramUpdateIdForThread(
 interface RawMessageRow {
   id: string;
   created_at: Date;
-  user_telegram: string;
+  telegram_username: string;
   thread_id: string;
   type: string;
   role: string;
@@ -118,7 +118,7 @@ function rowToMessage(row: RawMessageRow): Message {
   return {
     id: Number(row.id),
     created_at: row.created_at,
-    user_telegram: row.user_telegram,
+    telegram_username: row.telegram_username,
     thread_id: Number(row.thread_id),
     type: row.type as MessageType,
     role: row.role as MessageRole,

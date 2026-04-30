@@ -165,14 +165,14 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     return;
   }
 
-  const user_telegram = normalizeUsername(from?.username);
+  const telegram_username = normalizeUsername(from?.username);
   const thread_id = messageThreadId ?? 0;
   const update_id = typeof (ctx.update as { update_id?: number }).update_id === "number"
     ? (ctx.update as { update_id: number }).update_id
     : undefined;
   const threadContext =
-    user_telegram && update_id !== undefined
-      ? { user_telegram, thread_id, type: "bot" as const, telegram_update_id: update_id }
+    telegram_username && update_id !== undefined
+      ? { telegram_username, thread_id, type: "bot" as const, telegram_update_id: update_id }
       : undefined;
 
   const mode = looksLikeTicker(text) ? "token_info" : "chat";
@@ -197,7 +197,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
   const shouldAbortSend = async (): Promise<boolean> => {
     if (!threadContext) return false;
     const max = await getMaxTelegramUpdateIdForThread(
-      threadContext.user_telegram,
+      threadContext.telegram_username,
       threadContext.thread_id,
       "bot",
     );
@@ -252,7 +252,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       }
       if (threadContext && content.length > 0) {
         await insertMessage({
-          user_telegram: threadContext.user_telegram,
+          telegram_username: threadContext.telegram_username,
           thread_id: threadContext.thread_id,
           type: "bot",
           role: "assistant",

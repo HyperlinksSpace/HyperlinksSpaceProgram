@@ -1,8 +1,12 @@
 import { registerWallet } from '../../database/wallets.js';
 import { upsertUserFromTma } from '../../database/users.js';
 import { authByInitData } from '../wallet/_auth.js';
+import { kmsEncrypt } from '../_lib/envelope-crypto.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+const ENVELOPE_ALG = 'aes-256-gcm-v1';
+const DEK_LENGTH = 32;
 
 function jsonResponse(body: object, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -16,6 +20,9 @@ type RegisterRequestBody = {
   type?: unknown;
   label?: unknown;
   source?: unknown;
+  wallet_payload_ciphertext?: unknown;
+  wallet_payload_nonce?: unknown;
+  dek?: unknown;
   [key: string]: unknown;
 };
 
@@ -33,7 +40,7 @@ async function getBody(
   return (request as { body?: unknown }).body ?? null;
 }
 
-function hasSensitiveFields(body: RegisterRequestBody): boolean {
+function hasForbiddenSensitiveFields(body: RegisterRequestBody): boolean {
   const forbidden = [
     'mnemonic',
     'seed',
@@ -50,6 +57,23 @@ function toTrimmedString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function decodeB64Dek(raw: string): Buffer {
+  const t = raw.trim();
+  if (!t) {
+    throw new Error('missing_dek');
+  }
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(t, 'base64');
+  } catch {
+    throw new Error('invalid_dek_base64');
+  }
+  if (buf.length !== DEK_LENGTH) {
+    throw new Error('dek_must_be_32_bytes');
+  }
+  return buf;
+}
+
 async function handler(request: Request): Promise<Response> {
   const method = (request as { method?: string }).method ?? request.method;
   if (method === 'GET') {
@@ -57,7 +81,7 @@ async function handler(request: Request): Promise<Response> {
       {
         ok: true,
         endpoint: 'wallet/register',
-        use: 'POST with initData + public wallet fields',
+        use: 'POST with initData, public wallet fields, and envelope (wallet_payload_ciphertext, wallet_payload_nonce, dek)',
       },
       200,
     );
@@ -70,7 +94,7 @@ async function handler(request: Request): Promise<Response> {
   if (!rawBody || typeof rawBody !== 'object') {
     return jsonResponse({ ok: false, error: 'bad_json' }, 400);
   }
-  if (hasSensitiveFields(rawBody)) {
+  if (hasForbiddenSensitiveFields(rawBody)) {
     return jsonResponse(
       { ok: false, error: 'sensitive_fields_not_allowed' },
       400,
@@ -79,6 +103,42 @@ async function handler(request: Request): Promise<Response> {
 
   const initData = toTrimmedString(rawBody.initData);
   if (!initData) return jsonResponse({ ok: false, error: 'missing_initData' }, 400);
+
+  const ct = toTrimmedString(rawBody.wallet_payload_ciphertext);
+  const nonce = toTrimmedString(rawBody.wallet_payload_nonce);
+  const dekStr = toTrimmedString(rawBody.dek);
+
+  if (!ct || !nonce || !dekStr) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: 'wallet_envelope_required',
+        hint: 'Send wallet_payload_ciphertext, wallet_payload_nonce, and dek (base64) from the client envelope builder',
+      },
+      400,
+    );
+  }
+
+  let dekPlain: Buffer;
+  try {
+    dekPlain = decodeB64Dek(dekStr);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'bad_dek';
+    return jsonResponse({ ok: false, error: msg }, 400);
+  }
+
+  let wrappedDekBuf: Buffer;
+  try {
+    wrappedDekBuf = await kmsEncrypt(dekPlain);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'kms_encrypt_failed';
+    console.error('[wallet-register] kms_wrap_failed', { err: msg });
+    return jsonResponse({ ok: false, error: 'kms_wrap_failed', detail: msg }, 502);
+  } finally {
+    dekPlain.fill(0);
+  }
+
+  const wrappedDekB64 = wrappedDekBuf.toString('base64');
 
   try {
     const auth = authByInitData(initData);
@@ -114,10 +174,22 @@ async function handler(request: Request): Promise<Response> {
       label: label || null,
       source: source || null,
       isDefault: true,
+      envelopeCiphertextB64: ct,
+      envelopeNonceB64: nonce,
+      wrappedDekB64,
+      envelopeAlg: ENVELOPE_ALG,
     });
 
     if (!wallet) {
       return jsonResponse({ ok: false, error: 'wallet_register_failed' }, 500);
+    }
+
+    if (process.env.WALLET_ENVELOPE_DEBUG === '1') {
+      console.error('[wallet-register] envelope_persisted', {
+        telegram_username: auth.telegramUsername,
+        wallet_id: wallet.id,
+        has_envelope: Boolean(wallet.envelope_ciphertext && wallet.wrapped_dek),
+      });
     }
 
     return jsonResponse(
@@ -125,6 +197,9 @@ async function handler(request: Request): Promise<Response> {
         ok: true,
         telegram_username: auth.telegramUsername,
         has_wallet: true,
+        has_wallet_envelope: Boolean(
+          wallet.envelope_ciphertext && wallet.envelope_nonce && wallet.wrapped_dek,
+        ),
         wallet: {
           id: wallet.id,
           wallet_address: wallet.wallet_address,
@@ -148,4 +223,3 @@ async function handler(request: Request): Promise<Response> {
 export default handler;
 export const GET = handler;
 export const POST = handler;
-

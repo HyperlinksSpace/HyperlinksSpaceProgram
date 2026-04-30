@@ -35,7 +35,7 @@ async function claimUserMessage(
   content: string,
 ): Promise<AiResponse | null> {
   const inserted = await insertMessage({
-    user_telegram: thread.user_telegram,
+    telegram_username: thread.telegram_username,
     thread_id: thread.thread_id,
     type: thread.type,
     role: "user",
@@ -58,7 +58,7 @@ async function persistAssistantMessage(
   content: string,
 ): Promise<void> {
   await insertMessage({
-    user_telegram: thread.user_telegram,
+    telegram_username: thread.telegram_username,
     thread_id: thread.thread_id,
     type: thread.type,
     role: "assistant",
@@ -220,7 +220,7 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
   let input = request.input;
   if (thread) {
     const history = await getThreadHistory({
-      user_telegram: thread.user_telegram,
+      telegram_username: thread.telegram_username,
       thread_id: thread.thread_id,
       type: thread.type,
       limit: HISTORY_LIMIT,
@@ -340,7 +340,7 @@ export async function transmitStream(
   let input = request.input;
   if (thread) {
     const history = await getThreadHistory({
-      user_telegram: thread.user_telegram,
+      telegram_username: thread.telegram_username,
       thread_id: thread.thread_id,
       type: thread.type,
       limit: HISTORY_LIMIT,

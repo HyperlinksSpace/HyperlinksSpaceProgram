@@ -6,11 +6,11 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { useColors } from "../theme";
 import { buildApiUrl } from "../../api/_base";
 import {
-  createSeedCipher,
   deriveAddressFromMnemonic,
   deriveMasterKeyFromMnemonic,
   generateMnemonic,
 } from "../../services/wallet/tonWallet";
+import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 
 /**
  * Survives React Strict Mode / remount: component `useRef` resets, but two parallel
@@ -69,184 +69,8 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
 
 type CreateStep = "idle" | "saving" | "done";
 
-type TelegramWebAppBridge = {
-  SecureStorage?: {
-    setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
-  };
-  DeviceStorage?: {
-    setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
-  };
-  CloudStorage?: {
-    setItem?: (key: string, value: string, callback?: (err: unknown, stored?: boolean) => void) => void;
-  };
-  onEvent?: (eventType: string, callback: (...args: unknown[]) => void) => void;
-  offEvent?: (eventType: string, callback: (...args: unknown[]) => void) => void;
-};
-
-function getTelegramWebApp(): TelegramWebAppBridge | undefined {
-  if (typeof window === "undefined") return undefined;
-  return (window as unknown as { Telegram?: { WebApp?: TelegramWebAppBridge } }).Telegram?.WebApp;
-}
-
-/**
- * SecureStorage.setItem: on error the first callback argument is the error; on success it is null
- * and the second is whether the value was stored. Some clients also emit web events; see
- * https://core.telegram.org/bots/webapps#securestorage
- */
-async function setTmaSecureStorageItem(key: string, value: string): Promise<boolean> {
-  const webApp = getTelegramWebApp();
-  if (!webApp) return false;
-  const storage = webApp.SecureStorage;
-  const setItem = storage?.setItem;
-  if (typeof setItem !== "function") return false;
-
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(ok);
-    };
-
-    const onSecureStorageFailed = (payload?: unknown) => {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[wallet] secure_storage_failed", payload);
-      }
-      finish(false);
-    };
-
-    /** Fired when a value was saved (bridge may deliver this if the JS callback is delayed). */
-    const onSecureStorageKeySaved = () => {
-      finish(true);
-    };
-
-    const cleanup = () => {
-      try {
-        webApp.offEvent?.("secure_storage_failed", onSecureStorageFailed);
-      } catch {
-        /* ignore */
-      }
-      try {
-        webApp.offEvent?.("secure_storage_key_saved", onSecureStorageKeySaved);
-      } catch {
-        /* ignore */
-      }
-    };
-
-    try {
-      webApp.onEvent?.("secure_storage_failed", onSecureStorageFailed);
-      webApp.onEvent?.("secure_storage_key_saved", onSecureStorageKeySaved);
-    } catch {
-      /* older clients */
-    }
-
-    try {
-      setItem(key, value, (err: unknown, stored?: boolean) => {
-        if (err != null) {
-          finish(false);
-          return;
-        }
-        finish(stored !== false);
-      });
-    } catch {
-      cleanup();
-      resolve(false);
-    }
-  });
-}
-
-/**
- * DeviceStorage: persistent local KV inside the Telegram client (not Keychain/Keystore).
- * Same callback shape as SecureStorage; some clients emit device_storage_* web events.
- * @see https://core.telegram.org/bots/webapps#devicestorage
- */
-async function setTmaDeviceStorageItem(key: string, value: string): Promise<boolean> {
-  const webApp = getTelegramWebApp();
-  if (!webApp) return false;
-  const storage = webApp.DeviceStorage;
-  const setItem = storage?.setItem;
-  if (typeof setItem !== "function") return false;
-
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(ok);
-    };
-
-    const onDeviceStorageFailed = (payload?: unknown) => {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[wallet] device_storage_failed", payload);
-      }
-      finish(false);
-    };
-
-    const onDeviceStorageKeySaved = () => {
-      finish(true);
-    };
-
-    const cleanup = () => {
-      try {
-        webApp.offEvent?.("device_storage_failed", onDeviceStorageFailed);
-      } catch {
-        /* ignore */
-      }
-      try {
-        webApp.offEvent?.("device_storage_key_saved", onDeviceStorageKeySaved);
-      } catch {
-        /* ignore */
-      }
-    };
-
-    try {
-      webApp.onEvent?.("device_storage_failed", onDeviceStorageFailed);
-      webApp.onEvent?.("device_storage_key_saved", onDeviceStorageKeySaved);
-    } catch {
-      /* older clients */
-    }
-
-    try {
-      setItem(key, value, (err: unknown, stored?: boolean) => {
-        if (err != null) {
-          finish(false);
-          return;
-        }
-        finish(stored !== false);
-      });
-    } catch {
-      cleanup();
-      resolve(false);
-    }
-  });
-}
-
-export type WalletMasterKeyStorageTier = "secure" | "device" | "none";
-
-/**
- * Prefer hardware-backed SecureStorage; if missing or UNSUPPORTED, fall back to DeviceStorage
- * so Desktop and older clients can still persist the key (weaker — see docs/security_raw.md).
- */
-async function persistWalletMasterKey(masterKey: string): Promise<WalletMasterKeyStorageTier> {
-  const okSecure = await setTmaSecureStorageItem("wallet_master_key", masterKey);
-  if (okSecure) return "secure";
-
-  const okDevice = await setTmaDeviceStorageItem("wallet_master_key", masterKey);
-  if (okDevice) return "device";
-
-  if (typeof __DEV__ !== "undefined" && __DEV__) {
-    console.warn("[wallet] wallet_master_key not persisted (no SecureStorage nor DeviceStorage)");
-  }
-  return "none";
-}
-
-/**
- * Some Telegram Desktop TMA builds never invoke Storage callback bridges; unbounded `await` leaves
- * "Preparing your wallet" forever. Prefer completing registration (wallet row exists server-side).
- */
-const TMA_STORAGE_MAX_WAIT_MS = 25_000;
+/** Wallet mnemonic ciphertext + KMS-wrapped DEK live on the server (`wallets` row); no TMA SecureStorage path. */
+export type WalletMasterKeyStorageTier = "server";
 /** Serverless/cold DB can exceed 45s; client abort must not cut off a slow but successful register. */
 const WALLET_REGISTER_TIMEOUT_MS = 90_000;
 /** TMA: `POST /api/wallet/register` may never resolve even when the server wrote the row; poll `/api/wallet/status` in parallel. */
@@ -487,28 +311,7 @@ function raceRegisterPostWithStatusPoll(
   });
 }
 
-function promiseWithTimeout<T>(p: Promise<T>, ms: number, fallback: T, label: string): Promise<T> {
-  return new Promise((resolve) => {
-    const t = setTimeout(() => {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn(`[wallet] ${label} timed out after ${ms}ms, using fallback`);
-      }
-      resolve(fallback);
-    }, ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      () => {
-        clearTimeout(t);
-        resolve(fallback);
-      },
-    );
-  });
-}
-
-/** CloudStorage.setItem uses the same callback shape as SecureStorage. */
+/** Parse wallet object from `/api/wallet/status` or register response JSON. */
 function registerWalletFromJson(raw: unknown): TelegramWalletRow | null {
   if (!raw || typeof raw !== "object") return null;
   const w = raw as Record<string, unknown>;
@@ -538,27 +341,6 @@ function registerWalletFromJson(raw: unknown): TelegramWalletRow | null {
     is_default: Boolean(w.is_default),
     source: w.source == null || typeof w.source === "string" ? (w.source as string | null) : null,
   };
-}
-
-async function setTmaCloudStorageItem(key: string, value: string): Promise<boolean> {
-  const webApp = getTelegramWebApp();
-  const storage = webApp?.CloudStorage;
-  const setItem = storage?.setItem;
-  if (typeof setItem !== "function") return false;
-
-  return new Promise<boolean>((resolve) => {
-    try {
-      setItem(key, value, (err: unknown, stored?: boolean) => {
-        if (err != null) {
-          resolve(false);
-          return;
-        }
-        resolve(stored !== false);
-      });
-    } catch {
-      resolve(false);
-    }
-  });
 }
 
 type PendingServerWalletRegPayload = {
@@ -652,11 +434,9 @@ async function executeWalletServerRegistration(
   }
 }
 
-function scheduleWalletKeyBackground(
-  masterKey: string,
-  mnemonic: string[],
+/** Mnemonic secret is persisted only via `POST /api/wallet/register` (Neon + KMS-wrapped DEK). */
+function markWalletSecretStoredOnServer(
   setMasterKeyStorageTier: (t: WalletMasterKeyStorageTier) => void,
-  /** Deduplicate when both the in-flight IIFE and a UI-side status recovery call this for the same TON address. */
   dedupeByWalletAddress?: string,
 ): void {
   if (dedupeByWalletAddress != null && lastKeyBackgroundForWalletAddress === dedupeByWalletAddress) {
@@ -665,52 +445,7 @@ function scheduleWalletKeyBackground(
   if (dedupeByWalletAddress != null) {
     lastKeyBackgroundForWalletAddress = dedupeByWalletAddress;
   }
-  void (async () => {
-    let seedCipher: string;
-    try {
-      seedCipher = await createSeedCipher(masterKey, mnemonic.join(" "));
-    } catch (e) {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[wallet] createSeedCipher failed in background", e);
-      }
-      try {
-        const tier = await promiseWithTimeout(
-          persistWalletMasterKey(masterKey),
-          TMA_STORAGE_MAX_WAIT_MS,
-          "none" as WalletMasterKeyStorageTier,
-          "persistWalletMasterKey_cipher_fail",
-        );
-        setMasterKeyStorageTier(tier);
-      } catch {
-        /* ignore */
-      }
-      return;
-    }
-    try {
-      const [tier, cloudOk] = await Promise.all([
-        promiseWithTimeout(
-          persistWalletMasterKey(masterKey),
-          TMA_STORAGE_MAX_WAIT_MS,
-          "none" as WalletMasterKeyStorageTier,
-          "persistWalletMasterKey",
-        ),
-        promiseWithTimeout(
-          setTmaCloudStorageItem("wallet_seed_cipher", seedCipher),
-          TMA_STORAGE_MAX_WAIT_MS,
-          false,
-          "setTmaCloudStorageItem",
-        ),
-      ]);
-      setMasterKeyStorageTier(tier);
-      if (!cloudOk && typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[wallet] wallet_seed_cipher not saved to CloudStorage");
-      }
-    } catch (e) {
-      if (typeof __DEV__ !== "undefined" && __DEV__) {
-        console.warn("[wallet] background key/cloud persist failed", e);
-      }
-    }
-  })();
+  setMasterKeyStorageTier("server");
 }
 
 export function HomeAuthenticatedScreen() {
@@ -807,18 +542,22 @@ export function HomeAuthenticatedScreen() {
               WALLET_PRE_REGISTER_TIMEOUT_MS,
             );
           });
-        const { mnemonic, walletAddress, masterKey } = await Promise.race([
+        const { mnemonic, walletAddress, masterKey, envelope } = await Promise.race([
           (async () => {
             const mnemonic0 = await generateMnemonic();
             const wAddr = await deriveAddressFromMnemonic({ mnemonic: mnemonic0, testnet: false });
             const mKey = await deriveMasterKeyFromMnemonic(mnemonic0);
-            return { mnemonic: mnemonic0, walletAddress: wAddr, masterKey: mKey };
+            const envelope0 = await buildWalletRegisterEnvelope(mnemonic0);
+            return {
+              mnemonic: mnemonic0,
+              walletAddress: wAddr,
+              masterKey: mKey,
+              envelope: envelope0,
+            };
           })(),
           preRegTimeout("Wallet key generation"),
         ]);
         logPageDisplay("wallet_create_flow", { flow: "pre_register_done" });
-        // Register as soon as we have the address (do not await createSeedCipher first — WebCrypto
-        // can stall indefinitely in some TMA WebViews, blocking the server round-trip).
 
         const registerBody = JSON.stringify({
           initData,
@@ -828,6 +567,9 @@ export function HomeAuthenticatedScreen() {
           type: "internal",
           label: "Main wallet",
           source: "miniapp",
+          wallet_payload_ciphertext: envelope.wallet_payload_ciphertext,
+          wallet_payload_nonce: envelope.wallet_payload_nonce,
+          dek: envelope.dek,
         });
         const registerUrl = buildApiUrl("/api/wallet/register");
         const registerInit: RequestInit = {
@@ -871,7 +613,7 @@ export function HomeAuthenticatedScreen() {
         setHomeBootstrap({ serverRegPending: false });
         setServerOnlyRetry(false);
 
-        scheduleWalletKeyBackground(masterKey, mnemonic, setMasterKeyStorageTier, walletAddress);
+        markWalletSecretStoredOnServer(setMasterKeyStorageTier, walletAddress);
       })();
 
       const budgetP = new Promise<never>((_, r) => {
@@ -948,7 +690,7 @@ export function HomeAuthenticatedScreen() {
         applyCreatedForRegister,
         setStep,
       );
-      scheduleWalletKeyBackground(p.masterKey, p.mnemonic, setMasterKeyStorageTier, p.walletAddress);
+      markWalletSecretStoredOnServer(setMasterKeyStorageTier, p.walletAddress);
       clearProvisionalRegistration();
     } catch (e) {
       if (provisionalWalletVisibleRef.current && isRetryableRegistrationError(e)) {
@@ -1026,7 +768,7 @@ export function HomeAuthenticatedScreen() {
       applyCreatedForRegister(row.wallet_address);
       const mod = pendingServerRegModule;
       if (mod && sameTonAddressForPoll(mod.walletAddress, expectAddr)) {
-        scheduleWalletKeyBackground(mod.masterKey, mod.mnemonic, setMasterKeyStorageTier, mod.walletAddress);
+        markWalletSecretStoredOnServer(setMasterKeyStorageTier, mod.walletAddress);
       }
       clearPendingServerRegModuleStore();
       pendingServerRegRef.current = null;
@@ -1257,7 +999,7 @@ export function HomeAuthenticatedScreen() {
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
+          justifyContent: "flex-start",
           alignItems: "center",
           padding: 16,
           backgroundColor: colors.background,
@@ -1308,7 +1050,7 @@ export function HomeAuthenticatedScreen() {
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
+          justifyContent: "flex-start",
           alignItems: "center",
           padding: 16,
           backgroundColor: colors.background,
@@ -1358,7 +1100,7 @@ export function HomeAuthenticatedScreen() {
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
+          justifyContent: "flex-start",
           alignItems: "center",
           padding: 16,
           backgroundColor: colors.background,
@@ -1427,7 +1169,7 @@ export function HomeAuthenticatedScreen() {
         flex: 1,
         width: "100%",
         alignSelf: "stretch",
-        justifyContent: "center",
+        justifyContent: "flex-start",
         alignItems: "center",
         padding: 16,
         backgroundColor: colors.background,
@@ -1508,17 +1250,9 @@ export function HomeAuthenticatedScreen() {
           </Text>
         </View>
       ) : null}
-      {masterKeyStorageTier === "device" ? (
-        <Text style={{ marginTop: 14, fontSize: 12, color: "#856404", textAlign: "center", paddingHorizontal: 8 }}>
-          This Telegram client does not support SecureStorage, so your wallet key was stored in DeviceStorage
-          (persistent app storage, not the system keychain). That is weaker than SecureStorage; keep your seed
-          phrase safe and prefer Telegram on iOS/Android when possible.
-        </Text>
-      ) : null}
-      {masterKeyStorageTier === "none" ? (
-        <Text style={{ marginTop: 14, fontSize: 12, color: "#b00020", textAlign: "center", paddingHorizontal: 8 }}>
-          Could not save your wallet key on this device. Cloud ciphertext may still sync, but you will need your
-          recovery phrase to sign here until storage works. Try another Telegram client or update the app.
+      {masterKeyStorageTier === "server" ? (
+        <Text style={{ marginTop: 14, fontSize: 12, color: colors.highlight, textAlign: "center", paddingHorizontal: 8 }}>
+          Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
         </Text>
       ) : null}
     </View>

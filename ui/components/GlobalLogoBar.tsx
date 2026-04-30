@@ -238,25 +238,26 @@ export function GlobalLogoBar() {
   const topPadGlyph = logoBarTopOffset;
   const blockHeight = topPadGlyph + headerContentHeight + belowLogoPad;
 
+  /**
+   * Signed-in home: header only in Telegram **mobile** TMA + **immersive** fullscreen (same signal as
+   * welcome). Desktop TMA / expanded-without-fullscreen / browser: no logo bar.
+   * Browser welcome (`/` signed out) keeps the marketing row via the web branch below.
+   */
   const shouldShow = useMemo(() => {
     if (isWelcomeLayout && Platform.OS === "web") {
       return true;
     }
-    if (!isInTelegram) return true;
+    if (!isInTelegram) {
+      return false;
+    }
     if (isWelcomeLayout) {
-      if (!isTelegramMiniAppDesktop) {
-        return true;
-      }
       return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
     }
-    return isExpanded;
-  }, [
-    isInTelegram,
-    stableWelcomeImmersiveFullscreen,
-    isExpanded,
-    isWelcomeLayout,
-    isTelegramMiniAppDesktop,
-  ]);
+    if (isTelegramMiniAppDesktop) {
+      return false;
+    }
+    return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
+  }, [isInTelegram, stableWelcomeImmersiveFullscreen, isWelcomeLayout, isTelegramMiniAppDesktop]);
 
   const onPressLogoHome = () => {
     if (Platform.OS !== "web") {

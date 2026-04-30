@@ -58,11 +58,18 @@ async function handler(request: Request): Promise<Response> {
       );
     }
 
+    const hasEnv = Boolean(
+      wallet.envelope_ciphertext?.trim() &&
+        wallet.envelope_nonce?.trim() &&
+        wallet.wrapped_dek?.trim(),
+    );
+
     return jsonResponse(
       {
         ok: true,
         telegram_username: auth.telegramUsername,
         has_wallet: true,
+        has_wallet_envelope: hasEnv,
         wallet: {
           id: wallet.id,
           wallet_address: wallet.wallet_address,

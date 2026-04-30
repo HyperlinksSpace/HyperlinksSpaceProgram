@@ -3,7 +3,7 @@ import OpenAI from "openai";
 export type AiMode = "chat" | "token_info";
 
 export type ThreadContext = {
-  user_telegram: string;
+  telegram_username: string;
   thread_id: number;
   type: "bot" | "app";
   telegram_update_id?: number | null;

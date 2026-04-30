@@ -9,7 +9,7 @@
 - **Webhook:** Stateless. Returns 200 immediately; update is processed in `waitUntil`. No in-memory state between requests. Vercel scales out with traffic (more concurrent requests → more instances).
 - **Bot:** One bot instance per serverless instance (module-level in webhook). No global singleton; fits serverless.
 - **Dedupe / “only latest wins”:** Done in the DB (`telegram_update_id` unique constraint + `getMaxTelegramUpdateIdForThread`). Works across instances; no reliance on in-process state.
-- **Messages:** One table, indexed by `(user_telegram, thread_id, type, created_at)` and unique on `(..., telegram_update_id)` for bot. Per-request load is small (insert user, get history, insert assistant, optional max-update-id read).
+- **Messages:** One table, indexed by `(telegram_username, thread_id, type, created_at)` and unique on `(..., telegram_update_id)` for bot. Per-request load is small (insert user, get history, insert assistant, optional max-update-id read).
 - **Database:** Neon with **connection pooling** already on (supports up to 10,000 concurrent connections). Use the pooled `DATABASE_URL` in Vercel so serverless invocations go through the pooler.
 
 The design is horizontally scalable: more users → more invocations → more instances; no single bottleneck in the app logic.
