@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
-import { useColors } from "../../ui/theme";
+import { typographySansSemibold, useColors } from "../../ui/theme";
 
 export default function AiScreen() {
   const { isAuthenticated, authReady } = useAuth();
@@ -35,8 +35,8 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
   },
   title: {
+    ...typographySansSemibold,
     fontSize: 18,
-    fontWeight: "600",
     marginBottom: 12,
   },
   prompt: {

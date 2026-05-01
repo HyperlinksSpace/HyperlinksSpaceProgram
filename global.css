@@ -30,11 +30,17 @@ body {
   min-width: 100%;
   background-color: var(--tg-theme-bg-color, transparent);
   /*
-   * RN-web `Text` without `line-height` uses UA "normal" (often asymmetric). Too-tight values (e.g. 1)
-   * clip descenders (g, j, y) when ancestors use overflow hidden. Unitless 1.28 inherits as 1.28×
-   * each element's font-size — enough room for glyphs without the old "floating low" line box.
+   * Matches `WEB_UI_SANS_STACK` in `ui/fonts.ts` (Noto Sans loaded via `expo-font` in root layout).
+   * Ensures plain DOM text inherits Noto before RN subtree mounts.
    */
-  line-height: 1.28;
+  font-family: NotoSans_400Regular, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /*
+   * Unitless line-height on the root multiplied per font-size and stacked badly with Noto + RN-web,
+   * shifting labels down inside fixed-height rows. Use normal UA metrics; explicit `lineHeight` on
+   * `Text` / inputs still controls tight layouts (see `typographyRect15`, bottom bar textarea).
+   */
+  line-height: normal;
 }
 
 /* Hide native textarea scrollbars (React Native Web TextInput) while keeping scroll behaviour. */
@@ -58,13 +64,13 @@ textarea[data-ai-input="true"] {
   box-sizing: content-box;
 }
 
-/* GlobalBottomBarWeb: placeholder + same font stack as inline (see app/fonts.ts). */
+/* GlobalBottomBarWeb: placeholder + same stack as `WEB_UI_SANS_STACK` (`ui/fonts.ts`). */
 [data-global-bottom-bar-web] {
   -ms-overflow-style: none;
   scrollbar-width: none;
   background-color: transparent !important;
-  font-family: Aeroport, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  font-family: NotoSans_400Regular, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
 }
 
 [data-global-bottom-bar-web]::-webkit-scrollbar {

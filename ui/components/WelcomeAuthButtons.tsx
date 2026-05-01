@@ -4,7 +4,12 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
-import { useColors, typographyRect15 } from "../theme";
+import {
+  useColors,
+  typographyRect15,
+  uiIconButtonVerticalCompensationY,
+  uiWelcomeAppleOAuthIconExtraCompensationPx,
+} from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
@@ -23,7 +28,6 @@ const EMAIL_ERROR_LINE_HEIGHT = 30;
 const EMAIL_INVALID_COLOR = "#FF0000";
 /** Text inset from the left inside the field (per design: 110px). */
 const EMAIL_INPUT_TEXT_INSET_LEFT = 10;
-const EMAIL_INPUT_FONT_SIZE = 15;
 
 const ICONS = {
   google: {
@@ -155,7 +159,22 @@ export function WelcomeAuthButtons() {
             <Text style={[styles.label, { color: colors.primary }]} numberOfLines={1}>
               {row.label}
             </Text>
-            <Image source={src} style={styles.icon} contentFit="contain" />
+            <Image
+              source={src}
+              style={[
+                styles.iconDims,
+                {
+                  transform: [
+                    {
+                      translateY:
+                        uiIconButtonVerticalCompensationY -
+                        (row.id === "apple" ? uiWelcomeAppleOAuthIconExtraCompensationPx : 0),
+                    },
+                  ],
+                },
+              ]}
+              contentFit="contain"
+            />
           </Pressable>
         );
       })}
@@ -245,7 +264,7 @@ const styles = StyleSheet.create({
     ...typographyRect15,
     flexShrink: 1,
   },
-  icon: {
+  iconDims: {
     width: ICON_SIZE,
     height: ICON_SIZE,
   },

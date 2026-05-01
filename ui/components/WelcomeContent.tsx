@@ -13,8 +13,8 @@ const GAP_ABOVE_AUTH_BUTTONS = 20;
 const SUBTITLE_TOP_INDENT_WIDE = 10;
 
 const HEADING_FONT_WIDE = 35;
-const HEADING_LINE_NARROW = 40;
-const HEADING_LINE_WIDE = 42;
+const HEADING_LINE_NARROW = 38;
+const HEADING_LINE_WIDE = 40;
 
 /**
  * Welcome marketing + auth controls. Rendered at `/` when unauthenticated (same URL as signed-in home).
@@ -110,7 +110,8 @@ const styles = StyleSheet.create({
   },
   subtitleText: {
     fontSize: 15,
-    lineHeight: 30,
+    /** Tighter than 30 — large line boxes sat visually low with Noto in centered blocks. */
+    lineHeight: 22,
     fontWeight: "400",
     textAlign: "center",
     includeFontPadding: false,

@@ -12,7 +12,7 @@ import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeade
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
 import { logPageDisplay } from "../pageDisplayLog";
-import { layout, useColors } from "../theme";
+import { layout, typographySansSemibold, useColors } from "../theme";
 import { buildApiUrl } from "../../api/_base";
 import {
   deriveAddressFromMnemonic,
@@ -1045,7 +1045,7 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
           </Text>
@@ -1079,7 +1079,7 @@ export function HomeAuthenticatedScreen() {
     return (
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
-        <Text style={{ fontWeight: "600", marginBottom: 8, color: colors.primary }}>
+        <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           Telegram registration failed
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>{error}</Text>
@@ -1093,7 +1093,7 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)} ·
             initData: {debug.initDataLength ?? "—"}
@@ -1122,7 +1122,7 @@ export function HomeAuthenticatedScreen() {
     return (
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
-        <Text style={{ fontWeight: "600", marginBottom: 8, color: colors.primary }}>
+        <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           Hyperlinks Space Program
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>
@@ -1138,7 +1138,7 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.primary }}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
             hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
           </Text>
@@ -1183,15 +1183,17 @@ export function HomeAuthenticatedScreen() {
     <AuthenticatedHomeChrome>
       <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
       <Text
-        style={{
-          fontWeight: "600",
-          marginBottom: 8,
-          color: colors.primary,
-          fontSize: 18,
-          lineHeight: 24,
-          textAlign: "center",
-          alignSelf: "stretch",
-        }}
+        style={[
+          typographySansSemibold,
+          {
+            marginBottom: 8,
+            color: colors.primary,
+            fontSize: 18,
+            lineHeight: 24,
+            textAlign: "center",
+            alignSelf: "stretch",
+          },
+        ]}
       >
         HyperlinksSpace Wallet
       </Text>

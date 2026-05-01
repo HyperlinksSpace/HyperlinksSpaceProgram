@@ -1,5 +1,8 @@
 import "../global.css";
-import { applyPlatformTextDefaults } from "../ui/platformTextDefaults";
+import { useFonts } from "expo-font";
+import * as SplashScreen from "expo-splash-screen";
+import { applyPlatformTextDefaults, ensureUiSansFontFamilyDefaults } from "../ui/platformTextDefaults";
+import { UI_GOOGLE_FONT_LOAD_MAP } from "../ui/uiGoogleFonts";
 import {
   View,
   StyleSheet,
@@ -38,6 +41,8 @@ import {
 
 applyPlatformTextDefaults();
 
+void SplashScreen.preventAutoHideAsync();
+
 /**
  * Three-block column layout (same as Flutter):
  * 1. Logo bar (optional in TMA when not fullscreen)
@@ -45,7 +50,28 @@ applyPlatformTextDefaults();
  * 3. AI & Search bar (fixed at bottom, platform-specific internals)
  */
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(UI_GOOGLE_FONT_LOAD_MAP);
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, fontError]);
+
   useOtaUpdateChecks();
+
+  if (fontError) {
+    console.warn("[fonts] UI font load failed", fontError);
+  }
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
+  if (fontsLoaded) {
+    ensureUiSansFontFamilyDefaults();
+  }
+
   return (
     <TelegramProvider>
       <AuthProvider>

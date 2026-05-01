@@ -1,5 +1,5 @@
-import type { TextStyle } from "react-native";
-import { WEB_UI_MONO_STACK } from "./fonts";
+import { Platform, type TextStyle } from "react-native";
+import { FONT_UI_SANS_SEMIBOLD, WEB_UI_MONO_STACK } from "./fonts";
 import {
   getThemeColorsFromLaunchThemeParams,
   getThemeColorsFromTelegramCssVars,
@@ -125,26 +125,65 @@ export const icons = {
 };
 
 /**
+ * Single optical vertical shift for Noto Sans (px). Tune here only.
+ *
+ * RN `Text` / `TextInput` pick this up via `ensureUiSansFontFamilyDefaults()` as
+ * `uiTextVerticalCompensationTransform`. For plain DOM (e.g. web `textarea`) use
+ * `translateY(${uiTextVerticalCompensationY}px)`. Icons beside that text use the smaller
+ * **`uiIconButtonVerticalCompensationTransform`** (see `uiIconButtonVerticalCompensationY`). Do **not**
+ * put `uiTextVerticalCompensationTransform` on `TextStyle` tokens like `typographyRect15` — that would
+ * double-apply on `Text`.
+ */
+export const uiTextVerticalCompensationY = Platform.OS === "web" ? -2 : -1;
+
+export const uiTextVerticalCompensationTransform = {
+  transform: [{ translateY: uiTextVerticalCompensationY }],
+} satisfies Pick<TextStyle, "transform">;
+
+/** Icons in buttons: upward correction magnitude (px). RN uses negative `translateY`. */
+export const uiIconButtonVerticalCompensationPx = 1;
+
+export const uiIconButtonVerticalCompensationY = -uiIconButtonVerticalCompensationPx;
+
+export const uiIconButtonVerticalCompensationTransform = {
+  transform: [{ translateY: uiIconButtonVerticalCompensationY }],
+} satisfies Pick<TextStyle, "transform">;
+
+/** Welcome OAuth buttons only: Apple asset sits low — extra upward correction (px). */
+export const uiWelcomeAppleOAuthIconExtraCompensationPx = 1;
+
+/**
  * Single-line labels in fixed-height rows (auth buttons, undercover strips, etc.).
  *
- * `lineHeight` must exceed `fontSize` slightly so descenders (g, y, p) are not clipped when parents
- * use `overflow: hidden`. Matches `layout.bottomBar.lineHeight` (20). Global web: `#root` uses
- * unitless `line-height` in `global.css`; Android: `applyPlatformTextDefaults()` clears font padding.
+ * Pairs with global `uiTextVerticalCompensationY` on `Text`. `lineHeight` slightly above `fontSize`
+ * avoids descender clipping; ~18px tracks Noto for 40px-tall rows without blowing up the line box.
  */
 export const typographyRect15: TextStyle = {
   fontSize: 15,
-  lineHeight: 20,
+  lineHeight: 18,
   fontWeight: "400",
   includeFontPadding: false,
   textAlignVertical: "center",
+  paddingVertical: 0,
+};
+
+/** Noto Sans Semibold file — use **`fontWeight: "400"`** (RN separate families per weight). */
+export const typographySansSemibold: TextStyle = {
+  fontFamily: FONT_UI_SANS_SEMIBOLD,
+  fontWeight: "400",
+  includeFontPadding: false,
+  textAlignVertical: "center",
+  paddingVertical: 0,
 };
 
 /** Truncated wallet address row on authenticated home (`highlight` color from palette). */
 export const homeWalletAddressHeaderText: TextStyle = {
   fontFamily: WEB_UI_MONO_STACK,
   fontSize: 15,
-  lineHeight: 30,
+  /** ~24px line box pairs with 30px header icons; 30px looked visually low with Noto Mono. */
+  lineHeight: 24,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,
+  textAlignVertical: "center",
 };

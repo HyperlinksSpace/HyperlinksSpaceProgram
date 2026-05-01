@@ -393,6 +393,10 @@ const styles = StyleSheet.create({
   },
   aboutText: {
     fontSize: 16,
+    lineHeight: 20,
     fontWeight: "400",
+    includeFontPadding: false,
+    paddingVertical: 0,
+    textAlignVertical: "center",
   },
 });

@@ -12,11 +12,12 @@ import {
   type NativeSyntheticEvent,
   type TextInputContentSizeChangeEventData,
   type TextInputSubmitEditingEventData,
+  type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { WEB_UI_SANS_STACK } from "../fonts";
-import { layout, icons, useColors } from "../theme";
+import { layout, icons, uiIconButtonVerticalCompensationTransform, uiTextVerticalCompensationY, useColors } from "../theme";
 import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter } from "./BottomBarLayoutContext";
 import { getBottomBarMetrics } from "./bottomBarMetrics";
@@ -37,10 +38,18 @@ const AUTO_SCROLL_THRESHOLD = 30;
 const PREMADE_PROMPTS = ["What is the universe?", "Tell me about dogs token"];
 
 // Shared UI primitives used by all platforms.
-function SendButton({ color, onPress }: { color: string; onPress: () => void }) {
+function SendButton({
+  color,
+  onPress,
+  wrapStyle,
+}: {
+  color: string;
+  onPress: () => void;
+  wrapStyle?: ViewStyle;
+}) {
   return (
     <Pressable
-      style={styles.sendWrap}
+      style={[styles.sendWrap, uiIconButtonVerticalCompensationTransform, wrapStyle]}
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel="Send"
@@ -142,6 +151,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 5,
   },
+  webFooterRow: {
+    alignItems: "center",
+  },
   inputWrap: {
     flex: 1,
     position: "relative",
@@ -169,6 +181,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingBottom: 25,
+  },
+  /** Web footer row uses `alignItems: center`; native keeps `flex-end` + bottom padding for multi-line. */
+  sendWrapWeb: {
+    paddingBottom: 0,
+    alignSelf: "center",
   },
   scrollbarContainer: {
     position: "absolute",
@@ -353,7 +370,7 @@ function WebBottomBar({
     >
       <BottomBarHeightReporter height={metrics.barHeight} />
       <View style={[styles.container, { backgroundColor }]}>
-        <View style={[styles.row, { height: metrics.barHeight }]}>
+        <View style={[styles.row, styles.webFooterRow, { height: metrics.barHeight }]}>
           <View style={styles.inputWrap}>
             <textarea
               ref={textareaRef}
@@ -383,13 +400,14 @@ function WebBottomBar({
                 ["--ai-placeholder-color" as string]: inputColor,
                 fontFamily: WEB_UI_SANS_STACK,
                 fontWeight: 400,
+                transform: `translateY(${uiTextVerticalCompensationY}px)`,
                 overflow:
                   metrics.contentHeightWithGaps > metrics.viewportHeight ? "auto" : "hidden",
               }}
               placeholder={isFocused ? "" : "AI and search"}
             />
           </View>
-          <SendButton color={inputColor} onPress={handleSend} />
+          <SendButton color={inputColor} onPress={handleSend} wrapStyle={styles.sendWrapWeb} />
         </View>
       </View>
       <Scrollbar
@@ -566,6 +584,7 @@ function NativeBottomBar({
                         left: 0,
                         right: 0,
                         paddingVertical: INNER_PADDING,
+                        transform: [{ translateY: 0 }],
                         ...(inputAreaWidth != null ? { width: inputAreaWidth } : {}),
                       },
                     ]}

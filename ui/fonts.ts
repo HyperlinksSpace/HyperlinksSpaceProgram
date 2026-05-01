@@ -1,19 +1,24 @@
 /**
- * Web typography — used by the web textarea in GlobalBottomBar + global.css.
- *
- * **Brand intent:** Aeroport (geometric / grotesk-style sans). There are **no** `.otf`/`.ttf`
- * files in this Expo app repo yet, so `"Aeroport"` alone resolves to **nothing** and the
- * browser picks an unpredictable fallback (often a **serif** / “antiqua” look in WebView).
- *
- * Always append a **system UI sans** stack so you get a neutral grotesk-like face until
- * real files are added (see `docs/fonts.md`).
+ * Noto Sans / Noto Sans Mono via `@expo-google-fonts/*`, loaded in root layout (`useFonts`).
+ * Use **`fontWeight: "400"`** with SemiBold/Bold faces — discrete TTFs register as separate families on RN.
  */
-export const WEB_UI_SANS_STACK =
-  'Aeroport, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
-/**
- * Monospace stack for wallet addresses / codes. **`Aeroport Mono` first** when bundled via `@font-face`
- * or `expo-font`; otherwise falls back to system monospace (see `texts/fonts.md`).
- */
-export const WEB_UI_MONO_STACK =
-  'Aeroport Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
+/** Must match keys in `UI_GOOGLE_FONT_LOAD_MAP` (`ui/uiGoogleFonts.ts`). */
+export const FONT_UI_SANS_REGULAR = "NotoSans_400Regular";
+export const FONT_UI_SANS_SEMIBOLD = "NotoSans_600SemiBold";
+export const FONT_UI_SANS_BOLD = "NotoSans_700Bold";
+export const FONT_UI_MONO_REGULAR = "NotoSansMono_400Regular";
+
+export const WEB_UI_SANS_STACK = `${FONT_UI_SANS_REGULAR}, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+
+export const WEB_UI_MONO_STACK = `${FONT_UI_MONO_REGULAR}, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
+
+/** RN: pick the loaded face that matches `fontWeight` (numeric or string). */
+export function fontUiSansFamilyForWeight(weight?: string | number | null): string {
+  const raw = weight ?? "400";
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  if (!Number.isFinite(n)) return FONT_UI_SANS_REGULAR;
+  if (n >= 700) return FONT_UI_SANS_BOLD;
+  if (n >= 600) return FONT_UI_SANS_SEMIBOLD;
+  return FONT_UI_SANS_REGULAR;
+}
