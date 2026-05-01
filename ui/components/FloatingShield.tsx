@@ -38,7 +38,11 @@ export function FloatingShield() {
     <View
       style={[
         styles.host,
-        { bottom: bottomBarHeight + FOOTER_TOP_GAP_PX, pointerEvents: "none" },
+        {
+          bottom: bottomBarHeight + FOOTER_TOP_GAP_PX,
+          // box-none: lightning/GL spill and chip corners pass through; only the circular Svg hit mask in each chip captures.
+          pointerEvents: "box-none",
+        },
       ]}
     >
       <View style={styles.settingsSlot}>

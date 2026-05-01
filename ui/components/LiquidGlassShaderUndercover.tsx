@@ -1,6 +1,7 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
 import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import { Platform, StyleSheet, View } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import {
   liquidGlassContentInsetPx,
   liquidGlassDebugLogging,
@@ -128,12 +129,33 @@ export function LiquidGlassShaderUndercover({
     zIndex: 0,
   };
 
+  const hitR = size / 2;
+
   return (
-    <View style={outerWrap} collapsable={false}>
+    <View style={outerWrap} pointerEvents="box-none" collapsable={false}>
       <View style={[glExpand, styles.glUnderlay]} pointerEvents="none" collapsable={false}>
-        <GLView style={glLayerStyle} onContextCreate={onContextCreate} />
+        <GLView pointerEvents="none" style={glLayerStyle} onContextCreate={onContextCreate} />
       </View>
-      <View style={clip} collapsable={false}>
+      <View style={clip} pointerEvents="box-none" collapsable={false}>
+        {/*
+          Lightning is drawn on an oversized GL canvas; only the circular drop should steal touches.
+          Svg Circle matches the clip circle; corners of the size×square and rays outside the drop
+          fall through to underlying content (FloatingShield host uses pointerEvents box-none).
+        */}
+        <Svg
+          width={size}
+          height={size}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="box-none"
+        >
+          <Circle
+            cx={hitR}
+            cy={hitR}
+            r={hitR}
+            fill="transparent"
+            pointerEvents="auto"
+          />
+        </Svg>
         <View
           style={[
             styles.foreground,
