@@ -33,6 +33,16 @@ export type ThemeColors = {
   undercover: string;
 };
 
+/** Home wide strip / stroke-driven glyphs: `primary` vs `highlight` theme colors. */
+export type MenuIconVariant = "primary" | "highlight";
+
+export function menuIconStrokeColor(colors: ThemeColors, variant: MenuIconVariant): string {
+  return variant === "primary" ? colors.primary : colors.highlight;
+}
+
+/** `assets/menu/*.svg` viewBox. */
+export const MENU_ICON_DEFAULT_SIZE = 30;
+
 export function getColorsForTheme(name: ThemeName | undefined | null): ThemeColors {
   if (name === "light") return light;
   return dark;
@@ -98,6 +108,13 @@ export const layout = {
     headerIconGap: 15,
     /** Tap/visual size for header icons (`assets/header/*.svg` viewBoxes are 30×30). */
     headerIconDisplaySize: 30,
+    /** Show extra middle column (Get/Swap/Deals/Trade/Send) when viewport width is greater than this. */
+    wideMenuBreakpoint: 724,
+    /** Each wide-menu cell flexes between min and max width (px). */
+    wideMenuItemMinWidth: 50,
+    wideMenuItemMaxWidth: 100,
+    /** Space between icon and label under it (px). */
+    wideMenuIconLabelGap: 10,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {
@@ -164,6 +181,16 @@ export const typographyRect15: TextStyle = {
   fontWeight: "400",
   includeFontPadding: false,
   textAlignVertical: "center",
+  paddingVertical: 0,
+};
+
+/** Wide home menu labels under SVG icons (15 / 15 — tight line box). */
+export const homeWideMenuItemLabel: TextStyle = {
+  fontSize: 15,
+  lineHeight: 15,
+  fontWeight: "400",
+  textAlign: "center",
+  includeFontPadding: false,
   paddingVertical: 0,
 };
 
