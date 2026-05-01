@@ -1,14 +1,13 @@
 import { useEffect, useRef, type ComponentType } from "react";
 import type { ViewProps } from "react-native";
-import { Platform, View } from "react-native";
-
-/** react-native-web forwards this to the DOM; RN `View` typings omit it. */
-const ShellView = View as ComponentType<ViewProps & { suppressHydrationWarning?: boolean }>;
+import { View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { WelcomeContent } from "../ui/components/WelcomeContent";
 import { getBuildDisplaySnapshot, logPageDisplay } from "../ui/pageDisplayLog";
 import { HomeAuthenticatedScreen } from "../ui/screens/HomeAuthenticatedScreen";
 
+/** react-native-web forwards this to the DOM; RN `View` typings omit it. */
+const ShellView = View as ComponentType<ViewProps & { suppressHydrationWarning?: boolean }>;
 /**
  * Root URL `http://localhost:3000/` (path `/`): welcome when signed out, main app when signed in.
  * Same URL for both — only session state chooses the screen; legacy `/home` redirects here.

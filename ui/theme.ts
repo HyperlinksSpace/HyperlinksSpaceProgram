@@ -1,4 +1,5 @@
 import type { TextStyle } from "react-native";
+import { WEB_UI_MONO_STACK } from "./fonts";
 import {
   getThemeColorsFromLaunchThemeParams,
   getThemeColorsFromTelegramCssVars,
@@ -83,6 +84,21 @@ export function useColors(): ThemeColors {
 
 export const layout = {
   maxContentWidth: 600,
+  /**
+   * Authenticated home (`/` signed-in): padding inside the root scroll column (same outer scroll as welcome).
+   * Central place to tune per breakpoint/platform later (e.g. `Platform.select` or responsive hook).
+   */
+  authenticatedHome: {
+    contentInsetTop: 22,
+    contentInsetBottom: 22,
+    contentInsetHorizontal: 15,
+    /** Horizontal gap between truncated address and the header icon cluster. */
+    addressRowGap: 15,
+    /** Gap between adjacent icons from `assets/header/*.svg`. */
+    headerIconGap: 15,
+    /** Tap/visual size for header icons (`assets/header/*.svg` viewBoxes are 30×30). */
+    headerIconDisplaySize: 30,
+  },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {
     settingsDiameter: 30,
@@ -121,4 +137,14 @@ export const typographyRect15: TextStyle = {
   fontWeight: "400",
   includeFontPadding: false,
   textAlignVertical: "center",
+};
+
+/** Truncated wallet address row on authenticated home (`highlight` color from palette). */
+export const homeWalletAddressHeaderText: TextStyle = {
+  fontFamily: WEB_UI_MONO_STACK,
+  fontSize: 15,
+  lineHeight: 30,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
 };

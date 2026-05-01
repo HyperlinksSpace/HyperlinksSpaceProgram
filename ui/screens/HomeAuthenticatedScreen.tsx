@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { ActivityIndicator, Button, Text, View } from "react-native";
+import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
 import { logPageDisplay } from "../pageDisplayLog";
-import { useColors } from "../theme";
+import { layout, useColors } from "../theme";
 import { buildApiUrl } from "../../api/_base";
 import {
   deriveAddressFromMnemonic,
@@ -66,6 +75,34 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
 }
 
 /** Authenticated “home” main view; mounted from `app/index` at URL `/` when the user has a session. */
+
+/** Padding inside the root `ScrollView` column (same outer scroll as welcome). */
+function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
+  const colors = useColors();
+  const p = layout.authenticatedHome;
+  return (
+    <View
+      style={{
+        flex: 1,
+        width: "100%",
+        alignSelf: "stretch",
+        backgroundColor: colors.background,
+      }}
+    >
+      <View
+        style={{
+          flex: 1,
+          width: "100%",
+          paddingTop: p.contentInsetTop,
+          paddingBottom: p.contentInsetBottom,
+          paddingHorizontal: p.contentInsetHorizontal,
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
 
 type CreateStep = "idle" | "saving" | "done";
 
@@ -996,15 +1033,8 @@ export function HomeAuthenticatedScreen() {
 
   if (status === "idle" || status === "loading") {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "flex-start",
-          alignItems: "center",
-          padding: 16,
-          backgroundColor: colors.background,
-        }}
-      >
+      <AuthenticatedHomeChrome>
+        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
         <View
           style={{
@@ -1041,21 +1071,14 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
-      </View>
+      </AuthenticatedHomeChrome>
     );
   }
 
   if (status === "error") {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "flex-start",
-          alignItems: "center",
-          padding: 16,
-          backgroundColor: colors.background,
-        }}
-      >
+      <AuthenticatedHomeChrome>
+        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <Text style={{ fontWeight: "600", marginBottom: 8, color: colors.primary }}>
           Telegram registration failed
         </Text>
@@ -1091,21 +1114,14 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
-      </View>
+      </AuthenticatedHomeChrome>
     );
   }
 
   if (status === "dev") {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "flex-start",
-          alignItems: "center",
-          padding: 16,
-          backgroundColor: colors.background,
-        }}
-      >
+      <AuthenticatedHomeChrome>
+        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <Text style={{ fontWeight: "600", marginBottom: 8, color: colors.primary }}>
           Hyperlinks Space Program
         </Text>
@@ -1148,7 +1164,7 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
-      </View>
+      </AuthenticatedHomeChrome>
     );
   }
 
@@ -1164,17 +1180,8 @@ export function HomeAuthenticatedScreen() {
     step === "saving";
 
   return (
-    <View
-      style={{
-        flex: 1,
-        width: "100%",
-        alignSelf: "stretch",
-        justifyContent: "flex-start",
-        alignItems: "center",
-        padding: 16,
-        backgroundColor: colors.background,
-      }}
-    >
+    <AuthenticatedHomeChrome>
+      <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
       <Text
         style={{
           fontWeight: "600",
@@ -1183,6 +1190,7 @@ export function HomeAuthenticatedScreen() {
           fontSize: 18,
           lineHeight: 24,
           textAlign: "center",
+          alignSelf: "stretch",
         }}
       >
         HyperlinksSpace Wallet
@@ -1201,22 +1209,6 @@ export function HomeAuthenticatedScreen() {
           </Text>
         </View>
       ) : null}
-      {effectiveWalletAddress ? (
-        <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch" }}>
-          <Text style={{ textAlign: "center", color: colors.primary, lineHeight: 22 }}>Wallet:</Text>
-          <Text
-            style={{
-              textAlign: "center",
-              marginTop: 4,
-              color: colors.primary,
-              fontSize: 15,
-              lineHeight: 22,
-            }}
-          >
-            {effectiveWalletAddress}
-          </Text>
-        </View>
-      ) : null}
       {flowError ? (
         <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
           <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>{flowError}</Text>
@@ -1228,7 +1220,7 @@ export function HomeAuthenticatedScreen() {
         </View>
       ) : null}
       {showWalletProvisioning ? (
-        <View style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8 }}>
+        <View style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text
             style={{
@@ -1243,7 +1235,7 @@ export function HomeAuthenticatedScreen() {
         </View>
       ) : null}
       {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
-        <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center" }}>
+        <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
           <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
           <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.highlight }}>
             Finishing on the server (saving the row). You can wait or close the app; your address is already shown.
@@ -1255,7 +1247,7 @@ export function HomeAuthenticatedScreen() {
           Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
         </Text>
       ) : null}
-    </View>
+    </AuthenticatedHomeChrome>
   );
 }
 

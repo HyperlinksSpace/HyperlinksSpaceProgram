@@ -10,3 +10,10 @@
  */
 export const WEB_UI_SANS_STACK =
   'Aeroport, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+
+/**
+ * Monospace stack for wallet addresses / codes. **`Aeroport Mono` first** when bundled via `@font-face`
+ * or `expo-font`; otherwise falls back to system monospace (see `texts/fonts.md`).
+ */
+export const WEB_UI_MONO_STACK =
+  'Aeroport Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
