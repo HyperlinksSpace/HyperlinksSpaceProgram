@@ -101,6 +101,7 @@ export const layout = {
   authenticatedHome: {
     contentInsetTop: 22,
     contentInsetBottom: 22,
+    /** Horizontal inset for authenticated-home body (and header row content via {@link HomeAuthenticatedHeaderRow}); not applied to full-bleed header divider. */
     contentInsetHorizontal: 15,
     /** Horizontal gap between truncated address and the header icon cluster. */
     addressRowGap: 15,
@@ -110,11 +111,22 @@ export const layout = {
     headerIconDisplaySize: 30,
     /** Show extra middle column (Get/Swap/Deals/Trade/Send) when viewport width is greater than this. */
     wideMenuBreakpoint: 724,
-    /** Each wide-menu cell flexes between min and max width (px). */
-    wideMenuItemMinWidth: 50,
-    wideMenuItemMaxWidth: 100,
+    /** Wide menu column width (px) at `wideMenuColumnExpandViewportMin` viewport width. */
+    wideMenuColumnWidthMin: 50,
+    /** Wide menu column width (px) at `wideMenuColumnExpandViewportMax` viewport width and above. */
+    wideMenuColumnWidthMax: 100,
+    /** Viewport width (px) where column width starts at `wideMenuColumnWidthMin` (linear ramp). */
+    wideMenuColumnExpandViewportMin: 724,
+    /** Viewport width (px) where column width reaches `wideMenuColumnWidthMax`. */
+    wideMenuColumnExpandViewportMax: 1240,
     /** Space between icon and label under it (px). */
     wideMenuIconLabelGap: 10,
+    /** Vertical gap (px) between wallet address snippet and balance text on authenticated home header. */
+    walletBalanceBelowAddressGap: 22,
+    /** Vertical gap (px) between header row content and full-width divider below (wide layout only). */
+    headerDividerTopGap: 22,
+    /** Horizontal gap (px) between profile name and chevron on authenticated home header (`assets/header/right.svg`). */
+    headerProfileChevronAfterNameGap: 10,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {
@@ -133,6 +145,20 @@ export const layout = {
     scrollbarRightInsetPx: 5,
   },
 };
+
+/**
+ * Wide authenticated-home header menu: each column width ramps linearly with viewport width between
+ * {@link layout.authenticatedHome.wideMenuColumnExpandViewportMin} / `wideMenuColumnWidthMin` and
+ * {@link layout.authenticatedHome.wideMenuColumnExpandViewportMax} / `wideMenuColumnWidthMax`.
+ */
+export function authenticatedHomeWideMenuColumnWidthPx(windowWidth: number): number {
+  const ah = layout.authenticatedHome;
+  const lo = ah.wideMenuColumnExpandViewportMin;
+  const hi = ah.wideMenuColumnExpandViewportMax;
+  const span = hi - lo;
+  const t = span <= 0 ? 1 : Math.min(1, Math.max(0, (windowWidth - lo) / span));
+  return Math.round(ah.wideMenuColumnWidthMin + t * (ah.wideMenuColumnWidthMax - ah.wideMenuColumnWidthMin));
+}
 
 export const icons = {
   apply: {
@@ -209,6 +235,26 @@ export const homeWalletAddressHeaderText: TextStyle = {
   fontSize: 15,
   /** ~24px line box pairs with 30px header icons; 30px looked visually low with Noto Mono. */
   lineHeight: 24,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
+  textAlignVertical: "center",
+};
+
+/** Balance line under wallet address on authenticated home header (placeholder “1$”). */
+export const homeWalletBalanceHeaderText: TextStyle = {
+  fontSize: 30,
+  lineHeight: 20,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
+  textAlignVertical: "center",
+};
+
+/** Profile / display name under header icons on authenticated home. */
+export const homeHeaderProfileNameText: TextStyle = {
+  fontSize: 15,
+  lineHeight: 20,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,

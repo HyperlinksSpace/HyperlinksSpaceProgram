@@ -159,7 +159,6 @@ export function GlobalLogoBar() {
     safeAreaInsetTop,
     contentSafeAreaInsetTop,
     layoutStartup,
-    isExpanded,
     themeBgReady,
   } = useTelegram();
   const mergedImmersiveFullscreen = layoutStartup.mergedImmersiveFullscreen;
@@ -239,9 +238,9 @@ export function GlobalLogoBar() {
   const blockHeight = topPadGlyph + headerContentHeight + belowLogoPad;
 
   /**
-   * Signed-in home: header only in Telegram **mobile** TMA + **immersive** fullscreen (same signal as
-   * welcome). Desktop TMA / expanded-without-fullscreen / browser: no logo bar.
-   * Browser welcome (`/` signed out) keeps the marketing row via the web branch below.
+   * Signed-in home: logo-only bar in TMA only when **immersive** fullscreen (desktop and mobile).
+   * Expanded-without-fullscreen / browser: no logo bar on home.
+   * Browser welcome (`/` signed out) keeps the marketing row via the web branch above.
    */
   const shouldShow = useMemo(() => {
     if (isWelcomeLayout && Platform.OS === "web") {
@@ -250,14 +249,8 @@ export function GlobalLogoBar() {
     if (!isInTelegram) {
       return false;
     }
-    if (isWelcomeLayout) {
-      return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
-    }
-    if (isTelegramMiniAppDesktop) {
-      return false;
-    }
     return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
-  }, [isInTelegram, stableWelcomeImmersiveFullscreen, isWelcomeLayout, isTelegramMiniAppDesktop]);
+  }, [isInTelegram, stableWelcomeImmersiveFullscreen, isWelcomeLayout]);
 
   const onPressLogoHome = () => {
     if (Platform.OS !== "web") {

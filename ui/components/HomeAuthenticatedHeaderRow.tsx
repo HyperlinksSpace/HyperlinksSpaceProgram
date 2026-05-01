@@ -1,10 +1,14 @@
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { useCallback } from "react";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import {
+  authenticatedHomeWideMenuColumnWidthPx,
+  homeHeaderProfileNameText,
   homeWideMenuItemLabel,
   homeWalletAddressHeaderText,
+  homeWalletBalanceHeaderText,
   layout,
   menuIconStrokeColor,
   useColors,
@@ -34,6 +38,18 @@ function walletAddressHeaderSnippet(trimmed: string): string {
   return `..${trimmed.slice(-8).toLowerCase()}`;
 }
 
+/** Chevron from `assets/header/right.svg` (5×11); fill uses theme `highlight`. */
+function HeaderProfileChevronIcon({ color }: { color: string }) {
+  return (
+    <Svg width={5} height={11} viewBox="0 0 5 11" fill="none">
+      <Path
+        d="M1.79003 7.58886C2.98576 6.27528 2.98578 4.38625 1.79006 3.07266L0.205486 1.3319C-0.0684974 1.03091 -0.0684952 0.598063 0.205492 0.297075C0.569221 -0.102499 1.24895 -0.102496 1.61268 0.297078L4.07529 3.00239C5.30824 4.35685 5.30823 6.30469 4.07527 7.65914L1.61268 10.3644C1.24895 10.764 0.569223 10.764 0.205495 10.3644C-0.0684934 10.0634 -0.0684931 9.63054 0.205496 9.32955L1.79003 7.58886Z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
 const WIDE_MENU_ITEMS = [
   { key: "get", label: "Get", Icon: MenuGetIcon },
   { key: "swap", label: "Swap", Icon: MenuSwapIcon },
@@ -55,15 +71,6 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   const showWideMenu = windowWidth > AH.wideMenuBreakpoint;
-  const wideMenuStripWidth = showWideMenu
-    ? Math.min(
-        AH.wideMenuItemMaxWidth * WIDE_MENU_ITEMS.length,
-        Math.max(
-          AH.wideMenuItemMinWidth * WIDE_MENU_ITEMS.length,
-          windowWidth - 220,
-        ),
-      )
-    : 0;
   const trimmed = walletAddress.replace(/\s+/g, "").trim();
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
 
@@ -72,155 +79,230 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
     await Clipboard.setStringAsync(trimmed);
   }, [trimmed]);
 
-  return (
+  const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(windowWidth);
+
+  /** Total strip width scales with viewport via {@link authenticatedHomeWideMenuColumnWidthPx}. */
+  const wideMenuStripWidth = showWideMenu ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length : 0;
+
+  const wideMenuStrip = showWideMenu ? (
     <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        width: "100%",
-        marginBottom: 12,
-      }}
-    >
-      <View
-        style={{
-          flex: 1,
-          minWidth: 0,
-          alignItems: "flex-start",
+      pointerEvents="box-none"
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
           justifyContent: "center",
-          marginRight: showWideMenu ? 0 : AH.addressRowGap,
-        }}
-      >
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Wallet address ${displaySnippet}`}
-          accessibilityHint="Copies the full wallet address"
-          disabled={!trimmed}
-          hitSlop={8}
-          onPress={() => {
-            void copyFullWalletAddress();
-          }}
-          style={
-            showWideMenu
-              ? { justifyContent: "center" }
-              : { flex: 1, alignSelf: "stretch", minWidth: 0, justifyContent: "center" }
-          }
-        >
-          <Text style={[homeWalletAddressHeaderText, { color: colors.highlight }]}>
-            {displaySnippet}
-          </Text>
-        </Pressable>
-      </View>
-      {showWideMenu ? (
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            justifyContent: "center",
-            alignItems: "center",
-            flexDirection: "row",
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "flex-start",
-              justifyContent: "center",
-              width: wideMenuStripWidth,
-            }}
-          >
-            {WIDE_MENU_ITEMS.map(({ key, label, Icon }) => (
-              <View
-                key={key}
-                style={{
-                  flex: 1,
-                  minWidth: AH.wideMenuItemMinWidth,
-                  maxWidth: AH.wideMenuItemMaxWidth,
-                  alignItems: "center",
-                }}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={label}
-                  hitSlop={8}
-                  onPress={() => {
-                    /* Wired when flows land */
-                  }}
-                >
-                  {({ pressed }) => {
-                    const variant = pressed ? "highlight" : "primary";
-                    const labelColor =
-                      variant === "highlight"
-                        ? menuIconStrokeColor(colors, "highlight")
-                        : menuIconStrokeColor(colors, "primary");
-                    return (
-                      <View style={{ alignItems: "center" }}>
-                        <Icon
-                          variant={variant}
-                          width={AH.headerIconDisplaySize}
-                          height={AH.headerIconDisplaySize}
-                        />
-                        <Text
-                          style={[
-                            homeWideMenuItemLabel,
-                            {
-                              marginTop: AH.wideMenuIconLabelGap,
-                              color: labelColor,
-                            },
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                      </View>
-                    );
-                  }}
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : null}
+          alignItems: "center",
+          zIndex: 1,
+        },
+      ]}
+    >
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          flexShrink: 0,
-          flexGrow: showWideMenu ? 1 : undefined,
-          flexBasis: showWideMenu ? 0 : undefined,
-          minWidth: 0,
-          gap: AH.headerIconGap,
-          justifyContent: "flex-end",
-          marginLeft: showWideMenu ? 0 : ("auto" as const),
+          justifyContent: "center",
+          width: wideMenuStripWidth,
         }}
       >
-        {HEADER_ICONS.map(({ source, accessibilityLabel }, index) => (
-          <Pressable
-            key={accessibilityLabel}
-            accessibilityRole="button"
-            accessibilityLabel={accessibilityLabel}
-            hitSlop={8}
-            onPress={() => {
-              if (index === 0) {
-                void copyFullWalletAddress();
-                return;
-              }
-              /* Wired when flows land */
+        {WIDE_MENU_ITEMS.map(({ key, label, Icon }) => (
+          <View
+            key={key}
+            style={{
+              width: wideMenuColumnWidth,
+              alignItems: "center",
             }}
           >
-            <Image
-              source={source}
-              style={{
-                width: AH.headerIconDisplaySize,
-                height: AH.headerIconDisplaySize,
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={label}
+              hitSlop={8}
+              onPress={() => {
+                /* Wired when flows land */
               }}
-              contentFit="contain"
-            />
-          </Pressable>
+            >
+              {({ pressed }) => {
+                const variant = pressed ? "highlight" : "primary";
+                const labelColor =
+                  variant === "highlight"
+                    ? menuIconStrokeColor(colors, "highlight")
+                    : menuIconStrokeColor(colors, "primary");
+                return (
+                  <View style={{ alignItems: "center" }}>
+                    <Icon
+                      variant={variant}
+                      width={AH.headerIconDisplaySize}
+                      height={AH.headerIconDisplaySize}
+                    />
+                    <Text
+                      style={[
+                        homeWideMenuItemLabel,
+                        {
+                          marginTop: AH.wideMenuIconLabelGap,
+                          color: labelColor,
+                        },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                );
+              }}
+            </Pressable>
+          </View>
         ))}
       </View>
+    </View>
+  ) : null;
+
+  return (
+    <View style={{ width: "100%", marginBottom: 12 }}>
+      <View style={{ width: "100%", paddingHorizontal: AH.contentInsetHorizontal }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: showWideMenu ? "stretch" : "flex-start",
+            width: "100%",
+            ...(showWideMenu ? { position: "relative" as const } : {}),
+          }}
+        >
+      <View
+        style={
+          showWideMenu
+            ? {
+                flex: 1,
+                minWidth: 0,
+                flexDirection: "row",
+                justifyContent: "flex-start",
+                alignItems: "flex-start",
+              }
+            : {
+                flex: 1,
+                minWidth: 0,
+                alignItems: "flex-start",
+                justifyContent: "center",
+                marginRight: AH.addressRowGap,
+              }
+        }
+      >
+        <View
+          style={{
+            flexDirection: "column",
+            alignItems: "flex-start",
+            ...(showWideMenu ? {} : { flex: 1, alignSelf: "stretch", minWidth: 0 }),
+          }}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Wallet address ${displaySnippet}`}
+            accessibilityHint="Copies the full wallet address"
+            disabled={!trimmed}
+            hitSlop={8}
+            onPress={() => {
+              void copyFullWalletAddress();
+            }}
+            style={showWideMenu ? undefined : { alignSelf: "stretch" }}
+          >
+            <Text style={[homeWalletAddressHeaderText, { color: colors.highlight }]}>
+              {displaySnippet}
+            </Text>
+          </Pressable>
+          <Text
+            style={[
+              homeWalletBalanceHeaderText,
+              {
+                marginTop: AH.walletBalanceBelowAddressGap,
+                color: colors.primary,
+              },
+            ]}
+            accessibilityLabel="Balance"
+          >
+            1$
+          </Text>
+        </View>
+      </View>
+      {wideMenuStrip}
+      <View
+        style={{
+          flexDirection: "column",
+          alignItems: "flex-end",
+          ...(showWideMenu
+            ? { flex: 1, minWidth: 0 }
+            : { flexShrink: 0, marginLeft: ("auto" as const) }),
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: AH.headerIconGap,
+            justifyContent: "flex-end",
+          }}
+        >
+          {HEADER_ICONS.map(({ source, accessibilityLabel }, index) => (
+            <Pressable
+              key={accessibilityLabel}
+              accessibilityRole="button"
+              accessibilityLabel={accessibilityLabel}
+              hitSlop={8}
+              onPress={() => {
+                if (index === 0) {
+                  void copyFullWalletAddress();
+                  return;
+                }
+                /* Wired when flows land */
+              }}
+            >
+              <Image
+                source={source}
+                style={{
+                  width: AH.headerIconDisplaySize,
+                  height: AH.headerIconDisplaySize,
+                }}
+                contentFit="contain"
+              />
+            </Pressable>
+          ))}
+        </View>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "stretch",
+            justifyContent: "flex-end",
+            marginTop: AH.walletBalanceBelowAddressGap,
+          }}
+        >
+          <View style={{ justifyContent: "center" }}>
+            <Text
+              style={[homeHeaderProfileNameText, { color: colors.primary }]}
+              accessibilityLabel="Sendal Rodriges"
+            >
+              Sendal Rodriges
+            </Text>
+          </View>
+          <View
+            style={{
+              marginLeft: AH.headerProfileChevronAfterNameGap,
+              justifyContent: "center",
+            }}
+          >
+            <HeaderProfileChevronIcon color={colors.highlight} />
+          </View>
+        </View>
+        </View>
+      </View>
+      </View>
+      {showWideMenu ? (
+        <View
+          pointerEvents="none"
+          style={{
+            marginTop: AH.headerDividerTopGap,
+            height: 1,
+            width: "100%",
+            backgroundColor: colors.highlight,
+            flexShrink: 0,
+          }}
+        />
+      ) : null}
     </View>
   );
 }

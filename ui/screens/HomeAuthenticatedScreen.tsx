@@ -1,4 +1,5 @@
 import {
+  Children,
   type ReactNode,
   useCallback,
   useEffect,
@@ -76,10 +77,17 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
 
 /** Authenticated “home” main view; mounted from `app/index` at URL `/` when the user has a session. */
 
-/** Padding inside the root `ScrollView` column (same outer scroll as welcome). */
+/**
+ * Padding for authenticated home: vertical + horizontal on main body only.
+ * First child (header row) is full-bleed horizontally so a divider can span the viewport;
+ * {@link HomeAuthenticatedHeaderRow} applies the same horizontal inset to header content.
+ */
 function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
   const colors = useColors();
   const p = layout.authenticatedHome;
+  const nodes = Children.toArray(children);
+  const head = nodes[0];
+  const body = nodes.slice(1);
   return (
     <View
       style={{
@@ -95,10 +103,10 @@ function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
           width: "100%",
           paddingTop: p.contentInsetTop,
           paddingBottom: p.contentInsetBottom,
-          paddingHorizontal: p.contentInsetHorizontal,
         }}
       >
-        {children}
+        {head}
+        <View style={{ flex: 1, width: "100%", paddingHorizontal: p.contentInsetHorizontal }}>{body}</View>
       </View>
     </View>
   );
