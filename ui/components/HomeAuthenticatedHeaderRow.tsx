@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
@@ -11,6 +11,7 @@ import {
   homeWalletBalanceHeaderText,
   layout,
   menuIconStrokeColor,
+  type ThemeColors,
   useColors,
 } from "../theme";
 import {
@@ -20,6 +21,7 @@ import {
   MenuSwapIcon,
   MenuTradeIcon,
 } from "./menu/MenuIcons";
+import { logPageDisplay } from "../pageDisplayLog";
 
 const AH = layout.authenticatedHome;
 
@@ -65,6 +67,66 @@ const WIDE_MENU_ITEMS = [
   { key: "send", label: "Send", Icon: MenuSendIcon },
 ] as const;
 
+/** Get/Swap/… row: wide = fixed `columnWidth` per item; narrow = equal `flex` columns (under profile). */
+function AuthenticatedHomeMenuItems({
+  colors,
+  narrow,
+  columnWidth,
+}: {
+  colors: ThemeColors;
+  narrow: boolean;
+  /** Used when `narrow` is false (centered strip). */
+  columnWidth: number;
+}) {
+  return WIDE_MENU_ITEMS.map(({ key, label, Icon }) => (
+    <View
+      key={key}
+      style={
+        narrow
+          ? { flex: 1, minWidth: 0, alignItems: "center" as const }
+          : { width: columnWidth, alignItems: "center" as const }
+      }
+    >
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        hitSlop={AH.headerPressableHitSlop}
+        onPress={() => {
+          /* Wired when flows land */
+        }}
+      >
+        {({ pressed }) => {
+          const variant = pressed ? "highlight" : "primary";
+          const labelColor =
+            variant === "highlight"
+              ? menuIconStrokeColor(colors, "highlight")
+              : menuIconStrokeColor(colors, "primary");
+          return (
+            <View style={{ alignItems: "center" }}>
+              <Icon
+                variant={variant}
+                width={AH.headerIconDisplaySize}
+                height={AH.headerIconDisplaySize}
+              />
+              <Text
+                style={[
+                  homeWideMenuItemLabel,
+                  {
+                    marginTop: AH.wideMenuIconLabelGap,
+                    color: labelColor,
+                  },
+                ]}
+              >
+                {label}
+              </Text>
+            </View>
+          );
+        }}
+      </Pressable>
+    </View>
+  ));
+}
+
 type Props = {
   /** Raw wallet address; clipboard receives trimmed original casing. */
   walletAddress: string;
@@ -72,11 +134,16 @@ type Props = {
 
 /**
  * Top row on authenticated home: truncated address (highlight) + header icons, space-between cluster.
- * Above `firstBreakpoint`, adds a middle column of inline-SVG actions (Get/Swap/…).
+ * Breakpoint uses the header shell width from `onLayout` (not only `useWindowDimensions`) so web layout matches the real column width.
+ * At `firstBreakpoint` and above: centered Get/Swap/… strip overlay (painted after side columns so it is not covered on web); below: same strip under balance + profile.
  */
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
+  /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
+  const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
+  const widthForLayout = measuredWidth ?? windowWidth;
+  const atOrAboveFirstBreakpoint = widthForLayout > AH.firstBreakpoint;
   const trimmed = walletAddress.replace(/\s+/g, "").trim();
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
 
@@ -85,12 +152,14 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
     await Clipboard.setStringAsync(trimmed);
   }, [trimmed]);
 
-  const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(windowWidth);
+  const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(widthForLayout);
 
   /** Total strip width scales with viewport via {@link authenticatedHomeWideMenuColumnWidthPx}. */
-  const wideMenuStripWidth = windowWidth > AH.firstBreakpoint ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length : 0;
+  const wideMenuStripWidth = atOrAboveFirstBreakpoint
+    ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length
+    : 0;
 
-  const wideMenuStrip = windowWidth > AH.firstBreakpoint ? (
+  const wideMenuStrip = atOrAboveFirstBreakpoint ? (
     <View
       pointerEvents="box-none"
       style={[
@@ -110,71 +179,65 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           width: wideMenuStripWidth,
         }}
       >
-        {WIDE_MENU_ITEMS.map(({ key, label, Icon }) => (
-          <View
-            key={key}
-            style={{
-              width: wideMenuColumnWidth,
-              alignItems: "center",
-            }}
-          >
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={label}
-              hitSlop={AH.headerPressableHitSlop}
-              onPress={() => {
-                /* Wired when flows land */
-              }}
-            >
-              {({ pressed }) => {
-                const variant = pressed ? "highlight" : "primary";
-                const labelColor =
-                  variant === "highlight"
-                    ? menuIconStrokeColor(colors, "highlight")
-                    : menuIconStrokeColor(colors, "primary");
-                return (
-                  <View style={{ alignItems: "center" }}>
-                    <Icon
-                      variant={variant}
-                      width={AH.headerIconDisplaySize}
-                      height={AH.headerIconDisplaySize}
-                    />
-                    <Text
-                      style={[
-                        homeWideMenuItemLabel,
-                        {
-                          marginTop: AH.wideMenuIconLabelGap,
-                          color: labelColor,
-                        },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </View>
-                );
-              }}
-            </Pressable>
-          </View>
-        ))}
+        <AuthenticatedHomeMenuItems
+          colors={colors}
+          narrow={false}
+          columnWidth={wideMenuColumnWidth}
+        />
       </View>
     </View>
   ) : null;
 
+  useEffect(() => {
+    logPageDisplay("home_authenticated_header_layout", {
+      windowWidth,
+      measuredWidth,
+      widthForLayout,
+      firstBreakpointPx: AH.firstBreakpoint,
+      atOrAboveFirstBreakpoint,
+      menuVariant: atOrAboveFirstBreakpoint ? "wide_overlay" : "narrow_below_profile",
+      wideMenuColumnWidth,
+      wideMenuStripWidth,
+      usingMeasuredWidth: measuredWidth != null,
+    });
+  }, [
+    windowWidth,
+    measuredWidth,
+    widthForLayout,
+    atOrAboveFirstBreakpoint,
+    wideMenuColumnWidth,
+    wideMenuStripWidth,
+  ]);
+
   return (
     /* Outer shell: full width; marginBottom = gap under header+divider before body (see theme `headerRowMarginBottom`). */
-    <View style={{ width: "100%", marginBottom: AH.headerRowMarginBottom }}>
+    <View
+      style={{ width: "100%", marginBottom: AH.headerRowMarginBottom }}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        setMeasuredWidth((prev) => {
+          if (prev === w) return prev;
+          logPageDisplay("home_authenticated_header_onlayout", {
+            shellWidth: w,
+            windowWidth,
+            firstBreakpointPx: AH.firstBreakpoint,
+          });
+          return w;
+        });
+      }}
+    >
       <View style={{ width: "100%", paddingHorizontal: AH.contentInsetHorizontal }}>
         <View
           style={{
             flexDirection: "row",
-            alignItems: windowWidth > AH.firstBreakpoint ? "stretch" : "flex-start",
+            alignItems: atOrAboveFirstBreakpoint ? "stretch" : "flex-start",
             width: "100%",
-            ...(windowWidth > AH.firstBreakpoint ? { position: "relative" as const } : {}),
+            ...(atOrAboveFirstBreakpoint ? { position: "relative" as const } : {}),
           }}
         >
       <View
         style={
-          windowWidth > AH.firstBreakpoint
+          atOrAboveFirstBreakpoint
             ? {
                 flex: 1,
                 minWidth: 0,
@@ -195,7 +258,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           style={{
             flexDirection: "column",
             alignItems: "flex-start",
-            ...(windowWidth > AH.firstBreakpoint ? {} : { flex: 1, alignSelf: "stretch", minWidth: 0 }),
+            ...(atOrAboveFirstBreakpoint ? {} : { flex: 1, alignSelf: "stretch", minWidth: 0 }),
           }}
         >
           <Pressable
@@ -207,7 +270,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             onPress={() => {
               void copyFullWalletAddress();
             }}
-            style={windowWidth > AH.firstBreakpoint ? undefined : { alignSelf: "stretch" }}
+            style={atOrAboveFirstBreakpoint ? undefined : { alignSelf: "stretch" }}
           >
             <Text style={[homeWalletAddressHeaderText, { color: colors.highlight }]}>
               {displaySnippet}
@@ -227,12 +290,11 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           </Text>
         </View>
       </View>
-      {wideMenuStrip}
       <View
         style={{
           flexDirection: "column",
           alignItems: "flex-end",
-          ...(windowWidth > AH.firstBreakpoint
+          ...(atOrAboveFirstBreakpoint
             ? { flex: 1, minWidth: 0 }
             : { flexShrink: 0, marginLeft: ("auto" as const) }),
         }}
@@ -295,10 +357,18 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             <HeaderProfileChevronIcon color={colors.highlight} />
           </View>
         </View>
+      </View>
+      {wideMenuStrip}
+      </View>
+      {!atOrAboveFirstBreakpoint ? (
+        <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+            <AuthenticatedHomeMenuItems colors={colors} narrow columnWidth={0} />
+          </View>
         </View>
+      ) : null}
       </View>
-      </View>
-      {windowWidth > AH.firstBreakpoint ? (
+      {atOrAboveFirstBreakpoint ? (
         <View
           pointerEvents="none"
           style={{
