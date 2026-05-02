@@ -72,15 +72,15 @@ export function FloatingShield() {
 const styles = StyleSheet.create({
   host: {
     position: "absolute",
-    right: 30,
+    left: 30,
     zIndex: 1000,
     elevation: 1000,
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     overflow: "visible",
   },
   settingsSlot: {
     marginBottom: 10,
-    marginRight: -10,
+    marginLeft: -10,
     alignItems: "center",
     justifyContent: "center",
   },

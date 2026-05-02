@@ -10,6 +10,7 @@ import {
 } from "react";
 import { ActivityIndicator, Button, Text, View } from "react-native";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
+import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -81,7 +82,15 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
  * Padding for authenticated home: vertical + horizontal on main body only.
  * First child (header row) is full-bleed horizontally so a divider can span the viewport;
  * {@link HomeAuthenticatedHeaderRow} applies the same horizontal inset to header content.
+ * Body children are full-bleed horizontally — use `AuthenticatedHomePaddedBody` or `AuthenticatedHomeSplitBody` for horizontal insets on content.
  */
+function AuthenticatedHomePaddedBody({ children }: { children: ReactNode }) {
+  const p = layout.authenticatedHome;
+  return (
+    <View style={{ flex: 1, width: "100%", paddingHorizontal: p.contentInsetHorizontal }}>{children}</View>
+  );
+}
+
 function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
   const colors = useColors();
   const p = layout.authenticatedHome;
@@ -106,7 +115,7 @@ function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
         }}
       >
         {head}
-        <View style={{ flex: 1, width: "100%", paddingHorizontal: p.contentInsetHorizontal }}>{body}</View>
+        <View style={{ flex: 1, width: "100%" }}>{body}</View>
       </View>
     </View>
   );
@@ -1043,8 +1052,9 @@ export function HomeAuthenticatedScreen() {
     return (
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
-        <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
-        <View
+        <AuthenticatedHomePaddedBody>
+          <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
+          <View
           style={{
             padding: 8,
             borderRadius: 8,
@@ -1079,6 +1089,7 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
+        </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );
   }
@@ -1087,6 +1098,7 @@ export function HomeAuthenticatedScreen() {
     return (
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+        <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           Telegram registration failed
         </Text>
@@ -1122,6 +1134,7 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
+        </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );
   }
@@ -1130,6 +1143,7 @@ export function HomeAuthenticatedScreen() {
     return (
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+        <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           Hyperlinks Space Program
         </Text>
@@ -1172,6 +1186,7 @@ export function HomeAuthenticatedScreen() {
             <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
           )}
         </View>
+        </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );
   }
@@ -1190,73 +1205,90 @@ export function HomeAuthenticatedScreen() {
   return (
     <AuthenticatedHomeChrome>
       <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
-      <Text
-        style={[
-          typographySansSemibold,
-          {
-            marginBottom: 8,
-            color: colors.primary,
-            fontSize: 18,
-            lineHeight: 24,
-            textAlign: "center",
-            alignSelf: "stretch",
-          },
-        ]}
-      >
-        HyperlinksSpace Wallet
-      </Text>
-      {telegramUsername ? (
-        <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
-          <Text
-            style={{
-              textAlign: "center",
-              color: colors.primary,
-              fontSize: 16,
-              lineHeight: 24,
-            }}
-          >
-            You are logged in via Telegram as @{telegramUsername}.
-          </Text>
-        </View>
-      ) : null}
-      {flowError ? (
-        <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
-          <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>{flowError}</Text>
-          {serverOnlyRetry ? (
-            <Button title="Retry server registration" onPress={retryServerRegistrationOnly} />
-          ) : (
-            <Button title="Retry wallet creation" onPress={createAndRegisterWalletFlow} />
-          )}
-        </View>
-      ) : null}
-      {showWalletProvisioning ? (
-        <View style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text
-            style={{
-              textAlign: "center",
-              fontSize: 13,
-              lineHeight: 20,
-              color: colors.highlight,
-            }}
-          >
-            Generating your wallet keys…
-          </Text>
-        </View>
-      ) : null}
-      {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
-        <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
-          <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
-          <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.highlight }}>
-            Finishing on the server (saving the row). You can wait or close the app; your address is already shown.
-          </Text>
-        </View>
-      ) : null}
-      {masterKeyStorageTier === "server" ? (
-        <Text style={{ marginTop: 14, fontSize: 12, color: colors.highlight, textAlign: "center", paddingHorizontal: 8 }}>
-          Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
-        </Text>
-      ) : null}
+      <AuthenticatedHomeSplitBody
+        left={
+          <>
+            <Text
+              style={[
+                typographySansSemibold,
+                {
+                  marginBottom: 8,
+                  color: colors.primary,
+                  fontSize: 18,
+                  lineHeight: 24,
+                  textAlign: "center",
+                  alignSelf: "stretch",
+                },
+              ]}
+            >
+              HyperlinksSpace Wallet
+            </Text>
+            {telegramUsername ? (
+              <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
+                <Text
+                  style={{
+                    textAlign: "center",
+                    color: colors.primary,
+                    fontSize: 16,
+                    lineHeight: 24,
+                  }}
+                >
+                  You are logged in via Telegram as @{telegramUsername}.
+                </Text>
+              </View>
+            ) : null}
+            {flowError ? (
+              <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
+                <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>{flowError}</Text>
+                {serverOnlyRetry ? (
+                  <Button title="Retry server registration" onPress={retryServerRegistrationOnly} />
+                ) : (
+                  <Button title="Retry wallet creation" onPress={createAndRegisterWalletFlow} />
+                )}
+              </View>
+            ) : null}
+            {showWalletProvisioning ? (
+              <View
+                style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}
+              >
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text
+                  style={{
+                    textAlign: "center",
+                    fontSize: 13,
+                    lineHeight: 20,
+                    color: colors.highlight,
+                  }}
+                >
+                  Generating your wallet keys…
+                </Text>
+              </View>
+            ) : null}
+            {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
+              <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
+                <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.highlight }}>
+                  Finishing on the server (saving the row). You can wait or close the app; your address is already shown.
+                </Text>
+              </View>
+            ) : null}
+            {masterKeyStorageTier === "server" ? (
+              <Text
+                style={{
+                  marginTop: 14,
+                  fontSize: 12,
+                  color: colors.highlight,
+                  textAlign: "center",
+                  paddingHorizontal: 8,
+                }}
+              >
+                Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
+              </Text>
+            ) : null}
+          </>
+        }
+        right={<View style={{ flex: 1 }} />}
+      />
     </AuthenticatedHomeChrome>
   );
 }

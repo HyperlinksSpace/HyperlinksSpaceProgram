@@ -305,6 +305,9 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             alignItems: "center",
             gap: AH.headerIconGap,
             justifyContent: "flex-end",
+            ...(atOrAboveFirstBreakpoint
+              ? ({ position: "relative" as const, zIndex: 2 } as const)
+              : {}),
           }}
         >
           {HEADER_ICONS.map(({ source, accessibilityLabel }, index) => (

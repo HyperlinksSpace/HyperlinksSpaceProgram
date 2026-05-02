@@ -161,6 +161,21 @@ export const layout = {
     headerDividerTopGap: 22,
     /** Horizontal gap (px) between profile name and chevron on authenticated home header (`assets/header/right.svg`). */
     headerProfileChevronAfterNameGap: 10,
+    /** Two-column body under header: default first column width (px) when `width > firstBreakpoint`. */
+    splitPaneDefaultFirstColumnPx: 320,
+    /** Two-column body: minimum first column width (px) while dragging the divider. */
+    splitPaneMinFirstColumnPx: 280,
+    /** Two-column body: minimum width (px) kept for the second column. */
+    splitPaneMinSecondColumnPx: 320,
+    /** Two-column body: draggable divider total hit width (px); `splitPaneDividerStrokePx` stroke centered inside. */
+    splitPaneDividerHitWidthPx: 12,
+    /** Two-column body: vertical split line width (px). Kept separate from horizontal `headerDividerHeight` to avoid conflating axes. */
+    splitPaneDividerStrokePx: 1,
+    /**
+     * Two-column body: first column cannot be dragged wider than this (px). Matches {@link firstBreakpoint}
+     * so the layout stays consistent with the compact single-column regime.
+     */
+    splitPaneMaxFirstColumnPx: authenticatedHomeFirstBreakpointPx,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {
