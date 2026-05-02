@@ -97,6 +97,8 @@ export function useColors(): ThemeColors {
  * Compare as `width > firstBreakpoint` for wide header menu and other responsive pieces; add more breakpoints beside this.
  */
 const authenticatedHomeFirstBreakpointPx = 724;
+/** Authenticated home: viewport width (px) where a third split column appears (`width > secondBreakpoint`). */
+const authenticatedHomeSecondBreakpointPx = 1280;
 
 export const layout = {
   maxContentWidth: 600,
@@ -145,6 +147,8 @@ export const layout = {
     headerIconDisplaySize: 30,
     /** First authenticated-home layout breakpoint (px): wide menu and other elements use `viewportWidth > firstBreakpoint`. */
     firstBreakpoint: authenticatedHomeFirstBreakpointPx,
+    /** Second layout breakpoint (px): three-column split body uses `rowWidth > secondBreakpoint` (with two draggable dividers). */
+    secondBreakpoint: authenticatedHomeSecondBreakpointPx,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMin` viewport width. */
     wideMenuColumnWidthMin: 50,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMax` viewport width and above. */
@@ -167,6 +171,10 @@ export const layout = {
     splitPaneMinFirstColumnPx: 280,
     /** Two-column body: minimum width (px) kept for the second column. */
     splitPaneMinSecondColumnPx: 320,
+    /** Three-column body: minimum width (px) for the third (rightmost) tunable column. */
+    splitPaneMinThirdColumnPx: 360,
+    /** Three-column body: initial width (px) of the third column; user adjusts via the second divider. */
+    splitPaneDefaultThirdColumnPx: 360,
     /** Two-column body: draggable divider total hit width (px); `splitPaneDividerStrokePx` stroke centered inside. */
     splitPaneDividerHitWidthPx: 12,
     /** Two-column body: vertical split line width (px). Kept separate from horizontal `headerDividerHeight` to avoid conflating axes. */
