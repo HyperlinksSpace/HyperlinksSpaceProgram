@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { Image } from "expo-image";
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
@@ -6,6 +6,7 @@ import { useBottomBarLayout } from "./BottomBarLayoutContext";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 
 const SETTINGS_ICON = require("../../assets/Settings.svg");
+const AH = layout.authenticatedHome;
 
 /** Space between the footer's top border and the bottom of this floating stack. */
 const FOOTER_TOP_GAP_PX = 20;
@@ -30,6 +31,9 @@ function ShieldIcon({ powerColor }: { powerColor: string }) {
 
 export function FloatingShield() {
   const colors = useColors();
+  const { width: windowWidth } = useWindowDimensions();
+  /** Match authenticated home: narrow / welcome-style width keeps the stack on the right; wide moves it to the left. */
+  const shieldOnRight = windowWidth <= AH.firstBreakpoint;
   const { barHeight: bottomBarHeight } = useBottomBarLayout();
   const isLightTheme = colors.primary === "#000000";
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
@@ -37,7 +41,8 @@ export function FloatingShield() {
   return (
     <View
       style={[
-        styles.host,
+        styles.hostBase,
+        shieldOnRight ? styles.hostRight : styles.hostLeft,
         {
           bottom: bottomBarHeight + FOOTER_TOP_GAP_PX,
           // box-none: lightning/GL spill and chip corners pass through; only the circular Svg hit mask in each chip captures.
@@ -45,7 +50,7 @@ export function FloatingShield() {
         },
       ]}
     >
-      <View style={styles.settingsSlot}>
+      <View style={shieldOnRight ? styles.settingsSlotRight : styles.settingsSlotLeft}>
         <LiquidGlassShaderUndercover
           size={layout.floatingShield.settingsDiameter}
           phaseOffset={0.08}
@@ -70,15 +75,29 @@ export function FloatingShield() {
 }
 
 const styles = StyleSheet.create({
-  host: {
+  hostBase: {
     position: "absolute",
-    left: 30,
     zIndex: 1000,
     elevation: 1000,
-    alignItems: "flex-start",
     overflow: "visible",
   },
-  settingsSlot: {
+  /** At or below {@link layout.authenticatedHome.firstBreakpoint}: original right inset. */
+  hostRight: {
+    right: 30,
+    alignItems: "flex-end",
+  },
+  /** Wider than `firstBreakpoint`: mirrored inset on the left. */
+  hostLeft: {
+    left: 30,
+    alignItems: "flex-start",
+  },
+  settingsSlotRight: {
+    marginBottom: 10,
+    marginRight: -10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  settingsSlotLeft: {
     marginBottom: 10,
     marginLeft: -10,
     alignItems: "center",
