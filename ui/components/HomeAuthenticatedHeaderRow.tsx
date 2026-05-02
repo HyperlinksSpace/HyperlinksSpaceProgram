@@ -23,6 +23,7 @@ import {
 
 const AH = layout.authenticatedHome;
 
+/** Header pressables use `AH.headerPressableHitSlop` — invisible touch padding around small targets. */
 /** Header actions — `assets/header/*.svg` (fixed palette in asset; optional tint later). */
 const HEADER_ICONS: readonly { source: number; accessibilityLabel: string }[] = [
   { source: require("../../assets/header/copy.svg"), accessibilityLabel: "Copy wallet address" },
@@ -32,16 +33,22 @@ const HEADER_ICONS: readonly { source: number; accessibilityLabel: string }[] = 
   { source: require("../../assets/header/exit.svg"), accessibilityLabel: "Exit" },
 ];
 
-/** Shown in header as `..` + last 8 chars (lowercase); clipboard keeps original casing. */
+/** Shown in header as `walletAddressSnippetPrefix` + last N chars (lowercase); clipboard keeps original casing. */
 function walletAddressHeaderSnippet(trimmed: string): string {
-  if (trimmed.length === 0) return "…";
-  return `..${trimmed.slice(-8).toLowerCase()}`;
+  if (trimmed.length === 0) return AH.walletAddressSnippetPlaceholder;
+  const tail = trimmed.slice(-AH.walletAddressSnippetTailLength).toLowerCase();
+  return `${AH.walletAddressSnippetPrefix}${tail}`;
 }
 
-/** Chevron from `assets/header/right.svg` (5×11); fill uses theme `highlight`. */
+/** Chevron from `assets/header/right.svg`; fill uses theme `highlight`. */
 function HeaderProfileChevronIcon({ color }: { color: string }) {
   return (
-    <Svg width={5} height={11} viewBox="0 0 5 11" fill="none">
+    <Svg
+      width={AH.headerProfileChevronWidth}
+      height={AH.headerProfileChevronHeight}
+      viewBox={AH.headerProfileChevronViewBox}
+      fill="none"
+    >
       <Path
         d="M1.79003 7.58886C2.98576 6.27528 2.98578 4.38625 1.79006 3.07266L0.205486 1.3319C-0.0684974 1.03091 -0.0684952 0.598063 0.205492 0.297075C0.569221 -0.102499 1.24895 -0.102496 1.61268 0.297078L4.07529 3.00239C5.30824 4.35685 5.30823 6.30469 4.07527 7.65914L1.61268 10.3644C1.24895 10.764 0.569223 10.764 0.205495 10.3644C-0.0684934 10.0634 -0.0684931 9.63054 0.205496 9.32955L1.79003 7.58886Z"
         fill={color}
@@ -65,12 +72,11 @@ type Props = {
 
 /**
  * Top row on authenticated home: truncated address (highlight) + header icons, space-between cluster.
- * Above `wideMenuBreakpoint`, adds a middle column of inline-SVG actions (Get/Swap/…).
+ * Above `firstBreakpoint`, adds a middle column of inline-SVG actions (Get/Swap/…).
  */
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
-  const showWideMenu = windowWidth > AH.wideMenuBreakpoint;
   const trimmed = walletAddress.replace(/\s+/g, "").trim();
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
 
@@ -82,9 +88,9 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(windowWidth);
 
   /** Total strip width scales with viewport via {@link authenticatedHomeWideMenuColumnWidthPx}. */
-  const wideMenuStripWidth = showWideMenu ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length : 0;
+  const wideMenuStripWidth = windowWidth > AH.firstBreakpoint ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length : 0;
 
-  const wideMenuStrip = showWideMenu ? (
+  const wideMenuStrip = windowWidth > AH.firstBreakpoint ? (
     <View
       pointerEvents="box-none"
       style={[
@@ -92,7 +98,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
         {
           justifyContent: "center",
           alignItems: "center",
-          zIndex: 1,
+          zIndex: AH.wideMenuOverlayZIndex,
         },
       ]}
     >
@@ -115,7 +121,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={label}
-              hitSlop={8}
+              hitSlop={AH.headerPressableHitSlop}
               onPress={() => {
                 /* Wired when flows land */
               }}
@@ -155,19 +161,20 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   ) : null;
 
   return (
-    <View style={{ width: "100%", marginBottom: 12 }}>
+    /* Outer shell: full width; marginBottom = gap under header+divider before body (see theme `headerRowMarginBottom`). */
+    <View style={{ width: "100%", marginBottom: AH.headerRowMarginBottom }}>
       <View style={{ width: "100%", paddingHorizontal: AH.contentInsetHorizontal }}>
         <View
           style={{
             flexDirection: "row",
-            alignItems: showWideMenu ? "stretch" : "flex-start",
+            alignItems: windowWidth > AH.firstBreakpoint ? "stretch" : "flex-start",
             width: "100%",
-            ...(showWideMenu ? { position: "relative" as const } : {}),
+            ...(windowWidth > AH.firstBreakpoint ? { position: "relative" as const } : {}),
           }}
         >
       <View
         style={
-          showWideMenu
+          windowWidth > AH.firstBreakpoint
             ? {
                 flex: 1,
                 minWidth: 0,
@@ -188,7 +195,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           style={{
             flexDirection: "column",
             alignItems: "flex-start",
-            ...(showWideMenu ? {} : { flex: 1, alignSelf: "stretch", minWidth: 0 }),
+            ...(windowWidth > AH.firstBreakpoint ? {} : { flex: 1, alignSelf: "stretch", minWidth: 0 }),
           }}
         >
           <Pressable
@@ -196,11 +203,11 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             accessibilityLabel={`Wallet address ${displaySnippet}`}
             accessibilityHint="Copies the full wallet address"
             disabled={!trimmed}
-            hitSlop={8}
+            hitSlop={AH.headerPressableHitSlop}
             onPress={() => {
               void copyFullWalletAddress();
             }}
-            style={showWideMenu ? undefined : { alignSelf: "stretch" }}
+            style={windowWidth > AH.firstBreakpoint ? undefined : { alignSelf: "stretch" }}
           >
             <Text style={[homeWalletAddressHeaderText, { color: colors.highlight }]}>
               {displaySnippet}
@@ -225,7 +232,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
         style={{
           flexDirection: "column",
           alignItems: "flex-end",
-          ...(showWideMenu
+          ...(windowWidth > AH.firstBreakpoint
             ? { flex: 1, minWidth: 0 }
             : { flexShrink: 0, marginLeft: ("auto" as const) }),
         }}
@@ -243,7 +250,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               key={accessibilityLabel}
               accessibilityRole="button"
               accessibilityLabel={accessibilityLabel}
-              hitSlop={8}
+              hitSlop={AH.headerPressableHitSlop}
               onPress={() => {
                 if (index === 0) {
                   void copyFullWalletAddress();
@@ -291,12 +298,12 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
         </View>
       </View>
       </View>
-      {showWideMenu ? (
+      {windowWidth > AH.firstBreakpoint ? (
         <View
           pointerEvents="none"
           style={{
             marginTop: AH.headerDividerTopGap,
-            height: 1,
+            height: AH.headerDividerHeight,
             width: "100%",
             backgroundColor: colors.highlight,
             flexShrink: 0,

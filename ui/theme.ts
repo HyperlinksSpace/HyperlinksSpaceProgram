@@ -92,6 +92,12 @@ export function useColors(): ThemeColors {
   return getColorsForTheme(themeName);
 }
 
+/**
+ * Authenticated home (`/` signed-in): first viewport width (px) where layout leaves the compact regime.
+ * Compare as `width > firstBreakpoint` for wide header menu and other responsive pieces; add more breakpoints beside this.
+ */
+const authenticatedHomeFirstBreakpointPx = 724;
+
 export const layout = {
   maxContentWidth: 600,
   /**
@@ -103,20 +109,48 @@ export const layout = {
     contentInsetBottom: 22,
     /** Horizontal inset for authenticated-home body (and header row content via {@link HomeAuthenticatedHeaderRow}); not applied to full-bleed header divider. */
     contentInsetHorizontal: 15,
+    /**
+     * Outer `marginBottom` (px) on the authenticated-home header wrapper in
+     * {@link HomeAuthenticatedHeaderRow}: vertical gap between the **bottom of the whole header block**
+     * (content row **and** the optional full-bleed divider) and the **next** content in the scroll.
+     * Does not affect tap targets or inner padding — only spacing below the header strip.
+     */
+    headerRowMarginBottom: 0,
+    /**
+     * Uniform expansion (px) of the **touch target** for header `Pressable`s (address row, icon cluster,
+     * wide-menu items). React Native draws nothing here: bounds stay visually the same, but taps register
+     * this far outside the visible bounds on each side — easier to hit small icons and text on touch devices.
+     */
+    headerPressableHitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
+    /** Full-bleed divider stroke height (px) under the wide header row. */
+    headerDividerHeight: 1,
+    /** Character count taken from the end of the wallet string for the snippet (after `walletAddressSnippetPrefix`). */
+    walletAddressSnippetTailLength: 8,
+    /** Prefix before the visible wallet tail on the authenticated home header. */
+    walletAddressSnippetPrefix: "..",
+    /** Placeholder when the wallet address is empty (authenticated home header snippet). */
+    walletAddressSnippetPlaceholder: "…",
+    /** Inlined `assets/header/right.svg` width / height (px). */
+    headerProfileChevronWidth: 5,
+    headerProfileChevronHeight: 11,
+    /** Matches `assets/header/right.svg` coordinate system with width/height above. */
+    headerProfileChevronViewBox: "0 0 5 11",
+    /** `zIndex` for the absolutely positioned wide-menu overlay above side columns. */
+    wideMenuOverlayZIndex: 1,
     /** Horizontal gap between truncated address and the header icon cluster. */
     addressRowGap: 15,
     /** Gap between adjacent icons from `assets/header/*.svg`. */
     headerIconGap: 15,
     /** Tap/visual size for header icons (`assets/header/*.svg` viewBoxes are 30×30). */
     headerIconDisplaySize: 30,
-    /** Show extra middle column (Get/Swap/Deals/Trade/Send) when viewport width is greater than this. */
-    wideMenuBreakpoint: 724,
+    /** First authenticated-home layout breakpoint (px): wide menu and other elements use `viewportWidth > firstBreakpoint`. */
+    firstBreakpoint: authenticatedHomeFirstBreakpointPx,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMin` viewport width. */
     wideMenuColumnWidthMin: 50,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMax` viewport width and above. */
-    wideMenuColumnWidthMax: 100,
-    /** Viewport width (px) where column width starts at `wideMenuColumnWidthMin` (linear ramp). */
-    wideMenuColumnExpandViewportMin: 724,
+    wideMenuColumnWidthMax: 70,
+    /** Viewport width (px) where wide-menu column width starts at `wideMenuColumnWidthMin` (linear ramp); equals {@link layout.authenticatedHome.firstBreakpoint}. */
+    wideMenuColumnExpandViewportMin: authenticatedHomeFirstBreakpointPx,
     /** Viewport width (px) where column width reaches `wideMenuColumnWidthMax`. */
     wideMenuColumnExpandViewportMax: 1240,
     /** Space between icon and label under it (px). */
@@ -148,7 +182,7 @@ export const layout = {
 
 /**
  * Wide authenticated-home header menu: each column width ramps linearly with viewport width between
- * {@link layout.authenticatedHome.wideMenuColumnExpandViewportMin} / `wideMenuColumnWidthMin` and
+ * {@link layout.authenticatedHome.firstBreakpoint} / `wideMenuColumnWidthMin` and
  * {@link layout.authenticatedHome.wideMenuColumnExpandViewportMax} / `wideMenuColumnWidthMax`.
  */
 export function authenticatedHomeWideMenuColumnWidthPx(windowWidth: number): number {
