@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -10,13 +11,17 @@ import {
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type ViewStyle,
 } from "react-native";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { layout, type ThemeColors } from "../theme";
 
 const NAV_LABELS = ["Feed", "Messages", "Tasks", "Items", "Coins"] as const;
 
-/** Total strip height including 15px inner padding on all sides. */
+const AH = layout.authenticatedHome;
+
+/** Total strip height including inner padding. */
 const STRIP_HEIGHT_PX = 55;
 const STRIP_PADDING_PX = layout.contentSideInsetPx;
 const INNER_SCROLL_HEIGHT_PX = STRIP_HEIGHT_PX - STRIP_PADDING_PX * 2;
@@ -24,36 +29,49 @@ const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
+const BORDER_PX = 1;
 
-function horizontalScrollbarThumb(
+function snapLayoutPx(n: number): number {
+  return PixelRatio.roundToNearestPixel(n);
+}
+
+function horizontalThumbFullTrack(
   trackWidth: number,
   viewportWidth: number,
   contentWidth: number,
   scrollX: number,
   scrollRange: number,
 ): { thumbW: number; thumbLeft: number } {
-  if (!Number.isFinite(trackWidth) || trackWidth <= 0 || contentWidth <= 0 || scrollRange <= 0) {
+  if (trackWidth <= 0 || contentWidth <= 0 || scrollRange <= 0) {
     return { thumbW: 0, thumbLeft: 0 };
   }
-  const thumbWidthRatio = Math.min(1, Math.max(0, viewportWidth / contentWidth));
-  const thumbW = Math.min(trackWidth, Math.max(0, trackWidth * thumbWidthRatio));
-  const scrollPosition = Math.min(1, Math.max(0, scrollX / scrollRange));
-  const availableSpace = Math.min(trackWidth, Math.max(0, trackWidth - thumbW));
-  const thumbLeft = Math.min(trackWidth, Math.max(0, scrollPosition * availableSpace));
+  const ratio = Math.min(1, Math.max(0, viewportWidth / contentWidth));
+  let thumbW = Math.round(trackWidth * ratio);
+  thumbW = Math.max(4, Math.min(trackWidth, thumbW));
+  let thumbLeft = Math.round((scrollX / scrollRange) * (trackWidth - thumbW));
+  if (scrollX <= SCROLL_EPS) thumbLeft = 0;
+  if (scrollX >= scrollRange - SCROLL_EPS) thumbLeft = trackWidth - thumbW;
+  thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
   return { thumbW, thumbLeft };
 }
 
 export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors }) {
+  const fadeGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const [activeIndex, setActiveIndex] = useState(0);
   const [scrollX, setScrollX] = useState(0);
   const [layoutW, setLayoutW] = useState(0);
   const [contentW, setContentW] = useState(0);
+  const [outerW, setOuterW] = useState(0);
   const { width: windowWidth } = useWindowDimensions();
   const [bleed, setBleed] = useState({
     left: 0,
     width: Dimensions.get("window").width,
   });
   const outerRef = useRef<View>(null);
+
+  const fadeW = AH.leftNavStripRightFadeWidthPx;
+  const scrollbarGapAboveBorder = AH.leftNavStripScrollbarAboveBorderPx;
+  const thumbBottomPx = BORDER_PX + scrollbarGapAboveBorder;
 
   const syncBleed = useCallback(() => {
     const node = outerRef.current;
@@ -69,7 +87,8 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
   }, []);
 
   const onOuterLayout = useCallback(
-    (_e: LayoutChangeEvent) => {
+    (e: LayoutChangeEvent) => {
+      setOuterW(Math.round(e.nativeEvent.layout.width));
       syncBleed();
     },
     [syncBleed],
@@ -85,7 +104,7 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
   useEffect(() => {
     const t = requestAnimationFrame(() => syncBleed());
     return () => cancelAnimationFrame(t);
-  }, [syncBleed, layoutW, windowWidth]);
+  }, [syncBleed, layoutW, windowWidth, outerW]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setScrollX(e.nativeEvent.contentOffset.x);
@@ -101,15 +120,42 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
 
   const scrollRange = Math.max(0, contentW - layoutW);
   const fits = contentW > 0 && layoutW > 0 && contentW <= layoutW + SCROLL_EPS;
-  const showScrollbar = !fits && scrollRange > 0 && layoutW > 0;
-  const trackWidth = Math.max(0, layoutW - 2 * ITEM_GAP_PX);
-  const { thumbW, thumbLeft } = horizontalScrollbarThumb(
+  const trackWidth = Math.max(0, outerW);
+  const showScrollbar = !fits && scrollRange > 0 && layoutW > 0 && trackWidth > 0;
+  const { thumbW, thumbLeft } = horizontalThumbFullTrack(
     trackWidth,
     layoutW,
     contentW,
     scrollX,
     scrollRange,
   );
+
+  const borderLineStyle = useMemo((): ViewStyle => {
+    const left = snapLayoutPx(bleed.left);
+    const width = Math.max(1, snapLayoutPx(bleed.width));
+    return {
+      position: "absolute",
+      left,
+      width,
+      bottom: 0,
+      height: BORDER_PX,
+      backgroundColor: colors.highlight,
+      zIndex: 1,
+    };
+  }, [bleed.left, bleed.width, colors.highlight]);
+
+  const thumbLineStyle = useMemo((): ViewStyle | null => {
+    if (!showScrollbar || thumbW <= 0) return null;
+    return {
+      position: "absolute",
+      left: thumbLeft,
+      width: Math.max(1, thumbW),
+      height: BORDER_PX,
+      bottom: thumbBottomPx,
+      backgroundColor: colors.highlight,
+      zIndex: 2,
+    };
+  }, [showScrollbar, thumbW, thumbLeft, thumbBottomPx, colors.highlight]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -129,8 +175,10 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
         width: "100%",
         alignSelf: "stretch",
         height: STRIP_HEIGHT_PX,
-        paddingHorizontal: STRIP_PADDING_PX,
-        paddingVertical: STRIP_PADDING_PX,
+        paddingLeft: STRIP_PADDING_PX,
+        paddingRight: 0,
+        paddingTop: STRIP_PADDING_PX,
+        paddingBottom: STRIP_PADDING_PX,
         marginBottom: 8,
         position: "relative",
         overflow: "visible",
@@ -140,7 +188,7 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
         horizontal
         showsHorizontalScrollIndicator={false}
         scrollEnabled={!fits}
-        style={{ height: INNER_SCROLL_HEIGHT_PX }}
+        style={{ height: INNER_SCROLL_HEIGHT_PX, zIndex: 0 }}
         contentContainerStyle={{
           flexGrow: fits ? 1 : 0,
           flexDirection: "row",
@@ -171,42 +219,33 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
         ))}
       </ScrollView>
 
-      {showScrollbar && thumbW > 0 ? (
+      {fadeW > 0 ? (
         <View
           pointerEvents="none"
           style={{
             position: "absolute",
-            left: STRIP_PADDING_PX,
-            right: STRIP_PADDING_PX,
-            bottom: 2,
-            height: 1,
+            right: 0,
+            top: STRIP_PADDING_PX,
+            width: fadeW,
+            height: INNER_SCROLL_HEIGHT_PX,
+            zIndex: 2,
           }}
         >
-          <View style={{ height: 1, width: "100%", position: "relative" }}>
-            <View
-              style={{
-                position: "absolute",
-                left: thumbLeft,
-                width: thumbW,
-                height: 1,
-                backgroundColor: colors.highlight,
-              }}
-            />
-          </View>
+          <Svg width={fadeW} height={INNER_SCROLL_HEIGHT_PX} viewBox={`0 0 ${fadeW} ${INNER_SCROLL_HEIGHT_PX}`}>
+            <Defs>
+              <SvgLinearGradient id={fadeGradientId} x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
+                <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x={0} y={0} width={fadeW} height={INNER_SCROLL_HEIGHT_PX} fill={`url(#${fadeGradientId})`} />
+          </Svg>
         </View>
       ) : null}
 
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          left: bleed.left,
-          width: bleed.width,
-          bottom: 0,
-          height: 1,
-          backgroundColor: colors.highlight,
-        }}
-      />
+      {thumbLineStyle ? <View pointerEvents="none" style={thumbLineStyle} /> : null}
+
+      <View pointerEvents="none" style={borderLineStyle} />
     </View>
   );
 }

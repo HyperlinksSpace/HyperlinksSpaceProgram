@@ -193,6 +193,12 @@ export const layout = {
      * so the layout stays consistent with the compact single-column regime.
      */
     splitPaneMaxFirstColumnPx: authenticatedHomeFirstBreakpointPx,
+    /**
+     * Left column top nav strip: gap (px) between the 1px horizontal scroll thumb and the 1px full-bleed bottom border.
+     */
+    leftNavStripScrollbarAboveBorderPx: 3,
+    /** Left column nav strip: width (px) of right-edge fade (transparent → opaque app background). */
+    leftNavStripRightFadeWidthPx: contentSideInsetPx,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {
