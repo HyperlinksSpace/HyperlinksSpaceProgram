@@ -85,7 +85,8 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
  * Padding for authenticated home: vertical + horizontal on main body only.
  * First child (header row) is full-bleed horizontally so a divider can span the viewport;
  * {@link HomeAuthenticatedHeaderRow} applies the same horizontal inset to header content.
- * Body children are full-bleed horizontally — use `AuthenticatedHomePaddedBody` or `AuthenticatedHomeSplitBody` for horizontal insets on content.
+ * Body children are full-bleed horizontally — use `AuthenticatedHomePaddedBody` for horizontal insets, or
+ * `AuthenticatedHomeSplitBody` (left column has no horizontal padding; pad sub-blocks on the home screen as needed).
  */
 function AuthenticatedHomePaddedBody({ children }: { children: ReactNode }) {
   return (
@@ -1215,6 +1216,7 @@ export function HomeAuthenticatedScreen() {
         left={
           <>
             <AuthenticatedHomeLeftNavStrip colors={colors} />
+            <View style={{ paddingHorizontal: layout.contentSideInsetPx, width: "100%", alignSelf: "stretch" }}>
             {telegramUsername ? (
               <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
                 <Text
@@ -1277,6 +1279,7 @@ export function HomeAuthenticatedScreen() {
                 Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
               </Text>
             ) : null}
+            </View>
           </>
         }
         right={<View style={{ flex: 1 }} />}

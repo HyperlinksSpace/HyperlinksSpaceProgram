@@ -57,6 +57,10 @@ function snapThirdPaneToDeviceSeam(thirdPane: number, rw: number, dpr: number, l
 }
 
 type Props = {
+  /**
+   * First column body. No horizontal padding is applied here: use full width for the top nav strip,
+   * then wrap remaining blocks in `paddingHorizontal: layout.contentSideInsetPx` (see home screen).
+   */
   left: ReactNode;
   /** Second column when two panes; middle (flex) column when three panes. */
   right: ReactNode;
@@ -701,7 +705,7 @@ export function AuthenticatedHomeSplitBody({
       }}
     >
       {!isWide ? (
-        <View style={{ flex: 1, width: "100%", paddingHorizontal: inset }}>{left}</View>
+        <View style={{ flex: 1, width: "100%" }}>{left}</View>
       ) : (
         <View
           style={{
@@ -717,7 +721,6 @@ export function AuthenticatedHomeSplitBody({
             style={{
               width: leftPanePx,
               flexShrink: 0,
-              paddingHorizontal: inset,
               paddingBottom: bottomInset,
             }}
           >

@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import {
-  Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
   PixelRatio,
@@ -8,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  useWindowDimensions,
   View,
   type LayoutChangeEvent,
   type ViewStyle,
@@ -21,17 +19,44 @@ const NAV_LABELS = ["Feed", "Messages", "Tasks", "Items", "Coins"] as const;
 
 const AH = layout.authenticatedHome;
 
-/** Total strip height including inner padding. */
+/** Total strip height including vertical inner padding. */
 const STRIP_HEIGHT_PX = 55;
+/** Vertical padding inside strip; horizontal inset is visual-only via edge fades (no horizontal padding on scroll). */
 const STRIP_PADDING_PX = layout.contentSideInsetPx;
 const INNER_SCROLL_HEIGHT_PX = STRIP_HEIGHT_PX - STRIP_PADDING_PX * 2;
 const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
-const BORDER_PX = 1;
 
-function snapLayoutPx(n: number): number {
+/**
+ * Rule thickness in layout units: one **device** pixel (hairline).
+ * A `1` css px / 1 dp bar maps to several physical pixels on phones, so it reads as a thick band
+ * (often worse in single-column / full-width mobile layouts). This matches ~StyleSheet.hairlineWidth
+ * intent but stays consistent with {@link snapToPixelGrid} math on web.
+ */
+function menuStripRuleThickness(): number {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.devicePixelRatio > 0) {
+      return 1 / window.devicePixelRatio;
+    }
+    return 1;
+  }
+  return PixelRatio.roundToNearestPixel(1 / PixelRatio.get());
+}
+
+/**
+ * Snap layout coordinates/sizes to the device pixel grid so 1px borders render crisp (no blur between pixels).
+ */
+function snapToPixelGrid(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.devicePixelRatio > 0) {
+      const dpr = window.devicePixelRatio;
+      return Math.round(n * dpr) / dpr;
+    }
+    return Math.round(n);
+  }
   return PixelRatio.roundToNearestPixel(n);
 }
 
@@ -52,59 +77,30 @@ function horizontalThumbFullTrack(
   if (scrollX <= SCROLL_EPS) thumbLeft = 0;
   if (scrollX >= scrollRange - SCROLL_EPS) thumbLeft = trackWidth - thumbW;
   thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
+  thumbW = snapToPixelGrid(thumbW);
+  thumbLeft = snapToPixelGrid(thumbLeft);
+  thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
   return { thumbW, thumbLeft };
 }
 
 export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors }) {
-  const fadeGradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
+  const fadeGradientIdRight = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
+  const fadeGradientIdLeft = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const [activeIndex, setActiveIndex] = useState(0);
   const [scrollX, setScrollX] = useState(0);
   const [layoutW, setLayoutW] = useState(0);
   const [contentW, setContentW] = useState(0);
   const [outerW, setOuterW] = useState(0);
-  const { width: windowWidth } = useWindowDimensions();
-  const [bleed, setBleed] = useState({
-    left: 0,
-    width: Dimensions.get("window").width,
-  });
-  const outerRef = useRef<View>(null);
 
+  const lineT = menuStripRuleThickness();
+  /** Edge fades; matches `contentSideInsetPx` (15px) in theme. */
   const fadeW = AH.leftNavStripRightFadeWidthPx;
   const scrollbarGapAboveBorder = AH.leftNavStripScrollbarAboveBorderPx;
-  const thumbBottomPx = BORDER_PX + scrollbarGapAboveBorder;
+  const thumbBottomSnapped = snapToPixelGrid(lineT + scrollbarGapAboveBorder);
 
-  const syncBleed = useCallback(() => {
-    const node = outerRef.current;
-    const winW =
-      Platform.OS === "web" && typeof window !== "undefined" ? window.innerWidth : Dimensions.get("window").width;
-    if (!node?.measureInWindow) {
-      setBleed((b) => (b.width !== winW ? { ...b, width: winW } : b));
-      return;
-    }
-    node.measureInWindow((x, _y, _w, _h) => {
-      setBleed({ left: -x, width: winW });
-    });
+  const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
+    setOuterW(Math.round(e.nativeEvent.layout.width));
   }, []);
-
-  const onOuterLayout = useCallback(
-    (e: LayoutChangeEvent) => {
-      setOuterW(Math.round(e.nativeEvent.layout.width));
-      syncBleed();
-    },
-    [syncBleed],
-  );
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
-    const onResize = () => syncBleed();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [syncBleed]);
-
-  useEffect(() => {
-    const t = requestAnimationFrame(() => syncBleed());
-    return () => cancelAnimationFrame(t);
-  }, [syncBleed, layoutW, windowWidth, outerW]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     setScrollX(e.nativeEvent.contentOffset.x);
@@ -120,10 +116,10 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
 
   const scrollRange = Math.max(0, contentW - layoutW);
   const fits = contentW > 0 && layoutW > 0 && contentW <= layoutW + SCROLL_EPS;
-  const trackWidth = Math.max(0, outerW);
-  const showScrollbar = !fits && scrollRange > 0 && layoutW > 0 && trackWidth > 0;
+  const scrollTrackWidth = Math.max(0, outerW);
+  const showScrollbar = !fits && scrollRange > 0 && layoutW > 0 && scrollTrackWidth > 0;
   const { thumbW, thumbLeft } = horizontalThumbFullTrack(
-    trackWidth,
+    scrollTrackWidth,
     layoutW,
     contentW,
     scrollX,
@@ -131,31 +127,44 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
   );
 
   const borderLineStyle = useMemo((): ViewStyle => {
-    const left = snapLayoutPx(bleed.left);
-    const width = Math.max(1, snapLayoutPx(bleed.width));
     return {
       position: "absolute",
-      left,
-      width,
+      left: 0,
+      right: 0,
       bottom: 0,
-      height: BORDER_PX,
+      height: lineT,
       backgroundColor: colors.highlight,
       zIndex: 1,
+      overflow: "hidden",
     };
-  }, [bleed.left, bleed.width, colors.highlight]);
+  }, [colors.highlight, lineT]);
 
-  const thumbLineStyle = useMemo((): ViewStyle | null => {
+  const thumbTrackStyle = useMemo((): ViewStyle | null => {
     if (!showScrollbar || thumbW <= 0) return null;
     return {
       position: "absolute",
-      left: thumbLeft,
-      width: Math.max(1, thumbW),
-      height: BORDER_PX,
-      bottom: thumbBottomPx,
-      backgroundColor: colors.highlight,
+      left: 0,
+      right: 0,
+      bottom: thumbBottomSnapped,
+      height: lineT,
+      minHeight: lineT,
+      maxHeight: lineT,
       zIndex: 2,
+      overflow: "hidden",
     };
-  }, [showScrollbar, thumbW, thumbLeft, thumbBottomPx, colors.highlight]);
+  }, [showScrollbar, thumbW, thumbBottomSnapped, lineT]);
+
+  const thumbFillStyle = useMemo((): ViewStyle | null => {
+    if (!showScrollbar || thumbW <= 0) return null;
+    return {
+      position: "absolute",
+      left: snapToPixelGrid(thumbLeft),
+      width: Math.max(1, snapToPixelGrid(thumbW)),
+      bottom: 0,
+      height: lineT,
+      backgroundColor: colors.highlight,
+    };
+  }, [showScrollbar, thumbW, thumbLeft, colors.highlight, lineT]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -167,16 +176,19 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
     paddingVertical: 0,
   });
 
+  /** Avoid flex/layout growing the hairline-high track on web. */
+  const lineAxisLock = {
+    flexGrow: 0,
+    flexShrink: 0,
+  } satisfies ViewStyle;
+
   return (
     <View
-      ref={outerRef}
       onLayout={onOuterLayout}
       style={{
         width: "100%",
         alignSelf: "stretch",
         height: STRIP_HEIGHT_PX,
-        paddingLeft: STRIP_PADDING_PX,
-        paddingRight: 0,
         paddingTop: STRIP_PADDING_PX,
         paddingBottom: STRIP_PADDING_PX,
         marginBottom: 8,
@@ -184,12 +196,14 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
         overflow: "visible",
       }}
     >
+      {/* Full-width scroll + 15px content insets: at scroll 0 / thumb left, row starts 15px in; at max scroll / thumb right, row ends 15px before edge. Edge fades sit on top for motion blur to the real edge. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         scrollEnabled={!fits}
-        style={{ height: INNER_SCROLL_HEIGHT_PX, zIndex: 0 }}
+        style={{ width: "100%", height: INNER_SCROLL_HEIGHT_PX, zIndex: 0 }}
         contentContainerStyle={{
+          paddingHorizontal: STRIP_PADDING_PX,
           flexGrow: fits ? 1 : 0,
           flexDirection: "row",
           alignItems: "center",
@@ -220,32 +234,59 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
       </ScrollView>
 
       {fadeW > 0 ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            right: 0,
-            top: STRIP_PADDING_PX,
-            width: fadeW,
-            height: INNER_SCROLL_HEIGHT_PX,
-            zIndex: 2,
-          }}
-        >
-          <Svg width={fadeW} height={INNER_SCROLL_HEIGHT_PX} viewBox={`0 0 ${fadeW} ${INNER_SCROLL_HEIGHT_PX}`}>
-            <Defs>
-              <SvgLinearGradient id={fadeGradientId} x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
-                <Stop offset="1" stopColor={colors.background} stopOpacity={1} />
-              </SvgLinearGradient>
-            </Defs>
-            <Rect x={0} y={0} width={fadeW} height={INNER_SCROLL_HEIGHT_PX} fill={`url(#${fadeGradientId})`} />
-          </Svg>
+        <>
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: STRIP_PADDING_PX,
+              width: fadeW,
+              height: INNER_SCROLL_HEIGHT_PX,
+              zIndex: 2,
+            }}
+          >
+            <Svg width={fadeW} height={INNER_SCROLL_HEIGHT_PX} viewBox={`0 0 ${fadeW} ${INNER_SCROLL_HEIGHT_PX}`}>
+              <Defs>
+                <SvgLinearGradient id={fadeGradientIdLeft} x1="0%" y1="0" x2="100%" y2="0">
+                  <Stop offset="0%" stopColor={colors.background} stopOpacity={1} />
+                  <Stop offset="100%" stopColor={colors.background} stopOpacity={0} />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect x={0} y={0} width={fadeW} height={INNER_SCROLL_HEIGHT_PX} fill={`url(#${fadeGradientIdLeft})`} />
+            </Svg>
+          </View>
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              right: 0,
+              top: STRIP_PADDING_PX,
+              width: fadeW,
+              height: INNER_SCROLL_HEIGHT_PX,
+              zIndex: 2,
+            }}
+          >
+            <Svg width={fadeW} height={INNER_SCROLL_HEIGHT_PX} viewBox={`0 0 ${fadeW} ${INNER_SCROLL_HEIGHT_PX}`}>
+              <Defs>
+                <SvgLinearGradient id={fadeGradientIdRight} x1="0%" y1="0" x2="100%" y2="0">
+                  <Stop offset="0%" stopColor={colors.background} stopOpacity={0} />
+                  <Stop offset="100%" stopColor={colors.background} stopOpacity={1} />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect x={0} y={0} width={fadeW} height={INNER_SCROLL_HEIGHT_PX} fill={`url(#${fadeGradientIdRight})`} />
+            </Svg>
+          </View>
+        </>
+      ) : null}
+
+      {thumbTrackStyle && thumbFillStyle ? (
+        <View pointerEvents="none" style={[thumbTrackStyle, lineAxisLock]}>
+          <View pointerEvents="none" collapsable={false} style={[thumbFillStyle, lineAxisLock]} />
         </View>
       ) : null}
 
-      {thumbLineStyle ? <View pointerEvents="none" style={thumbLineStyle} /> : null}
-
-      <View pointerEvents="none" style={borderLineStyle} />
+      <View pointerEvents="none" collapsable={false} style={[borderLineStyle, lineAxisLock]} />
     </View>
   );
 }

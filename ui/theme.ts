@@ -194,10 +194,10 @@ export const layout = {
      */
     splitPaneMaxFirstColumnPx: authenticatedHomeFirstBreakpointPx,
     /**
-     * Left column top nav strip: gap (px) between the 1px horizontal scroll thumb and the 1px full-bleed bottom border.
+     * Left column top nav strip: gap (px) between the horizontal scroll thumb and the bottom rule (strip width).
      */
     leftNavStripScrollbarAboveBorderPx: 3,
-    /** Left column nav strip: width (px) of right-edge fade (transparent → opaque app background). */
+    /** Left column nav strip: width (px) of each horizontal edge fade (15px; mirrors `contentSideInsetPx`). */
     leftNavStripRightFadeWidthPx: contentSideInsetPx,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
