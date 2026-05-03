@@ -151,8 +151,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 5,
   },
+  /** Keep send control pinned to the bar bottom; do not center in the row or it rides up when the field grows. */
   webFooterRow: {
-    alignItems: "center",
+    alignItems: "flex-end",
   },
   inputWrap: {
     flex: 1,
@@ -182,10 +183,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 25,
   },
-  /** Web footer row uses `alignItems: center`; native keeps `flex-end` + bottom padding for multi-line. */
+  /** Match native `sendWrap` bottom inset so the arrow stays a fixed distance above the screen edge at any line count. */
   sendWrapWeb: {
-    paddingBottom: 0,
-    alignSelf: "center",
+    paddingBottom: 25,
   },
   scrollbarContainer: {
     position: "absolute",
