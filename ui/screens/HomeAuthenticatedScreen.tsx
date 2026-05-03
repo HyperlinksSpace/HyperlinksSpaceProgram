@@ -8,13 +8,16 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { ActivityIndicator, Button, Text, View } from "react-native";
+import { ActivityIndicator, Button, Text, View, useWindowDimensions } from "react-native";
+import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
+import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
 import { logPageDisplay } from "../pageDisplayLog";
-import { layout, typographySansSemibold, useColors } from "../theme";
+import { authenticatedHomeBottomBarDock, layout, typographySansSemibold, useColors } from "../theme";
+import { useResolvedPathname } from "../useResolvedPathname";
 import { buildApiUrl } from "../../api/_base";
 import {
   deriveAddressFromMnemonic,
@@ -514,6 +517,10 @@ export function HomeAuthenticatedScreen() {
     debug,
     applyServerWalletAfterRegister,
   } = useTelegram();
+  const pathname = useResolvedPathname();
+  const { width: windowWidth } = useWindowDimensions();
+  const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
+  const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
   const [createdWalletAddress, setCreatedWalletAddress] = useState<string | null>(null);
@@ -1207,21 +1214,7 @@ export function HomeAuthenticatedScreen() {
       <AuthenticatedHomeSplitBody
         left={
           <>
-            <Text
-              style={[
-                typographySansSemibold,
-                {
-                  marginBottom: 8,
-                  color: colors.primary,
-                  fontSize: 18,
-                  lineHeight: 24,
-                  textAlign: "center",
-                  alignSelf: "stretch",
-                },
-              ]}
-            >
-              HyperlinksSpace Wallet
-            </Text>
+            <AuthenticatedHomeLeftNavStrip colors={colors} />
             {telegramUsername ? (
               <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
                 <Text
@@ -1287,6 +1280,8 @@ export function HomeAuthenticatedScreen() {
           </>
         }
         right={<View style={{ flex: 1 }} />}
+        middleColumnFooter={aiBarDock === "splitColumn2" ? embeddedAiBar : null}
+        thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
       />
     </AuthenticatedHomeChrome>
   );

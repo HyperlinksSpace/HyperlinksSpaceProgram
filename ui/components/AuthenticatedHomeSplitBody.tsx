@@ -62,6 +62,15 @@ type Props = {
   right: ReactNode;
   /** Third (rightmost) column when `rowWidth > secondBreakpoint`; optional placeholder if omitted. */
   farRight?: ReactNode;
+  /**
+   * Wide two-column layout: same {@link GlobalBottomBar} instance as the root footer, pinned under `right`.
+   * Root layout omits the footer when this is set (see `authenticatedHomeBottomBarDock`).
+   */
+  middleColumnFooter?: ReactNode;
+  /**
+   * Wide three-column layout: same bar pinned under `farRight`; `middleColumnFooter` should be omitted.
+   */
+  thirdColumnFooter?: ReactNode;
 };
 
 /**
@@ -69,7 +78,13 @@ type Props = {
  * three above `secondBreakpoint`. In three-column mode the middle column flex-fills; the third has a
  * tunable width (default from theme) adjusted by the second divider (drag right = narrower third).
  */
-export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
+export function AuthenticatedHomeSplitBody({
+  left,
+  right,
+  farRight,
+  middleColumnFooter,
+  thirdColumnFooter,
+}: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   const [rowWidth, setRowWidth] = useState(0);
@@ -604,6 +619,70 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
   const firstDividerLeft = leftPanePx - SPLIT_PANE_HIT_LEFT_OF_SEAM;
   const secondDividerLeft = isTriple ? splitRowW - thirdPanePx - SPLIT_PANE_HIT_LEFT_OF_SEAM : 0;
 
+  const middleFlexBase = {
+    flex: 1 as const,
+    minWidth: AH.splitPaneMinSecondColumnPx,
+    minHeight: 0,
+  };
+
+  const columnAiBarWrapStyle: ViewStyle =
+    Platform.OS === "web"
+      ? { position: "sticky", bottom: 0, zIndex: 2, alignSelf: "stretch" }
+      : { alignSelf: "stretch" };
+
+  const middleColumn = (() => {
+    if (middleColumnFooter && !isTriple) {
+      return (
+        <View style={{ ...middleFlexBase, flexDirection: "column" }}>
+          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
+          <View style={columnAiBarWrapStyle}>{middleColumnFooter}</View>
+        </View>
+      );
+    }
+    return (
+      <View
+        style={{
+          ...middleFlexBase,
+          paddingHorizontal: inset,
+          paddingBottom: bottomInset,
+        }}
+      >
+        {right}
+      </View>
+    );
+  })();
+
+  const thirdColumn = (() => {
+    if (!isTriple) return null;
+    if (thirdColumnFooter) {
+      return (
+        <View
+          style={{
+            width: thirdPanePx,
+            flexShrink: 0,
+            flexDirection: "column",
+            minHeight: 0,
+          }}
+        >
+          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{third}</View>
+          <View style={columnAiBarWrapStyle}>{thirdColumnFooter}</View>
+        </View>
+      );
+    }
+    return (
+      <View
+        style={{
+          width: thirdPanePx,
+          flexShrink: 0,
+          paddingHorizontal: inset,
+          paddingBottom: bottomInset,
+        }}
+      >
+        {third}
+      </View>
+    );
+  })();
+
   return (
     <View
       style={{ flex: 1, width: "100%", alignSelf: "stretch" }}
@@ -644,33 +723,8 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
           >
             {left}
           </View>
-          <View
-            style={{
-              ...(isTriple
-                ? {
-                    flex: 1,
-                    minWidth: AH.splitPaneMinSecondColumnPx,
-                    minHeight: 0,
-                  }
-                : { flex: 1, minWidth: AH.splitPaneMinSecondColumnPx }),
-              paddingHorizontal: inset,
-              paddingBottom: bottomInset,
-            }}
-          >
-            {right}
-          </View>
-          {isTriple ? (
-            <View
-              style={{
-                width: thirdPanePx,
-                flexShrink: 0,
-                paddingHorizontal: inset,
-                paddingBottom: bottomInset,
-              }}
-            >
-              {third}
-            </View>
-          ) : null}
+          {middleColumn}
+          {thirdColumn}
           <View
             style={overlayDividerHitStyle(firstDividerLeft)}
             {...(webPointerProps(1) ?? {})}

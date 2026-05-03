@@ -34,7 +34,7 @@ export function FloatingShield() {
   const { width: windowWidth } = useWindowDimensions();
   /** Match authenticated home: narrow / welcome-style width keeps the stack on the right; wide moves it to the left. */
   const shieldOnRight = windowWidth <= AH.firstBreakpoint;
-  const { barHeight: bottomBarHeight } = useBottomBarLayout();
+  const { barHeight: bottomBarHeight, footerDockedToScreenEdge } = useBottomBarLayout();
   const isLightTheme = colors.primary === "#000000";
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
 
@@ -44,7 +44,7 @@ export function FloatingShield() {
         styles.hostBase,
         shieldOnRight ? styles.hostRight : styles.hostLeft,
         {
-          bottom: bottomBarHeight + FOOTER_TOP_GAP_PX,
+          bottom: (footerDockedToScreenEdge ? bottomBarHeight : 0) + FOOTER_TOP_GAP_PX,
           // box-none: lightning/GL spill and chip corners pass through; only the circular Svg hit mask in each chip captures.
           pointerEvents: "box-none",
         },

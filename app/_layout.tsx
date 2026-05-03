@@ -11,6 +11,7 @@ import {
   AppState,
   Alert,
   ScrollView,
+  useWindowDimensions,
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -22,11 +23,11 @@ import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
-import { BottomBarLayoutProvider } from "../ui/components/BottomBarLayoutContext";
+import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
-import { layout, useColors } from "../ui/theme";
+import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
   useCallback,
@@ -173,6 +174,13 @@ function RootContent() {
   const pathname = useResolvedPathname();
   const auth = useAuth();
   const { authHydrated, authReady, isAuthenticated } = auth;
+  const { width: windowWidth } = useWindowDimensions();
+  const { setFooterDockedToScreenEdge } = useBottomBarLayout();
+  const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
+
+  useEffect(() => {
+    setFooterDockedToScreenEdge(bottomBarDock === "screenFooter");
+  }, [bottomBarDock, setFooterDockedToScreenEdge]);
   const colors = useColors();
   const { themeBgReady, useTelegramTheme, isInTelegram, isExpanded, layoutStartup } = useTelegram();
   const shellLogKeyRef = useRef<string | null>(null);
@@ -281,7 +289,10 @@ function RootContent() {
       )}
       {
         // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
-        Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? <GlobalBottomBar /> : null
+        // Wide authenticated home mounts the same bar inside split columns instead.
+        Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? (
+          bottomBarDock === "screenFooter" ? <GlobalBottomBar /> : null
+        ) : null
       }
       {authHydrated && authReady && (isAuthenticated || isWelcomeLayoutRoute(pathname, auth)) ? (
         <FloatingShield />

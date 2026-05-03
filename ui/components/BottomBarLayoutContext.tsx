@@ -12,6 +12,9 @@ import { layout } from "../theme";
 type BottomBarLayoutCtx = {
   barHeight: number;
   setBarHeight: (h: number) => void;
+  /** When false, `GlobalBottomBar` is embedded in split columns — not stacked under the main scroll shell. */
+  footerDockedToScreenEdge: boolean;
+  setFooterDockedToScreenEdge: (v: boolean) => void;
 };
 
 const BottomBarLayoutContext = createContext<BottomBarLayoutCtx | null>(null);
@@ -21,7 +24,14 @@ export function BottomBarLayoutProvider({ children }: { children: ReactNode }) {
   const setBarHeight = useCallback((h: number) => {
     setBarHeightState((prev) => (prev === h ? prev : h));
   }, []);
-  const value = useMemo(() => ({ barHeight, setBarHeight }), [barHeight, setBarHeight]);
+  const [footerDockedToScreenEdge, setFooterDockedToScreenEdgeState] = useState(true);
+  const setFooterDockedToScreenEdge = useCallback((v: boolean) => {
+    setFooterDockedToScreenEdgeState((prev) => (prev === v ? prev : v));
+  }, []);
+  const value = useMemo(
+    () => ({ barHeight, setBarHeight, footerDockedToScreenEdge, setFooterDockedToScreenEdge }),
+    [barHeight, setBarHeight, footerDockedToScreenEdge, setFooterDockedToScreenEdge],
+  );
   return <BottomBarLayoutContext.Provider value={value}>{children}</BottomBarLayoutContext.Provider>;
 }
 

@@ -212,6 +212,26 @@ export const layout = {
   },
 };
 
+/** Where `GlobalBottomBar` mounts on signed-in `/` at different viewport widths (see {@link authenticatedHomeBottomBarDock}). */
+export type AuthenticatedHomeBottomBarDock = "screenFooter" | "splitColumn2" | "splitColumn3";
+
+/**
+ * AI & search bar placement on authenticated home only. Welcome `/` stays `screenFooter`.
+ * Use {@link useResolvedPathname} + `useWindowDimensions().width` + `useAuth().isAuthenticated`.
+ */
+export function authenticatedHomeBottomBarDock(
+  pathname: string | null | undefined,
+  windowWidth: number,
+  isAuthenticated: boolean,
+): AuthenticatedHomeBottomBarDock {
+  const isHomePath = pathname === "/" || pathname === "" || pathname == null;
+  if (!isHomePath || !isAuthenticated) return "screenFooter";
+  const ah = layout.authenticatedHome;
+  if (windowWidth <= ah.firstBreakpoint) return "screenFooter";
+  if (windowWidth <= ah.secondBreakpoint) return "splitColumn2";
+  return "splitColumn3";
+}
+
 /**
  * Wide authenticated-home header menu: each column width ramps linearly with viewport width between
  * {@link layout.authenticatedHome.firstBreakpoint} / `wideMenuColumnWidthMin` and
