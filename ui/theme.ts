@@ -100,8 +100,12 @@ const authenticatedHomeFirstBreakpointPx = 724;
 /** Authenticated home: viewport width (px) where a third split column appears (`width > secondBreakpoint`). */
 const authenticatedHomeSecondBreakpointPx = 1280;
 
+/** Horizontal inset from viewport or column inner edge to main content (not divider hit strips). */
+const contentSideInsetPx = 15;
+
 export const layout = {
   maxContentWidth: 600,
+  contentSideInsetPx,
   /**
    * Authenticated home (`/` signed-in): padding inside the root scroll column (same outer scroll as welcome).
    * Central place to tune per breakpoint/platform later (e.g. `Platform.select` or responsive hook).
@@ -109,8 +113,10 @@ export const layout = {
   authenticatedHome: {
     contentInsetTop: 22,
     contentInsetBottom: 22,
-    /** Horizontal inset for authenticated-home body (and header row content via {@link HomeAuthenticatedHeaderRow}); not applied to full-bleed header divider. */
-    contentInsetHorizontal: 15,
+    /**
+     * Horizontal inset for header row and padded bodies. Same value as root `layout.contentSideInsetPx`; unrelated to split-pane divider hit width.
+     */
+    contentInsetHorizontal: contentSideInsetPx,
     /**
      * Outer `marginBottom` (px) on the authenticated-home header wrapper in
      * {@link HomeAuthenticatedHeaderRow}: vertical gap between the **bottom of the whole header block**
@@ -175,7 +181,10 @@ export const layout = {
     splitPaneMinThirdColumnPx: 360,
     /** Three-column body: initial width (px) of the third column; user adjusts via the second divider. */
     splitPaneDefaultThirdColumnPx: 360,
-    /** Two-column body: draggable divider total hit width (px); `splitPaneDividerStrokePx` stroke centered inside. */
+    /**
+     * Split-pane: draggable divider total hit width (px). Strip is centered on the column seam (overlapping padding);
+     * `splitPaneDividerStrokePx` stroke is inset inside the strip — does not add flex width between columns.
+     */
     splitPaneDividerHitWidthPx: 12,
     /** Two-column body: vertical split line width (px). Kept separate from horizontal `headerDividerHeight` to avoid conflating axes. */
     splitPaneDividerStrokePx: 1,
@@ -197,7 +206,7 @@ export const layout = {
     applyIconBottom: 25,
     maxLinesBeforeScroll: 7,
     maxBarHeight: 190,
-    horizontalPadding: 15,
+    horizontalPadding: contentSideInsetPx,
     /** Custom 1px scroll-thumb columns (main web column + bottom bar); separate from `horizontalPadding`. */
     scrollbarRightInsetPx: 5,
   },

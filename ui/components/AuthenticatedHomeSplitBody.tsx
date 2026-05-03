@@ -13,49 +13,44 @@ import { layout, useColors } from "../theme";
 const AH = layout.authenticatedHome;
 const HIT = AH.splitPaneDividerHitWidthPx;
 
-/** Left offset of the 1px stroke inside a divider hit strip. */
+/** Left offset of the 1px stroke inside a divider hit strip (strip is centered on the column seam). */
 const SPLIT_PANE_LINE_LEFT_IN_HIT = Math.max(0, Math.floor((HIT - AH.splitPaneDividerStrokePx) / 2));
+
+/** Center `HIT`-wide grab strip on the seam so flex columns abut; stroke stays {@link SPLIT_PANE_LINE_LEFT_IN_HIT} from strip left. */
+const SPLIT_PANE_HIT_LEFT_OF_SEAM = Math.floor(HIT / 2);
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
 function maxLeftDual(rw: number): number {
-  return Math.min(AH.splitPaneMaxFirstColumnPx, rw - HIT - AH.splitPaneMinSecondColumnPx);
+  return Math.min(AH.splitPaneMaxFirstColumnPx, rw - AH.splitPaneMinSecondColumnPx);
 }
 
-/** First-column cap when three columns: reserve min middle + both dividers + current third width. */
+/** First-column cap when three columns: reserve min middle + current third width (dividers overlay, no flex width). */
 function maxLeftTriple(rw: number, thirdW: number): number {
-  return Math.min(
-    AH.splitPaneMaxFirstColumnPx,
-    rw - HIT - AH.splitPaneMinSecondColumnPx - HIT - thirdW,
-  );
+  return Math.min(AH.splitPaneMaxFirstColumnPx, rw - AH.splitPaneMinSecondColumnPx - thirdW);
 }
 
-/** Third-column cap: remaining space after first column, two dividers, and minimum middle. */
+/** Third-column cap: remaining width for third after first column + minimum middle. */
 function maxThirdPane(rw: number, leftW: number): number {
-  return rw - leftW - 2 * HIT - AH.splitPaneMinSecondColumnPx;
+  return rw - leftW - AH.splitPaneMinSecondColumnPx;
 }
 
 function snapLeftPaneToDeviceSeam(leftPane: number, dpr: number, lo: number, hi: number): number {
   if (Platform.OS === "web") {
-    const seam = leftPane + SPLIT_PANE_LINE_LEFT_IN_HIT;
-    const seamSnapped = Math.round(seam * dpr) / dpr;
-    const next = Math.round(seamSnapped - SPLIT_PANE_LINE_LEFT_IN_HIT);
-    return clamp(next, lo, hi);
+    const seamSnapped = Math.round(leftPane * dpr) / dpr;
+    return clamp(seamSnapped, lo, hi);
   }
   return clamp(PixelRatio.roundToNearestPixel(leftPane), lo, hi);
 }
 
-/**
- * Snap third-column width so the seam before it (second divider stroke) sits on device pixels.
- * Stroke x from row left: `rw - HIT - thirdPane + SPLIT_PANE_LINE_LEFT_IN_HIT`.
- */
+/** Snap third-column width so the seam before it (x = rw - thirdPane) sits on device pixels. */
 function snapThirdPaneToDeviceSeam(thirdPane: number, rw: number, dpr: number, lo: number, hi: number): number {
   if (Platform.OS === "web") {
-    const seam = rw - HIT - thirdPane + SPLIT_PANE_LINE_LEFT_IN_HIT;
+    const seam = rw - thirdPane;
     const seamSnapped = Math.round(seam * dpr) / dpr;
-    const next = Math.round(rw - HIT + SPLIT_PANE_LINE_LEFT_IN_HIT - seamSnapped);
+    const next = rw - seamSnapped;
     return clamp(next, lo, hi);
   }
   return clamp(PixelRatio.roundToNearestPixel(thirdPane), lo, hi);
@@ -80,6 +75,9 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
   const [rowWidth, setRowWidth] = useState(0);
   const [leftPanePx, setLeftPanePx] = useState(AH.splitPaneDefaultFirstColumnPx);
   const [thirdPanePx, setThirdPanePx] = useState(AH.splitPaneDefaultThirdColumnPx);
+  /** 0 = none; split-pane divider index for hover (web) / drag highlight. */
+  const [splitDividerHovered, setSplitDividerHovered] = useState<0 | 1 | 2>(0);
+  const [splitDividerDragging, setSplitDividerDragging] = useState<0 | 1 | 2>(0);
 
   const isWideRef = useRef(false);
   const isTripleRef = useRef(false);
@@ -121,6 +119,12 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
   const isTriple = effectiveWidth > AH.secondBreakpoint;
   isWideRef.current = isWide;
   isTripleRef.current = isTriple;
+
+  useEffect(() => {
+    if (isWide) return;
+    setSplitDividerHovered(0);
+    setSplitDividerDragging(0);
+  }, [isWide]);
 
   useEffect(() => {
     if (!rowWidth || !isWide) return;
@@ -216,6 +220,7 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
       dpr,
       input: inputKind,
     });
+    setSplitDividerDragging(divider);
   }, []);
 
   const moveDragByDx = useCallback((dx: number, vx: number) => {
@@ -256,7 +261,7 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
           capLeftPx: cap,
           rowWidthPx: rw,
           dpr,
-          seamCssPx: next + SPLIT_PANE_LINE_LEFT_IN_HIT,
+          seamCssPx: next,
           clampedToMin: next <= lo && raw < lo,
           clampedToMax: next >= cap && raw > cap,
         });
@@ -277,7 +282,7 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
       const key = `${divider}|${dx.toFixed(1)}|${raw.toFixed(1)}|${next}`;
       if (key !== lastLoggedMoveKeyRef.current) {
         lastLoggedMoveKeyRef.current = key;
-        const seamCssPx = rw - HIT - next + SPLIT_PANE_LINE_LEFT_IN_HIT;
+        const seamCssPx = rw - next;
         logPageDisplay("home_split_pane_drag", {
           phase: "move",
           divider: 2,
@@ -305,63 +310,67 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
       totalVx: number,
       inputKind: "pointer" | "pan_responder",
     ) => {
-      const rw = rowWidthRef.current;
-      const divider = activeDividerRef.current;
-      const dpr = dprRef.current;
-      const triple = isTripleRef.current;
+      try {
+        const rw = rowWidthRef.current;
+        const divider = activeDividerRef.current;
+        const dpr = dprRef.current;
+        const triple = isTripleRef.current;
 
-      if (divider === 1) {
-        const cap =
-          triple && rw > 0
-            ? maxLeftTriple(rw, thirdPaneRef.current)
-            : rw > 0
-              ? maxLeftDual(rw)
-              : 0;
-        const lo = AH.splitPaneMinFirstColumnPx;
-        const before = leftPaneRef.current;
-        const snapped =
-          rw && cap >= lo ? snapLeftPaneToDeviceSeam(before, dpr, lo, cap) : before;
-        if (snapped !== before) {
-          leftPaneRef.current = snapped;
-          setLeftPanePx(snapped);
+        if (divider === 1) {
+          const cap =
+            triple && rw > 0
+              ? maxLeftTriple(rw, thirdPaneRef.current)
+              : rw > 0
+                ? maxLeftDual(rw)
+                : 0;
+          const lo = AH.splitPaneMinFirstColumnPx;
+          const before = leftPaneRef.current;
+          const snapped =
+            rw && cap >= lo ? snapLeftPaneToDeviceSeam(before, dpr, lo, cap) : before;
+          if (snapped !== before) {
+            leftPaneRef.current = snapped;
+            setLeftPanePx(snapped);
+          }
+          logPageDisplay("home_split_pane_drag", {
+            phase,
+            divider: 1,
+            finalLeftPx: snapped,
+            snapDeltaPx: snapped - before,
+            seamCssPx: snapped,
+            totalDx,
+            totalVx,
+            rowWidthPx: rw,
+            capLeftPx: cap,
+            dpr,
+            input: inputKind,
+          });
+        } else if (triple && rw > 0) {
+          const lo = AH.splitPaneMinThirdColumnPx;
+          const cap = maxThirdPane(rw, leftPaneRef.current);
+          const before = thirdPaneRef.current;
+          const snapped =
+            cap >= lo ? snapThirdPaneToDeviceSeam(before, rw, dpr, lo, cap) : before;
+          if (snapped !== before) {
+            thirdPaneRef.current = snapped;
+            setThirdPanePx(snapped);
+          }
+          logPageDisplay("home_split_pane_drag", {
+            phase,
+            divider: 2,
+            finalThirdPx: snapped,
+            snapDeltaPx: snapped - before,
+            seamCssPx: rw - snapped,
+            totalDx,
+            totalVx,
+            rowWidthPx: rw,
+            capThirdPx: cap,
+            leftPanePx: leftPaneRef.current,
+            dpr,
+            input: inputKind,
+          });
         }
-        logPageDisplay("home_split_pane_drag", {
-          phase,
-          divider: 1,
-          finalLeftPx: snapped,
-          snapDeltaPx: snapped - before,
-          seamCssPx: snapped + SPLIT_PANE_LINE_LEFT_IN_HIT,
-          totalDx,
-          totalVx,
-          rowWidthPx: rw,
-          capLeftPx: cap,
-          dpr,
-          input: inputKind,
-        });
-      } else if (triple && rw > 0) {
-        const lo = AH.splitPaneMinThirdColumnPx;
-        const cap = maxThirdPane(rw, leftPaneRef.current);
-        const before = thirdPaneRef.current;
-        const snapped =
-          cap >= lo ? snapThirdPaneToDeviceSeam(before, rw, dpr, lo, cap) : before;
-        if (snapped !== before) {
-          thirdPaneRef.current = snapped;
-          setThirdPanePx(snapped);
-        }
-        logPageDisplay("home_split_pane_drag", {
-          phase,
-          divider: 2,
-          finalThirdPx: snapped,
-          snapDeltaPx: snapped - before,
-          seamCssPx: rw - HIT - snapped + SPLIT_PANE_LINE_LEFT_IN_HIT,
-          totalDx,
-          totalVx,
-          rowWidthPx: rw,
-          capThirdPx: cap,
-          leftPanePx: leftPaneRef.current,
-          dpr,
-          input: inputKind,
-        });
+      } finally {
+        setSplitDividerDragging(0);
       }
     },
     [],
@@ -471,6 +480,8 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
         onPointerUp: (e: { nativeEvent: { clientX: number } }) => void;
         onPointerCancel: (e: { nativeEvent: { clientX: number } }) => void;
         onLostPointerCapture: () => void;
+        onPointerEnter: () => void;
+        onPointerLeave: () => void;
       }
     | null =>
     Platform.OS === "web"
@@ -480,6 +491,12 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
           onPointerUp: handleWebPointerUp,
           onPointerCancel: handleWebPointerCancel,
           onLostPointerCapture: handleWebLostPointerCapture,
+          onPointerEnter: () => {
+            setSplitDividerHovered(divider);
+          },
+          onPointerLeave: () => {
+            setSplitDividerHovered((h) => (h === divider ? 0 : h));
+          },
         }
       : null;
 
@@ -534,24 +551,31 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
   const stroke = AH.splitPaneDividerStrokePx;
   const lineLeft = SPLIT_PANE_LINE_LEFT_IN_HIT;
 
-  const dividerHitStyle: ViewStyle[] = [
-    {
-      width: HIT,
-      alignSelf: "stretch",
-      position: "relative" as const,
-    },
-    Platform.OS === "web" && isWide
-      ? ({
-          cursor: "col-resize",
-          touchAction: "none",
-          overflow: "visible",
-          userSelect: "none",
-        } as unknown as ViewStyle)
-      : {},
-  ];
+  function overlayDividerHitStyle(leftPx: number): ViewStyle[] {
+    return [
+      {
+        position: "absolute" as const,
+        left: leftPx,
+        width: HIT,
+        top: 0,
+        bottom: 0,
+        zIndex: 1,
+      },
+      Platform.OS === "web" && isWide
+        ? ({
+            cursor: "col-resize",
+            touchAction: "none",
+            overflow: "visible",
+            userSelect: "none",
+          } as unknown as ViewStyle)
+        : {},
+    ];
+  }
 
-  const dividerLineStyle: ViewStyle =
-    Platform.OS === "web"
+  const dividerLineStyleFor = (which: 1 | 2): ViewStyle => {
+    const active = splitDividerHovered === which || splitDividerDragging === which;
+    const lineColor = active ? colors.primary : colors.highlight;
+    return Platform.OS === "web"
       ? {
           position: "absolute",
           left: lineLeft,
@@ -559,7 +583,7 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
           bottom: 0,
           width: 0,
           borderLeftWidth: stroke,
-          borderLeftColor: colors.highlight,
+          borderLeftColor: lineColor,
           borderStyle: "solid",
           backgroundColor: "transparent",
         }
@@ -569,11 +593,16 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
           top: 0,
           bottom: 0,
           width: stroke,
-          backgroundColor: colors.highlight,
+          backgroundColor: lineColor,
         };
+  };
 
-  const inset = AH.contentInsetHorizontal;
+  /** Global main content horizontal inset; split-pane columns use this for padding (divider hit width is separate). */
+  const inset = layout.contentSideInsetPx;
   const third = farRight ?? <View />;
+  const splitRowW = rowWidth > 0 ? rowWidth : windowWidth;
+  const firstDividerLeft = leftPanePx - SPLIT_PANE_HIT_LEFT_OF_SEAM;
+  const secondDividerLeft = isTriple ? splitRowW - thirdPanePx - SPLIT_PANE_HIT_LEFT_OF_SEAM : 0;
 
   return (
     <View
@@ -602,6 +631,7 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
             flexDirection: "row",
             alignItems: "stretch",
             marginBottom: -bottomInset,
+            position: "relative",
           }}
         >
           <View
@@ -613,13 +643,6 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
             }}
           >
             {left}
-          </View>
-          <View
-            style={dividerHitStyle}
-            {...(webPointerProps(1) ?? {})}
-            {...(Platform.OS === "web" ? {} : panResponder1.panHandlers)}
-          >
-            <View pointerEvents="none" style={dividerLineStyle} />
           </View>
           <View
             style={{
@@ -637,25 +660,32 @@ export function AuthenticatedHomeSplitBody({ left, right, farRight }: Props) {
             {right}
           </View>
           {isTriple ? (
-            <>
-              <View
-                style={dividerHitStyle}
-                {...(webPointerProps(2) ?? {})}
-                {...(Platform.OS === "web" ? {} : panResponder2.panHandlers)}
-              >
-                <View pointerEvents="none" style={dividerLineStyle} />
-              </View>
-              <View
-                style={{
-                  width: thirdPanePx,
-                  flexShrink: 0,
-                  paddingHorizontal: inset,
-                  paddingBottom: bottomInset,
-                }}
-              >
-                {third}
-              </View>
-            </>
+            <View
+              style={{
+                width: thirdPanePx,
+                flexShrink: 0,
+                paddingHorizontal: inset,
+                paddingBottom: bottomInset,
+              }}
+            >
+              {third}
+            </View>
+          ) : null}
+          <View
+            style={overlayDividerHitStyle(firstDividerLeft)}
+            {...(webPointerProps(1) ?? {})}
+            {...(Platform.OS === "web" ? {} : panResponder1.panHandlers)}
+          >
+            <View pointerEvents="none" style={dividerLineStyleFor(1)} />
+          </View>
+          {isTriple ? (
+            <View
+              style={overlayDividerHitStyle(secondDividerLeft)}
+              {...(webPointerProps(2) ?? {})}
+              {...(Platform.OS === "web" ? {} : panResponder2.panHandlers)}
+            >
+              <View pointerEvents="none" style={dividerLineStyleFor(2)} />
+            </View>
           ) : null}
         </View>
       )}

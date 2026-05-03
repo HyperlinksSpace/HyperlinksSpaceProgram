@@ -5,13 +5,13 @@
 import { View, Pressable, StyleSheet, Platform, useWindowDimensions } from "react-native";
 import { useMemo } from "react";
 import { useRouter } from "expo-router";
+import { layout } from "../theme";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 
 const LOGO_HEIGHT_DESKTOP = 32;
 const LOGO_HEIGHT_MOBILE = 24;
 const HEADER_NARROW_MAX_WIDTH = 480;
 const BOTTOM_PADDING = 10;
-const HORIZONTAL_PADDING = 15;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
 
 export function GlobalLogoBarFallback() {
@@ -34,7 +34,7 @@ export function GlobalLogoBarFallback() {
           {
             paddingTop: BROWSER_FALLBACK_TOP_PADDING,
             paddingBottom: BOTTOM_PADDING,
-            paddingHorizontal: HORIZONTAL_PADDING,
+            paddingHorizontal: layout.contentSideInsetPx,
           },
         ]}
       >

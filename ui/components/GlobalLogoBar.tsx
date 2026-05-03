@@ -17,7 +17,7 @@ import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
-import { dark, light, useColors } from "../theme";
+import { dark, layout, light, useColors } from "../theme";
 import { useAuth } from "../../auth/AuthContext";
 import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
@@ -30,8 +30,6 @@ const MOBILE_LOGO_SIZE = 24;
 const WORDMARK_ASPECT = 104 / 40;
 const WELCOME_VERTICAL_INDENT = 15;
 const BOTTOM_PADDING = 10;
-const HORIZONTAL_PADDING = 15;
-const MARKETING_HORIZONTAL_PADDING = 16;
 const BROWSER_FALLBACK_TOP_PADDING = 30;
 const ABOUT_URL = "https://landing.app.hyperlinks.space/";
 
@@ -116,7 +114,7 @@ function WelcomeMarketingBarContent({
         {
           paddingTop: contentPaddingTop,
           paddingBottom: contentPaddingBottom,
-          paddingHorizontal: MARKETING_HORIZONTAL_PADDING,
+          paddingHorizontal: layout.contentSideInsetPx,
           backgroundColor,
           borderTopColor: borderBottomColor,
           borderBottomColor,
@@ -303,9 +301,7 @@ export function GlobalLogoBar() {
           {
             paddingTop: topPadGlyph,
             paddingBottom: belowLogoPad,
-            paddingHorizontal: isDesktopTmaImmersiveWelcome
-              ? MARKETING_HORIZONTAL_PADDING
-              : HORIZONTAL_PADDING,
+            paddingHorizontal: layout.contentSideInsetPx,
           },
         ]}
       >

@@ -2,11 +2,10 @@ import { View, Text, useWindowDimensions, StyleSheet, Platform } from "react-nat
 import { useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
-import { useColors } from "../theme";
+import { layout, useColors } from "../theme";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
-const H_PADDING = 20;
 const MAX_TEXT_WIDTH = 360;
 const WIDE_LAYOUT_MIN_WIDTH = 480;
 const GAP_ABOVE_AUTH_BUTTONS = 20;
@@ -67,7 +66,7 @@ export function WelcomeContent() {
       <View
         style={[
           styles.content,
-          { paddingHorizontal: H_PADDING, paddingTop: CONTENT_GAP_BELOW_HEADER },
+          { paddingHorizontal: layout.contentSideInsetPx, paddingTop: CONTENT_GAP_BELOW_HEADER },
         ]}
       >
         <View style={styles.headingBlock}>

@@ -85,9 +85,8 @@ function setHomeBootstrap(patch: Partial<WalletHomeBootstrap>) {
  * Body children are full-bleed horizontally — use `AuthenticatedHomePaddedBody` or `AuthenticatedHomeSplitBody` for horizontal insets on content.
  */
 function AuthenticatedHomePaddedBody({ children }: { children: ReactNode }) {
-  const p = layout.authenticatedHome;
   return (
-    <View style={{ flex: 1, width: "100%", paddingHorizontal: p.contentInsetHorizontal }}>{children}</View>
+    <View style={{ flex: 1, width: "100%", paddingHorizontal: layout.contentSideInsetPx }}>{children}</View>
   );
 }
 

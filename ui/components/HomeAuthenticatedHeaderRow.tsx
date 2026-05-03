@@ -226,7 +226,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
         });
       }}
     >
-      <View style={{ width: "100%", paddingHorizontal: AH.contentInsetHorizontal }}>
+      <View style={{ width: "100%", paddingHorizontal: layout.contentSideInsetPx }}>
         <View
           style={{
             flexDirection: "row",
