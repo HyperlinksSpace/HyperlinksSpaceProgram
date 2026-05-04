@@ -1,4 +1,4 @@
-
+Shield settings vs. account settings.
 Storage way
 Header configurations and visibility
 Slide to email field

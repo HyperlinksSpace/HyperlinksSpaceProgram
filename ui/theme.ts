@@ -330,8 +330,8 @@ export const typographySansSemibold: TextStyle = {
 export const homeWalletAddressHeaderText: TextStyle = {
   fontFamily: WEB_UI_MONO_STACK,
   fontSize: 15,
-  /** ~24px line box pairs with 30px header icons; 30px looked visually low with Noto Mono. */
-  lineHeight: 24,
+  /** 30px line box matches {@link layout.authenticatedHome.headerIconDisplaySize}; centers single-line mono with address row. */
+  lineHeight: 30,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,
@@ -341,7 +341,7 @@ export const homeWalletAddressHeaderText: TextStyle = {
 /** Balance line under wallet address on authenticated home header (placeholder “1$”). */
 export const homeWalletBalanceHeaderText: TextStyle = {
   fontSize: 30,
-  lineHeight: 20,
+  lineHeight: 30,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,
@@ -351,7 +351,7 @@ export const homeWalletBalanceHeaderText: TextStyle = {
 /** Profile / display name under header icons on authenticated home. */
 export const homeHeaderProfileNameText: TextStyle = {
   fontSize: 15,
-  lineHeight: 20,
+  lineHeight: 30,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,
