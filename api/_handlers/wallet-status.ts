@@ -1,3 +1,4 @@
+import { deliverWelcomeFeedIfNeeded } from '../../database/feed.js';
 import { getDefaultWalletByUsername } from '../../database/wallets.js';
 import { upsertUserFromTma } from '../../database/users.js';
 import { authByInitData } from '../wallet/_auth.js';
@@ -44,6 +45,10 @@ async function handler(request: Request): Promise<Response> {
       telegramUsername: auth.telegramUsername,
       locale: auth.locale,
     });
+    await deliverWelcomeFeedIfNeeded({
+      telegramUsername: auth.telegramUsername,
+      localePreferred: auth.locale,
+    }).catch(() => {});
 
     const wallet = await getDefaultWalletByUsername(auth.telegramUsername);
     if (!wallet) {

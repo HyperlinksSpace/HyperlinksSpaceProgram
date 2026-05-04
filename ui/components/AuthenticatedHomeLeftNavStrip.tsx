@@ -84,14 +84,27 @@ function horizontalThumbFullTrack(
   return { thumbW, thumbLeft };
 }
 
-export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors }) {
+export function AuthenticatedHomeLeftNavStrip({
+  colors,
+  selectedIndex: selectedIndexProp,
+  onSelectIndex,
+}: {
+  colors: ThemeColors;
+  /** Controlled mode: parent owns which tab is highlighted. */
+  selectedIndex?: number;
+  onSelectIndex?: (index: number) => void;
+}) {
   const { width: windowWidth } = useWindowDimensions();
   /** Match header breakpoint: indent only in compact single-column regime (`viewport <= firstBreakpoint`). */
   const stripMarginTop = windowWidth > AH.firstBreakpoint ? 0 : AH.leftNavStripMarginTopPx;
+  /** Bottom hairline under labels appears only above `firstBreakpoint` (narrow = no rule). */
+  const showBottomMenuRule = windowWidth > AH.firstBreakpoint;
 
   const fadeGradientIdRight = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const fadeGradientIdLeft = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [internalIndex, setInternalIndex] = useState(0);
+  const isControlled = selectedIndexProp !== undefined;
+  const activeIndex = isControlled ? (selectedIndexProp as number) : internalIndex;
   const [scrollX, setScrollX] = useState(0);
   const [layoutW, setLayoutW] = useState(0);
   const [contentW, setContentW] = useState(0);
@@ -101,7 +114,9 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
   /** Edge fades; matches `contentSideInsetPx` (15px) in theme. */
   const fadeW = AH.leftNavStripRightFadeWidthPx;
   const scrollbarGapAboveBorder = AH.leftNavStripScrollbarAboveBorderPx;
-  const thumbBottomSnapped = snapToPixelGrid(lineT + scrollbarGapAboveBorder);
+  const thumbBottomSnapped = snapToPixelGrid(
+    (showBottomMenuRule ? lineT : 0) + scrollbarGapAboveBorder,
+  );
 
   const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
     setOuterW(Math.round(e.nativeEvent.layout.width));
@@ -228,7 +243,11 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
             accessibilityState={{ selected: index === activeIndex }}
             accessibilityLabel={label}
             onPress={() => {
-              setActiveIndex(index);
+              if (isControlled) {
+                onSelectIndex?.(index);
+              } else {
+                setInternalIndex(index);
+              }
             }}
             style={{
               marginRight: index < NAV_LABELS.length - 1 ? ITEM_GAP_PX : 0,
@@ -292,7 +311,9 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
         </View>
       ) : null}
 
-      <View pointerEvents="none" collapsable={false} style={[borderLineStyle, lineAxisLock]} />
+      {showBottomMenuRule ? (
+        <View pointerEvents="none" collapsable={false} style={[borderLineStyle, lineAxisLock]} />
+      ) : null}
     </View>
   );
 }

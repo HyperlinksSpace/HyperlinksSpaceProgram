@@ -34,6 +34,10 @@ async function runSchemaMigrations() {
     );
   `;
 
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_welcome_bundle_delivered_at TIMESTAMPTZ;
+  `;
+
   // wallets table
   await sql`
     CREATE TABLE IF NOT EXISTS wallets (
@@ -298,6 +302,13 @@ async function runSchemaMigrations() {
   await sql`
     CREATE INDEX IF NOT EXISTS idx_feed_items_default_message
       ON feed_items(default_message_id)
+      WHERE default_message_id IS NOT NULL;
+
+  `;
+
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS uniq_feed_items_user_default_message
+      ON feed_items(telegram_username, default_message_id)
       WHERE default_message_id IS NOT NULL;
 
   `;

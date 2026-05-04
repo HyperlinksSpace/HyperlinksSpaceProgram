@@ -42,7 +42,7 @@ $json$::jsonb,
   "layout_variant": "compact",
   "payload": {
     "title": "You are likely a creator",
-    "subtitle": "Press to access creators p...",
+    "subtitle": "Press to access creators page",
     "icon": { "type": "svg_url", "url": "/welcome_messages/creator.svg" }
   }
 }

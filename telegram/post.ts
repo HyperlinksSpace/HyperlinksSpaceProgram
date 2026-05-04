@@ -4,9 +4,14 @@
  */
 import crypto from 'crypto';
 import {
+  deliverWelcomeFeedIfNeeded,
+  listFeedItemsForUser,
+} from '../database/feed.js';
+import {
   normalizeUsername,
   upsertUserFromTma,
 } from '../database/users.js';
+import { ensureSchema } from '../database/start.js';
 import { getDefaultWalletByUsername } from '../database/wallets.js';
 
 const LOG_TAG = '[api/telegram]';
@@ -22,6 +27,53 @@ function logErr(msg: string, err: unknown) {
     err instanceof Error ? err.message : err,
   );
   if (err instanceof Error && err.stack) console.error(err.stack);
+}
+
+/** Same orchestration as `/api/feed`: schema → deliver missing catalogue rows (`sent_at = NOW()`) → list. */
+async function bootstrapFeedPayloadForMiniApp(opts: {
+  telegramUsername: string;
+  locale: string | null;
+  startMs: number;
+}): Promise<Awaited<ReturnType<typeof listFeedItemsForUser>>> {
+  const fb0 = Date.now();
+  try {
+    await ensureSchema();
+  } catch (e) {
+    logErr('feed_schema_failed', e);
+    return [];
+  }
+
+  let deliverDiag: Awaited<ReturnType<typeof deliverWelcomeFeedIfNeeded>> | null =
+    null;
+  try {
+    deliverDiag = await deliverWelcomeFeedIfNeeded({
+      telegramUsername: opts.telegramUsername,
+      localePreferred: opts.locale,
+    });
+  } catch (e) {
+    logErr('feed_deliver_catch_soft', e);
+  }
+  log('feed_deliver_done', {
+    feedMsInner: Date.now() - fb0,
+    elapsedMs: Date.now() - opts.startMs,
+    deliverExplicitCatalogSize: deliverDiag?.explicitCatalogSize ?? null,
+    deliverExtraCatalogSize: deliverDiag?.extraCatalogSize ?? null,
+    deliverWelcomeRowsResolved: deliverDiag?.welcomeRowsResolved ?? null,
+    deliverLocale: deliverDiag?.locale ?? null,
+  });
+
+  try {
+    const items = await listFeedItemsForUser(opts.telegramUsername, 80);
+    log('feed_list_done', {
+      itemCount: items.length,
+      feedMsTotal: Date.now() - fb0,
+      elapsedMs: Date.now() - opts.startMs,
+    });
+    return items;
+  } catch (e) {
+    logErr('feed_list_failed', e);
+    return [];
+  }
 }
 
 type TelegramUserPayload = {
@@ -310,10 +362,17 @@ export async function handlePost(
       hasWallet: !!wallet,
     });
 
+    const feed_items = await bootstrapFeedPayloadForMiniApp({
+      telegramUsername,
+      locale,
+      startMs,
+    });
+
     if (wallet) {
       log('success', {
         telegramUsername,
         hasWallet: true,
+        feedItems: feed_items.length,
         totalMs: Date.now() - startMs,
       });
       return new Response(
@@ -331,6 +390,7 @@ export async function handlePost(
             is_default: wallet.is_default,
             source: wallet.source,
           },
+          feed_items,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       );
@@ -339,6 +399,7 @@ export async function handlePost(
     log('success', {
       telegramUsername,
       hasWallet: false,
+      feedItems: feed_items.length,
       totalMs: Date.now() - startMs,
     });
     return new Response(
@@ -347,6 +408,7 @@ export async function handlePost(
         telegram_username: telegramUsername,
         has_wallet: false,
         wallet_required: true,
+        feed_items,
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     );

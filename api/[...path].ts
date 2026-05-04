@@ -13,6 +13,7 @@
 import aiHandler from './_handlers/ai.js';
 import blockchainHandler from './_handlers/blockchain.js';
 import botHandler from './_handlers/bot.js';
+import feedHandler from './_handlers/feed.js';
 import pingHandler from './_handlers/ping.js';
 import releasesHandler from './_handlers/releases.js';
 import telegramHandler from './_handlers/telegram.js';
@@ -34,6 +35,7 @@ type ApiHandler = (
 const ROUTES: Record<string, ApiHandler> = {
   ping: pingHandler as ApiHandler,
   bot: botHandler as ApiHandler,
+  feed: feedHandler as ApiHandler,
   ai: aiHandler as ApiHandler,
   blockchain: blockchainHandler as ApiHandler,
   telegram: telegramHandler as ApiHandler,

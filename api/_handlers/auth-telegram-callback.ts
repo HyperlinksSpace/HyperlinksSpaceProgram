@@ -12,6 +12,7 @@ import {
   upsertTelegramIdentity,
 } from "../../database/telegramAuth.js";
 import { normalizeUsername, upsertUserFromTma } from "../../database/users.js";
+import { deliverWelcomeFeedIfNeeded } from "../../database/feed.js";
 import {
   getEphemeralAttempt,
   setEphemeralAttemptStatus,
@@ -298,6 +299,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       telegramUsername,
       locale: null,
     });
+    await deliverWelcomeFeedIfNeeded({ telegramUsername, localePreferred: null }).catch(() => {});
     await upsertTelegramIdentity({
       providerSubject: claims.sub,
       telegramUsername,

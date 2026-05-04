@@ -12,6 +12,7 @@ import { ActivityIndicator, Button, Text, View, useWindowDimensions } from "reac
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
+import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
@@ -507,6 +508,7 @@ function markWalletSecretStoredOnServer(
 
 export function HomeAuthenticatedScreen() {
   const colors = useColors();
+  const [homeNavIndex, setHomeNavIndex] = useState(0);
   const {
     status,
     telegramUsername,
@@ -1215,8 +1217,13 @@ export function HomeAuthenticatedScreen() {
       <AuthenticatedHomeSplitBody
         left={
           <>
-            <AuthenticatedHomeLeftNavStrip colors={colors} />
+            <AuthenticatedHomeLeftNavStrip
+              colors={colors}
+              selectedIndex={homeNavIndex}
+              onSelectIndex={setHomeNavIndex}
+            />
             <View style={{ paddingHorizontal: layout.contentSideInsetPx, width: "100%", alignSelf: "stretch" }}>
+            {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} /> : null}
             {telegramUsername ? (
               <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
                 <Text

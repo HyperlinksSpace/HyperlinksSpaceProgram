@@ -202,6 +202,17 @@ export type TelegramWalletRow = {
   source: string | null;
 };
 
+/** Mirrors `/api/telegram` → `feed_items` (same shape as `/api/feed` → `items`). */
+export type TelegramFeedBootstrapRow = {
+  id: number;
+  sent_at: string | null;
+  source_type: string;
+  card_type: string;
+  layout_variant: string | null;
+  payload: unknown;
+  read_at: string | null;
+};
+
 export type TelegramContextValue = {
   status: TelegramStatus;
   telegramUsername: string | null;
@@ -237,6 +248,11 @@ export type TelegramContextValue = {
   layoutStartup: TelegramLayoutStartupSnapshot;
   /** On-screen debug (no console needed in TMA). */
   debug: TelegramDebugInfo;
+  /**
+   * Rows from the last successful `POST /api/telegram`: welcome delivery + list (real `sent_at`).
+   * Avoids relying on `/api/feed` completing before first paint during cold Mini App launches.
+   */
+  telegramBootstrapFeed: TelegramFeedBootstrapRow[] | null;
   /**
    * After successful POST /api/wallet/register, apply the returned `wallet` row so UI matches the
    * server without waiting for a full /api/telegram or local storage.
@@ -283,6 +299,7 @@ const defaultContext: TelegramContextValue = {
   startParam: null,
   layoutStartup: getEmptyTelegramLayoutStartupSnapshot(),
   debug: defaultDebug,
+  telegramBootstrapFeed: null,
   applyServerWalletAfterRegister: () => {},
 };
 
@@ -301,6 +318,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [initData, setInitData] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [debug, setDebug] = useState<TelegramDebugInfo>(defaultDebug);
+  const [telegramBootstrapFeed, setTelegramBootstrapFeed] = useState<
+    TelegramFeedBootstrapRow[] | null
+  >(null);
   const hasRegisteredRef = useRef(false);
   const browserSessionHydratedRef = useRef(false);
   const initPollCleanupRef = useRef<(() => void) | null>(null);
@@ -662,7 +682,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     setStatus("loading");
     ensureTelegramScript();
 
-    const API_TIMEOUT_MS = 15000;
+    const API_TIMEOUT_MS = 30000;
     const LOG_PREFIX = "[TMA register]";
 
     function registerWithBackend(initData: string) {
@@ -716,6 +736,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           setHasWallet(typeof json.has_wallet === "boolean" ? json.has_wallet : null);
           setWalletRequired(Boolean(json.wallet_required));
           setWallet(json?.wallet ?? null);
+          const fiRaw = (json as { feed_items?: unknown }).feed_items;
+          setTelegramBootstrapFeed(
+            Array.isArray(fiRaw) && fiRaw.length > 0 ? (fiRaw as TelegramFeedBootstrapRow[]) : null,
+          );
           setStatus("ok");
         })
         .catch((e) => {
@@ -932,6 +956,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     startParam: layoutStartup.startParam,
     layoutStartup,
     debug,
+    telegramBootstrapFeed,
     applyServerWalletAfterRegister,
   };
 
