@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
   type ViewStyle,
@@ -84,6 +85,10 @@ function horizontalThumbFullTrack(
 }
 
 export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors }) {
+  const { width: windowWidth } = useWindowDimensions();
+  /** Match header breakpoint: indent only in compact single-column regime (`viewport <= firstBreakpoint`). */
+  const stripMarginTop = windowWidth > AH.firstBreakpoint ? 0 : AH.leftNavStripMarginTopPx;
+
   const fadeGradientIdRight = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const fadeGradientIdLeft = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -188,6 +193,7 @@ export function AuthenticatedHomeLeftNavStrip({ colors }: { colors: ThemeColors 
       style={{
         width: "100%",
         alignSelf: "stretch",
+        marginTop: stripMarginTop,
         height: STRIP_HEIGHT_PX,
         paddingTop: STRIP_PADDING_PX,
         paddingBottom: STRIP_PADDING_PX,

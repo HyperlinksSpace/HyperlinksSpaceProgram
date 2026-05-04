@@ -172,7 +172,7 @@ export const layout = {
     /** Horizontal gap (px) between profile name and chevron on authenticated home header (`assets/header/right.svg`). */
     headerProfileChevronAfterNameGap: 10,
     /** Two-column body under header: default first column width (px) when `width > firstBreakpoint`. */
-    splitPaneDefaultFirstColumnPx: 320,
+    splitPaneDefaultFirstColumnPx: (364 + 15 + 30),
     /** Two-column body: minimum first column width (px) while dragging the divider. */
     splitPaneMinFirstColumnPx: 280,
     /** Two-column body: minimum width (px) kept for the second column. */
@@ -193,6 +193,11 @@ export const layout = {
      * so the layout stays consistent with the compact single-column regime.
      */
     splitPaneMaxFirstColumnPx: authenticatedHomeFirstBreakpointPx,
+    /**
+     * Left column text nav strip: vertical gap (px) below the authenticated header in **compact** layout only
+     * (`viewportWidth <= firstBreakpoint`). Wide layouts (`width > firstBreakpoint`) use 0 for this gap.
+     */
+    leftNavStripMarginTopPx: 10,
     /**
      * Left column top nav strip: gap (px) between the horizontal scroll thumb and the bottom rule (strip width).
      */
