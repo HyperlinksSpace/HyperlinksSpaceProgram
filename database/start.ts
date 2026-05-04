@@ -226,6 +226,104 @@ async function runSchemaMigrations() {
     CREATE INDEX IF NOT EXISTS idx_auth_sessions_exp
       ON auth_sessions(expires_at);
   `;
+
+  // Feed catalogue + per-user timeline + interaction events (see texts/feed-messages-architecture.md).
+  await sql`
+    CREATE TABLE IF NOT EXISTS feed_default_messages (
+      id                BIGSERIAL PRIMARY KEY,
+      key               TEXT NOT NULL,
+      locale            TEXT NOT NULL,
+      kind              TEXT NOT NULL,
+      message_variant   TEXT NOT NULL,
+      body              JSONB NOT NULL,
+      segment_rules     JSONB,
+      version           INTEGER NOT NULL DEFAULT 1,
+      active_from       TIMESTAMPTZ,
+      active_to         TIMESTAMPTZ,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_default_messages_key_locale
+      ON feed_default_messages(key, locale);
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_default_messages_active
+      ON feed_default_messages(kind, active_from, active_to);
+
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS feed_items (
+      id                         BIGSERIAL PRIMARY KEY,
+      telegram_username          TEXT NOT NULL REFERENCES users(telegram_username),
+      created_at                 TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      sent_at                    TIMESTAMPTZ,
+      source_type                TEXT NOT NULL,
+      card_type                  TEXT NOT NULL,
+      layout_variant             TEXT,
+      default_message_id         BIGINT REFERENCES feed_default_messages(id) ON DELETE SET NULL,
+      source_id                  TEXT,
+      payload                    JSONB NOT NULL,
+      read_at                    TIMESTAMPTZ,
+      dismissed_at               TIMESTAMPTZ,
+      cta                        JSONB,
+      feed_item_interactions     JSONB
+    );
+  `;
+
+  await sql`
+    ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS cta JSONB;
+
+  `;
+
+  await sql`
+    ALTER TABLE feed_items ADD COLUMN IF NOT EXISTS feed_item_interactions JSONB;
+
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_items_user_sent
+      ON feed_items(telegram_username, sent_at DESC NULLS LAST, created_at DESC);
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_items_user_created
+      ON feed_items(telegram_username, created_at DESC);
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_items_default_message
+      ON feed_items(default_message_id)
+      WHERE default_message_id IS NOT NULL;
+
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS feed_item_interactions (
+      id                  BIGSERIAL PRIMARY KEY,
+      feed_item_id        BIGINT NOT NULL REFERENCES feed_items(id) ON DELETE CASCADE,
+      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
+      event_type          TEXT NOT NULL,
+      event_payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_item_interactions_item
+      ON feed_item_interactions(feed_item_id, created_at);
+
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_feed_item_interactions_user
+      ON feed_item_interactions(telegram_username, created_at);
+
+  `;
 }
 
 let schemaInitPromise: Promise<void> | null = null;
