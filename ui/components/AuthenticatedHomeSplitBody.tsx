@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   PanResponder,
   PixelRatio,
@@ -9,6 +9,10 @@ import {
 } from "react-native";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, useColors } from "../theme";
+import {
+  AuthenticatedHomeSplitLayoutMetricsProvider,
+  type AuthenticatedHomeSplitLayoutMetrics,
+} from "./AuthenticatedHomeSplitLayoutMetricsContext";
 
 const AH = layout.authenticatedHome;
 const HIT = AH.splitPaneDividerHitWidthPx;
@@ -138,6 +142,19 @@ export function AuthenticatedHomeSplitBody({
   const isTriple = effectiveWidth > AH.secondBreakpoint;
   isWideRef.current = isWide;
   isTripleRef.current = isTriple;
+
+  const splitLayoutMetrics = useMemo((): AuthenticatedHomeSplitLayoutMetrics => {
+    const effectiveSplitWidthPx = effectiveWidth;
+    const columnCount: 1 | 2 | 3 = !isWide ? 1 : isTriple ? 3 : 2;
+    const measuredRow = rowWidth > 0 ? rowWidth : effectiveSplitWidthPx;
+    const firstColumnWidthPx = isWide ? leftPanePx : effectiveSplitWidthPx;
+    return {
+      splitRowWidthPx: measuredRow,
+      effectiveSplitWidthPx,
+      firstColumnWidthPx,
+      columnCount,
+    };
+  }, [effectiveWidth, isWide, isTriple, rowWidth, leftPanePx]);
 
   useEffect(() => {
     if (isWide) return;
@@ -704,48 +721,50 @@ export function AuthenticatedHomeSplitBody({
         });
       }}
     >
-      {!isWide ? (
-        <View style={{ flex: 1, width: "100%" }}>{left}</View>
-      ) : (
-        <View
-          style={{
-            flex: 1,
-            width: "100%",
-            flexDirection: "row",
-            alignItems: "stretch",
-            marginBottom: -bottomInset,
-            position: "relative",
-          }}
-        >
+      <AuthenticatedHomeSplitLayoutMetricsProvider value={splitLayoutMetrics}>
+        {!isWide ? (
+          <View style={{ flex: 1, width: "100%" }}>{left}</View>
+        ) : (
           <View
             style={{
-              width: leftPanePx,
-              flexShrink: 0,
-              paddingBottom: bottomInset,
+              flex: 1,
+              width: "100%",
+              flexDirection: "row",
+              alignItems: "stretch",
+              marginBottom: -bottomInset,
+              position: "relative",
             }}
           >
-            {left}
-          </View>
-          {middleColumn}
-          {thirdColumn}
-          <View
-            style={overlayDividerHitStyle(firstDividerLeft)}
-            {...(webPointerProps(1) ?? {})}
-            {...(Platform.OS === "web" ? {} : panResponder1.panHandlers)}
-          >
-            <View pointerEvents="none" style={dividerLineStyleFor(1)} />
-          </View>
-          {isTriple ? (
             <View
-              style={overlayDividerHitStyle(secondDividerLeft)}
-              {...(webPointerProps(2) ?? {})}
-              {...(Platform.OS === "web" ? {} : panResponder2.panHandlers)}
+              style={{
+                width: leftPanePx,
+                flexShrink: 0,
+                paddingBottom: bottomInset,
+              }}
             >
-              <View pointerEvents="none" style={dividerLineStyleFor(2)} />
+              {left}
             </View>
-          ) : null}
-        </View>
-      )}
+            {middleColumn}
+            {thirdColumn}
+            <View
+              style={overlayDividerHitStyle(firstDividerLeft)}
+              {...(webPointerProps(1) ?? {})}
+              {...(Platform.OS === "web" ? {} : panResponder1.panHandlers)}
+            >
+              <View pointerEvents="none" style={dividerLineStyleFor(1)} />
+            </View>
+            {isTriple ? (
+              <View
+                style={overlayDividerHitStyle(secondDividerLeft)}
+                {...(webPointerProps(2) ?? {})}
+                {...(Platform.OS === "web" ? {} : panResponder2.panHandlers)}
+              >
+                <View pointerEvents="none" style={dividerLineStyleFor(2)} />
+              </View>
+            ) : null}
+          </View>
+        )}
+      </AuthenticatedHomeSplitLayoutMetricsProvider>
     </View>
   );
 }

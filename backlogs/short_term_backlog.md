@@ -1,3 +1,9 @@
+AI & Search border
+Private key displayal
+Token and NFT mint
+Telegram Connect
+Trade NFT
+Swap tokens
 Shield settings vs. account settings.
 Storage way
 Header configurations and visibility

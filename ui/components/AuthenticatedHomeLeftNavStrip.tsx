@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -14,7 +14,9 @@ import {
 } from "react-native";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
+import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
+import { useAuthenticatedHomeSplitLayoutMetrics } from "./AuthenticatedHomeSplitLayoutMetricsContext";
 
 const NAV_LABELS = ["Feed", "Messages", "Tasks", "Items", "Coins"] as const;
 
@@ -61,6 +63,12 @@ function snapToPixelGrid(n: number): number {
   return PixelRatio.roundToNearestPixel(n);
 }
 
+function windowInferredSplitColumnCount(windowWidthPx: number): 1 | 2 | 3 {
+  if (windowWidthPx <= AH.firstBreakpoint) return 1;
+  if (windowWidthPx <= AH.secondBreakpoint) return 2;
+  return 3;
+}
+
 function horizontalThumbFullTrack(
   trackWidth: number,
   viewportWidth: number,
@@ -95,10 +103,25 @@ export function AuthenticatedHomeLeftNavStrip({
   onSelectIndex?: (index: number) => void;
 }) {
   const { width: windowWidth } = useWindowDimensions();
-  /** Match header breakpoint: indent only in compact single-column regime (`viewport <= firstBreakpoint`). */
-  const stripMarginTop = windowWidth > AH.firstBreakpoint ? 0 : AH.leftNavStripMarginTopPx;
-  /** Bottom hairline under labels appears only above `firstBreakpoint` (narrow = no rule). */
-  const showBottomMenuRule = windowWidth > AH.firstBreakpoint;
+  const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
+  /**
+   * When mounted under {@link AuthenticatedHomeSplitBody}, chrome follows **split column count** (2+ =
+   * wide menu with bottom hairline, no extra top margin). Otherwise fall back to window width vs
+   * `firstBreakpoint` (e.g. strip reused outside split).
+   */
+  const chromeFromSplit = splitMetrics !== null;
+  const stripMarginTop =
+    chromeFromSplit && splitMetrics.columnCount >= 2
+      ? 0
+      : chromeFromSplit
+        ? AH.leftNavStripMarginTopPx
+        : windowWidth > AH.firstBreakpoint
+          ? 0
+          : AH.leftNavStripMarginTopPx;
+  /** Bottom hairline: multi-column split only; single-column compact has no rule under labels. */
+  const showBottomMenuRule = chromeFromSplit
+    ? splitMetrics.columnCount >= 2
+    : windowWidth > AH.firstBreakpoint;
 
   const fadeGradientIdRight = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const fadeGradientIdLeft = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -201,6 +224,161 @@ export function AuthenticatedHomeLeftNavStrip({
     flexGrow: 0,
     flexShrink: 0,
   } satisfies ViewStyle;
+
+  const navStripLogPrevRef = useRef<{
+    windowWidth: number;
+    showBottomMenuRule: boolean;
+    stripMarginTop: number;
+    fits: boolean;
+    layoutW: number;
+    contentW: number;
+    outerW: number;
+    showScrollbar: boolean;
+    lineT: number;
+    thumbBottomSnapped: number;
+    splitColumnCount: number | null;
+    splitFirstColumnWidthPx: number | null;
+    splitRowWidthPx: number | null;
+    splitEffectiveWidthPx: number | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const prev = navStripLogPrevRef.current;
+    const splitColumnCount = splitMetrics?.columnCount ?? null;
+    const splitFirstColumnWidthPx = splitMetrics?.firstColumnWidthPx ?? null;
+    const splitRowWidthPx = splitMetrics?.splitRowWidthPx ?? null;
+    const splitEffectiveWidthPx = splitMetrics?.effectiveSplitWidthPx ?? null;
+    const next = {
+      windowWidth,
+      showBottomMenuRule,
+      stripMarginTop,
+      fits,
+      layoutW,
+      contentW,
+      outerW,
+      showScrollbar,
+      lineT,
+      thumbBottomSnapped,
+      splitColumnCount,
+      splitFirstColumnWidthPx,
+      splitRowWidthPx,
+      splitEffectiveWidthPx,
+    };
+
+    const unchanged =
+      prev !== null &&
+      prev.windowWidth === next.windowWidth &&
+      prev.showBottomMenuRule === next.showBottomMenuRule &&
+      prev.stripMarginTop === next.stripMarginTop &&
+      prev.fits === next.fits &&
+      prev.layoutW === next.layoutW &&
+      prev.contentW === next.contentW &&
+      prev.outerW === next.outerW &&
+      prev.showScrollbar === next.showScrollbar &&
+      prev.lineT === next.lineT &&
+      prev.thumbBottomSnapped === next.thumbBottomSnapped &&
+      prev.splitColumnCount === next.splitColumnCount &&
+      prev.splitFirstColumnWidthPx === next.splitFirstColumnWidthPx &&
+      prev.splitRowWidthPx === next.splitRowWidthPx &&
+      prev.splitEffectiveWidthPx === next.splitEffectiveWidthPx;
+
+    if (unchanged) return;
+    navStripLogPrevRef.current = next;
+
+    const dpr =
+      Platform.OS === "web" && typeof window !== "undefined" && window.devicePixelRatio > 0
+        ? window.devicePixelRatio
+        : PixelRatio.get();
+
+    let bottomRuleEvent: string;
+    if (prev === null) {
+      bottomRuleEvent = showBottomMenuRule ? "initial_render_visible" : "initial_render_hidden";
+    } else if (prev.showBottomMenuRule === showBottomMenuRule) {
+      bottomRuleEvent = "unchanged";
+    } else {
+      bottomRuleEvent = showBottomMenuRule ? "bottom_border_shown" : "bottom_border_hidden";
+    }
+
+    let alignmentEvent: string;
+    if (prev === null) {
+      alignmentEvent = fits ? "initial_align_center" : "initial_align_scroll_start";
+    } else if (prev.fits === fits && prev.stripMarginTop === stripMarginTop) {
+      alignmentEvent = "strip_alignment_unchanged";
+    } else {
+      const parts: string[] = [];
+      if (prev.fits !== fits) {
+        parts.push(fits ? "row_now_centered_fits_viewport" : "row_now_left_when_overflow");
+      }
+      if (prev.stripMarginTop !== stripMarginTop) {
+        parts.push(
+          stripMarginTop > 0 ? "strip_margin_top_compact" : "strip_margin_top_wide_zero",
+        );
+      }
+      alignmentEvent = parts.join("|");
+    }
+
+    const windowInferredColumns = windowInferredSplitColumnCount(windowWidth);
+    const splitWindowColumnCountMismatch =
+      chromeFromSplit && splitColumnCount != null && windowInferredColumns !== splitColumnCount;
+
+    logPageDisplay("home_feed_messages_nav_strip", {
+      menuId: "feed_messages_tasks_items_coins",
+      phase: prev === null ? "mount" : "layout_update",
+      chromeRuleSource: chromeFromSplit ? "split_layout_metrics" : "window_width_fallback",
+      bottomBorderRule:
+        chromeFromSplit && splitColumnCount != null
+          ? `split_column_count>=2 (${splitColumnCount})`
+          : "window_width>firstBreakpoint",
+      viewportWidthPx: windowWidth,
+      firstBreakpointPx: AH.firstBreakpoint,
+      secondBreakpointPx: AH.secondBreakpoint,
+      viewportRelationToBreakpoint:
+        windowWidth > AH.firstBreakpoint ? "above_wide_threshold" : "at_or_below_compact_threshold",
+      windowInferredSplitColumnCount: windowInferredColumns,
+      splitLayoutMetricsPresent: chromeFromSplit,
+      splitPaneRowWidthPx: splitRowWidthPx,
+      splitPaneEffectiveWidthPx: splitEffectiveWidthPx,
+      splitPaneFirstColumnWidthPx: splitFirstColumnWidthPx,
+      splitColumnCount,
+      splitWindowColumnCountMismatch,
+      stripMarginTopPx: stripMarginTop,
+      leftNavStripMarginTopThemePx: AH.leftNavStripMarginTopPx,
+      scrollViewportWidthPx: layoutW,
+      scrollContentWidthPx: contentW,
+      scrollOverflowPx: Math.max(0, contentW - layoutW),
+      labelsFitWithoutScroll: fits,
+      contentContainerJustifyContent: fits ? "center" : "flex-start",
+      contentContainerFlexGrow: fits ? 1 : 0,
+      contentContainerMinWidthPx: fits && layoutW > 0 ? layoutW : null,
+      outerStripWidthPx: outerW,
+      measuredNavOuterMinusSplitFirstColumnPx:
+        splitFirstColumnWidthPx != null && outerW > 0 ? outerW - splitFirstColumnWidthPx : null,
+      bottomMenuHairlineVisible: showBottomMenuRule,
+      bottomRuleThicknessPx: lineT,
+      bottomRuleColorRole: "colors.highlight",
+      scrollbarTrackVisible: showScrollbar,
+      scrollbarThumbBottomOffsetPx: thumbBottomSnapped,
+      scrollbarGapAboveBorderThemePx: scrollbarGapAboveBorder,
+      platform: Platform.OS,
+      devicePixelRatio: dpr,
+      alignmentChange: alignmentEvent,
+      bottomBorderLifecycle: bottomRuleEvent,
+    });
+  }, [
+    windowWidth,
+    showBottomMenuRule,
+    stripMarginTop,
+    fits,
+    layoutW,
+    contentW,
+    outerW,
+    showScrollbar,
+    lineT,
+    thumbBottomSnapped,
+    scrollbarGapAboveBorder,
+    chromeFromSplit,
+    splitMetrics,
+  ]);
 
   return (
     <View
