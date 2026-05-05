@@ -19,7 +19,7 @@ import Svg, { Path } from "react-native-svg";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, icons, uiIconButtonVerticalCompensationTransform, uiTextVerticalCompensationY, useColors } from "../theme";
 import { useTelegram } from "./Telegram";
-import { BottomBarHeightReporter } from "./BottomBarLayoutContext";
+import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
 import { getBottomBarMetrics } from "./bottomBarMetrics";
 import { getPrimaryTextColorFromLaunch } from "./telegramWebApp";
 
@@ -97,12 +97,15 @@ function Scrollbar({
 export function GlobalBottomBar() {
   const colors = useColors();
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
+  const { footerDockedToScreenEdge } = useBottomBarLayout();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   const launchPrimary =
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
   const inputColor = themeBgReady ? colors.primary : launchPrimary ?? colors.primary;
   const topBorderColor = colors.highlight;
-  const hideFooterBottomBorder = isInTelegram && !layoutStartup.isTelegramMiniAppDesktop;
+  /** TMA phone: omit bottom hairline. Wide authenticated home: bar sits in a split column past `firstBreakpoint`, not the screen footer — no bottom rule. */
+  const hideBottomBorder =
+    (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
 
   if (Platform.OS === "web") {
     return (
@@ -111,7 +114,7 @@ export function GlobalBottomBar() {
         inputColor={inputColor}
         scrollbarColor={topBorderColor}
         topBorderColor={topBorderColor}
-        hideBottomBorder={hideFooterBottomBorder}
+        hideBottomBorder={hideBottomBorder}
       />
     );
   }
@@ -122,7 +125,7 @@ export function GlobalBottomBar() {
       inputColor={inputColor}
       scrollbarColor={topBorderColor}
       topBorderColor={topBorderColor}
-      hideBottomBorder={hideFooterBottomBorder}
+      hideBottomBorder={hideBottomBorder}
     />
   );
 }

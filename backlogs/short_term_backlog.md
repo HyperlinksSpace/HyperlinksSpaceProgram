@@ -1,4 +1,4 @@
-AI & Search border
+Shield and settings icons
 Private key displayal
 Token and NFT mint
 Telegram Connect
