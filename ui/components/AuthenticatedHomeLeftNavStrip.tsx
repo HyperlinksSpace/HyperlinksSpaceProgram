@@ -31,6 +31,22 @@ const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
+/** Both horizontal content insets on the strip (`contentSideInsetPx` × 2); matches “width minus 30px” in layout copy. */
+const NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX = STRIP_PADDING_PX * 2;
+/**
+ * Fallback width before the label row’s first `onLayout` (and for scroll-range padding). Slightly
+ * conservative vs average glyph width so we don’t prefer scroll mode when the real row is narrower.
+ * Once the label row reports `onLayout`, use that width instead (see `stripContentWidthPx`).
+ */
+const ESTIMATED_NAV_STRIP_CONTENT_W_PX = (() => {
+  const charPx = LABEL_FONT_SIZE * 0.82;
+  let w = STRIP_PADDING_PX * 2;
+  for (let i = 0; i < NAV_LABELS.length; i++) {
+    w += NAV_LABELS[i].length * charPx;
+    if (i < NAV_LABELS.length - 1) w += ITEM_GAP_PX;
+  }
+  return Math.ceil(w);
+})();
 
 /**
  * Rule thickness in layout units: one **device** pixel (hairline).
@@ -110,18 +126,33 @@ export function AuthenticatedHomeLeftNavStrip({
    * `firstBreakpoint` (e.g. strip reused outside split).
    */
   const chromeFromSplit = splitMetrics !== null;
+  /** Same predicate as split body `isWide`: never treat narrow split rows as wide when `rowWidth` lags `windowWidth`. */
+  const layoutIsWide = chromeFromSplit
+    ? splitMetrics.effectiveSplitWidthPx > AH.firstBreakpoint
+    : windowWidth > AH.firstBreakpoint;
+  /**
+   * Width budget for “labels + horizontal padding + gaps” (see {@link ESTIMATED_NAV_STRIP_CONTENT_W_PX}):
+   * full window in single-column, first column width when `columnCount >= 2`. Matches screen vs column
+   * minus the two side inset rects ({@link NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX} inside the strip).
+   */
+  const navStripBudgetWidthPx = chromeFromSplit
+    ? Math.round(
+        splitMetrics.columnCount >= 2 && splitMetrics.firstColumnWidthPx > 0
+          ? splitMetrics.firstColumnWidthPx
+          : splitMetrics.effectiveSplitWidthPx,
+      )
+    : Math.round(windowWidth);
   const stripMarginTop =
     chromeFromSplit && splitMetrics.columnCount >= 2
       ? 0
       : chromeFromSplit
         ? AH.leftNavStripMarginTopPx
-        : windowWidth > AH.firstBreakpoint
+        : layoutIsWide
           ? 0
           : AH.leftNavStripMarginTopPx;
-  /** Bottom hairline: multi-column split only; single-column compact has no rule under labels. */
-  const showBottomMenuRule = chromeFromSplit
-    ? splitMetrics.columnCount >= 2
-    : windowWidth > AH.firstBreakpoint;
+  /** Bottom hairline: only after `firstBreakpoint`, and only when the split is actually multi-column. */
+  const showBottomMenuRule =
+    layoutIsWide && (chromeFromSplit ? splitMetrics.columnCount >= 2 : true);
 
   const fadeGradientIdRight = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
   const fadeGradientIdLeft = useId().replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -131,6 +162,8 @@ export function AuthenticatedHomeLeftNavStrip({
   const [scrollX, setScrollX] = useState(0);
   const [layoutW, setLayoutW] = useState(0);
   const [contentW, setContentW] = useState(0);
+  /** Labels + gaps only (excludes `paddingHorizontal` on the scroll content container). */
+  const [intrinsicRowW, setIntrinsicRowW] = useState(0);
   const [outerW, setOuterW] = useState(0);
 
   const lineT = menuStripRuleThickness();
@@ -149,22 +182,62 @@ export function AuthenticatedHomeLeftNavStrip({
     setScrollX(e.nativeEvent.contentOffset.x);
   };
 
-  const onScrollViewLayout = (e: LayoutChangeEvent) => {
-    setLayoutW(Math.round(e.nativeEvent.layout.width));
-  };
+  const onScrollViewLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setLayoutW((prev) => {
+      if (prev !== w) setContentW(0);
+      return w;
+    });
+  }, []);
 
-  const onContentSizeChange = (w: number, _h: number) => {
-    if (Number.isFinite(w) && w > 0) setContentW(Math.round(w));
-  };
+  const onContentSizeChange = useCallback((w: number, _h: number) => {
+    if (!Number.isFinite(w) || w <= 0) return;
+    setContentW(Math.round(w));
+  }, []);
 
-  const scrollRange = Math.max(0, contentW - layoutW);
-  const fits = contentW > 0 && layoutW > 0 && contentW <= layoutW + SCROLL_EPS;
-  const scrollTrackWidth = Math.max(0, outerW);
-  const showScrollbar = !fits && scrollRange > 0 && layoutW > 0 && scrollTrackWidth > 0;
+  const onIntrinsicRowLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = Math.round(e.nativeEvent.layout.width);
+    setIntrinsicRowW((prev) => (prev === w ? prev : w));
+  }, []);
+
+  /**
+   * Scroll viewport width: measured `ScrollView` width when available, else budget from split/window
+   * so fits/scroll state match the column (wide) or screen (compact) before first layout.
+   */
+  const scrollViewportW =
+    layoutW > 0 ? layoutW : navStripBudgetWidthPx > 0 ? navStripBudgetWidthPx : 0;
+  /** Total scroll content width: padding + measured label row (preferred) or `ESTIMATED_NAV_STRIP_CONTENT_W_PX`. */
+  const stripContentWidthPx =
+    intrinsicRowW > 0
+      ? NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX + intrinsicRowW
+      : ESTIMATED_NAV_STRIP_CONTENT_W_PX;
+  const fits =
+    scrollViewportW > 0 && stripContentWidthPx <= scrollViewportW + SCROLL_EPS;
+  /** When scrolling, RN may briefly report a low content width; floor with measured or estimated span. */
+  const scrollContentSpanPx =
+    !fits && scrollViewportW > 0
+      ? Math.max(contentW, stripContentWidthPx)
+      : 0;
+
+  const scrollRange = Math.max(0, scrollContentSpanPx - scrollViewportW);
+  /**
+   * Thumb track must match the same client width as `scrollViewportW` so the thumb crosses the full strip.
+   * When `outer`/`ScrollView` layouts disagree by a pixel, use the larger width for the track math.
+   */
+  const scrollTrackWidth = Math.max(
+    0,
+    outerW > 0 && layoutW > 0
+      ? Math.max(outerW, layoutW)
+      : outerW > 0
+        ? outerW
+        : scrollViewportW,
+  );
+  const showScrollbar =
+    !fits && scrollRange > 0 && scrollViewportW > 0 && scrollTrackWidth > 0;
   const { thumbW, thumbLeft } = horizontalThumbFullTrack(
     scrollTrackWidth,
-    layoutW,
-    contentW,
+    scrollViewportW,
+    scrollContentSpanPx,
     scrollX,
     scrollRange,
   );
@@ -227,12 +300,19 @@ export function AuthenticatedHomeLeftNavStrip({
 
   const navStripLogPrevRef = useRef<{
     windowWidth: number;
+    layoutIsWide: boolean;
+    navStripBudgetWidthPx: number;
     showBottomMenuRule: boolean;
     stripMarginTop: number;
     fits: boolean;
     layoutW: number;
+    scrollViewportW: number;
     contentW: number;
+    intrinsicRowW: number;
+    stripContentWidthPx: number;
+    scrollContentSpanPx: number;
     outerW: number;
+    scrollTrackWidth: number;
     showScrollbar: boolean;
     lineT: number;
     thumbBottomSnapped: number;
@@ -250,12 +330,19 @@ export function AuthenticatedHomeLeftNavStrip({
     const splitEffectiveWidthPx = splitMetrics?.effectiveSplitWidthPx ?? null;
     const next = {
       windowWidth,
+      layoutIsWide,
+      navStripBudgetWidthPx,
       showBottomMenuRule,
       stripMarginTop,
       fits,
       layoutW,
+      scrollViewportW,
       contentW,
+      intrinsicRowW,
+      stripContentWidthPx,
+      scrollContentSpanPx,
       outerW,
+      scrollTrackWidth,
       showScrollbar,
       lineT,
       thumbBottomSnapped,
@@ -268,12 +355,19 @@ export function AuthenticatedHomeLeftNavStrip({
     const unchanged =
       prev !== null &&
       prev.windowWidth === next.windowWidth &&
+      prev.layoutIsWide === next.layoutIsWide &&
+      prev.navStripBudgetWidthPx === next.navStripBudgetWidthPx &&
       prev.showBottomMenuRule === next.showBottomMenuRule &&
       prev.stripMarginTop === next.stripMarginTop &&
       prev.fits === next.fits &&
       prev.layoutW === next.layoutW &&
+      prev.scrollViewportW === next.scrollViewportW &&
       prev.contentW === next.contentW &&
+      prev.intrinsicRowW === next.intrinsicRowW &&
+      prev.stripContentWidthPx === next.stripContentWidthPx &&
+      prev.scrollContentSpanPx === next.scrollContentSpanPx &&
       prev.outerW === next.outerW &&
+      prev.scrollTrackWidth === next.scrollTrackWidth &&
       prev.showScrollbar === next.showScrollbar &&
       prev.lineT === next.lineT &&
       prev.thumbBottomSnapped === next.thumbBottomSnapped &&
@@ -325,13 +419,15 @@ export function AuthenticatedHomeLeftNavStrip({
       menuId: "feed_messages_tasks_items_coins",
       phase: prev === null ? "mount" : "layout_update",
       chromeRuleSource: chromeFromSplit ? "split_layout_metrics" : "window_width_fallback",
-      bottomBorderRule:
-        chromeFromSplit && splitColumnCount != null
-          ? `split_column_count>=2 (${splitColumnCount})`
-          : "window_width>firstBreakpoint",
+      bottomBorderRule: chromeFromSplit
+        ? `effectiveSplitWidthPx>firstBreakpoint && columnCount>=2 (wide=${layoutIsWide}, cols=${splitColumnCount})`
+        : `windowWidth>firstBreakpoint (wide=${layoutIsWide})`,
       viewportWidthPx: windowWidth,
       firstBreakpointPx: AH.firstBreakpoint,
       secondBreakpointPx: AH.secondBreakpoint,
+      layoutIsWideByEffectiveSplitOrWindow: layoutIsWide,
+      navStripBudgetWidthPx,
+      stripHorizontalInsetTotalPx: NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX,
       viewportRelationToBreakpoint:
         windowWidth > AH.firstBreakpoint ? "above_wide_threshold" : "at_or_below_compact_threshold",
       windowInferredSplitColumnCount: windowInferredColumns,
@@ -343,13 +439,21 @@ export function AuthenticatedHomeLeftNavStrip({
       splitWindowColumnCountMismatch,
       stripMarginTopPx: stripMarginTop,
       leftNavStripMarginTopThemePx: AH.leftNavStripMarginTopPx,
-      scrollViewportWidthPx: layoutW,
-      scrollContentWidthPx: contentW,
-      scrollOverflowPx: Math.max(0, contentW - layoutW),
+      scrollViewportWidthMeasuredPx: layoutW,
+      scrollViewportWidthUsedPx: scrollViewportW,
+      scrollViewportWidthPx: scrollViewportW,
+      scrollbarTrackWidthPx: scrollTrackWidth,
+      estimatedNavStripContentWidthPx: ESTIMATED_NAV_STRIP_CONTENT_W_PX,
+      intrinsicLabelRowWidthPx: intrinsicRowW,
+      stripContentWidthPx,
+      fitsUsesIntrinsicRowMeasure: intrinsicRowW > 0,
+      scrollContentWidthRawPx: contentW,
+      scrollContentWidthForThumbPx: scrollContentSpanPx,
+      scrollOverflowPx: Math.max(0, scrollContentSpanPx - scrollViewportW),
       labelsFitWithoutScroll: fits,
       contentContainerJustifyContent: fits ? "center" : "flex-start",
       contentContainerFlexGrow: fits ? 1 : 0,
-      contentContainerMinWidthPx: fits && layoutW > 0 ? layoutW : null,
+      contentContainerMinWidthPx: fits && scrollViewportW > 0 ? scrollViewportW : null,
       outerStripWidthPx: outerW,
       measuredNavOuterMinusSplitFirstColumnPx:
         splitFirstColumnWidthPx != null && outerW > 0 ? outerW - splitFirstColumnWidthPx : null,
@@ -366,12 +470,19 @@ export function AuthenticatedHomeLeftNavStrip({
     });
   }, [
     windowWidth,
+    layoutIsWide,
+    navStripBudgetWidthPx,
     showBottomMenuRule,
     stripMarginTop,
     fits,
     layoutW,
+    scrollViewportW,
     contentW,
+    intrinsicRowW,
+    stripContentWidthPx,
+    scrollContentSpanPx,
     outerW,
+    scrollTrackWidth,
     showScrollbar,
     lineT,
     thumbBottomSnapped,
@@ -407,33 +518,44 @@ export function AuthenticatedHomeLeftNavStrip({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: fits ? "center" : "flex-start",
-          minWidth: fits && layoutW > 0 ? layoutW : undefined,
+          minWidth: fits && scrollViewportW > 0 ? scrollViewportW : undefined,
         }}
         onScroll={onScroll}
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
         onContentSizeChange={onContentSizeChange}
       >
-        {NAV_LABELS.map((label, index) => (
-          <Pressable
-            key={label}
-            accessibilityRole="button"
-            accessibilityState={{ selected: index === activeIndex }}
-            accessibilityLabel={label}
-            onPress={() => {
-              if (isControlled) {
-                onSelectIndex?.(index);
-              } else {
-                setInternalIndex(index);
-              }
-            }}
-            style={{
-              marginRight: index < NAV_LABELS.length - 1 ? ITEM_GAP_PX : 0,
-            }}
-          >
-            <Text style={labelStyle(index === activeIndex)}>{label}</Text>
-          </Pressable>
-        ))}
+        <View
+          collapsable={false}
+          onLayout={onIntrinsicRowLayout}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flexGrow: 0,
+            flexShrink: 0,
+          }}
+        >
+          {NAV_LABELS.map((label, index) => (
+            <Pressable
+              key={label}
+              accessibilityRole="button"
+              accessibilityState={{ selected: index === activeIndex }}
+              accessibilityLabel={label}
+              onPress={() => {
+                if (isControlled) {
+                  onSelectIndex?.(index);
+                } else {
+                  setInternalIndex(index);
+                }
+              }}
+              style={{
+                marginRight: index < NAV_LABELS.length - 1 ? ITEM_GAP_PX : 0,
+              }}
+            >
+              <Text style={labelStyle(index === activeIndex)}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
       </ScrollView>
 
       {fadeW > 0 ? (
