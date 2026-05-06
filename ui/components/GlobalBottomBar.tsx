@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Keyboard,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +11,11 @@ import {
   type NativeSyntheticEvent,
   type TextInputContentSizeChangeEventData,
   type TextInputSubmitEditingEventData,
-  type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
 import { WEB_UI_SANS_STACK } from "../fonts";
-import { layout, icons, uiIconButtonVerticalCompensationTransform, uiTextVerticalCompensationY, useColors } from "../theme";
+import { layout, uiTextVerticalCompensationY, useColors } from "../theme";
+import { BottomBarSendCircleButton } from "./BottomBarSendCircleButton";
 import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
 import { getBottomBarMetrics } from "./bottomBarMetrics";
@@ -30,42 +28,15 @@ const {
   scrollbarRightInsetPx: SCROLLBAR_RIGHT_INSET,
   maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
   maxBarHeight: MAX_BAR_HEIGHT,
+  barMinHeight: BAR_MIN_HEIGHT,
+  applyIconBottom: APPLY_ICON_BOTTOM,
+  textToSendIconGapPx: TEXT_TO_SEND_ICON_GAP_PX,
 } = layout.bottomBar;
 
 const FONT_SIZE = 15;
 const INNER_PADDING = 20;
 const AUTO_SCROLL_THRESHOLD = 30;
 const PREMADE_PROMPTS = ["What is the universe?", "Tell me about dogs token"];
-
-// Shared UI primitives used by all platforms.
-function SendButton({
-  color,
-  onPress,
-  wrapStyle,
-}: {
-  color: string;
-  onPress: () => void;
-  wrapStyle?: ViewStyle;
-}) {
-  return (
-    <Pressable
-      style={[styles.sendWrap, uiIconButtonVerticalCompensationTransform, wrapStyle]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Send"
-    >
-      <Svg width={icons.apply.width} height={icons.apply.height} viewBox="0 0 15 10">
-        <Path
-          d="M1 5H10M6 1L10 5L6 9"
-          stroke={color}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </Svg>
-    </Pressable>
-  );
-}
 
 function Scrollbar({
   show,
@@ -113,6 +84,7 @@ export function GlobalBottomBar() {
       <WebBottomBar
         backgroundColor={backgroundColor}
         inputColor={inputColor}
+        undercoverColor={colors.undercover}
         scrollbarColor={scrollbarThumbColor}
         topBorderColor={topBorderColor}
         hideBottomBorder={hideBottomBorder}
@@ -124,6 +96,7 @@ export function GlobalBottomBar() {
     <NativeBottomBar
       backgroundColor={backgroundColor}
       inputColor={inputColor}
+      undercoverColor={colors.undercover}
       scrollbarColor={scrollbarThumbColor}
       topBorderColor={topBorderColor}
       hideBottomBorder={hideBottomBorder}
@@ -144,6 +117,10 @@ const styles = StyleSheet.create({
     height: 1,
     pointerEvents: "none",
   },
+  /**
+   * Column insets: textarea starts `horizontalPadding` from the left edge; send icon ends `horizontalPadding` from the right.
+   * Field↔send gap: `layout.bottomBar.textToSendIconGapPx`.
+   */
   container: {
     width: "100%",
     maxWidth: maxContentWidth,
@@ -153,7 +130,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "flex-end",
-    gap: 5,
+    gap: TEXT_TO_SEND_ICON_GAP_PX,
   },
   /** Keep send control pinned to the bar bottom; do not center in the row or it rides up when the field grows. */
   webFooterRow: {
@@ -175,7 +152,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
     backgroundColor: "transparent",
     minHeight: 0,
-    paddingRight: 12,
+    paddingRight: 0,
   },
   nativeInputHost: {
     flexGrow: 1,
@@ -185,11 +162,11 @@ const styles = StyleSheet.create({
   sendWrap: {
     justifyContent: "center",
     alignItems: "center",
-    paddingBottom: 25,
+    paddingBottom: APPLY_ICON_BOTTOM,
   },
-  /** Match native `sendWrap` bottom inset so the arrow stays a fixed distance above the screen edge at any line count. */
+  /** Match native `sendWrap` bottom inset so the send chip stays a fixed distance above the bar edge when the field grows. */
   sendWrapWeb: {
-    paddingBottom: 25,
+    paddingBottom: APPLY_ICON_BOTTOM,
   },
   scrollbarContainer: {
     position: "absolute",
@@ -207,12 +184,14 @@ const styles = StyleSheet.create({
 function WebBottomBar({
   backgroundColor,
   inputColor,
+  undercoverColor,
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
 }: {
   backgroundColor: string;
   inputColor: string;
+  undercoverColor: string;
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
@@ -323,6 +302,7 @@ function WebBottomBar({
     innerPadding: INNER_PADDING,
     maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
     maxBarHeight: MAX_BAR_HEIGHT,
+    minBarHeight: BAR_MIN_HEIGHT,
   });
 
   useEffect(() => {
@@ -393,7 +373,8 @@ function WebBottomBar({
                 lineHeight: `${LINE_HEIGHT}px`,
                 paddingTop: INNER_PADDING,
                 paddingBottom: INNER_PADDING,
-                paddingRight: 36,
+                paddingLeft: 0,
+                paddingRight: 0,
                 boxSizing: "border-box",
                 resize: "none",
                 border: "none",
@@ -411,7 +392,12 @@ function WebBottomBar({
               placeholder={isFocused ? "" : "AI and search"}
             />
           </View>
-          <SendButton color={inputColor} onPress={handleSend} wrapStyle={styles.sendWrapWeb} />
+          <BottomBarSendCircleButton
+            iconColor={inputColor}
+            undercoverColor={undercoverColor}
+            onPress={handleSend}
+            wrapStyle={[styles.sendWrap, styles.sendWrapWeb]}
+          />
         </View>
       </View>
       <Scrollbar
@@ -432,12 +418,14 @@ function WebBottomBar({
 function NativeBottomBar({
   backgroundColor,
   inputColor,
+  undercoverColor,
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
 }: {
   backgroundColor: string;
   inputColor: string;
+  undercoverColor: string;
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
@@ -499,6 +487,7 @@ function NativeBottomBar({
     innerPadding: INNER_PADDING,
     maxLinesBeforeScroll: MAX_LINES_BEFORE_SCROLL,
     maxBarHeight: MAX_BAR_HEIGHT,
+    minBarHeight: BAR_MIN_HEIGHT,
   });
 
   useEffect(() => {
@@ -549,7 +538,7 @@ function NativeBottomBar({
               <ScrollView
                 ref={scrollRef}
                 style={{ flex: 1 }}
-                contentContainerStyle={{ paddingRight: 6, flexGrow: 1, justifyContent: "flex-start" }}
+                contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-start" }}
                 onScroll={onScroll}
                 onContentSizeChange={onScrollViewContentSizeChange}
                 scrollEventThrottle={16}
@@ -604,7 +593,12 @@ function NativeBottomBar({
               </ScrollView>
             </View>
           </View>
-          <SendButton color={inputColor} onPress={submit} />
+          <BottomBarSendCircleButton
+            iconColor={inputColor}
+            undercoverColor={undercoverColor}
+            onPress={submit}
+            wrapStyle={styles.sendWrap}
+          />
         </View>
       </View>
       <Scrollbar

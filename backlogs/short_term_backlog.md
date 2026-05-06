@@ -1,8 +1,10 @@
+Arrow
+Check settings icon rotation
 Scrolling indicator min and max size
 Menu items fix
-Arrow
+Test bottom border of the footer on Iphone, fix displayal
 Borders revie
-Shield and settings icons
+Shield and settings icons (incl. positioning)
 Private key displayal
 Token and NFT mint
 Telegram Connect

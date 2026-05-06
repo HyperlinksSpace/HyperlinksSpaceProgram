@@ -1,14 +1,5 @@
 import { useEffect, useRef } from "react";
-import {
-  Animated,
-  AppState,
-  Easing,
-  Platform,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Animated, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
 import { useBottomBarLayout } from "./BottomBarLayoutContext";
@@ -20,63 +11,30 @@ const AH = layout.authenticatedHome;
 /** Space between the footer's top border and the bottom of this floating stack. */
 const FOOTER_TOP_GAP_PX = 20;
 
-/** One full turn of the settings cog inside the liquid-glass chip (linear, looped). */
+/** One full turn of the settings cog inside the liquid-glass chip (linear). */
 const SETTINGS_ICON_SPIN_MS = 28000;
 
 function SlowRotatingSettingsIcon({ color, size }: { color: string; size: number }) {
   const spin = useRef(new Animated.Value(0)).current;
+  /**
+   * Drive rotation from wall-clock time via rAF — no `Animated.loop` / completion callbacks, so it
+   * cannot stall after N iterations (RN-web and native driver edge cases).
+   */
   useEffect(() => {
-    const makeLoop = () =>
-      Animated.loop(
-        Animated.timing(spin, {
-          toValue: 1,
-          duration: SETTINGS_ICON_SPIN_MS,
-          easing: Easing.linear,
-          useNativeDriver: true,
-          /** Keeps the loop from being dropped as a “gesture” animation on busy / backgrounded JS. */
-          isInteraction: false,
-        }),
-        { iterations: -1, resetBeforeIteration: true },
-      );
-
-    let loop = makeLoop();
-    loop.start();
-
-    const restartLoop = () => {
-      loop.stop();
-      spin.stopAnimation();
-      spin.setValue(0);
-      loop = makeLoop();
-      loop.start();
+    const startMs = Date.now();
+    let rafId = 0;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      const elapsed = Date.now() - startMs;
+      const t = (elapsed % SETTINGS_ICON_SPIN_MS) / SETTINGS_ICON_SPIN_MS;
+      spin.setValue(t);
+      rafId = requestAnimationFrame(tick);
     };
-
-    const onVisibility =
-      Platform.OS === "web" && typeof document !== "undefined"
-        ? () => {
-            if (document.visibilityState === "visible") {
-              restartLoop();
-            }
-          }
-        : null;
-    if (onVisibility) {
-      document.addEventListener("visibilitychange", onVisibility);
-    }
-
-    const appSub =
-      Platform.OS !== "web"
-        ? AppState.addEventListener("change", (s) => {
-            if (s === "active") {
-              restartLoop();
-            }
-          })
-        : null;
-
+    rafId = requestAnimationFrame(tick);
     return () => {
-      if (onVisibility) {
-        document.removeEventListener("visibilitychange", onVisibility);
-      }
-      appSub?.remove();
-      loop.stop();
+      cancelled = true;
+      cancelAnimationFrame(rafId);
     };
   }, [spin]);
   const rotate = spin.interpolate({

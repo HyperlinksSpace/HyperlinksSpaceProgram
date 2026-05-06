@@ -220,13 +220,18 @@ export const layout = {
     shieldDiameter: 50,
   },
   bottomBar: {
+    /** One-line bar: `verticalPadding` + 40px control column + `verticalPadding` (send sits in 40×40 undercover). */
     barMinHeight: 59,
     lineHeight: 20,
     verticalPadding: 20,
-    applyIconBottom: 25,
+    /** Bottom inset for send control above the bar edge; unchanged when the bar grows vertically. */
+    applyIconBottom: 15,
     maxLinesBeforeScroll: 7,
     maxBarHeight: 190,
+    /** Horizontal inset (px) from column edge: textarea left, send icon right (`GlobalBottomBar` inner row). */
     horizontalPadding: contentSideInsetPx,
+    /** Horizontal gap (px) between the text field and the send icon on all platforms. */
+    textToSendIconGapPx: 10,
     /** Custom 1px scroll-thumb columns (main web column + bottom bar); separate from `horizontalPadding`. */
     scrollbarRightInsetPx: 5,
   },
