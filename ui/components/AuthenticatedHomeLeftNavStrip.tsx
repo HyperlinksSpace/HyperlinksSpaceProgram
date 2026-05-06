@@ -278,16 +278,16 @@ export function AuthenticatedHomeLeftNavStrip({
       width: Math.max(1, snapToPixelGrid(thumbW)),
       bottom: 0,
       height: lineT,
-      backgroundColor: colors.highlight,
+      backgroundColor: colors.accent,
     };
-  }, [showScrollbar, thumbW, thumbLeft, colors.highlight, lineT]);
+  }, [showScrollbar, thumbW, thumbLeft, colors.accent, lineT]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
     fontSize: LABEL_FONT_SIZE,
     lineHeight: LABEL_LINE_HEIGHT,
     fontWeight: "400" as const,
-    color: active ? colors.primary : colors.highlight,
+    color: active ? colors.primary : colors.secondary,
     includeFontPadding: false,
     paddingVertical: 0,
   });

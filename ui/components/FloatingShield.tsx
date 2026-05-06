@@ -1,15 +1,102 @@
-import { StyleSheet, Text, useWindowDimensions, View } from "react-native";
-import { Image } from "expo-image";
+import { useEffect, useRef } from "react";
+import {
+  Animated,
+  AppState,
+  Easing,
+  Platform,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
 import { useBottomBarLayout } from "./BottomBarLayoutContext";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
+import { SettingsIcon } from "./icons/SettingsIcon";
 
-const SETTINGS_ICON = require("../../assets/Settings.svg");
 const AH = layout.authenticatedHome;
 
 /** Space between the footer's top border and the bottom of this floating stack. */
 const FOOTER_TOP_GAP_PX = 20;
+
+/** One full turn of the settings cog inside the liquid-glass chip (linear, looped). */
+const SETTINGS_ICON_SPIN_MS = 28000;
+
+function SlowRotatingSettingsIcon({ color, size }: { color: string; size: number }) {
+  const spin = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const makeLoop = () =>
+      Animated.loop(
+        Animated.timing(spin, {
+          toValue: 1,
+          duration: SETTINGS_ICON_SPIN_MS,
+          easing: Easing.linear,
+          useNativeDriver: true,
+          /** Keeps the loop from being dropped as a “gesture” animation on busy / backgrounded JS. */
+          isInteraction: false,
+        }),
+        { iterations: -1, resetBeforeIteration: true },
+      );
+
+    let loop = makeLoop();
+    loop.start();
+
+    const restartLoop = () => {
+      loop.stop();
+      spin.stopAnimation();
+      spin.setValue(0);
+      loop = makeLoop();
+      loop.start();
+    };
+
+    const onVisibility =
+      Platform.OS === "web" && typeof document !== "undefined"
+        ? () => {
+            if (document.visibilityState === "visible") {
+              restartLoop();
+            }
+          }
+        : null;
+    if (onVisibility) {
+      document.addEventListener("visibilitychange", onVisibility);
+    }
+
+    const appSub =
+      Platform.OS !== "web"
+        ? AppState.addEventListener("change", (s) => {
+            if (s === "active") {
+              restartLoop();
+            }
+          })
+        : null;
+
+    return () => {
+      if (onVisibility) {
+        document.removeEventListener("visibilitychange", onVisibility);
+      }
+      appSub?.remove();
+      loop.stop();
+    };
+  }, [spin]);
+  const rotate = spin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  return (
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+        transform: [{ rotate }],
+      }}
+    >
+      <SettingsIcon color={color} size={size} />
+    </Animated.View>
+  );
+}
 
 function ShieldIcon({ powerColor }: { powerColor: string }) {
   return (
@@ -56,7 +143,7 @@ export function FloatingShield() {
           phaseOffset={0.08}
           isLightTheme={isLightTheme}
         >
-          <Image source={SETTINGS_ICON} style={styles.settingsIcon} contentFit="contain" />
+          <SlowRotatingSettingsIcon color={colors.primary} size={styles.settingsIcon.width as number} />
         </LiquidGlassShaderUndercover>
       </View>
       <LiquidGlassShaderUndercover

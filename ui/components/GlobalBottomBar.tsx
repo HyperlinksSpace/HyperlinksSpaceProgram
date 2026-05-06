@@ -103,6 +103,7 @@ export function GlobalBottomBar() {
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
   const inputColor = themeBgReady ? colors.primary : launchPrimary ?? colors.primary;
   const topBorderColor = colors.highlight;
+  const scrollbarThumbColor = colors.accent;
   /** TMA phone: omit bottom hairline. Wide authenticated home: bar sits in a split column past `firstBreakpoint`, not the screen footer — no bottom rule. */
   const hideBottomBorder =
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
@@ -112,7 +113,7 @@ export function GlobalBottomBar() {
       <WebBottomBar
         backgroundColor={backgroundColor}
         inputColor={inputColor}
-        scrollbarColor={topBorderColor}
+        scrollbarColor={scrollbarThumbColor}
         topBorderColor={topBorderColor}
         hideBottomBorder={hideBottomBorder}
       />
@@ -123,7 +124,7 @@ export function GlobalBottomBar() {
     <NativeBottomBar
       backgroundColor={backgroundColor}
       inputColor={inputColor}
-      scrollbarColor={topBorderColor}
+      scrollbarColor={scrollbarThumbColor}
       topBorderColor={topBorderColor}
       hideBottomBorder={hideBottomBorder}
     />

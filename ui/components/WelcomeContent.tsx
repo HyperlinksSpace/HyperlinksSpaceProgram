@@ -81,7 +81,7 @@ export function WelcomeContent() {
           </Text>
         </View>
         <View style={[styles.subtitleBlock, isWideLayout && styles.subtitleBlockWide]}>
-          <Text style={[styles.subtitleText, { color: colors.highlight }]}>
+          <Text style={[styles.subtitleText, { color: colors.secondary }]}>
             This is the best way to earn and spend
           </Text>
         </View>

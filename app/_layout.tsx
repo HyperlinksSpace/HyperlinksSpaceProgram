@@ -192,6 +192,18 @@ function RootContent() {
   const hideWebUntilTheme =
     Platform.OS === "web" && useTelegramTheme && !themeBgReady;
 
+  /** Web: default UA scrollbars (root zoom / any overflow) use `accent` thumb + app background track. */
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
+    document.documentElement.style.setProperty(
+      "scrollbar-color",
+      `${colors.accent} ${backgroundColor}`,
+    );
+    return () => {
+      document.documentElement.style.removeProperty("scrollbar-color");
+    };
+  }, [backgroundColor, colors.accent, shellPaintReady]);
+
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");
   }, []);
@@ -277,7 +289,7 @@ function RootContent() {
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
         <MainWebScrollColumn
-          indicatorColor={colors.highlight}
+          indicatorColor={colors.accent}
           scrollTrackColor={backgroundColor}
         >
           <Stack screenOptions={{ headerShown: false }} />
@@ -303,7 +315,7 @@ function RootContent() {
 
 /**
  * Web: `global.css` keeps vertical overflow in the app column; root allows horizontal overflow when zoomed.
- * Custom indicator: 1px vertical line, theme highlight color, inset `layout.bottomBar.scrollbarRightInsetPx` from the right.
+ * Custom indicator: 1px vertical line, theme `accent`, inset `layout.bottomBar.scrollbarRightInsetPx` from the right.
  * Hidden until content height is known and exceeds the viewport (web: DOM sync on load + ResizeObserver).
  */
 function MainWebScrollColumn({
@@ -312,8 +324,9 @@ function MainWebScrollColumn({
   scrollTrackColor,
 }: {
   children: ReactNode;
+  /** Scroll thumb / overlay line: theme `accent`. */
   indicatorColor: string;
-  /** Scrollbar track: usually app background so the thumb (highlight) is the only accent. */
+  /** Scrollbar track (CSS `scrollbar-color` second value): app background. */
   scrollTrackColor: string;
 }) {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
@@ -347,7 +360,7 @@ function MainWebScrollColumn({
     return () => cancelAnimationFrame(id);
   }, [syncScrollMetricsFromDom, children]);
 
-  /** Theme the native OS scrollbar (still shown when `overflow: auto`); uses highlight thumb, not hint/secondary. */
+  /** Theme the native OS scrollbar (still shown when `overflow: auto`); thumb `accent`, track matches column background. */
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const run = () => {

@@ -8,6 +8,7 @@ import {
   useColors,
   typographyRect15,
   uiIconButtonVerticalCompensationY,
+  uiTextVerticalCompensationTransform,
   uiWelcomeAppleOAuthIconExtraCompensationPx,
 } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
@@ -15,6 +16,8 @@ import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
 
 const BUTTON_HEIGHT = 40;
+/** Same line box as {@link typographyRect15} — used to pad the email field like a flex-centered label row. */
+const EMAIL_ROW_LINE_HEIGHT = 18;
 const BUTTON_GAP = 20;
 export const WELCOME_AUTH_MAX_WIDTH = 360;
 const BUTTON_H_PADDING = 20;
@@ -185,7 +188,7 @@ export function WelcomeAuthButtons() {
             styles.emailInputShell,
             {
               backgroundColor: colors.undercover,
-              borderColor: colors.highlight,
+              borderColor: colors.accent,
               marginTop: EMAIL_LABEL_TO_INPUT_GAP,
               ...(Platform.OS === "web"
                 ? ({
@@ -200,7 +203,7 @@ export function WelcomeAuthButtons() {
             {...(Platform.OS === "web" ? { id: "welcome-email-input" } : {})}
             style={[styles.emailInputInner, { color: colors.primary }]}
             placeholder="Your email address"
-            placeholderTextColor={colors.highlight}
+            placeholderTextColor={colors.secondary}
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
@@ -298,6 +301,8 @@ const styles = StyleSheet.create({
   },
   emailInputInner: {
     ...typographyRect15,
+    /** Same optical nudge as `Text` defaults (`ensureUiSansFontFamilyDefaults`); explicit so placeholder/value match “Sign in”. */
+    ...uiTextVerticalCompensationTransform,
     flex: 1,
     alignSelf: "stretch",
     width: "100%",
@@ -306,14 +311,18 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingLeft: EMAIL_INPUT_TEXT_INSET_LEFT,
     paddingRight: BUTTON_H_PADDING,
-    paddingVertical: 0,
     margin: 0,
     ...Platform.select({
       web: {
+        /** RN-web: vertically center single-line placeholder like a 18px label in a 40px row (provider / Sign in buttons). */
+        paddingTop: (BUTTON_HEIGHT - EMAIL_ROW_LINE_HEIGHT) / 2,
+        paddingBottom: (BUTTON_HEIGHT - EMAIL_ROW_LINE_HEIGHT) / 2,
         outlineWidth: 0,
         boxSizing: "border-box",
       },
-      default: {},
+      default: {
+        paddingVertical: 0,
+      },
     }),
   },
   emailInvalidText: {

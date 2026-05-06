@@ -9,18 +9,24 @@ import {
 export const dark = {
   background: "#000000",
   primary: "#FFFFFF",
-  /** Muted UI / hints — same as `highlight` (not hard-coded #818181 / Telegram `hint_color`). */
-  secondary: "#515151",
-  highlight: "#515151",
+  /** Muted text + icons (content, not chrome). */
+  secondary: "#A1A1A1",
+  /** Borders + divider strokes (chrome). */
+  highlight: "#1F1F1F",
   undercover: "#272727",
+  /** Scroll thumbs, email field stroke, and other accent chrome. */
+  accent: "#515151",
 } as const;
 
 export const light = {
   background: "#FFFFFF",
   primary: "#000000",
-  secondary: "#AAAAAA",
-  highlight: "#AAAAAA",
+  secondary: "#717171",
+  /** Borders + divider strokes (chrome). */
+  highlight: "#E1E1E1",
   undercover: "#F1F1F1",
+  /** Scroll thumbs, email field stroke, and other accent chrome. */
+  accent: "#AAAAAA",
 } as const;
 
 export type ThemeName = "dark" | "light";
@@ -31,13 +37,16 @@ export type ThemeColors = {
   highlight: string;
   /** Filled surfaces / buttons (theme `undercover` in Dart palette). */
   undercover: string;
+  /** Scrollbars / scroll thumbs, welcome email field border, and similar accent chrome. */
+  accent: string;
 };
 
 /** Home wide strip / stroke-driven glyphs: `primary` vs `highlight` theme colors. */
 export type MenuIconVariant = "primary" | "highlight";
 
 export function menuIconStrokeColor(colors: ThemeColors, variant: MenuIconVariant): string {
-  return variant === "primary" ? colors.primary : colors.highlight;
+  // Program-wide rule: grey icons use `secondary`; `highlight` is reserved for borders/indicators.
+  return variant === "primary" ? colors.primary : colors.secondary;
 }
 
 /** `assets/menu/*.svg` viewBox. */
@@ -170,7 +179,7 @@ export const layout = {
     /** Vertical gap (px) between header row content and full-width divider below (wide layout only). */
     headerDividerTopGap: 22,
     /** Horizontal gap (px) between profile name and chevron on authenticated home header (`assets/header/right.svg`). */
-    headerProfileChevronAfterNameGap: 10,
+    headerProfileChevronAfterNameGap: 5,
     /** Two-column body under header: default first column width (px) when `width > firstBreakpoint`. */
     splitPaneDefaultFirstColumnPx: (364 + 15 + 30),
     /** Two-column body: minimum first column width (px) while dragging the divider. */

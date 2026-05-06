@@ -1258,7 +1258,7 @@ export function HomeAuthenticatedScreen() {
                     textAlign: "center",
                     fontSize: 13,
                     lineHeight: 20,
-                    color: colors.highlight,
+                    color: colors.secondary,
                   }}
                 >
                   Generating your wallet keys…
@@ -1268,7 +1268,7 @@ export function HomeAuthenticatedScreen() {
             {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
               <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
-                <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.highlight }}>
+                <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
                   Finishing on the server (saving the row). You can wait or close the app; your address is already shown.
                 </Text>
               </View>
@@ -1278,7 +1278,7 @@ export function HomeAuthenticatedScreen() {
                 style={{
                   marginTop: 14,
                   fontSize: 12,
-                  color: colors.highlight,
+                  color: colors.secondary,
                   textAlign: "center",
                   paddingHorizontal: 8,
                 }}

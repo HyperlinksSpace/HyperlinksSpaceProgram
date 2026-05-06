@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../api/_base";
@@ -196,7 +196,7 @@ function FeedFeedRow({
             contentFit="contain"
           />
         ) : (
-          <View style={{ width: ICON_PX, height: ICON_PX, backgroundColor: colors.highlight }} />
+          <View style={{ width: ICON_PX, height: ICON_PX, backgroundColor: colors.secondary }} />
         )}
       </View>
       <View style={{ width: ICON_TEXT_GAP_PX }} />
@@ -227,7 +227,7 @@ function FeedFeedRow({
               style={{
                 ...textBase,
                 flexShrink: 0,
-                color: timeIsProvisional ? colors.highlight : colors.primary,
+                color: timeIsProvisional ? colors.secondary : colors.primary,
               }}
             >
               {timeLabel}
@@ -248,7 +248,7 @@ function FeedFeedRow({
               ...textBase,
               flex: trailing ? 1 : 1,
               minWidth: 0,
-              color: colors.highlight,
+              color: colors.secondary,
             }}
           >
             {subtitle}
@@ -263,7 +263,7 @@ function FeedFeedRow({
                   ...textBase,
                   flexShrink: 0,
                   maxWidth: "45%",
-                  color: colors.highlight,
+                  color: colors.secondary,
                   textAlign: "right",
                 }}
               >
@@ -281,6 +281,25 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   const { initData, status, telegramBootstrapFeed } = useTelegram();
   const [items, setItems] = useState<FeedRow[]>(() => [...WELCOME_PLACEHOLDER_FEED_ITEMS]);
   const [error, setError] = useState<string | null>(null);
+  const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web") return;
+    const run = () => {
+      const instance = feedScrollRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (el?.style) {
+        el.style.setProperty("scrollbar-color", `${colors.accent} ${colors.background}`);
+      }
+    };
+    const id = requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [colors.accent, colors.background, items.length, error]);
 
   useEffect(() => {
     if (!telegramBootstrapFeed || telegramBootstrapFeed.length === 0) return;
@@ -432,7 +451,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
 
   if (error && items.length === 0) {
     return (
-      <Text style={{ color: colors.highlight, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
+      <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
         {error}
       </Text>
     );
@@ -440,7 +459,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
 
   if (items.length === 0) {
     return (
-      <Text style={{ color: colors.highlight, fontSize: 13, lineHeight: 18 }}>
+      <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
         No feed items yet.
       </Text>
     );
@@ -448,6 +467,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
 
   return (
     <ScrollView
+      ref={feedScrollRef}
       style={{ alignSelf: "stretch" }}
       contentContainerStyle={{ paddingBottom: layout.contentSideInsetPx }}
       showsVerticalScrollIndicator={false}
@@ -456,7 +476,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
       {error ? (
         <Text
           style={{
-            color: colors.highlight,
+            color: colors.secondary,
             fontSize: 11,
             lineHeight: 16,
             marginBottom: 10,

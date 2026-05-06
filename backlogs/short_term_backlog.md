@@ -1,3 +1,7 @@
+Scrolling indicator min and max size
+Menu items fix
+Arrow
+Borders revie
 Shield and settings icons
 Private key displayal
 Token and NFT mint

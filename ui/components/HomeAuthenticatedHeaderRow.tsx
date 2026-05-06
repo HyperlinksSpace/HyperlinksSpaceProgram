@@ -1,6 +1,5 @@
 import * as Clipboard from "expo-clipboard";
-import { Image } from "expo-image";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
@@ -22,17 +21,26 @@ import {
   MenuTradeIcon,
 } from "./menu/MenuIcons";
 import { logPageDisplay } from "../pageDisplayLog";
+import {
+  HeaderIconCopy,
+  HeaderIconEdit,
+  HeaderIconExit,
+  HeaderIconKey,
+  HeaderIconRu,
+} from "./icons/HeaderActionIcons";
 
 const AH = layout.authenticatedHome;
 
 /** Header pressables use `AH.headerPressableHitSlop` — invisible touch padding around small targets. */
-/** Header actions — `assets/header/*.svg` (fixed palette in asset; optional tint later). */
-const HEADER_ICONS: readonly { source: number; accessibilityLabel: string }[] = [
-  { source: require("../../assets/header/copy.svg"), accessibilityLabel: "Copy wallet address" },
-  { source: require("../../assets/header/edit.svg"), accessibilityLabel: "Edit" },
-  { source: require("../../assets/header/key.svg"), accessibilityLabel: "Key" },
-  { source: require("../../assets/header/ru.svg"), accessibilityLabel: "Language" },
-  { source: require("../../assets/header/exit.svg"), accessibilityLabel: "Exit" },
+const HEADER_ICONS: readonly {
+  accessibilityLabel: string;
+  Icon: (p: { color: string; size: number }) => ReactNode;
+}[] = [
+  { Icon: HeaderIconCopy, accessibilityLabel: "Copy wallet address" },
+  { Icon: HeaderIconEdit, accessibilityLabel: "Edit" },
+  { Icon: HeaderIconKey, accessibilityLabel: "Key" },
+  { Icon: HeaderIconRu, accessibilityLabel: "Language" },
+  { Icon: HeaderIconExit, accessibilityLabel: "Exit" },
 ];
 
 /** Shown in header as `walletAddressSnippetPrefix` + last N chars (lowercase); clipboard keeps original casing. */
@@ -272,7 +280,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             }}
             style={atOrAboveFirstBreakpoint ? undefined : { alignSelf: "stretch" }}
           >
-            <Text style={[homeWalletAddressHeaderText, { color: colors.highlight }]}>
+            <Text style={[homeWalletAddressHeaderText, { color: colors.secondary }]}>
               {displaySnippet}
             </Text>
           </Pressable>
@@ -310,7 +318,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               : {}),
           }}
         >
-          {HEADER_ICONS.map(({ source, accessibilityLabel }, index) => (
+          {HEADER_ICONS.map(({ Icon, accessibilityLabel }, index) => (
             <Pressable
               key={accessibilityLabel}
               accessibilityRole="button"
@@ -324,13 +332,9 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
                 /* Wired when flows land */
               }}
             >
-              <Image
-                source={source}
-                style={{
-                  width: AH.headerIconDisplaySize,
-                  height: AH.headerIconDisplaySize,
-                }}
-                contentFit="contain"
+              <Icon
+                color={menuIconStrokeColor(colors, "highlight")}
+                size={AH.headerIconDisplaySize}
               />
             </Pressable>
           ))}
@@ -357,7 +361,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               justifyContent: "center",
             }}
           >
-            <HeaderProfileChevronIcon color={colors.highlight} />
+            <HeaderProfileChevronIcon color={menuIconStrokeColor(colors, "highlight")} />
           </View>
         </View>
       </View>
