@@ -202,6 +202,7 @@ function WebBottomBar({
   const [domScrollRange, setDomScrollRange] = useState(0);
   const [contentHeight, setContentHeight] = useState(LINE_HEIGHT);
   const [domMirrorHeight, setDomMirrorHeight] = useState<number | null>(null);
+  const [resizeNonce, setResizeNonce] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const domMirrorRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomBeforeInputRef = useRef(true);
@@ -212,6 +213,29 @@ function WebBottomBar({
     el.style.height = "auto";
     setContentHeight(el.scrollHeight);
   }, []);
+
+  // Width changes (screen resize, split-pane drag) change wrapping → scrollHeight. Re-measure immediately.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => {
+      setResizeNonce((n) => n + 1);
+      requestAnimationFrame(() => measureAndResize());
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [measureAndResize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const el = textareaRef.current;
+    if (!el || typeof (window as any).ResizeObserver === "undefined") return;
+    const ro = new (window as any).ResizeObserver(() => {
+      setResizeNonce((n) => n + 1);
+      requestAnimationFrame(() => measureAndResize());
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureAndResize]);
 
   const handleInput = useCallback(
     (e: React.FormEvent<HTMLTextAreaElement>) => {
@@ -247,7 +271,7 @@ function WebBottomBar({
   useEffect(() => {
     const id = requestAnimationFrame(() => measureAndResize());
     return () => cancelAnimationFrame(id);
-  }, [measureAndResize]);
+  }, [measureAndResize, resizeNonce]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -291,7 +315,7 @@ function WebBottomBar({
     mirror.textContent = value || " ";
     const h = mirror.getBoundingClientRect().height;
     setDomMirrorHeight(Number.isFinite(h) && h > 0 ? h : null);
-  }, [value]);
+  }, [value, resizeNonce]);
 
   const baseHeight = domMirrorHeight ?? contentHeight;
   const metrics = getBottomBarMetrics({

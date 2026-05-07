@@ -1,6 +1,5 @@
 GlobalBottom bar with text input on resize (same as I have started the input from that width)
 Time in web
-Arrow
 Check settings icon rotation
 Scrolling indicator min and max size
 Menu items fix
