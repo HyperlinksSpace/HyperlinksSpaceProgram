@@ -218,6 +218,10 @@ export const layout = {
   floatingShield: {
     settingsDiameter: 30,
     shieldDiameter: 50,
+    /** Standard horizontal inset (px) from the column/screen edge (glow/lightning may overflow). */
+    edgeInsetPx: contentSideInsetPx,
+    /** Shield chip sits an extra 10px inward vs settings. */
+    shieldExtraInsetPx: 10,
   },
   bottomBar: {
     /** One-line bar: `verticalPadding` + 40px control column + `verticalPadding` (send sits in 40×40 undercover). */
@@ -231,7 +235,7 @@ export const layout = {
     /** Horizontal inset (px) from column edge: textarea left, send icon right (`GlobalBottomBar` inner row). */
     horizontalPadding: contentSideInsetPx,
     /** Horizontal gap (px) between the text field and the send icon on all platforms. */
-    textToSendIconGapPx: 10,
+    textToSendIconGapPx: 15,
     /** Custom 1px scroll-thumb columns (main web column + bottom bar); separate from `horizontalPadding`. */
     scrollbarRightInsetPx: 5,
   },
@@ -288,7 +292,7 @@ export const icons = {
  * put `uiTextVerticalCompensationTransform` on `TextStyle` tokens like `typographyRect15` — that would
  * double-apply on `Text`.
  */
-export const uiTextVerticalCompensationY = Platform.OS === "web" ? -2 : -1;
+export const uiTextVerticalCompensationY = -1;
 
 export const uiTextVerticalCompensationTransform = {
   transform: [{ translateY: uiTextVerticalCompensationY }],

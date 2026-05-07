@@ -7,9 +7,10 @@ import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 import { SettingsIcon } from "./icons/SettingsIcon";
 
 const AH = layout.authenticatedHome;
+const FS = layout.floatingShield;
 
 /** Space between the footer's top border and the bottom of this floating stack. */
-const FOOTER_TOP_GAP_PX = 20;
+const FOOTER_TOP_GAP_PX = 15;
 
 /** One full turn of the settings cog inside the liquid-glass chip (linear). */
 const SETTINGS_ICON_SPIN_MS = 28000;
@@ -97,24 +98,26 @@ export function FloatingShield() {
     >
       <View style={shieldOnRight ? styles.settingsSlotRight : styles.settingsSlotLeft}>
         <LiquidGlassShaderUndercover
-          size={layout.floatingShield.settingsDiameter}
+          size={FS.settingsDiameter}
           phaseOffset={0.08}
           isLightTheme={isLightTheme}
         >
           <SlowRotatingSettingsIcon color={colors.primary} size={styles.settingsIcon.width as number} />
         </LiquidGlassShaderUndercover>
       </View>
-      <LiquidGlassShaderUndercover
-        size={layout.floatingShield.shieldDiameter}
-        phaseOffset={0.41}
-        isLightTheme={isLightTheme}
-        contentAlign="top"
-      >
-        <View style={styles.iconWrap}>
-          <ShieldIcon powerColor={powerColor} />
-        </View>
-        <Text style={[styles.label, { color: colors.primary }]}>Shield</Text>
-      </LiquidGlassShaderUndercover>
+      <View style={shieldOnRight ? styles.shieldSlotRight : styles.shieldSlotLeft}>
+        <LiquidGlassShaderUndercover
+          size={FS.shieldDiameter}
+          phaseOffset={0.41}
+          isLightTheme={isLightTheme}
+          contentAlign="top"
+        >
+          <View style={styles.iconWrap}>
+            <ShieldIcon powerColor={powerColor} />
+          </View>
+          <Text style={[styles.label, { color: colors.primary }]}>Shield</Text>
+        </LiquidGlassShaderUndercover>
+      </View>
     </View>
   );
 }
@@ -128,25 +131,29 @@ const styles = StyleSheet.create({
   },
   /** At or below {@link layout.authenticatedHome.firstBreakpoint}: original right inset. */
   hostRight: {
-    right: 30,
+    right: FS.edgeInsetPx,
     alignItems: "flex-end",
   },
   /** Wider than `firstBreakpoint`: mirrored inset on the left. */
   hostLeft: {
-    left: 30,
+    left: FS.edgeInsetPx,
     alignItems: "flex-start",
   },
   settingsSlotRight: {
     marginBottom: 10,
-    marginRight: -10,
     alignItems: "center",
     justifyContent: "center",
   },
   settingsSlotLeft: {
-    marginBottom: 10,
-    marginLeft: -10,
+    marginBottom: 15,
     alignItems: "center",
     justifyContent: "center",
+  },
+  shieldSlotRight: {
+    marginRight: FS.shieldExtraInsetPx,
+  },
+  shieldSlotLeft: {
+    marginLeft: FS.shieldExtraInsetPx,
   },
   settingsIcon: {
     width: 20,
