@@ -68,7 +68,7 @@ function Scrollbar({
 export function GlobalBottomBar() {
   const colors = useColors();
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
-  const { footerDockedToScreenEdge } = useBottomBarLayout();
+  const { footerDockedToScreenEdge, draftText, setDraftText } = useBottomBarLayout();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   const launchPrimary =
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
@@ -88,6 +88,8 @@ export function GlobalBottomBar() {
         scrollbarColor={scrollbarThumbColor}
         topBorderColor={topBorderColor}
         hideBottomBorder={hideBottomBorder}
+        value={draftText}
+        setValue={setDraftText}
       />
     );
   }
@@ -100,6 +102,8 @@ export function GlobalBottomBar() {
       scrollbarColor={scrollbarThumbColor}
       topBorderColor={topBorderColor}
       hideBottomBorder={hideBottomBorder}
+      value={draftText}
+      setValue={setDraftText}
     />
   );
 }
@@ -188,6 +192,8 @@ function WebBottomBar({
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
+  value,
+  setValue,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -195,8 +201,9 @@ function WebBottomBar({
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
+  value: string;
+  setValue: (t: string) => void;
 }) {
-  const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [domScrollRange, setDomScrollRange] = useState(0);
@@ -446,6 +453,8 @@ function NativeBottomBar({
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
+  value,
+  setValue,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -453,10 +462,11 @@ function NativeBottomBar({
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
+  value: string;
+  setValue: (t: string) => void;
 }) {
   const router = useRouter();
   const { triggerHaptic } = useTelegram();
-  const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
   const [mirrorHeight, setMirrorHeight] = useState<number | null>(null);

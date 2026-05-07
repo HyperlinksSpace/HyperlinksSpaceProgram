@@ -15,6 +15,9 @@ type BottomBarLayoutCtx = {
   /** When false, `GlobalBottomBar` is embedded in split columns — not stacked under the main scroll shell. */
   footerDockedToScreenEdge: boolean;
   setFooterDockedToScreenEdge: (v: boolean) => void;
+  /** Draft text in the AI/search field; persisted across breakpoint re-docks (footer ↔ split column). */
+  draftText: string;
+  setDraftText: (t: string) => void;
 };
 
 const BottomBarLayoutContext = createContext<BottomBarLayoutCtx | null>(null);
@@ -28,9 +31,20 @@ export function BottomBarLayoutProvider({ children }: { children: ReactNode }) {
   const setFooterDockedToScreenEdge = useCallback((v: boolean) => {
     setFooterDockedToScreenEdgeState((prev) => (prev === v ? prev : v));
   }, []);
+  const [draftText, setDraftTextState] = useState("");
+  const setDraftText = useCallback((t: string) => {
+    setDraftTextState((prev) => (prev === t ? prev : t));
+  }, []);
   const value = useMemo(
-    () => ({ barHeight, setBarHeight, footerDockedToScreenEdge, setFooterDockedToScreenEdge }),
-    [barHeight, setBarHeight, footerDockedToScreenEdge, setFooterDockedToScreenEdge],
+    () => ({
+      barHeight,
+      setBarHeight,
+      footerDockedToScreenEdge,
+      setFooterDockedToScreenEdge,
+      draftText,
+      setDraftText,
+    }),
+    [barHeight, setBarHeight, footerDockedToScreenEdge, setFooterDockedToScreenEdge, draftText, setDraftText],
   );
   return <BottomBarLayoutContext.Provider value={value}>{children}</BottomBarLayoutContext.Provider>;
 }
