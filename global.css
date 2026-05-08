@@ -43,6 +43,17 @@ body {
   line-height: normal;
 }
 
+/*
+ * AuthenticatedHomeLeftNavStrip debug overlay: RN-web can fail to composite backgroundColor on nested
+ * absolutely positioned Views; force an opaque backing layer that matches TMA theme.
+ */
+#ah-nav-strip-debug-panel {
+  background-color: var(--tg-theme-bg-color, #000000) !important;
+  opacity: 1 !important;
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
 /* Hide native textarea scrollbars (React Native Web TextInput) while keeping scroll behaviour. */
 textarea {
   -ms-overflow-style: none; /* IE and Edge */

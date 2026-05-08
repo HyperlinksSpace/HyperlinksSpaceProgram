@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   NativeScrollEvent,
@@ -31,6 +32,9 @@ const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
+const DEBUG_PANEL_H_PX = 200;
+const DEBUG_LOG_CAP = 600;
+const DEBUG_LOG_THROTTLE_MS = 50;
 /** Both horizontal content insets on the strip (`contentSideInsetPx` × 2); matches “width minus 30px” in layout copy. */
 const NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX = STRIP_PADDING_PX * 2;
 /**
@@ -120,6 +124,22 @@ export function AuthenticatedHomeLeftNavStrip({
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
+  const debugEnabled =
+    (__DEV__ as unknown as boolean) ||
+    (Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      (() => {
+        try {
+          const s = window.location?.search ?? "";
+          const h = window.location?.hash ?? "";
+          if (s.includes("debugNavStrip=1") || h.includes("debugNavStrip=1")) return true;
+          // TMA sometimes strips query params; allow persistent toggle.
+          return window.localStorage?.getItem("debugNavStrip") === "1";
+        } catch {
+          return false;
+        }
+      })());
+  const [debugPanelVisible, setDebugPanelVisible] = useState(debugEnabled);
   /**
    * When mounted under {@link AuthenticatedHomeSplitBody}, chrome follows **split column count** (2+ =
    * wide menu with bottom hairline, no extra top margin). Otherwise fall back to window width vs
@@ -178,8 +198,35 @@ export function AuthenticatedHomeLeftNavStrip({
     setOuterW(Math.round(e.nativeEvent.layout.width));
   }, []);
 
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const debugLastLogAtRef = useRef(0);
+  const debugAppendLog = useCallback(
+    (line: string) => {
+      if (!debugEnabled) return;
+      const now = Date.now();
+      if (now - debugLastLogAtRef.current < DEBUG_LOG_THROTTLE_MS) return;
+      debugLastLogAtRef.current = now;
+      setDebugLogs((prev) => {
+        const next = prev.length >= DEBUG_LOG_CAP ? prev.slice(prev.length - DEBUG_LOG_CAP + 1) : prev;
+        next.push(line);
+        return next;
+      });
+    },
+    [debugEnabled],
+  );
+
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    setScrollX(e.nativeEvent.contentOffset.x);
+    const x = e.nativeEvent.contentOffset.x;
+    setScrollX(x);
+    debugAppendLog(
+      [
+        `H_SCROLL t=${Date.now()}`,
+        `x=${Math.round(x)}`,
+        `layoutW=${layoutW}`,
+        `contentW=${contentW}`,
+        `intrinsicRowW=${intrinsicRowW}`,
+      ].join(" "),
+    );
   };
 
   const onScrollViewLayout = useCallback((e: LayoutChangeEvent) => {
@@ -241,6 +288,43 @@ export function AuthenticatedHomeLeftNavStrip({
     scrollX,
     scrollRange,
   );
+
+  useEffect(() => {
+    if (!debugEnabled || Platform.OS !== "web" || typeof window === "undefined") return;
+    const onWinScroll = () => {
+      const y = window.scrollY ?? 0;
+      const de = document.documentElement;
+      debugAppendLog(
+        [
+          `V_SCROLL t=${Date.now()}`,
+          `winY=${Math.round(y)}`,
+          `docElTop=${Math.round(de?.scrollTop ?? 0)}`,
+          `docElH=${Math.round(de?.scrollHeight ?? 0)}`,
+          `docElCH=${Math.round(de?.clientHeight ?? 0)}`,
+        ].join(" "),
+      );
+    };
+    window.addEventListener("scroll", onWinScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onWinScroll);
+  }, [debugAppendLog, debugEnabled]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    debugAppendLog(
+      [
+        `H_METRICS t=${Date.now()}`,
+        `fits=${String(fits)}`,
+        `showScrollbar=${String(showScrollbar)}`,
+        `range=${Math.round(scrollRange)}`,
+        `thumbW=${Math.round(thumbW)}`,
+        `thumbL=${Math.round(thumbLeft)}`,
+        `trackW=${Math.round(scrollTrackWidth)}`,
+        `viewW=${Math.round(scrollViewportW)}`,
+        `contentSpan=${Math.round(scrollContentSpanPx)}`,
+      ].join(" "),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugEnabled, fits, showScrollbar, scrollRange, thumbW, thumbLeft, scrollTrackWidth, scrollViewportW, scrollContentSpanPx]);
 
   const borderLineStyle = useMemo((): ViewStyle => {
     return {
@@ -613,6 +697,119 @@ export function AuthenticatedHomeLeftNavStrip({
 
       {showBottomMenuRule ? (
         <View pointerEvents="none" collapsable={false} style={[borderLineStyle, lineAxisLock]} />
+      ) : null}
+
+      {debugEnabled && debugPanelVisible ? (
+        <View
+          nativeID="ah-nav-strip-debug-panel"
+          collapsable={false}
+          pointerEvents="auto"
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: STRIP_HEIGHT_PX,
+            zIndex: 9999,
+            ...(Platform.OS === "android" ? { elevation: 9999 } : null),
+            height: DEBUG_PANEL_H_PX,
+            width: "100%",
+            backgroundColor: colors.background,
+            opacity: 1,
+            overflow: "hidden",
+            borderBottomWidth: menuStripRuleThickness(),
+            borderBottomColor: colors.highlight,
+            paddingHorizontal: 10,
+            paddingTop: 8,
+            paddingBottom: 8,
+            ...(Platform.OS === "web"
+              ? ({
+                  isolation: "isolate",
+                  boxSizing: "border-box",
+                } as ViewStyle)
+              : null),
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexShrink: 0,
+            }}
+          >
+            <Text style={{ color: colors.primary, fontSize: 12 }}>NavStrip debug (h/v scroll)</Text>
+            <View style={{ flexDirection: "row", gap: 12 } as ViewStyle}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={async () => {
+                  try {
+                    await Clipboard.setStringAsync(debugLogs.join("\n"));
+                    debugAppendLog(`COPY_OK t=${Date.now()} lines=${debugLogs.length}`);
+                  } catch (e) {
+                    debugAppendLog(`COPY_ERR t=${Date.now()} ${(e as Error)?.message ?? String(e)}`);
+                  }
+                }}
+              >
+                <Text style={{ color: colors.accent, fontSize: 12 }}>Copy logs</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setDebugLogs([]);
+                  debugLastLogAtRef.current = 0;
+                }}
+              >
+                <Text style={{ color: colors.secondary, fontSize: 12 }}>Clear</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close debug panel"
+                onPress={() => {
+                  setDebugPanelVisible(false);
+                  try {
+                    if (Platform.OS === "web" && typeof window !== "undefined") {
+                      window.localStorage?.removeItem("debugNavStrip");
+                    }
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                <Text style={{ color: colors.primary, fontSize: 12 }}>✕</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Text
+            style={{
+              color: colors.secondary,
+              fontSize: 11,
+              marginTop: 6,
+              flexShrink: 0,
+            }}
+          >
+            {`x=${Math.round(scrollX)} range=${Math.round(scrollRange)} thumbL=${Math.round(thumbLeft)} thumbW=${Math.round(thumbW)} show=${String(showScrollbar)} fits=${String(fits)}`}
+          </Text>
+
+          <ScrollView
+            style={{ flex: 1, minHeight: 0, marginTop: 6 }}
+            contentContainerStyle={{ paddingBottom: 12 }}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text
+              selectable
+              style={{
+                color: colors.secondary,
+                fontSize: 10,
+                lineHeight: 14,
+                fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
+              }}
+            >
+              {debugLogs.join("\n")}
+            </Text>
+          </ScrollView>
+        </View>
       ) : null}
     </View>
   );
