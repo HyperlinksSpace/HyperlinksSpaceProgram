@@ -575,6 +575,15 @@ export function AuthenticatedHomeLeftNavStrip({
     splitMetrics,
   ]);
 
+  /** Feed is the next sibling in the column; later siblings paint on top unless we raise this root. */
+  const liftStripAboveFeed =
+    debugEnabled && debugPanelVisible
+      ? {
+          zIndex: 99999,
+          ...(Platform.OS === "android" ? { elevation: 99999 } : null),
+        }
+      : null;
+
   return (
     <View
       onLayout={onOuterLayout}
@@ -588,6 +597,7 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 8,
         position: "relative",
         overflow: "visible",
+        ...liftStripAboveFeed,
       }}
     >
       {/* Full-width scroll + 15px content insets: at scroll 0 / thumb left, row starts 15px in; at max scroll / thumb right, row ends 15px before edge. Edge fades sit on top for motion blur to the real edge. */}
