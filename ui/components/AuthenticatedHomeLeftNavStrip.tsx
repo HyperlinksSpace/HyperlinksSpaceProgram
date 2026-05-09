@@ -32,6 +32,12 @@ const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
+/**
+ * When `fits` flips due to web layout jitter, `justifyContent` / `scrollEnabled` toggle and the strip
+ * snaps back. Sticky overflow stays in scroll mode until the row clearly fits with margin.
+ */
+const NAV_STRIP_OVERFLOW_LOCK_PX = SCROLL_EPS;
+const NAV_STRIP_OVERFLOW_CLEAR_MARGIN_PX = 8;
 const DEBUG_PANEL_H_PX = 200;
 const DEBUG_LOG_CAP = 600;
 const DEBUG_LOG_THROTTLE_MS = 50;
@@ -89,6 +95,16 @@ function windowInferredSplitColumnCount(windowWidthPx: number): 1 | 2 | 3 {
   return 3;
 }
 
+/** RN-web horizontal ScrollView often reports total scroll span in `contentSize.height` instead of `.width`. */
+function scrollSpanFromContentSizeEvent(width: number, height: number): number {
+  const w = Number.isFinite(width) && width > 0 ? width : 0;
+  const h = Number.isFinite(height) && height > 0 ? height : 0;
+  if (Platform.OS === "web") {
+    return Math.max(w, h);
+  }
+  return w;
+}
+
 function horizontalThumbFullTrack(
   trackWidth: number,
   viewportWidth: number,
@@ -124,22 +140,9 @@ export function AuthenticatedHomeLeftNavStrip({
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
-  const debugEnabled =
-    (__DEV__ as unknown as boolean) ||
-    (Platform.OS === "web" &&
-      typeof window !== "undefined" &&
-      (() => {
-        try {
-          const s = window.location?.search ?? "";
-          const h = window.location?.hash ?? "";
-          if (s.includes("debugNavStrip=1") || h.includes("debugNavStrip=1")) return true;
-          // TMA sometimes strips query params; allow persistent toggle.
-          return window.localStorage?.getItem("debugNavStrip") === "1";
-        } catch {
-          return false;
-        }
-      })());
-  const [debugPanelVisible, setDebugPanelVisible] = useState(debugEnabled);
+  /** Nav strip scroll / metrics overlay: always available (no URL or storage toggle). */
+  const debugEnabled = true;
+  const [debugPanelVisible, setDebugPanelVisible] = useState(true);
   /**
    * When mounted under {@link AuthenticatedHomeSplitBody}, chrome follows **split column count** (2+ =
    * wide menu with bottom hairline, no extra top margin). Otherwise fall back to window width vs
@@ -182,6 +185,10 @@ export function AuthenticatedHomeLeftNavStrip({
   const [scrollX, setScrollX] = useState(0);
   const [layoutW, setLayoutW] = useState(0);
   const [contentW, setContentW] = useState(0);
+  /** RN-web often reports `contentSize.width` ≈ row layout while the DOM scrollWidth is larger; infer min span from max offset seen. */
+  const maxScrollXSeenRef = useRef(0);
+  /** Once strip overflows viewport, keep scroll layout until it clearly fits (see {@link NAV_STRIP_OVERFLOW_CLEAR_MARGIN_PX}). */
+  const navStripOverflowStickyRef = useRef(false);
   /** Labels + gaps only (excludes `paddingHorizontal` on the scroll content container). */
   const [intrinsicRowW, setIntrinsicRowW] = useState(0);
   const [outerW, setOuterW] = useState(0);
@@ -216,14 +223,29 @@ export function AuthenticatedHomeLeftNavStrip({
   );
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const x = e.nativeEvent.contentOffset.x;
+    const ne = e.nativeEvent;
+    const x = ne.contentOffset.x;
+    if (x > maxScrollXSeenRef.current) {
+      maxScrollXSeenRef.current = x;
+    }
+    const cs = ne.contentSize;
+    const spanPx = scrollSpanFromContentSizeEvent(cs?.width ?? 0, cs?.height ?? 0);
+    if (spanPx > 0) {
+      const rounded = Math.round(spanPx);
+      setContentW((prev) => (rounded > prev ? rounded : prev));
+    }
     setScrollX(x);
+    const cw = cs?.width;
+    const ch = cs?.height;
     debugAppendLog(
       [
         `H_SCROLL t=${Date.now()}`,
         `x=${Math.round(x)}`,
+        `maxSeenX=${Math.round(maxScrollXSeenRef.current)}`,
         `layoutW=${layoutW}`,
-        `contentW=${contentW}`,
+        `contentW=${spanPx > 0 ? Math.round(spanPx) : contentW}`,
+        `csW=${cw != null ? Math.round(cw) : "—"}`,
+        `csH=${ch != null ? Math.round(ch) : "—"}`,
         `intrinsicRowW=${intrinsicRowW}`,
       ].join(" "),
     );
@@ -232,14 +254,19 @@ export function AuthenticatedHomeLeftNavStrip({
   const onScrollViewLayout = useCallback((e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
     setLayoutW((prev) => {
-      if (prev !== w) setContentW(0);
+      if (prev !== w) {
+        setContentW(0);
+        maxScrollXSeenRef.current = 0;
+      }
       return w;
     });
   }, []);
 
-  const onContentSizeChange = useCallback((w: number, _h: number) => {
-    if (!Number.isFinite(w) || w <= 0) return;
-    setContentW(Math.round(w));
+  const onContentSizeChange = useCallback((w: number, h: number) => {
+    const spanPx = scrollSpanFromContentSizeEvent(w, h);
+    if (spanPx <= 0) return;
+    const rounded = Math.round(spanPx);
+    setContentW((prev) => (rounded > prev ? rounded : prev));
   }, []);
 
   const onIntrinsicRowLayout = useCallback((e: LayoutChangeEvent) => {
@@ -258,15 +285,56 @@ export function AuthenticatedHomeLeftNavStrip({
     intrinsicRowW > 0
       ? NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX + intrinsicRowW
       : ESTIMATED_NAV_STRIP_CONTENT_W_PX;
+  if (scrollViewportW > 0) {
+    const overBy = stripContentWidthPx - scrollViewportW;
+    if (
+      overBy > NAV_STRIP_OVERFLOW_LOCK_PX ||
+      maxScrollXSeenRef.current > SCROLL_EPS
+    ) {
+      navStripOverflowStickyRef.current = true;
+    } else if (stripContentWidthPx < scrollViewportW - NAV_STRIP_OVERFLOW_CLEAR_MARGIN_PX) {
+      navStripOverflowStickyRef.current = false;
+    }
+  }
   const fits =
-    scrollViewportW > 0 && stripContentWidthPx <= scrollViewportW + SCROLL_EPS;
-  /** When scrolling, RN may briefly report a low content width; floor with measured or estimated span. */
+    scrollViewportW > 0 &&
+    stripContentWidthPx <= scrollViewportW + SCROLL_EPS &&
+    !navStripOverflowStickyRef.current;
+  /**
+   * Total scrollable width: max of live `contentSize`, row + padding, glyph estimate, and **viewport + max scroll
+   * offset seen** — on web, `contentSize.width` can match the row (~384) while the user can still scroll far past
+   * `contentSize.width - viewport` because the real scrollWidth is larger (e.g. ~533).
+   */
+  const scrollSpanInferredFromObservedOffsetPx =
+    scrollViewportW > 0 ? scrollViewportW + maxScrollXSeenRef.current : 0;
   const scrollContentSpanPx =
     !fits && scrollViewportW > 0
-      ? Math.max(contentW, stripContentWidthPx)
+      ? Math.max(
+          contentW,
+          stripContentWidthPx,
+          ESTIMATED_NAV_STRIP_CONTENT_W_PX,
+          scrollSpanInferredFromObservedOffsetPx,
+        )
       : 0;
 
   const scrollRange = Math.max(0, scrollContentSpanPx - scrollViewportW);
+  const stripOverViewportPx =
+    scrollViewportW > 0 ? stripContentWidthPx - scrollViewportW : 0;
+  /**
+   * Stable identity avoids RN-web resetting scroll when unrelated parent state updates pass new object
+   * literals every render.
+   */
+  const navScrollContentContainerStyle = useMemo(
+    (): ViewStyle => ({
+      paddingHorizontal: STRIP_PADDING_PX,
+      flexGrow: fits ? 1 : 0,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: fits ? "center" : "flex-start",
+      minWidth: fits && scrollViewportW > 0 ? scrollViewportW : undefined,
+    }),
+    [fits, scrollViewportW],
+  );
   /**
    * Thumb track must match the same client width as `scrollViewportW` so the thumb crosses the full strip.
    * When `outer`/`ScrollView` layouts disagree by a pixel, use the larger width for the track math.
@@ -288,6 +356,9 @@ export function AuthenticatedHomeLeftNavStrip({
     scrollX,
     scrollRange,
   );
+  /** Pixel-snapped values applied to the thumb fill (`translateX` + width); logged under `H_THUMB`. */
+  const thumbSnapLeft = snapToPixelGrid(thumbLeft);
+  const thumbSnapW = Math.max(1, snapToPixelGrid(thumbW));
 
   useEffect(() => {
     if (!debugEnabled || Platform.OS !== "web" || typeof window === "undefined") return;
@@ -315,16 +386,34 @@ export function AuthenticatedHomeLeftNavStrip({
         `H_METRICS t=${Date.now()}`,
         `fits=${String(fits)}`,
         `showScrollbar=${String(showScrollbar)}`,
+        `scrollX=${Math.round(scrollX)}`,
         `range=${Math.round(scrollRange)}`,
         `thumbW=${Math.round(thumbW)}`,
         `thumbL=${Math.round(thumbLeft)}`,
         `trackW=${Math.round(scrollTrackWidth)}`,
         `viewW=${Math.round(scrollViewportW)}`,
         `contentSpan=${Math.round(scrollContentSpanPx)}`,
+        `maxSeenX=${Math.round(maxScrollXSeenRef.current)}`,
+        `inferredMinSpan=${Math.round(scrollSpanInferredFromObservedOffsetPx)}`,
+        `overflowSticky=${String(navStripOverflowStickyRef.current)}`,
+        `overBy=${Math.round(stripOverViewportPx)}`,
       ].join(" "),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugEnabled, fits, showScrollbar, scrollRange, thumbW, thumbLeft, scrollTrackWidth, scrollViewportW, scrollContentSpanPx]);
+  }, [
+    debugAppendLog,
+    debugEnabled,
+    fits,
+    showScrollbar,
+    scrollX,
+    scrollRange,
+    stripOverViewportPx,
+    thumbW,
+    thumbLeft,
+    scrollTrackWidth,
+    scrollViewportW,
+    scrollContentSpanPx,
+    scrollSpanInferredFromObservedOffsetPx,
+  ]);
 
   const borderLineStyle = useMemo((): ViewStyle => {
     return {
@@ -349,22 +438,75 @@ export function AuthenticatedHomeLeftNavStrip({
       height: lineT,
       minHeight: lineT,
       maxHeight: lineT,
-      zIndex: 2,
+      zIndex: 3,
       overflow: "hidden",
     };
   }, [showScrollbar, thumbW, thumbBottomSnapped, lineT]);
 
   const thumbFillStyle = useMemo((): ViewStyle | null => {
     if (!showScrollbar || thumbW <= 0) return null;
+    /**
+     * RN-web often fails to repaint when only `left` changes on an absolutely positioned child inside an
+     * `overflow: hidden` track; `translateX` promotes its own layer so the thumb visibly tracks scroll.
+     */
     return {
       position: "absolute",
-      left: snapToPixelGrid(thumbLeft),
-      width: Math.max(1, snapToPixelGrid(thumbW)),
-      bottom: 0,
+      left: 0,
+      top: 0,
+      transform: [{ translateX: thumbSnapLeft }],
+      width: thumbSnapW,
       height: lineT,
       backgroundColor: colors.accent,
+      ...(Platform.OS === "web" ? ({ willChange: "transform" } as ViewStyle) : null),
     };
-  }, [showScrollbar, thumbW, thumbLeft, colors.accent, lineT]);
+  }, [showScrollbar, thumbW, thumbSnapLeft, thumbSnapW, colors.accent, lineT]);
+
+  useEffect(() => {
+    if (!debugEnabled) return;
+    const hidden = !showScrollbar || thumbW <= 0;
+    const slipTravelPx = Math.max(0, scrollTrackWidth - thumbSnapW);
+    const thumbFracOfSlip = slipTravelPx > 0 ? thumbSnapLeft / slipTravelPx : 0;
+    const dpr =
+      Platform.OS === "web" && typeof window !== "undefined" && window.devicePixelRatio > 0
+        ? window.devicePixelRatio
+        : PixelRatio.get();
+    debugAppendLog(
+      [
+        `H_THUMB t=${Date.now()}`,
+        `platform=${Platform.OS}`,
+        `hidden=${String(hidden)}`,
+        `showScrollbar=${String(showScrollbar)}`,
+        `rawThumbW=${Math.round(thumbW)}`,
+        `rawThumbL=${Math.round(thumbLeft)}`,
+        `snapThumbW=${Math.round(thumbSnapW)}`,
+        `snapThumbL=${Math.round(thumbSnapLeft)}`,
+        `translateX=${Math.round(thumbSnapLeft)}`,
+        `lineT=${Number(lineT.toFixed(4))}`,
+        `trackBottom=${Math.round(thumbBottomSnapped)}`,
+        `trackZ=3`,
+        `trackW=${Math.round(scrollTrackWidth)}`,
+        `slipTravel=${Math.round(slipTravelPx)}`,
+        `thumbFrac=${thumbFracOfSlip.toFixed(3)}`,
+        `dpr=${Number(dpr.toFixed(3))}`,
+        `scrollX=${Math.round(scrollX)}`,
+        `range=${Math.round(scrollRange)}`,
+        `willChangeTransform=${String(Platform.OS === "web")}`,
+      ].join(" "),
+    );
+  }, [
+    debugAppendLog,
+    debugEnabled,
+    showScrollbar,
+    thumbW,
+    thumbLeft,
+    thumbSnapW,
+    thumbSnapLeft,
+    scrollTrackWidth,
+    thumbBottomSnapped,
+    lineT,
+    scrollX,
+    scrollRange,
+  ]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -576,13 +718,12 @@ export function AuthenticatedHomeLeftNavStrip({
   ]);
 
   /** Feed is the next sibling in the column; later siblings paint on top unless we raise this root. */
-  const liftStripAboveFeed =
-    debugEnabled && debugPanelVisible
-      ? {
-          zIndex: 99999,
-          ...(Platform.OS === "android" ? { elevation: 99999 } : null),
-        }
-      : null;
+  const liftStripAboveFeed = debugEnabled
+    ? {
+        zIndex: 99999,
+        ...(Platform.OS === "android" ? { elevation: 99999 } : null),
+      }
+    : null;
 
   return (
     <View
@@ -606,14 +747,7 @@ export function AuthenticatedHomeLeftNavStrip({
         showsHorizontalScrollIndicator={false}
         scrollEnabled={!fits}
         style={{ width: "100%", height: INNER_SCROLL_HEIGHT_PX, zIndex: 0 }}
-        contentContainerStyle={{
-          paddingHorizontal: STRIP_PADDING_PX,
-          flexGrow: fits ? 1 : 0,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: fits ? "center" : "flex-start",
-          minWidth: fits && scrollViewportW > 0 ? scrollViewportW : undefined,
-        }}
+        contentContainerStyle={navScrollContentContainerStyle}
         onScroll={onScroll}
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
@@ -820,6 +954,29 @@ export function AuthenticatedHomeLeftNavStrip({
             </Text>
           </ScrollView>
         </View>
+      ) : null}
+
+      {debugEnabled && !debugPanelVisible ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open NavStrip debug panel"
+          onPress={() => setDebugPanelVisible(true)}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: STRIP_HEIGHT_PX,
+            zIndex: 9999,
+            ...(Platform.OS === "android" ? { elevation: 9999 } : null),
+            paddingVertical: 8,
+            paddingHorizontal: 10,
+            backgroundColor: colors.background,
+            borderBottomWidth: menuStripRuleThickness(),
+            borderBottomColor: colors.highlight,
+          }}
+        >
+          <Text style={{ color: colors.accent, fontSize: 12 }}>Show NavStrip debug</Text>
+        </Pressable>
       ) : null}
     </View>
   );
