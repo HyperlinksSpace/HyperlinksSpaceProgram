@@ -16,6 +16,7 @@ import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "reac
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
+import { scrollIndicatorThumbSpanAndOffset } from "../scrollIndicatorPx";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "./AuthenticatedHomeSplitLayoutMetricsContext";
 
 const NAV_LABELS = ["Feed", "Messages", "Tasks", "Items", "Coins"] as const;
@@ -31,11 +32,6 @@ const ITEM_GAP_PX = layout.contentSideInsetPx;
 const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
-/**
- * Max fraction of the scrollbar track the thumb may occupy. Without this, tiny overflows (e.g. 9px
- * scroll range with ratio ≈ 1) make the thumb almost full-width so it reads as a static line.
- */
-const NAV_STRIP_THUMB_MAX_TRACK_FRAC = 0.32;
 /**
  * When `fits` flips due to web layout jitter, `justifyContent` / `scrollEnabled` toggle and the strip
  * snaps back. Sticky overflow stays in scroll mode until the row clearly fits with margin.
@@ -130,33 +126,6 @@ function scrollSpanFromContentSizeEvent(width: number, height: number): number {
     return Math.max(w, h);
   }
   return w;
-}
-
-function horizontalThumbFullTrack(
-  trackWidth: number,
-  viewportWidth: number,
-  contentWidth: number,
-  scrollX: number,
-  scrollRange: number,
-): { thumbW: number; thumbLeft: number } {
-  if (trackWidth <= 0 || contentWidth <= 0 || scrollRange <= 0) {
-    return { thumbW: 0, thumbLeft: 0 };
-  }
-  /** Rubber-band / overscroll can report `scrollX` above real range; thumb must follow legal offset only. */
-  const scrollXClamped = Math.max(0, Math.min(scrollX, scrollRange));
-  const ratio = Math.min(1, Math.max(0, viewportWidth / contentWidth));
-  const proportionalThumbW = Math.round(trackWidth * ratio);
-  const capThumbW = Math.round(trackWidth * NAV_STRIP_THUMB_MAX_TRACK_FRAC);
-  let thumbW = Math.min(proportionalThumbW, capThumbW);
-  thumbW = Math.max(4, Math.min(trackWidth - 1, thumbW));
-  let thumbLeft = Math.round((scrollXClamped / scrollRange) * (trackWidth - thumbW));
-  if (scrollXClamped <= SCROLL_EPS) thumbLeft = 0;
-  if (scrollXClamped >= scrollRange - SCROLL_EPS) thumbLeft = trackWidth - thumbW;
-  thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
-  thumbW = snapToPixelGrid(thumbW);
-  thumbLeft = snapToPixelGrid(thumbLeft);
-  thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
-  return { thumbW, thumbLeft };
 }
 
 export function AuthenticatedHomeLeftNavStrip({
@@ -407,11 +376,11 @@ export function AuthenticatedHomeLeftNavStrip({
   );
   const showScrollbar =
     !fits && scrollRange > 0 && scrollViewportW > 0 && scrollTrackWidth > 0;
-  const { thumbW, thumbLeft } = horizontalThumbFullTrack(
+  const { thumbSpan: thumbW, thumbOffset: thumbLeft } = scrollIndicatorThumbSpanAndOffset(
     scrollTrackWidth,
     scrollViewportW,
     scrollContentSpanPx,
-    scrollX,
+    Math.max(0, Math.min(scrollX, scrollRange)),
     scrollRange,
   );
   const thumbSnapLeft = snapToPixelGrid(thumbLeft);

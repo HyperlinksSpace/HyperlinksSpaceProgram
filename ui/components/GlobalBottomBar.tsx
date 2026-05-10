@@ -15,10 +15,7 @@ import {
 import { useRouter } from "expo-router";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, uiTextVerticalCompensationY, useColors } from "../theme";
-import {
-  scrollIndicatorHairlineBorderWidthPx,
-  snapScrollIndicatorCoordPx,
-} from "../scrollIndicatorPx";
+import { scrollIndicatorHairlineBorderWidthPx, snapScrollIndicatorCoordPx } from "../scrollIndicatorPx";
 import { BottomBarSendCircleButton } from "./BottomBarSendCircleButton";
 import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
@@ -57,8 +54,8 @@ function Scrollbar({
 }) {
   if (!show || indicatorHeight <= 0) return null;
   const hairline = scrollIndicatorHairlineBorderWidthPx();
-  const h = Math.max(hairline, snapScrollIndicatorCoordPx(indicatorHeight));
-  const mt = snapScrollIndicatorCoordPx(topPosition);
+  const h = Math.max(hairline, indicatorHeight);
+  const mt = topPosition;
   return (
     <View
       style={[

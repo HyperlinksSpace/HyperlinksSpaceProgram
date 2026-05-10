@@ -1,3 +1,5 @@
+import { scrollIndicatorThumbSpanAndOffset } from "../scrollIndicatorPx";
+
 export type ScrollbarMetrics = {
   indicatorHeight: number;
   topPosition: number;
@@ -35,12 +37,14 @@ function getScrollbarMetrics(
     return { indicatorHeight: 0, topPosition: 0 };
   }
 
-  const indicatorHeightRatio = Math.min(1, Math.max(0, viewportHeight / contentHeightWithGaps));
-  const indicatorHeight = Math.min(barHeight, Math.max(0, barHeight * indicatorHeightRatio));
-  const scrollPosition = Math.min(1, Math.max(0, scrollY / scrollRange));
-  const availableSpace = Math.min(barHeight, Math.max(0, barHeight - indicatorHeight));
-  const topPosition = Math.min(barHeight, Math.max(0, scrollPosition * availableSpace));
-  return { indicatorHeight, topPosition };
+  const { thumbSpan, thumbOffset } = scrollIndicatorThumbSpanAndOffset(
+    barHeight,
+    viewportHeight,
+    contentHeightWithGaps,
+    scrollY,
+    scrollRange,
+  );
+  return { indicatorHeight: thumbSpan, topPosition: thumbOffset };
 }
 
 export function getBottomBarMetrics({

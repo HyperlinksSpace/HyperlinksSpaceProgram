@@ -29,6 +29,7 @@ import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import {
   scrollIndicatorHairlineBorderWidthPx,
+  scrollIndicatorThumbSpanAndOffset,
   snapScrollIndicatorCoordPx,
 } from "../ui/scrollIndicatorPx";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
@@ -441,12 +442,17 @@ function MainWebScrollColumn({
     if (viewH <= 0 || contentH <= 0 || contentH <= viewH + 0.5) {
       return { show: false as const, thumbH: 0, thumbTop: 0 };
     }
-    const th = (viewH / contentH) * viewH;
     const maxScroll = Math.max(1e-6, contentH - viewH);
-    const tt = (y / maxScroll) * Math.max(0, viewH - th);
+    const { thumbSpan, thumbOffset } = scrollIndicatorThumbSpanAndOffset(
+      viewH,
+      viewH,
+      contentH,
+      y,
+      maxScroll,
+    );
     const hairline = scrollIndicatorHairlineBorderWidthPx();
-    const thumbH = Math.max(hairline, snapScrollIndicatorCoordPx(th));
-    const thumbTop = snapScrollIndicatorCoordPx(tt);
+    const thumbH = Math.max(hairline, thumbSpan);
+    const thumbTop = thumbOffset;
     return { show: true as const, thumbH, thumbTop };
   }, [scroll]);
 
