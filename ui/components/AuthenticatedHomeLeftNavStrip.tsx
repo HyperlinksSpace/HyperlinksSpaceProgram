@@ -1,4 +1,3 @@
-import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   NativeScrollEvent,
@@ -33,14 +32,16 @@ const LABEL_FONT_SIZE = 20;
 const LABEL_LINE_HEIGHT = 15;
 const SCROLL_EPS = 2;
 /**
+ * Max fraction of the scrollbar track the thumb may occupy. Without this, tiny overflows (e.g. 9px
+ * scroll range with ratio ≈ 1) make the thumb almost full-width so it reads as a static line.
+ */
+const NAV_STRIP_THUMB_MAX_TRACK_FRAC = 0.32;
+/**
  * When `fits` flips due to web layout jitter, `justifyContent` / `scrollEnabled` toggle and the strip
  * snaps back. Sticky overflow stays in scroll mode until the row clearly fits with margin.
  */
 const NAV_STRIP_OVERFLOW_LOCK_PX = SCROLL_EPS;
 const NAV_STRIP_OVERFLOW_CLEAR_MARGIN_PX = 8;
-const DEBUG_PANEL_H_PX = 200;
-const DEBUG_LOG_CAP = 600;
-const DEBUG_LOG_THROTTLE_MS = 50;
 /** Both horizontal content insets on the strip (`contentSideInsetPx` × 2); matches “width minus 30px” in layout copy. */
 const NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX = STRIP_PADDING_PX * 2;
 /**
@@ -96,6 +97,32 @@ function windowInferredSplitColumnCount(windowWidthPx: number): 1 | 2 | 3 {
 }
 
 /** RN-web horizontal ScrollView often reports total scroll span in `contentSize.height` instead of `.width`. */
+/**
+ * RN-web: choose the horizontal scroller under the strip root. Prefer nodes whose `clientWidth`
+ * matches the measured strip viewport (avoids grabbing an outer page column); among those, prefer the
+ * **smallest `scrollWidth`** (tightest inner content track vs a wide outer wrapper).
+ */
+function pickWebNavStripScrollEl(root: Element | null, viewportWidthPx: number): HTMLElement | null {
+  if (!root || typeof window === "undefined") return null;
+  const candidates: HTMLElement[] = [];
+  const collect = (el: Element) => {
+    const h = el as HTMLElement;
+    if (h.scrollWidth - h.clientWidth > 2 && h.clientWidth > 0) {
+      candidates.push(h);
+    }
+    for (let i = 0; i < el.children.length; i++) {
+      collect(el.children[i]);
+    }
+  };
+  collect(root);
+  if (candidates.length === 0) return null;
+  const vw = viewportWidthPx;
+  const matchesViewport = (h: HTMLElement) => vw > 0 && Math.abs(h.clientWidth - vw) <= 20;
+  const pool = vw > 0 ? candidates.filter(matchesViewport) : [];
+  const pickFrom = pool.length > 0 ? pool : candidates;
+  return pickFrom.reduce((a, b) => (a.scrollWidth <= b.scrollWidth ? a : b));
+}
+
 function scrollSpanFromContentSizeEvent(width: number, height: number): number {
   const w = Number.isFinite(width) && width > 0 ? width : 0;
   const h = Number.isFinite(height) && height > 0 ? height : 0;
@@ -115,12 +142,16 @@ function horizontalThumbFullTrack(
   if (trackWidth <= 0 || contentWidth <= 0 || scrollRange <= 0) {
     return { thumbW: 0, thumbLeft: 0 };
   }
+  /** Rubber-band / overscroll can report `scrollX` above real range; thumb must follow legal offset only. */
+  const scrollXClamped = Math.max(0, Math.min(scrollX, scrollRange));
   const ratio = Math.min(1, Math.max(0, viewportWidth / contentWidth));
-  let thumbW = Math.round(trackWidth * ratio);
-  thumbW = Math.max(4, Math.min(trackWidth, thumbW));
-  let thumbLeft = Math.round((scrollX / scrollRange) * (trackWidth - thumbW));
-  if (scrollX <= SCROLL_EPS) thumbLeft = 0;
-  if (scrollX >= scrollRange - SCROLL_EPS) thumbLeft = trackWidth - thumbW;
+  const proportionalThumbW = Math.round(trackWidth * ratio);
+  const capThumbW = Math.round(trackWidth * NAV_STRIP_THUMB_MAX_TRACK_FRAC);
+  let thumbW = Math.min(proportionalThumbW, capThumbW);
+  thumbW = Math.max(4, Math.min(trackWidth - 1, thumbW));
+  let thumbLeft = Math.round((scrollXClamped / scrollRange) * (trackWidth - thumbW));
+  if (scrollXClamped <= SCROLL_EPS) thumbLeft = 0;
+  if (scrollXClamped >= scrollRange - SCROLL_EPS) thumbLeft = trackWidth - thumbW;
   thumbLeft = Math.max(0, Math.min(thumbLeft, trackWidth - thumbW));
   thumbW = snapToPixelGrid(thumbW);
   thumbLeft = snapToPixelGrid(thumbLeft);
@@ -140,9 +171,6 @@ export function AuthenticatedHomeLeftNavStrip({
 }) {
   const { width: windowWidth } = useWindowDimensions();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
-  /** Nav strip scroll / metrics overlay: always available (no URL or storage toggle). */
-  const debugEnabled = true;
-  const [debugPanelVisible, setDebugPanelVisible] = useState(true);
   /**
    * When mounted under {@link AuthenticatedHomeSplitBody}, chrome follows **split column count** (2+ =
    * wide menu with bottom hairline, no extra top margin). Otherwise fall back to window width vs
@@ -192,6 +220,8 @@ export function AuthenticatedHomeLeftNavStrip({
   /** Labels + gaps only (excludes `paddingHorizontal` on the scroll content container). */
   const [intrinsicRowW, setIntrinsicRowW] = useState(0);
   const [outerW, setOuterW] = useState(0);
+  /** RN-web: real horizontal scroll width from DOM when `contentSize` understates `scrollWidth`. */
+  const [domHScrollSpanPx, setDomHScrollSpanPx] = useState(0);
 
   const lineT = menuStripRuleThickness();
   /** Edge fades; matches `contentSideInsetPx` (15px) in theme. */
@@ -205,57 +235,84 @@ export function AuthenticatedHomeLeftNavStrip({
     setOuterW(Math.round(e.nativeEvent.layout.width));
   }, []);
 
-  const [debugLogs, setDebugLogs] = useState<string[]>([]);
-  const debugLastLogAtRef = useRef(0);
-  const debugAppendLog = useCallback(
-    (line: string) => {
-      if (!debugEnabled) return;
-      const now = Date.now();
-      if (now - debugLastLogAtRef.current < DEBUG_LOG_THROTTLE_MS) return;
-      debugLastLogAtRef.current = now;
-      setDebugLogs((prev) => {
-        const next = prev.length >= DEBUG_LOG_CAP ? prev.slice(prev.length - DEBUG_LOG_CAP + 1) : prev;
-        next.push(line);
-        return next;
-      });
+  const syncHorizontalScrollFromNativeEvent = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const ne = e.nativeEvent;
+      let x = ne.contentOffset.x;
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const root =
+          document.getElementById("ah-nav-strip-hscroll") ??
+          document.querySelector('[data-testid="ah-nav-strip-hscroll"]') ??
+          document.querySelector(".ah-nav-strip-hscroll");
+        const scrollEl = pickWebNavStripScrollEl(root, layoutW);
+        if (scrollEl && typeof scrollEl.scrollLeft === "number") {
+          /** Synthetic `contentOffset.x` often decays after lift; DOM `scrollLeft` matches visible items. */
+          x = Math.round(scrollEl.scrollLeft);
+          const sw = Math.round(scrollEl.scrollWidth);
+          if (sw > 0) {
+            setDomHScrollSpanPx((prev) => (sw > prev ? sw : prev));
+          }
+        }
+      }
+      if (x > maxScrollXSeenRef.current) {
+        maxScrollXSeenRef.current = x;
+      }
+      const cs = ne.contentSize;
+      const spanPx = scrollSpanFromContentSizeEvent(cs?.width ?? 0, cs?.height ?? 0);
+      if (spanPx > 0) {
+        const rounded = Math.round(spanPx);
+        setContentW((prev) => (rounded > prev ? rounded : prev));
+      }
+      setScrollX(x);
     },
-    [debugEnabled],
+    [layoutW],
   );
 
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const ne = e.nativeEvent;
-    const x = ne.contentOffset.x;
-    if (x > maxScrollXSeenRef.current) {
-      maxScrollXSeenRef.current = x;
-    }
-    const cs = ne.contentSize;
-    const spanPx = scrollSpanFromContentSizeEvent(cs?.width ?? 0, cs?.height ?? 0);
-    if (spanPx > 0) {
-      const rounded = Math.round(spanPx);
-      setContentW((prev) => (rounded > prev ? rounded : prev));
-    }
-    setScrollX(x);
-    const cw = cs?.width;
-    const ch = cs?.height;
-    debugAppendLog(
-      [
-        `H_SCROLL t=${Date.now()}`,
-        `x=${Math.round(x)}`,
-        `maxSeenX=${Math.round(maxScrollXSeenRef.current)}`,
-        `layoutW=${layoutW}`,
-        `contentW=${spanPx > 0 ? Math.round(spanPx) : contentW}`,
-        `csW=${cw != null ? Math.round(cw) : "—"}`,
-        `csH=${ch != null ? Math.round(ch) : "—"}`,
-        `intrinsicRowW=${intrinsicRowW}`,
-      ].join(" "),
-    );
-  };
+  /** RN-web: after gestures, synthetic `onScroll` contentOffset can drift below real `scrollLeft`; re-read DOM. */
+  const syncHorizontalScrollFromDomWeb = useCallback(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const root =
+          document.getElementById("ah-nav-strip-hscroll") ??
+          document.querySelector('[data-testid="ah-nav-strip-hscroll"]') ??
+          document.querySelector(".ah-nav-strip-hscroll");
+        const node = pickWebNavStripScrollEl(root, layoutW);
+        if (!node || typeof node.scrollLeft !== "number") return;
+        const sw = Math.round(node.scrollWidth);
+        if (sw > 0) {
+          setDomHScrollSpanPx((prev) => (sw > prev ? sw : prev));
+        }
+        const x = Math.round(node.scrollLeft);
+        if (x > maxScrollXSeenRef.current) {
+          maxScrollXSeenRef.current = x;
+        }
+        setScrollX(x);
+      });
+    });
+  }, [layoutW]);
+
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      syncHorizontalScrollFromNativeEvent(e);
+    },
+    [syncHorizontalScrollFromNativeEvent],
+  );
+
+  const onHorizontalScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      syncHorizontalScrollFromNativeEvent(e);
+      syncHorizontalScrollFromDomWeb();
+    },
+    [syncHorizontalScrollFromNativeEvent, syncHorizontalScrollFromDomWeb],
+  );
 
   const onScrollViewLayout = useCallback((e: LayoutChangeEvent) => {
     const w = Math.round(e.nativeEvent.layout.width);
     setLayoutW((prev) => {
       if (prev !== w) {
         setContentW(0);
+        setDomHScrollSpanPx(0);
         maxScrollXSeenRef.current = 0;
       }
       return w;
@@ -301,25 +358,26 @@ export function AuthenticatedHomeLeftNavStrip({
     stripContentWidthPx <= scrollViewportW + SCROLL_EPS &&
     !navStripOverflowStickyRef.current;
   /**
-   * Total scrollable width: max of live `contentSize`, row + padding, glyph estimate, and **viewport + max scroll
-   * offset seen** — on web, `contentSize.width` can match the row (~384) while the user can still scroll far past
-   * `contentSize.width - viewport` because the real scrollWidth is larger (e.g. ~533).
+   * Scroll span for thumb/range: prefer **measured** widths only. Including `ESTIMATED_NAV_STRIP_CONTENT_W_PX`
+   * or uncapped `maxScrollXSeen` inflates `scrollRange` (e.g. 158 vs real 9px), so the thumb tracks
+   * rubber-band `scrollX` then snaps back when the real range is tiny.
    */
+  const rawMeasuredScrollSpanPx = Math.max(
+    contentW > 0 ? contentW : 0,
+    stripContentWidthPx,
+    domHScrollSpanPx > 0 ? domHScrollSpanPx : 0,
+    intrinsicRowW <= 0 && contentW <= 0 && domHScrollSpanPx <= 0 ? ESTIMATED_NAV_STRIP_CONTENT_W_PX : 0,
+  );
+  const theoryMaxScrollOffsetPx = Math.max(0, rawMeasuredScrollSpanPx - scrollViewportW);
+  const clampedMaxSeenScrollX = Math.min(maxScrollXSeenRef.current, theoryMaxScrollOffsetPx);
   const scrollSpanInferredFromObservedOffsetPx =
-    scrollViewportW > 0 ? scrollViewportW + maxScrollXSeenRef.current : 0;
+    scrollViewportW > 0 ? scrollViewportW + clampedMaxSeenScrollX : 0;
   const scrollContentSpanPx =
     !fits && scrollViewportW > 0
-      ? Math.max(
-          contentW,
-          stripContentWidthPx,
-          ESTIMATED_NAV_STRIP_CONTENT_W_PX,
-          scrollSpanInferredFromObservedOffsetPx,
-        )
+      ? Math.max(rawMeasuredScrollSpanPx, scrollSpanInferredFromObservedOffsetPx)
       : 0;
 
   const scrollRange = Math.max(0, scrollContentSpanPx - scrollViewportW);
-  const stripOverViewportPx =
-    scrollViewportW > 0 ? stripContentWidthPx - scrollViewportW : 0;
   /**
    * Stable identity avoids RN-web resetting scroll when unrelated parent state updates pass new object
    * literals every render.
@@ -356,64 +414,8 @@ export function AuthenticatedHomeLeftNavStrip({
     scrollX,
     scrollRange,
   );
-  /** Pixel-snapped values applied to the thumb fill (`translateX` + width); logged under `H_THUMB`. */
   const thumbSnapLeft = snapToPixelGrid(thumbLeft);
   const thumbSnapW = Math.max(1, snapToPixelGrid(thumbW));
-
-  useEffect(() => {
-    if (!debugEnabled || Platform.OS !== "web" || typeof window === "undefined") return;
-    const onWinScroll = () => {
-      const y = window.scrollY ?? 0;
-      const de = document.documentElement;
-      debugAppendLog(
-        [
-          `V_SCROLL t=${Date.now()}`,
-          `winY=${Math.round(y)}`,
-          `docElTop=${Math.round(de?.scrollTop ?? 0)}`,
-          `docElH=${Math.round(de?.scrollHeight ?? 0)}`,
-          `docElCH=${Math.round(de?.clientHeight ?? 0)}`,
-        ].join(" "),
-      );
-    };
-    window.addEventListener("scroll", onWinScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onWinScroll);
-  }, [debugAppendLog, debugEnabled]);
-
-  useEffect(() => {
-    if (!debugEnabled) return;
-    debugAppendLog(
-      [
-        `H_METRICS t=${Date.now()}`,
-        `fits=${String(fits)}`,
-        `showScrollbar=${String(showScrollbar)}`,
-        `scrollX=${Math.round(scrollX)}`,
-        `range=${Math.round(scrollRange)}`,
-        `thumbW=${Math.round(thumbW)}`,
-        `thumbL=${Math.round(thumbLeft)}`,
-        `trackW=${Math.round(scrollTrackWidth)}`,
-        `viewW=${Math.round(scrollViewportW)}`,
-        `contentSpan=${Math.round(scrollContentSpanPx)}`,
-        `maxSeenX=${Math.round(maxScrollXSeenRef.current)}`,
-        `inferredMinSpan=${Math.round(scrollSpanInferredFromObservedOffsetPx)}`,
-        `overflowSticky=${String(navStripOverflowStickyRef.current)}`,
-        `overBy=${Math.round(stripOverViewportPx)}`,
-      ].join(" "),
-    );
-  }, [
-    debugAppendLog,
-    debugEnabled,
-    fits,
-    showScrollbar,
-    scrollX,
-    scrollRange,
-    stripOverViewportPx,
-    thumbW,
-    thumbLeft,
-    scrollTrackWidth,
-    scrollViewportW,
-    scrollContentSpanPx,
-    scrollSpanInferredFromObservedOffsetPx,
-  ]);
 
   const borderLineStyle = useMemo((): ViewStyle => {
     return {
@@ -460,53 +462,6 @@ export function AuthenticatedHomeLeftNavStrip({
       ...(Platform.OS === "web" ? ({ willChange: "transform" } as ViewStyle) : null),
     };
   }, [showScrollbar, thumbW, thumbSnapLeft, thumbSnapW, colors.accent, lineT]);
-
-  useEffect(() => {
-    if (!debugEnabled) return;
-    const hidden = !showScrollbar || thumbW <= 0;
-    const slipTravelPx = Math.max(0, scrollTrackWidth - thumbSnapW);
-    const thumbFracOfSlip = slipTravelPx > 0 ? thumbSnapLeft / slipTravelPx : 0;
-    const dpr =
-      Platform.OS === "web" && typeof window !== "undefined" && window.devicePixelRatio > 0
-        ? window.devicePixelRatio
-        : PixelRatio.get();
-    debugAppendLog(
-      [
-        `H_THUMB t=${Date.now()}`,
-        `platform=${Platform.OS}`,
-        `hidden=${String(hidden)}`,
-        `showScrollbar=${String(showScrollbar)}`,
-        `rawThumbW=${Math.round(thumbW)}`,
-        `rawThumbL=${Math.round(thumbLeft)}`,
-        `snapThumbW=${Math.round(thumbSnapW)}`,
-        `snapThumbL=${Math.round(thumbSnapLeft)}`,
-        `translateX=${Math.round(thumbSnapLeft)}`,
-        `lineT=${Number(lineT.toFixed(4))}`,
-        `trackBottom=${Math.round(thumbBottomSnapped)}`,
-        `trackZ=3`,
-        `trackW=${Math.round(scrollTrackWidth)}`,
-        `slipTravel=${Math.round(slipTravelPx)}`,
-        `thumbFrac=${thumbFracOfSlip.toFixed(3)}`,
-        `dpr=${Number(dpr.toFixed(3))}`,
-        `scrollX=${Math.round(scrollX)}`,
-        `range=${Math.round(scrollRange)}`,
-        `willChangeTransform=${String(Platform.OS === "web")}`,
-      ].join(" "),
-    );
-  }, [
-    debugAppendLog,
-    debugEnabled,
-    showScrollbar,
-    thumbW,
-    thumbLeft,
-    thumbSnapW,
-    thumbSnapLeft,
-    scrollTrackWidth,
-    thumbBottomSnapped,
-    lineT,
-    scrollX,
-    scrollRange,
-  ]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -717,14 +672,6 @@ export function AuthenticatedHomeLeftNavStrip({
     splitMetrics,
   ]);
 
-  /** Feed is the next sibling in the column; later siblings paint on top unless we raise this root. */
-  const liftStripAboveFeed = debugEnabled
-    ? {
-        zIndex: 99999,
-        ...(Platform.OS === "android" ? { elevation: 99999 } : null),
-      }
-    : null;
-
   return (
     <View
       onLayout={onOuterLayout}
@@ -738,17 +685,23 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 8,
         position: "relative",
         overflow: "visible",
-        ...liftStripAboveFeed,
       }}
     >
       {/* Full-width scroll + 15px content insets: at scroll 0 / thumb left, row starts 15px in; at max scroll / thumb right, row ends 15px before edge. Edge fades sit on top for motion blur to the real edge. */}
       <ScrollView
         horizontal
+        nativeID="ah-nav-strip-hscroll"
+        testID="ah-nav-strip-hscroll"
+        {...(Platform.OS === "web"
+          ? ({ className: "ah-nav-strip-hscroll" } as unknown as Record<string, string>)
+          : {})}
         showsHorizontalScrollIndicator={false}
         scrollEnabled={!fits}
         style={{ width: "100%", height: INNER_SCROLL_HEIGHT_PX, zIndex: 0 }}
         contentContainerStyle={navScrollContentContainerStyle}
         onScroll={onScroll}
+        onMomentumScrollEnd={onHorizontalScrollEnd}
+        onScrollEndDrag={onHorizontalScrollEnd}
         scrollEventThrottle={16}
         onLayout={onScrollViewLayout}
         onContentSizeChange={onContentSizeChange}
@@ -841,142 +794,6 @@ export function AuthenticatedHomeLeftNavStrip({
 
       {showBottomMenuRule ? (
         <View pointerEvents="none" collapsable={false} style={[borderLineStyle, lineAxisLock]} />
-      ) : null}
-
-      {debugEnabled && debugPanelVisible ? (
-        <View
-          nativeID="ah-nav-strip-debug-panel"
-          collapsable={false}
-          pointerEvents="auto"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: STRIP_HEIGHT_PX,
-            zIndex: 9999,
-            ...(Platform.OS === "android" ? { elevation: 9999 } : null),
-            height: DEBUG_PANEL_H_PX,
-            width: "100%",
-            backgroundColor: colors.background,
-            opacity: 1,
-            overflow: "hidden",
-            borderBottomWidth: menuStripRuleThickness(),
-            borderBottomColor: colors.highlight,
-            paddingHorizontal: 10,
-            paddingTop: 8,
-            paddingBottom: 8,
-            ...(Platform.OS === "web"
-              ? ({
-                  isolation: "isolate",
-                  boxSizing: "border-box",
-                } as ViewStyle)
-              : null),
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexShrink: 0,
-            }}
-          >
-            <Text style={{ color: colors.primary, fontSize: 12 }}>NavStrip debug (h/v scroll)</Text>
-            <View style={{ flexDirection: "row", gap: 12 } as ViewStyle}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={async () => {
-                  try {
-                    await Clipboard.setStringAsync(debugLogs.join("\n"));
-                    debugAppendLog(`COPY_OK t=${Date.now()} lines=${debugLogs.length}`);
-                  } catch (e) {
-                    debugAppendLog(`COPY_ERR t=${Date.now()} ${(e as Error)?.message ?? String(e)}`);
-                  }
-                }}
-              >
-                <Text style={{ color: colors.accent, fontSize: 12 }}>Copy logs</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setDebugLogs([]);
-                  debugLastLogAtRef.current = 0;
-                }}
-              >
-                <Text style={{ color: colors.secondary, fontSize: 12 }}>Clear</Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close debug panel"
-                onPress={() => {
-                  setDebugPanelVisible(false);
-                  try {
-                    if (Platform.OS === "web" && typeof window !== "undefined") {
-                      window.localStorage?.removeItem("debugNavStrip");
-                    }
-                  } catch {
-                    // ignore
-                  }
-                }}
-              >
-                <Text style={{ color: colors.primary, fontSize: 12 }}>✕</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <Text
-            style={{
-              color: colors.secondary,
-              fontSize: 11,
-              marginTop: 6,
-              flexShrink: 0,
-            }}
-          >
-            {`x=${Math.round(scrollX)} range=${Math.round(scrollRange)} thumbL=${Math.round(thumbLeft)} thumbW=${Math.round(thumbW)} show=${String(showScrollbar)} fits=${String(fits)}`}
-          </Text>
-
-          <ScrollView
-            style={{ flex: 1, minHeight: 0, marginTop: 6 }}
-            contentContainerStyle={{ paddingBottom: 12 }}
-            showsVerticalScrollIndicator
-            keyboardShouldPersistTaps="handled"
-          >
-            <Text
-              selectable
-              style={{
-                color: colors.secondary,
-                fontSize: 10,
-                lineHeight: 14,
-                fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
-              }}
-            >
-              {debugLogs.join("\n")}
-            </Text>
-          </ScrollView>
-        </View>
-      ) : null}
-
-      {debugEnabled && !debugPanelVisible ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open NavStrip debug panel"
-          onPress={() => setDebugPanelVisible(true)}
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: STRIP_HEIGHT_PX,
-            zIndex: 9999,
-            ...(Platform.OS === "android" ? { elevation: 9999 } : null),
-            paddingVertical: 8,
-            paddingHorizontal: 10,
-            backgroundColor: colors.background,
-            borderBottomWidth: menuStripRuleThickness(),
-            borderBottomColor: colors.highlight,
-          }}
-        >
-          <Text style={{ color: colors.accent, fontSize: 12 }}>Show NavStrip debug</Text>
-        </Pressable>
       ) : null}
     </View>
   );
