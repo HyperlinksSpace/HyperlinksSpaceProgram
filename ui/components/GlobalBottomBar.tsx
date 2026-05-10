@@ -15,6 +15,10 @@ import {
 import { useRouter } from "expo-router";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, uiTextVerticalCompensationY, useColors } from "../theme";
+import {
+  scrollIndicatorHairlineBorderWidthPx,
+  snapScrollIndicatorCoordPx,
+} from "../scrollIndicatorPx";
 import { BottomBarSendCircleButton } from "./BottomBarSendCircleButton";
 import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
@@ -52,13 +56,30 @@ function Scrollbar({
   color: string;
 }) {
   if (!show || indicatorHeight <= 0) return null;
+  const hairline = scrollIndicatorHairlineBorderWidthPx();
+  const h = Math.max(hairline, snapScrollIndicatorCoordPx(indicatorHeight));
+  const mt = snapScrollIndicatorCoordPx(topPosition);
   return (
-    <View style={[styles.scrollbarContainer, { height }]}>
+    <View
+      style={[
+        styles.scrollbarContainer,
+        { height, right: snapScrollIndicatorCoordPx(SCROLLBAR_RIGHT_INSET) },
+      ]}
+    >
       <View
-        style={[
-          styles.scrollbarIndicator,
-          { height: indicatorHeight, marginTop: topPosition, backgroundColor: color },
-        ]}
+        {...(Platform.OS === "web"
+          ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
+          : {})}
+        style={{
+          position: "absolute",
+          right: 0,
+          top: mt,
+          width: 0,
+          height: h,
+          borderLeftWidth: hairline,
+          borderLeftColor: color,
+          borderStyle: "solid",
+        }}
       />
     </View>
   );
@@ -174,13 +195,11 @@ const styles = StyleSheet.create({
   },
   scrollbarContainer: {
     position: "absolute",
-    right: SCROLLBAR_RIGHT_INSET,
     top: 0,
+    width: 0,
+    overflow: "visible",
     alignItems: "flex-start",
     justifyContent: "flex-start",
-  },
-  scrollbarIndicator: {
-    width: 1,
   },
 });
 

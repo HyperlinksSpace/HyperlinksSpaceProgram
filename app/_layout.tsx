@@ -27,6 +27,10 @@ import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/Bo
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
+import {
+  scrollIndicatorHairlineBorderWidthPx,
+  snapScrollIndicatorCoordPx,
+} from "../ui/scrollIndicatorPx";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
@@ -288,10 +292,7 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <MainWebScrollColumn
-          indicatorColor={colors.accent}
-          scrollTrackColor={backgroundColor}
-        >
+        <MainWebScrollColumn indicatorColor={colors.accent}>
           <Stack screenOptions={{ headerShown: false }} />
         </MainWebScrollColumn>
       ) : (
@@ -321,13 +322,10 @@ function RootContent() {
 function MainWebScrollColumn({
   children,
   indicatorColor,
-  scrollTrackColor,
 }: {
   children: ReactNode;
   /** Scroll thumb / overlay line: theme `accent`. */
   indicatorColor: string;
-  /** Scrollbar track (CSS `scrollbar-color` second value): app background. */
-  scrollTrackColor: string;
 }) {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
@@ -342,10 +340,12 @@ function MainWebScrollColumn({
     if (!el) return;
     const layoutH = el.clientHeight;
     const contentH = el.scrollHeight;
+    const scrollY = el.scrollTop;
     if (layoutH <= 0) return;
     setScroll((prev) => ({
       ...prev,
       layoutH,
+      scrollY,
       ...(contentH > 0 ? { contentH } : {}),
     }));
   }, []);
@@ -360,7 +360,10 @@ function MainWebScrollColumn({
     return () => cancelAnimationFrame(id);
   }, [syncScrollMetricsFromDom, children]);
 
-  /** Theme the native OS scrollbar (still shown when `overflow: auto`); thumb `accent`, track matches column background. */
+  /**
+   * Web: hide the **native** scrollbar (it is much wider than 1px). Scrolling stays on the same node;
+   * the thin custom overlay is drawn in React. `scrollbar-color` alone does not set width.
+   */
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const run = () => {
@@ -368,16 +371,17 @@ function MainWebScrollColumn({
         getScrollableNode?: () => HTMLElement | null | undefined;
       } | null;
       const el = instance?.getScrollableNode?.();
-      if (el?.style) {
-        el.style.setProperty("scrollbar-color", `${indicatorColor} ${scrollTrackColor}`);
-      }
+      if (!el?.style) return;
+      el.classList.add("hsp-main-scroll-hide-native-scrollbar");
+      el.style.setProperty("scrollbar-width", "none");
+      el.style.setProperty("-ms-overflow-style", "none");
     };
     const id = requestAnimationFrame(() => {
       run();
       requestAnimationFrame(run);
     });
     return () => cancelAnimationFrame(id);
-  }, [indicatorColor, scrollTrackColor, children]);
+  }, [children]);
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   useEffect(() => {
@@ -440,7 +444,10 @@ function MainWebScrollColumn({
     const th = (viewH / contentH) * viewH;
     const maxScroll = Math.max(1e-6, contentH - viewH);
     const tt = (y / maxScroll) * Math.max(0, viewH - th);
-    return { show: true as const, thumbH: th, thumbTop: tt };
+    const hairline = scrollIndicatorHairlineBorderWidthPx();
+    const thumbH = Math.max(hairline, snapScrollIndicatorCoordPx(th));
+    const thumbTop = snapScrollIndicatorCoordPx(tt);
+    return { show: true as const, thumbH, thumbTop };
   }, [scroll]);
 
   return (
@@ -458,14 +465,25 @@ function MainWebScrollColumn({
         {children}
       </ScrollView>
       {indicator.show ? (
-        <View style={styles.scrollIndicatorWrap}>
+        <View
+          style={[
+            styles.scrollIndicatorWrap,
+            { right: snapScrollIndicatorCoordPx(layout.bottomBar.scrollbarRightInsetPx) },
+          ]}
+        >
           <View
+            {...(Platform.OS === "web"
+              ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
+              : {})}
             style={[
               styles.scrollIndicatorThumb,
               {
-                backgroundColor: indicatorColor,
                 top: indicator.thumbTop,
                 height: indicator.thumbH,
+                width: 0,
+                borderLeftWidth: scrollIndicatorHairlineBorderWidthPx(),
+                borderLeftColor: indicatorColor,
+                borderStyle: "solid",
               },
             ]}
           />
@@ -512,15 +530,14 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     bottom: 0,
-    right: layout.bottomBar.scrollbarRightInsetPx,
-    width: 1,
+    width: 0,
+    overflow: "visible",
     zIndex: 20,
     pointerEvents: "none",
   },
   scrollIndicatorThumb: {
     position: "absolute",
-    left: 0,
+    right: 0,
     top: 0,
-    width: 1,
   },
 });

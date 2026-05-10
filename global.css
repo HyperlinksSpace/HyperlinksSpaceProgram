@@ -1,6 +1,41 @@
 /* Global web-only overrides */
 
 /*
+ * Main RN-web column (`MainWebScrollColumn`): native scrollbar is hidden; a 1px custom thumb is drawn in React.
+ * Inline `scrollbar-width: none` covers Firefox; WebKit needs the pseudo-element on the scrolling node class.
+ */
+.hsp-main-scroll-hide-native-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+  background: transparent;
+}
+
+/*
+ * Custom scrollbar thumb: `width:0` + left border (width from JS: 1/dpr for device-pixel hairline).
+ * Do not set border-left-width here — it would override the hairline and match thick 1 CSS px lines.
+ */
+.hsp-scroll-indicator-thumb {
+  box-sizing: border-box !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-top: none !important;
+  border-right: none !important;
+  border-bottom: none !important;
+  border-left-style: solid !important;
+  outline: none !important;
+  box-shadow: none !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+/*
  * Document may scroll when the user zooms the page (browser pinch / Ctrl+wheel) so content can be panned
  * in both axes. Inner app column still uses its own ScrollView for vertical flow.
  */
