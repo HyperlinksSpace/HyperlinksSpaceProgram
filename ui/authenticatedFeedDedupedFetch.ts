@@ -1,7 +1,10 @@
 import { buildApiUrl } from "../api/_base";
 
-/** Cold Vercel + Neon can exceed Telegram WebView stalls when multiple requests stack. */
-export const AUTHENTICATED_FEED_FETCH_TIMEOUT_MS = 60_000;
+/**
+ * Cold Vercel + Neon + Telegram WebView often exceed 60s on first paint; 90s cuts false “offline preview”
+ * timeouts while still bounding hung requests.
+ */
+export const AUTHENTICATED_FEED_FETCH_TIMEOUT_MS = 90_000;
 
 export type AuthenticatedFeedDedupedResult = {
   httpStatus: number;

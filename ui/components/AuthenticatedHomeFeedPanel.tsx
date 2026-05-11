@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../api/_base";
@@ -10,6 +10,11 @@ import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegram } from "./Telegram";
+
+/** One extra attempt after client abort (slow TMA / cold API) before showing timeout + offline preview. */
+const FEED_FETCH_ATTEMPTS_ON_TIMEOUT = 2;
+/** Short backoff so a cold retry starts quickly without hammering the API. */
+const FEED_FETCH_RETRY_DELAY_MS = 200;
 
 const ROW_HEIGHT_PX = 40;
 const ICON_PX = 30;
@@ -283,6 +288,18 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   const [error, setError] = useState<string | null>(null);
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
+  /**
+   * When `initData` is present, key is **only** the trimmed string so `status` going `loading`→`ok`
+   * does not cancel an in-flight `/api/feed` and restart (that duplicated cold work and slowed updates).
+   * Session-only GET keeps `status` in the key so a refetch can run after the session cookie is ready.
+   */
+  const feedLoadKey = useMemo(() => {
+    if (status === "error") return null;
+    const trimmed = typeof initData === "string" ? initData.trim() : "";
+    if (trimmed !== "") return `post:${trimmed}`;
+    return `get:${status}`;
+  }, [initData, status]);
+
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const run = () => {
@@ -310,6 +327,8 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   }, [telegramBootstrapFeed]);
 
   useEffect(() => {
+    if (feedLoadKey === null) return;
+
     let cancelled = false;
 
     async function load() {
@@ -321,10 +340,8 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
       logPageDisplay("feed_panel_mount_effect", {
         telegramStatus: status,
         initDataChars: initDataOk ? initDataTrimmed.length : 0,
-        note:
-          status === "loading"
-            ? "fetch_runs_even_while_loading"
-            : "effect_fetch_start",
+        feedLoadKey: feedLoadKey.slice(0, 64),
+        note: initDataOk ? "feed_key_stable_across_status" : "session_feed_key_includes_status",
       });
 
       logPageDisplay("feed_fetch_start", {
@@ -338,9 +355,62 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
 
       if (!cancelled) setError(null);
 
+      let res: Awaited<ReturnType<typeof loadAuthenticatedFeedDeduped>> | undefined;
       try {
-        const res = await loadAuthenticatedFeedDeduped(initDataOk ? initDataTrimmed : null);
+        for (let attempt = 0; attempt < FEED_FETCH_ATTEMPTS_ON_TIMEOUT; attempt++) {
+          if (cancelled) {
+            logPageDisplay("feed_fetch_superseded_before_attempt");
+            return;
+          }
+          try {
+            res = await loadAuthenticatedFeedDeduped(initDataOk ? initDataTrimmed : null);
+            break;
+          } catch (e) {
+            const aborted = e instanceof Error && e.name === "AbortError";
+            if (cancelled) {
+              logPageDisplay("feed_fetch_superseded_catch");
+              return;
+            }
+            if (aborted && attempt < FEED_FETCH_ATTEMPTS_ON_TIMEOUT - 1) {
+              logPageDisplay("feed_fetch_timeout_retry", {
+                attempt: attempt + 1,
+                delayMs: FEED_FETCH_RETRY_DELAY_MS,
+                timeoutMs: AUTHENTICATED_FEED_FETCH_TIMEOUT_MS,
+              });
+              await new Promise((r) => setTimeout(r, FEED_FETCH_RETRY_DELAY_MS));
+              continue;
+            }
+            const msg = e instanceof Error ? e.message : String(e);
+            logPageDisplay("feed_fetch_catch", {
+              message: msg,
+              aborted,
+              fromCleanupAbort: aborted && cancelled,
+              durationMs: Date.now() - startedAt,
+              telegramStatus: status,
+              attempt: attempt + 1,
+            });
+            setError(aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg);
+            return;
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logPageDisplay("feed_fetch_catch", {
+          message: msg,
+          aborted: false,
+          durationMs: Date.now() - startedAt,
+          telegramStatus: status,
+        });
+        if (!cancelled) setError(msg);
+        return;
+      }
 
+      if (!res || cancelled) {
+        if (cancelled) logPageDisplay("feed_fetch_headers_superseded");
+        return;
+      }
+
+      try {
         logPageDisplay("feed_fetch_headers", {
           httpStatus: res.httpStatus,
           ok: res.httpOk,
@@ -421,19 +491,11 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const aborted = e instanceof Error && e.name === "AbortError";
-        logPageDisplay("feed_fetch_catch", {
+        logPageDisplay("feed_fetch_response_parse_catch", {
           message: msg,
-          aborted,
-          fromCleanupAbort: aborted && cancelled,
           durationMs: Date.now() - startedAt,
-          telegramStatus: status,
         });
-        if (cancelled) {
-          logPageDisplay("feed_fetch_superseded_catch");
-          return;
-        }
-        setError(aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg);
+        if (!cancelled) setError(msg);
       } finally {
         logPageDisplay("feed_fetch_finally", {
           durationMs: Date.now() - startedAt,
@@ -447,7 +509,11 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
     return () => {
       cancelled = true;
     };
-  }, [initData, status]);
+    // Intentionally only `feedLoadKey`: for POST-with-initData the key omits `status` so `loading`→`ok`
+    // does not cancel/restart the in-flight fetch. `load()` still reads the latest `initData`/`status`
+    // from the render that created this effect run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger is feedLoadKey only
+  }, [feedLoadKey]);
 
   if (error && items.length === 0) {
     return (
