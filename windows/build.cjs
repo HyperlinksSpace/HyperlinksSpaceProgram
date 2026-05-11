@@ -10,6 +10,7 @@ const {
   nativeImage,
   nativeTheme,
   shell,
+  session,
 } = require("electron");
 
 /** Must match package.json `build.appId`. Call synchronously before `ready` on Windows (Electron + shell taskbar expectations). */
@@ -29,8 +30,8 @@ if (process.platform === "win32" && process.env.HSP_DISABLE_GPU === "1") {
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const { Readable } = require("stream");
 const { spawn, spawnSync } = require("child_process");
-const { pathToFileURL } = require("url");
 const brand = require("./product-brand.cjs");
 
 const UPDATE_GITHUB_OWNER = "HyperlinksSpace";
@@ -43,6 +44,64 @@ const LATEST_YML = "latest.yml";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** `app://` static export: avoid `net.fetch(file:)` caching stale bundles after in-place updates. */
+function guessAppAssetMime(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const map = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".map": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".ico": "image/x-icon",
+    ".wasm": "application/wasm",
+    ".txt": "text/plain; charset=utf-8",
+  };
+  return map[ext] || "application/octet-stream";
+}
+
+/**
+ * After a Windows zip apply, `app.getVersion()` changes but Chromium may still serve cached `app://`
+ * responses from the previous session. Clear cache + web caches once per version transition.
+ */
+async function clearStaleClientCacheIfNeeded() {
+  if (process.env.NODE_ENV === "development" || !app.isPackaged) return;
+  const marker = path.join(app.getPath("userData"), "hsp-client-cache-version.txt");
+  const ver = app.getVersion();
+  let prev = "";
+  try {
+    prev = fs.readFileSync(marker, "utf8").trim();
+  } catch (_) {}
+  if (prev === ver) return;
+  log(`[cache] version changed (${prev || "(none)"} → ${ver}); clearing session cache / web caches`);
+  try {
+    await session.defaultSession.clearCache();
+  } catch (e) {
+    log(`[cache] clearCache failed: ${e?.message || e}`);
+  }
+  try {
+    await session.defaultSession.clearStorageData({
+      storages: ["cachestorage", "serviceworkers"],
+    });
+  } catch (e) {
+    log(`[cache] clearStorageData failed: ${e?.message || e}`);
+  }
+  try {
+    fs.writeFileSync(marker, `${ver}\n`, "utf8");
+  } catch (e) {
+    log(`[cache] write marker failed: ${e?.message || e}`);
+  }
 }
 
 /** GitHub / Electron net layer: transient errors worth retrying (backoff in checkForUpdatesWithRetry). */
@@ -2160,6 +2219,14 @@ async function createWindow() {
     log(`appPath=${appPath}`);
     return;
   }
+  if (!isDev && fs.existsSync(indexHtml)) {
+    try {
+      const st = fs.statSync(indexHtml);
+      log(
+        `[ui-bundle] index.html bytes=${st.size} mtimeUtc=${st.mtime.toISOString()} appVersion=${app.getVersion()}`,
+      );
+    } catch (_) {}
+  }
 
   /** `string` = absolute .ico path (preferred on Windows packaged builds; Chromium loads reliably). Else NativeImage. */
   let windowIcon;
@@ -2296,23 +2363,60 @@ process.on("uncaughtException", (err) => {
   } catch (_) {}
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === "win32") {
     // Dark native chrome (title bar / menu area) so the OS-drawn separator under the menu reads closer to #111111.
     nativeTheme.themeSource = "dark";
   }
   setupAppMenu();
+  await clearStaleClientCacheIfNeeded();
   if (!isDev) {
     const appPath = app.getAppPath();
     const distPath = path.join(appPath, "dist");
-    protocol.handle("app", (request) => {
+    protocol.handle("app", async (request) => {
+      const method = (request.method || "GET").toUpperCase();
       let urlPath = request.url.slice("app://".length).replace(/^\.?\//, "") || "index.html";
+      const q = urlPath.indexOf("?");
+      if (q !== -1) urlPath = urlPath.slice(0, q);
+      try {
+        urlPath = decodeURIComponent(urlPath);
+      } catch (_) {
+        /* keep encoded segment if malformed */
+      }
       const filePath = path.join(distPath, urlPath);
       const resolved = path.normalize(filePath);
-      if (!resolved.startsWith(path.normalize(distPath)) || !fs.existsSync(resolved)) {
+      const distNorm = path.normalize(distPath);
+      if (!resolved.startsWith(distNorm)) {
         return new Response("Not Found", { status: 404 });
       }
-      return net.fetch(pathToFileURL(resolved).toString());
+      let st;
+      try {
+        st = fs.statSync(resolved);
+      } catch (_) {
+        return new Response("Not Found", { status: 404 });
+      }
+      if (!st.isFile()) {
+        return new Response("Not Found", { status: 404 });
+      }
+      const headers = {
+        "Content-Type": guessAppAssetMime(resolved),
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
+      };
+      if (method === "HEAD") {
+        return new Response(null, { status: 200, headers });
+      }
+      if (method !== "GET") {
+        return new Response("Method Not Allowed", { status: 405, headers });
+      }
+      try {
+        const nodeStream = fs.createReadStream(resolved);
+        return new Response(Readable.toWeb(nodeStream), { status: 200, headers });
+      } catch (e) {
+        try {
+          log(`[app-protocol] stream open failed ${resolved}: ${e?.message || e}`);
+        } catch (_) {}
+        return new Response("Not Found", { status: 404 });
+      }
     });
   }
   createWindow().catch((e) => {

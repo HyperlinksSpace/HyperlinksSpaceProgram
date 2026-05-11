@@ -4,6 +4,15 @@ The packaged Windows app uses a **custom zip sidecar** path in `windows/build.cj
 
 If the UI still behaves like an old build after you used the updater dialog, use the sections below.
 
+### Stale UI after a successful “Update with reload”
+
+The main process now (see `windows/build.cjs`):
+
+1. **Clears Chromium session cache** when `app.getVersion()` changes (marker file `hsp-client-cache-version.txt` in user data), so the next launch does not reuse HTTP-style caches from the previous build.
+2. Serves **`app://` assets with `Cache-Control: no-store`** via streaming file reads instead of `net.fetch(file:…)`, so the embedded Expo web bundle is less likely to stick on old JS/CSS after an in-place update.
+
+If the UI is still old, verify the **GitHub “Latest” release** actually contains the new portable zip and matching **`latest.yml` / `zip-latest.yml`** versions — the client always downloads from **`/releases/latest/download/…`**, not from “newest semver among all releases”.
+
 ## 1. Log and data locations (on your PC)
 
 All paths are under Electron **`app.getPath("userData")`**. On Windows this is usually:
