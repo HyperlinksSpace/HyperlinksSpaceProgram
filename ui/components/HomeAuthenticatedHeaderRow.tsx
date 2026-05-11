@@ -1,4 +1,5 @@
 import * as Clipboard from "expo-clipboard";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -146,6 +147,7 @@ type Props = {
  * At `firstBreakpoint` and above: centered Get/Swap/… strip overlay (painted after side columns so it is not covered on web); below: same strip under balance + profile.
  */
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
+  const router = useRouter();
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
@@ -327,6 +329,10 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               onPress={() => {
                 if (index === 0) {
                   void copyFullWalletAddress();
+                  return;
+                }
+                if (accessibilityLabel === "Key") {
+                  router.push("/key");
                   return;
                 }
                 /* Wired when flows land */

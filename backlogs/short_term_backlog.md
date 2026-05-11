@@ -1,8 +1,13 @@
+Languages
+Log out
+Copy with notification
+edit
+Username generation
+Private key displayal
 timeout_after_60000ms (offline preview)
 Test bottom border of the footer on Iphone, fix displayal
 Time in web
 Borders review
-Private key displayal
 Token and NFT mint
 Telegram Connect
 Trade NFT
