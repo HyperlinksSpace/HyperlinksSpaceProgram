@@ -1,3 +1,5 @@
+Hovers
+Login and logout termination
 In-App update test
 Languages
 Log out
@@ -48,6 +50,7 @@ AI responce checkup in bot (message interruption on new prompt)<br>
 Typing in the middle of the text on large inputting<br>
 
 To think about:<br>
+Trading view
 Polyfils refactoring<br>
 Branding and naming
 Place of the install update dialog in the UI<br>

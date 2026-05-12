@@ -57,6 +57,53 @@ export function getColorsForTheme(name: ThemeName | undefined | null): ThemeColo
   return dark;
 }
 
+function tryParseRgb888(hex: string): [number, number, number] | null {
+  const s = hex.trim();
+  const m6 = /^#?([0-9a-f]{6})$/i.exec(s);
+  if (m6) {
+    const n = parseInt(m6[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m3 = /^#?([0-9a-f]{3})$/i.exec(s);
+  if (m3) {
+    const t = m3[1];
+    return [
+      parseInt(t[0] + t[0], 16),
+      parseInt(t[1] + t[1], 16),
+      parseInt(t[2] + t[2], 16),
+    ];
+  }
+  return null;
+}
+
+/** Linear RGB mix `from` → `to` (t=0..1). Falls back to `from` if hex parse fails. */
+function mixRgbHex(from: string, to: string, t: number): string {
+  const A = tryParseRgb888(from);
+  const B = tryParseRgb888(to);
+  if (!A || !B) return from;
+  const u = Math.min(1, Math.max(0, t));
+  const r = Math.round(A[0] + (B[0] - A[0]) * u);
+  const g = Math.round(A[1] + (B[1] - A[1]) * u);
+  const b = Math.round(A[2] + (B[2] - A[2]) * u);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
+/**
+ * Welcome OAuth rows + email “Sign in”: hover fill (web `Pressable` `hovered`).
+ * Mixes `undercover` toward `primary` — dark lifts ~11% toward white; light deepens ~5.5% toward black
+ * so the step matches human contrast on each background.
+ */
+export function welcomeAuthButtonHoverBackground(colors: ThemeColors, scheme: ThemeName): string {
+  const t = scheme === "light" ? 0.055 : 0.11;
+  return mixRgbHex(colors.undercover, colors.primary, t);
+}
+
+/** Slightly stronger than hover — pointer / touch active. */
+export function welcomeAuthButtonActiveBackground(colors: ThemeColors, scheme: ThemeName): string {
+  const t = scheme === "light" ? 0.095 : 0.175;
+  return mixRgbHex(colors.undercover, colors.primary, t);
+}
+
 /** Same on SSR and first client paint — never app dark (#111); Telegram bg shows through CSS vars. */
 const TELEGRAM_PRE_READY_FALLBACK: ThemeColors = {
   ...dark,

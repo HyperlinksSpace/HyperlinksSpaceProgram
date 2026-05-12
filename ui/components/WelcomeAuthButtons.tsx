@@ -10,6 +10,8 @@ import {
   uiIconButtonVerticalCompensationY,
   uiTextVerticalCompensationTransform,
   uiWelcomeAppleOAuthIconExtraCompensationPx,
+  welcomeAuthButtonHoverBackground,
+  welcomeAuthButtonActiveBackground,
 } from "../theme";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
@@ -80,6 +82,9 @@ export function WelcomeAuthButtons() {
   const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
   const [email, setEmail] = useState("");
   const [emailInvalid, setEmailInvalid] = useState(false);
+  /** Web hover: RN `Pressable` style state has no `hovered` in typings; use hover events (see theme hover helpers). */
+  const [hoverOAuthId, setHoverOAuthId] = useState<(typeof ROWS)[number]["id"] | null>(null);
+  const [hoverEmailSignIn, setHoverEmailSignIn] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
   /**
@@ -145,19 +150,42 @@ export function WelcomeAuthButtons() {
             accessibilityRole="button"
             accessibilityLabel={row.label}
             onPress={() => onProviderPress(row.id)}
-            style={({ pressed }) => [
-              styles.button,
-              {
-                backgroundColor: colors.undercover,
-                marginTop: index === 0 ? 0 : BUTTON_GAP,
-                opacity:
-                  row.id === "telegram" && telegramBrowserPending
-                    ? 0.6
-                    : pressed
-                      ? 0.85
-                      : 1,
-              },
-            ]}
+            onHoverIn={
+              Platform.OS === "web"
+                ? () => {
+                    setHoverOAuthId(row.id);
+                  }
+                : undefined
+            }
+            onHoverOut={
+              Platform.OS === "web"
+                ? () => {
+                    setHoverOAuthId((cur) => (cur === row.id ? null : cur));
+                  }
+                : undefined
+            }
+            style={({ pressed }) => {
+              const webHover = Platform.OS === "web" && hoverOAuthId === row.id;
+              let backgroundColor = colors.undercover;
+              if (pressed) {
+                backgroundColor = welcomeAuthButtonActiveBackground(colors, colorScheme);
+              } else if (webHover) {
+                backgroundColor = welcomeAuthButtonHoverBackground(colors, colorScheme);
+              }
+              return [
+                styles.button,
+                {
+                  backgroundColor,
+                  marginTop: index === 0 ? 0 : BUTTON_GAP,
+                  opacity:
+                    row.id === "telegram" && telegramBrowserPending
+                      ? 0.6
+                      : pressed
+                        ? 0.92
+                        : 1,
+                },
+              ];
+            }}
           >
             <Text style={[styles.label, { color: colors.primary }]} numberOfLines={1}>
               {row.label}
@@ -228,16 +256,27 @@ export function WelcomeAuthButtons() {
             setEmailInvalid(false);
             /* wired when auth flows land */
           }}
-          style={({ pressed }) => [
-            styles.emailSignInButton,
-            {
-              backgroundColor: colors.undercover,
-              marginTop: emailInvalid
-                ? INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR
-                : INPUT_TO_EMAIL_BUTTON_GAP,
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
+          onHoverIn={Platform.OS === "web" ? () => setHoverEmailSignIn(true) : undefined}
+          onHoverOut={Platform.OS === "web" ? () => setHoverEmailSignIn(false) : undefined}
+          style={({ pressed }) => {
+            const webHover = Platform.OS === "web" && hoverEmailSignIn;
+            let backgroundColor = colors.undercover;
+            if (pressed) {
+              backgroundColor = welcomeAuthButtonActiveBackground(colors, colorScheme);
+            } else if (webHover) {
+              backgroundColor = welcomeAuthButtonHoverBackground(colors, colorScheme);
+            }
+            return [
+              styles.emailSignInButton,
+              {
+                backgroundColor,
+                marginTop: emailInvalid
+                  ? INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR
+                  : INPUT_TO_EMAIL_BUTTON_GAP,
+                opacity: pressed ? 0.92 : 1,
+              },
+            ];
+          }}
         >
           <Text style={[styles.label, { color: colors.primary }]}>Sign in</Text>
         </Pressable>
