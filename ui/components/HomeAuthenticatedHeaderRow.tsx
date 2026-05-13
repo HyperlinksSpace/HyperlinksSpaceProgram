@@ -22,27 +22,35 @@ import {
   MenuTradeIcon,
 } from "./menu/MenuIcons";
 import { logPageDisplay } from "../pageDisplayLog";
+import { useAppStrings } from "../../locales/AppStringsContext";
+import type { AppStringKey } from "../../locales/appStrings";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
   HeaderIconExit,
   HeaderIconKey,
-  HeaderIconRu,
 } from "./icons/HeaderActionIcons";
 
 const AH = layout.authenticatedHome;
 
-/** Header pressables use `AH.headerPressableHitSlop` — invisible touch padding around small targets. */
-const HEADER_ICONS: readonly {
-  accessibilityLabel: string;
+const HEADER_ICON_DEFS: readonly {
+  id: "copy" | "edit" | "key" | "exit";
+  labelKey: AppStringKey;
   Icon: (p: { color: string; size: number }) => ReactNode;
 }[] = [
-  { Icon: HeaderIconCopy, accessibilityLabel: "Copy wallet address" },
-  { Icon: HeaderIconEdit, accessibilityLabel: "Edit" },
-  { Icon: HeaderIconKey, accessibilityLabel: "Key" },
-  { Icon: HeaderIconRu, accessibilityLabel: "Language" },
-  { Icon: HeaderIconExit, accessibilityLabel: "Exit" },
+  { id: "copy", labelKey: "home.header.iconCopy", Icon: HeaderIconCopy },
+  { id: "edit", labelKey: "home.header.iconEdit", Icon: HeaderIconEdit },
+  { id: "key", labelKey: "home.header.iconKey", Icon: HeaderIconKey },
+  { id: "exit", labelKey: "home.header.iconExit", Icon: HeaderIconExit },
 ];
+
+const WIDE_MENU_ITEM_KEYS = [
+  { key: "get", labelKey: "home.menu.get" as const, Icon: MenuGetIcon },
+  { key: "swap", labelKey: "home.menu.swap" as const, Icon: MenuSwapIcon },
+  { key: "deals", labelKey: "home.menu.deals" as const, Icon: MenuDealsIcon },
+  { key: "trade", labelKey: "home.menu.trade" as const, Icon: MenuTradeIcon },
+  { key: "send", labelKey: "home.menu.send" as const, Icon: MenuSendIcon },
+] as const;
 
 /** Shown in header as `walletAddressSnippetPrefix` + last N chars (lowercase); clipboard keeps original casing. */
 function walletAddressHeaderSnippet(trimmed: string): string {
@@ -68,26 +76,22 @@ function HeaderProfileChevronIcon({ color }: { color: string }) {
   );
 }
 
-const WIDE_MENU_ITEMS = [
-  { key: "get", label: "Get", Icon: MenuGetIcon },
-  { key: "swap", label: "Swap", Icon: MenuSwapIcon },
-  { key: "deals", label: "Deals", Icon: MenuDealsIcon },
-  { key: "trade", label: "Trade", Icon: MenuTradeIcon },
-  { key: "send", label: "Send", Icon: MenuSendIcon },
-] as const;
-
 /** Get/Swap/… row: wide = fixed `columnWidth` per item; narrow = equal `flex` columns (under profile). */
 function AuthenticatedHomeMenuItems({
   colors,
   narrow,
   columnWidth,
+  t,
 }: {
   colors: ThemeColors;
   narrow: boolean;
   /** Used when `narrow` is false (centered strip). */
   columnWidth: number;
+  t: (key: AppStringKey) => string;
 }) {
-  return WIDE_MENU_ITEMS.map(({ key, label, Icon }) => (
+  return WIDE_MENU_ITEM_KEYS.map(({ key, labelKey, Icon }) => {
+    const label = t(labelKey);
+    return (
     <View
       key={key}
       style={
@@ -133,7 +137,8 @@ function AuthenticatedHomeMenuItems({
         }}
       </Pressable>
     </View>
-  ));
+    );
+  });
 }
 
 type Props = {
@@ -149,6 +154,7 @@ type Props = {
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const router = useRouter();
   const colors = useColors();
+  const { t, tf } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
@@ -166,7 +172,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
 
   /** Total strip width scales with viewport via {@link authenticatedHomeWideMenuColumnWidthPx}. */
   const wideMenuStripWidth = atOrAboveFirstBreakpoint
-    ? wideMenuColumnWidth * WIDE_MENU_ITEMS.length
+    ? wideMenuColumnWidth * WIDE_MENU_ITEM_KEYS.length
     : 0;
 
   const wideMenuStrip = atOrAboveFirstBreakpoint ? (
@@ -193,6 +199,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           colors={colors}
           narrow={false}
           columnWidth={wideMenuColumnWidth}
+          t={t}
         />
       </View>
     </View>
@@ -273,8 +280,8 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
         >
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={`Wallet address ${displaySnippet}`}
-            accessibilityHint="Copies the full wallet address"
+            accessibilityLabel={tf("home.header.walletAddressA11y", { snippet: displaySnippet })}
+            accessibilityHint={t("home.header.copyWalletHint")}
             disabled={!trimmed}
             hitSlop={AH.headerPressableHitSlop}
             onPress={() => {
@@ -294,7 +301,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
                 color: colors.primary,
               },
             ]}
-            accessibilityLabel="Balance"
+            accessibilityLabel={t("home.header.balanceA11y")}
           >
             1$
           </Text>
@@ -320,19 +327,21 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               : {}),
           }}
         >
-          {HEADER_ICONS.map(({ Icon, accessibilityLabel }, index) => (
+          {HEADER_ICON_DEFS.map(({ id, Icon, labelKey }) => {
+            const accessibilityLabel = t(labelKey);
+            return (
             <Pressable
-              key={accessibilityLabel}
+              key={id}
               accessibilityRole="button"
               accessibilityLabel={accessibilityLabel}
               hitSlop={AH.headerPressableHitSlop}
               onPress={() => {
-                if (index === 0) {
+                if (id === "copy") {
                   void copyFullWalletAddress();
                   return;
                 }
-                if (accessibilityLabel === "Key") {
-                  router.push("/key");
+                if (id === "key") {
+                  router.push("/key" as any);
                   return;
                 }
                 /* Wired when flows land */
@@ -343,7 +352,8 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
                 size={AH.headerIconDisplaySize}
               />
             </Pressable>
-          ))}
+            );
+          })}
         </View>
         <View
           style={{
@@ -376,7 +386,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
       {!atOrAboveFirstBreakpoint ? (
         <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
           <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-            <AuthenticatedHomeMenuItems colors={colors} narrow columnWidth={0} />
+            <AuthenticatedHomeMenuItems colors={colors} narrow columnWidth={0} t={t} />
           </View>
         </View>
       ) : null}

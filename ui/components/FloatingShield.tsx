@@ -3,6 +3,7 @@ import { Animated, StyleSheet, Text, useWindowDimensions, View } from "react-nat
 import Svg, { G, Path } from "react-native-svg";
 import { layout, useColors } from "../theme";
 import { useBottomBarLayout } from "./BottomBarLayoutContext";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 import { SettingsIcon } from "./icons/SettingsIcon";
 
@@ -76,6 +77,7 @@ function ShieldIcon({ powerColor }: { powerColor: string }) {
 }
 
 export function FloatingShield() {
+  const { t } = useAppStrings();
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   /** Match authenticated home: narrow / welcome-style width keeps the stack on the right; wide moves it to the left. */
@@ -115,7 +117,7 @@ export function FloatingShield() {
           <View style={styles.iconWrap}>
             <ShieldIcon powerColor={powerColor} />
           </View>
-          <Text style={[styles.label, { color: colors.primary }]}>Shield</Text>
+          <Text style={[styles.label, { color: colors.primary }]}>{t("floating.shield.label")}</Text>
         </LiquidGlassShaderUndercover>
       </View>
     </View>

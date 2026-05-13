@@ -2,10 +2,12 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographySansSemibold, useColors } from "../../ui/theme";
 
 export default function AiScreen() {
   const { isAuthenticated, authReady } = useAuth();
+  const { t } = useAppStrings();
   const colors = useColors();
   const { prompt } = useLocalSearchParams<{ prompt?: string }>();
 
@@ -18,11 +20,13 @@ export default function AiScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.primary }]}>AI</Text>
+      <Text style={[styles.title, { color: colors.primary }]}>{t("ai.title")}</Text>
       {prompt ? (
-        <Text style={[styles.prompt, { color: colors.primary }]}>Prompt: {prompt}</Text>
+        <Text style={[styles.prompt, { color: colors.primary }]}>
+          {t("ai.promptPrefix")} {prompt}
+        </Text>
       ) : (
-        <Text style={[styles.hint, { color: colors.secondary }]}>No prompt</Text>
+        <Text style={[styles.hint, { color: colors.secondary }]}>{t("ai.noPrompt")}</Text>
       )}
     </View>
   );

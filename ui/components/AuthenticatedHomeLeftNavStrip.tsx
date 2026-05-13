@@ -18,8 +18,11 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
 import { scrollIndicatorThumbSpanAndOffset } from "../scrollIndicatorPx";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "./AuthenticatedHomeSplitLayoutMetricsContext";
+import { useAppStrings } from "../../locales/AppStringsContext";
+import type { AppStringKey } from "../../locales/appStrings";
+import { getAppString } from "../../locales/appStrings";
 
-const NAV_LABELS = ["Feed", "Messages", "Tasks", "Items", "Coins"] as const;
+const NAV_IDS = ["feed", "messages", "tasks", "items", "coins"] as const;
 
 const AH = layout.authenticatedHome;
 
@@ -48,9 +51,11 @@ const NAV_STRIP_HORIZONTAL_INSET_TOTAL_PX = STRIP_PADDING_PX * 2;
 const ESTIMATED_NAV_STRIP_CONTENT_W_PX = (() => {
   const charPx = LABEL_FONT_SIZE * 0.82;
   let w = STRIP_PADDING_PX * 2;
-  for (let i = 0; i < NAV_LABELS.length; i++) {
-    w += NAV_LABELS[i].length * charPx;
-    if (i < NAV_LABELS.length - 1) w += ITEM_GAP_PX;
+  for (let i = 0; i < NAV_IDS.length; i++) {
+    const key = `home.nav.${NAV_IDS[i]}` as AppStringKey;
+    const labelLen = Math.max(getAppString("en", key).length, getAppString("ru", key).length);
+    w += labelLen * charPx;
+    if (i < NAV_IDS.length - 1) w += ITEM_GAP_PX;
   }
   return Math.ceil(w);
 })();
@@ -138,6 +143,7 @@ export function AuthenticatedHomeLeftNavStrip({
   selectedIndex?: number;
   onSelectIndex?: (index: number) => void;
 }) {
+  const { t } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   /**
@@ -685,9 +691,11 @@ export function AuthenticatedHomeLeftNavStrip({
             flexShrink: 0,
           }}
         >
-          {NAV_LABELS.map((label, index) => (
+          {NAV_IDS.map((navId, index) => {
+            const label = t(`home.nav.${navId}` as AppStringKey);
+            return (
             <Pressable
-              key={label}
+              key={navId}
               accessibilityRole="button"
               accessibilityState={{ selected: index === activeIndex }}
               accessibilityLabel={label}
@@ -699,12 +707,13 @@ export function AuthenticatedHomeLeftNavStrip({
                 }
               }}
               style={{
-                marginRight: index < NAV_LABELS.length - 1 ? ITEM_GAP_PX : 0,
+                marginRight: index < NAV_IDS.length - 1 ? ITEM_GAP_PX : 0,
               }}
             >
               <Text style={labelStyle(index === activeIndex)}>{label}</Text>
             </Pressable>
-          ))}
+            );
+          })}
         </View>
       </ScrollView>
 

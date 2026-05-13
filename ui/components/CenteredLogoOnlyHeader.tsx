@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from "reac
 import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { useTelegram } from "./Telegram";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { layout, useColors } from "../theme";
 
 /** Match `GlobalLogoBar` default signed-in / TMA logo strip rhythm. */
@@ -33,6 +34,7 @@ function useLogoGlyphTopOffset(
  * {@link GlobalLogoBar} logo-only mode; optional tap returns home.
  */
 export function CenteredLogoOnlyHeader() {
+  const { t } = useAppStrings();
   const router = useRouter();
   const colors = useColors();
   const {
@@ -87,7 +89,7 @@ export function CenteredLogoOnlyHeader() {
         onPress={onPress}
         style={styles.logoWrap}
         accessibilityRole="button"
-        accessibilityLabel="Go to home"
+        accessibilityLabel={t("key.header.goHomeA11y")}
       >
         <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
           <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />

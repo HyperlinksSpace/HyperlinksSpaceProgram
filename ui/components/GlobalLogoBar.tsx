@@ -19,6 +19,7 @@ import { LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
 import { dark, layout, light, useColors } from "../theme";
 import { useAuth } from "../../auth/AuthContext";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
 
@@ -95,6 +96,7 @@ function WelcomeMarketingBarContent({
   contentPaddingTop: number;
   contentPaddingBottom: number;
 }) {
+  const { t } = useAppStrings();
   const { triggerHaptic } = useTelegram();
   const colors = useColors();
   const logoTextColor = colors.primary === light.primary ? dark.background : light.background;
@@ -123,7 +125,7 @@ function WelcomeMarketingBarContent({
       ]}
     >
       <View style={styles.marketingRow}>
-        <View style={styles.marketingLeft} accessible accessibilityLabel="Hyperlinks Space">
+        <View style={styles.marketingLeft} accessible accessibilityLabel={t("global.logoBar.wordmarkA11y")}>
           <LogoWordmark
             width={wordmarkWidth}
             height={wordmarkHeight}
@@ -134,10 +136,10 @@ function WelcomeMarketingBarContent({
           onPress={onAbout}
           style={styles.aboutHit}
           accessibilityRole="link"
-          accessibilityLabel="About"
-          accessibilityHint="Opens the Hyperlinks Space Program landing page in the browser"
+          accessibilityLabel={t("global.logoBar.about")}
+          accessibilityHint={t("global.logoBar.aboutHint")}
         >
-          <Text style={[styles.aboutText, { color: colors.primary }]}>About</Text>
+          <Text style={[styles.aboutText, { color: colors.primary }]}>{t("global.logoBar.about")}</Text>
         </Pressable>
       </View>
     </View>
@@ -145,6 +147,7 @@ function WelcomeMarketingBarContent({
 }
 
 export function GlobalLogoBar() {
+  const { t } = useAppStrings();
   const router = useRouter();
   const pathname = useResolvedPathname();
   const auth = useAuth();
@@ -309,10 +312,10 @@ export function GlobalLogoBar() {
           onPress={onPressLogoHome}
           style={[styles.logoWrap, isDesktopTmaImmersiveWelcome && styles.logoWrapAlignStart]}
           accessibilityRole="button"
-          accessibilityLabel="Go to home"
+          accessibilityLabel={t("key.header.goHomeA11y")}
         >
           {isDesktopTmaImmersiveWelcome ? (
-            <View accessible accessibilityLabel="Hyperlinks Space">
+            <View accessible accessibilityLabel={t("global.logoBar.wordmarkA11y")}>
               <LogoWordmark
                 width={desktopImmersiveWordmarkWidth}
                 height={wordmarkForMarketing}

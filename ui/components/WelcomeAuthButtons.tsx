@@ -13,6 +13,8 @@ import {
   welcomeAuthButtonHoverBackground,
   welcomeAuthButtonActiveBackground,
 } from "../theme";
+import { useAppStrings } from "../../locales/AppStringsContext";
+import type { AppStringKey } from "../../locales/appStrings";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
@@ -53,11 +55,11 @@ const ICONS = {
   },
 } as const;
 
-const ROWS: { id: keyof typeof ICONS; label: string }[] = [
-  { id: "google", label: "Sign in with Google" },
-  { id: "github", label: "Sign in with GitHub" },
-  { id: "apple", label: "Sign in with Apple" },
-  { id: "telegram", label: "Sign in with Telegram" },
+const ROWS: { id: keyof typeof ICONS; labelKey: AppStringKey }[] = [
+  { id: "google", labelKey: "welcome.auth.signInGoogle" },
+  { id: "github", labelKey: "welcome.auth.signInGithub" },
+  { id: "apple", labelKey: "welcome.auth.signInApple" },
+  { id: "telegram", labelKey: "welcome.auth.signInTelegram" },
 ];
 
 /**
@@ -78,6 +80,7 @@ export function WelcomeAuthButtons() {
   const router = useRouter();
   const { signIn } = useAuth();
   const colors = useColors();
+  const { t } = useAppStrings();
   const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
   const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
   const [email, setEmail] = useState("");
@@ -123,8 +126,8 @@ export function WelcomeAuthButtons() {
       }
       if (!isInTelegram) {
         Alert.alert(
-          "Sign in with Telegram",
-          "Open this page inside the Telegram app to continue, or use a normal web browser (not an in-app preview that mimics Telegram).",
+          t("welcome.auth.telegramBrowserAlertTitle"),
+          t("welcome.auth.telegramBrowserAlertMessage"),
         );
         return;
       }
@@ -144,11 +147,12 @@ export function WelcomeAuthButtons() {
     <View style={styles.column}>
       {ROWS.map((row, index) => {
         const src = useBlackIcons ? ICONS[row.id].black : ICONS[row.id].white;
+        const label = t(row.labelKey);
         return (
           <Pressable
             key={row.id}
             accessibilityRole="button"
-            accessibilityLabel={row.label}
+            accessibilityLabel={label}
             onPress={() => onProviderPress(row.id)}
             onHoverIn={
               Platform.OS === "web"
@@ -188,7 +192,7 @@ export function WelcomeAuthButtons() {
             }}
           >
             <Text style={[styles.label, { color: colors.primary }]} numberOfLines={1}>
-              {row.label}
+              {label}
             </Text>
             <Image
               source={src}
@@ -210,7 +214,7 @@ export function WelcomeAuthButtons() {
         );
       })}
       <View style={[styles.emailBlock, { marginTop: GAP_BEFORE_EMAIL_BLOCK }]}>
-        <Text style={[styles.emailTitle, { color: colors.primary }]}>Sign in with email</Text>
+        <Text style={[styles.emailTitle, { color: colors.primary }]}>{t("welcome.auth.signInEmailTitle")}</Text>
         <View
           style={[
             styles.emailInputShell,
@@ -230,7 +234,7 @@ export function WelcomeAuthButtons() {
           <TextInput
             {...(Platform.OS === "web" ? { id: "welcome-email-input" } : {})}
             style={[styles.emailInputInner, { color: colors.primary }]}
-            placeholder="Your email address"
+            placeholder={t("welcome.auth.emailPlaceholder")}
             placeholderTextColor={colors.secondary}
             keyboardType="email-address"
             autoCapitalize="none"
@@ -243,7 +247,7 @@ export function WelcomeAuthButtons() {
           />
         </View>
         {emailInvalid ? (
-          <Text style={[styles.emailInvalidText, { color: EMAIL_INVALID_COLOR }]}>Invalid email</Text>
+          <Text style={[styles.emailInvalidText, { color: EMAIL_INVALID_COLOR }]}>{t("welcome.auth.emailInvalid")}</Text>
         ) : null}
         <Pressable
           accessibilityRole="button"
@@ -278,7 +282,7 @@ export function WelcomeAuthButtons() {
             ];
           }}
         >
-          <Text style={[styles.label, { color: colors.primary }]}>Sign in</Text>
+          <Text style={[styles.label, { color: colors.primary }]}>{t("welcome.auth.signInButton")}</Text>
         </Pressable>
       </View>
       <WelcomeAppPreviews />

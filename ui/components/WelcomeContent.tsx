@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
 import { layout, useColors } from "../theme";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
@@ -20,6 +21,7 @@ const HEADING_LINE_WIDE = 40;
  */
 export function WelcomeContent() {
   const colors = useColors();
+  const { t } = useAppStrings();
   const { signIn } = useAuth();
   const { width: dimensionsWidth } = useWindowDimensions();
   /** RN-web sometimes reports width 0 on the first frame; `innerWidth` matches the real viewport immediately. */
@@ -77,12 +79,12 @@ export function WelcomeContent() {
               { color: colors.primary },
             ]}
           >
-            Welcome to our program
+            {t("welcome.title")}
           </Text>
         </View>
         <View style={[styles.subtitleBlock, isWideLayout && styles.subtitleBlockWide]}>
           <Text style={[styles.subtitleText, { color: colors.secondary }]}>
-            This is the best way to earn and spend
+            {t("welcome.subtitle")}
           </Text>
         </View>
         <View style={styles.authBlock}>

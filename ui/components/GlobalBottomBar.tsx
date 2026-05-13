@@ -21,6 +21,7 @@ import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
 import { getBottomBarMetrics } from "./bottomBarMetrics";
 import { getPrimaryTextColorFromLaunch } from "./telegramWebApp";
+import { useAppStrings } from "../../locales/AppStringsContext";
 
 const { maxContentWidth } = layout;
 const {
@@ -37,7 +38,6 @@ const {
 const FONT_SIZE = 15;
 const INNER_PADDING = 20;
 const AUTO_SCROLL_THRESHOLD = 30;
-const PREMADE_PROMPTS = ["What is the universe?", "Tell me about dogs token"];
 
 function Scrollbar({
   show,
@@ -85,6 +85,13 @@ function Scrollbar({
 // Shared entry point: chooses platform-specific implementation and shared colors.
 export function GlobalBottomBar() {
   const colors = useColors();
+  const { t } = useAppStrings();
+  const premadePrompts = React.useMemo(
+    () => [t("global.bottomBar.premade1"), t("global.bottomBar.premade2")] as const,
+    [t],
+  );
+  const placeholderWeb = t("global.bottomBar.placeholderWeb");
+  const placeholderNative = t("global.bottomBar.placeholderNative");
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge, draftText, setDraftText } = useBottomBarLayout();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
@@ -108,6 +115,8 @@ export function GlobalBottomBar() {
         hideBottomBorder={hideBottomBorder}
         value={draftText}
         setValue={setDraftText}
+        premadePrompts={premadePrompts}
+        placeholderText={placeholderWeb}
       />
     );
   }
@@ -122,6 +131,8 @@ export function GlobalBottomBar() {
       hideBottomBorder={hideBottomBorder}
       value={draftText}
       setValue={setDraftText}
+      premadePrompts={premadePrompts}
+      placeholderText={placeholderNative}
     />
   );
 }
@@ -210,6 +221,8 @@ function WebBottomBar({
   hideBottomBorder,
   value,
   setValue,
+  premadePrompts,
+  placeholderText,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -218,8 +231,11 @@ function WebBottomBar({
   topBorderColor: string;
   hideBottomBorder: boolean;
   value: string;
-  setValue: (t: string) => void;
+  setValue: (next: string) => void;
+  premadePrompts: readonly [string, string];
+  placeholderText: string;
 }) {
+  const router = useRouter();
   const [isFocused, setIsFocused] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [domScrollRange, setDomScrollRange] = useState(0);
@@ -381,10 +397,15 @@ function WebBottomBar({
   }, [value, metrics.showScrollbar]);
 
   const handleSend = useCallback(() => {
-    const text = value.trim();
+    let text = value.trim();
+    if (!text && premadePrompts.length > 0) {
+      text = premadePrompts[Math.floor(Math.random() * premadePrompts.length)] ?? "";
+      setValue(text);
+    }
     if (!text) return;
     setValue("");
-  }, [value]);
+    router.push({ pathname: "/ai" as any, params: { prompt: text } });
+  }, [router, value, setValue, premadePrompts]);
 
   return (
     <View
@@ -436,7 +457,7 @@ function WebBottomBar({
                 overflow:
                   metrics.contentHeightWithGaps > metrics.viewportHeight ? "auto" : "hidden",
               }}
-              placeholder={isFocused ? "" : "AI and search"}
+              placeholder={isFocused ? "" : placeholderText}
             />
           </View>
           <BottomBarSendCircleButton
@@ -471,6 +492,8 @@ function NativeBottomBar({
   hideBottomBorder,
   value,
   setValue,
+  premadePrompts,
+  placeholderText,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -479,7 +502,9 @@ function NativeBottomBar({
   topBorderColor: string;
   hideBottomBorder: boolean;
   value: string;
-  setValue: (t: string) => void;
+  setValue: (next: string) => void;
+  premadePrompts: readonly [string, string];
+  placeholderText: string;
 }) {
   const router = useRouter();
   const { triggerHaptic } = useTelegram();
@@ -498,15 +523,15 @@ function NativeBottomBar({
       triggerHaptic("heavy");
     }
     let text = value.trim();
-    if (!text && PREMADE_PROMPTS.length > 0) {
-      text = PREMADE_PROMPTS[Math.floor(Math.random() * PREMADE_PROMPTS.length)] ?? "";
+    if (!text && premadePrompts.length > 0) {
+      text = premadePrompts[Math.floor(Math.random() * premadePrompts.length)] ?? "";
       setValue(text);
     }
     if (!text) return;
     Keyboard.dismiss();
     setValue("");
     router.push({ pathname: "/ai" as any, params: { prompt: text } });
-  }, [router, triggerHaptic, value]);
+  }, [router, triggerHaptic, value, setValue, premadePrompts]);
 
   const onContentSizeChange = useCallback(
     (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
@@ -603,7 +628,7 @@ function NativeBottomBar({
                 >
                   <TextInput
                     style={[styles.input, { color: inputColor }]}
-                    placeholder={isFocused ? "" : "AI & Search"}
+                    placeholder={isFocused ? "" : placeholderText}
                     placeholderTextColor={inputColor}
                     value={value}
                     onChangeText={setValue}

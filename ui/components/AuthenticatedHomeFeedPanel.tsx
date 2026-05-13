@@ -9,6 +9,8 @@ import {
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
+import type { AppStringKey } from "../../locales/appStrings";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { useTelegram } from "./Telegram";
 
 /** One extra attempt after client abort (slow TMA / cold API) before showing timeout + offline preview. */
@@ -31,80 +33,79 @@ type FeedRow = {
   card_type: string;
   layout_variant: string | null;
   payload: unknown;
-};
+}
 
 /**
- * Matches `sql/seed-welcome-messages.sql` (+ `database/feed.ts` welcome keys): shown immediately so
- * the feed is not an empty spinner while `/api/feed` reconciles rows (incl. after Strict Mode remount).
+ * Matches `sql/seed-welcome-messages.sql` (+ `database/feed.ts` welcome keys): placeholder rows until `/api/feed` hydrates.
  */
-const WELCOME_PLACEHOLDER_FEED_ITEMS: FeedRow[] = [
-  {
-    id: -1,
-    sent_at: null,
-    card_type: "system_action",
-    layout_variant: "action_hint",
-    payload: {
-      welcome_order: 1,
-      title: "Wallet created",
-      subtitle: "Press to save 24 words",
-      icon: { type: "svg_url", url: "/welcome_messages/welcome.svg" },
+function buildWelcomePlaceholderFeed(t: (key: AppStringKey) => string): FeedRow[] {
+  return [
+    {
+      id: -1,
+      sent_at: null,
+      card_type: "system_action",
+      layout_variant: "action_hint",
+      payload: {
+        welcome_order: 1,
+        title: t("feed.placeholder.walletTitle"),
+        subtitle: t("feed.placeholder.walletSubtitle"),
+        icon: { type: "svg_url", url: "/welcome_messages/welcome.svg" },
+      },
     },
-  },
-  {
-    id: -2,
-    sent_at: null,
-    card_type: "user_status",
-    layout_variant: "compact",
-    payload: {
-      welcome_order: 2,
-      title: "You are likely a creator",
-      subtitle: "Press to access creators page",
-      icon: { type: "svg_url", url: "/welcome_messages/creator.svg" },
+    {
+      id: -2,
+      sent_at: null,
+      card_type: "user_status",
+      layout_variant: "compact",
+      payload: {
+        welcome_order: 2,
+        title: t("feed.placeholder.creatorTitle"),
+        subtitle: t("feed.placeholder.creatorSubtitle"),
+        icon: { type: "svg_url", url: "/welcome_messages/creator.svg" },
+      },
     },
-  },
-  {
-    id: -3,
-    sent_at: null,
-    card_type: "transaction_asset",
-    layout_variant: "value_trailing",
-    payload: {
-      welcome_order: 3,
-      title: "NFT recieved",
-      subtitle: "$24",
-      trailing_label: "NFT recieved",
-      icon: { type: "svg_url", url: "/welcome_messages/NFT.svg" },
+    {
+      id: -3,
+      sent_at: null,
+      card_type: "transaction_asset",
+      layout_variant: "value_trailing",
+      payload: {
+        welcome_order: 3,
+        title: t("feed.placeholder.nftTitle"),
+        subtitle: t("feed.placeholder.nftSubtitle"),
+        trailing_label: t("feed.placeholder.nftTrailing"),
+        icon: { type: "svg_url", url: "/welcome_messages/NFT.svg" },
+      },
     },
-  },
-  {
-    id: -4,
-    sent_at: null,
-    card_type: "reward_token",
-    layout_variant: "value_trailing",
-    payload: {
-      welcome_order: 4,
-      title: "Token granted",
-      subtitle: "$1",
-      trailing_label: "+1 DLLR",
-      icon: { type: "svg_url", url: "/welcome_messages/token.svg" },
+    {
+      id: -4,
+      sent_at: null,
+      card_type: "reward_token",
+      layout_variant: "value_trailing",
+      payload: {
+        welcome_order: 4,
+        title: t("feed.placeholder.tokenTitle"),
+        subtitle: t("feed.placeholder.tokenSubtitle"),
+        trailing_label: t("feed.placeholder.tokenTrailing"),
+        icon: { type: "svg_url", url: "/welcome_messages/token.svg" },
+      },
     },
-  },
-  {
-    id: -5,
-    sent_at: null,
-    card_type: "task_gig",
-    layout_variant: "compact",
-    payload: {
-      welcome_order: 5,
-      title: "Incoming task",
-      subtitle: "$24",
-      icon: { type: "svg_url", url: "/welcome_messages/task.svg" },
+    {
+      id: -5,
+      sent_at: null,
+      card_type: "task_gig",
+      layout_variant: "compact",
+      payload: {
+        welcome_order: 5,
+        title: t("feed.placeholder.taskTitle"),
+        subtitle: t("feed.placeholder.taskSubtitle"),
+        icon: { type: "svg_url", url: "/welcome_messages/task.svg" },
+      },
     },
-  },
-];
+  ];
+}
 
 /** Shown whenever `sent_at` is absent (preview rows, or API lag until `/api/feed` hydrates). */
-const FEED_TIME_PENDING_LABEL = "--:--";
-
 function formatWallClock(raw: unknown): string {
   if (raw == null || raw === "") return "";
   if (typeof raw === "number" && Number.isFinite(raw)) {
@@ -148,10 +149,12 @@ function FeedFeedRow({
   item,
   isLast,
   colors,
+  timePendingLabel,
 }: {
   item: FeedRow;
   isLast: boolean;
   colors: ThemeColors;
+  timePendingLabel: string;
 }) {
   const p = coercePayload(item.payload);
   const title = typeof p.title === "string" ? p.title : "";
@@ -161,7 +164,7 @@ function FeedFeedRow({
 
   const iconUrl = resolveIconUrl(p.icon);
   const parsedClock = formatWallClock(item.sent_at);
-  const timeLabel = parsedClock || FEED_TIME_PENDING_LABEL;
+  const timeLabel = parsedClock || timePendingLabel;
   const timeIsProvisional = !parsedClock;
   const gapTitleTime = !!(title.trim() && timeLabel.trim());
   const gapSubtitleTrailing = !!(subtitle.trim() && trailing.trim());
@@ -283,10 +286,28 @@ function FeedFeedRow({
 }
 
 export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) {
+  const { t } = useAppStrings();
+  const welcomePlaceholderFeedItems = useMemo(() => buildWelcomePlaceholderFeed(t), [t]);
+  const welcomePlaceholderRef = useRef(welcomePlaceholderFeedItems);
+  welcomePlaceholderRef.current = welcomePlaceholderFeedItems;
+
   const { initData, status, telegramBootstrapFeed } = useTelegram();
-  const [items, setItems] = useState<FeedRow[]>(() => [...WELCOME_PLACEHOLDER_FEED_ITEMS]);
+  const [items, setItems] = useState<FeedRow[]>(welcomePlaceholderFeedItems);
   const [error, setError] = useState<string | null>(null);
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+
+  useEffect(() => {
+    setItems((prev) => {
+      const hasPositive = prev.some((r) => r.id > 0);
+      if (hasPositive) {
+        return prev.map((r) => (r.id < 0 ? welcomePlaceholderFeedItems.find((w) => w.id === r.id) ?? r : r));
+      }
+      if (prev.length === 0 || prev.every((r) => r.id < 0)) {
+        return [...welcomePlaceholderFeedItems];
+      }
+      return prev;
+    });
+  }, [welcomePlaceholderFeedItems]);
 
   /**
    * When `initData` is present, key is **only** the trimmed string so `status` going `loading`→`ok`
@@ -329,6 +350,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   useEffect(() => {
     if (feedLoadKey === null) return;
 
+    const feedKey = feedLoadKey;
     let cancelled = false;
 
     async function load() {
@@ -340,7 +362,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
       logPageDisplay("feed_panel_mount_effect", {
         telegramStatus: status,
         initDataChars: initDataOk ? initDataTrimmed.length : 0,
-        feedLoadKey: feedLoadKey.slice(0, 64),
+        feedLoadKey: feedKey.slice(0, 64),
         note: initDataOk ? "feed_key_stable_across_status" : "session_feed_key_includes_status",
       });
 
@@ -487,7 +509,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
         setItems((prev) => {
           if (next.length > 0) return next;
           if (prev.some((r) => r.id > 0)) return prev;
-          return [...WELCOME_PLACEHOLDER_FEED_ITEMS];
+          return [...welcomePlaceholderRef.current];
         });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -526,7 +548,7 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   if (items.length === 0) {
     return (
       <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
-        No feed items yet.
+        {t("feed.empty")}
       </Text>
     );
   }
@@ -550,11 +572,17 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
           accessibilityRole="text"
         >
           {error}{" "}
-          <Text style={{ color: colors.primary }}>(offline preview)</Text>
+          <Text style={{ color: colors.primary }}>{t("feed.offlinePreview")}</Text>
         </Text>
       ) : null}
       {items.map((it, i) => (
-        <FeedFeedRow key={it.id} item={it} isLast={i === items.length - 1} colors={colors} />
+        <FeedFeedRow
+          key={it.id}
+          item={it}
+          isLast={i === items.length - 1}
+          colors={colors}
+          timePendingLabel={t("feed.timePending")}
+        />
       ))}
     </ScrollView>
   );

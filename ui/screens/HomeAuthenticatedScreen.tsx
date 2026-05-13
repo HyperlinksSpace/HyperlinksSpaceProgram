@@ -26,6 +26,7 @@ import {
   generateMnemonic,
 } from "../../services/wallet/tonWallet";
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
+import { useAppStrings } from "../../locales/AppStringsContext";
 
 /**
  * Survives React Strict Mode / remount: component `useRef` resets, but two parallel
@@ -508,6 +509,7 @@ function markWalletSecretStoredOnServer(
 
 export function HomeAuthenticatedScreen() {
   const colors = useColors();
+  const { t, tf, translateFlowError } = useAppStrings();
   const [homeNavIndex, setHomeNavIndex] = useState(0);
   const {
     status,
@@ -1003,7 +1005,7 @@ export function HomeAuthenticatedScreen() {
     if (status !== "ok" || !walletRequired || hasDisplayAddress || !initDataOk || step !== "idle") {
       return;
     }
-    const t = setTimeout(() => {
+    const kickTimer = setTimeout(() => {
       if (flowError) {
         return;
       }
@@ -1017,7 +1019,7 @@ export function HomeAuthenticatedScreen() {
       void createAndRegisterWalletFlow();
     }, 0);
     return () => {
-      clearTimeout(t);
+      clearTimeout(kickTimer);
     };
   }, [flowError, status, walletRequired, hasDisplayAddress, step, initData, createAndRegisterWalletFlow]);
 
@@ -1062,7 +1064,7 @@ export function HomeAuthenticatedScreen() {
       <AuthenticatedHomeChrome>
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <AuthenticatedHomePaddedBody>
-          <Text style={{ marginBottom: 12, color: colors.primary }}>Loading…</Text>
+          <Text style={{ marginBottom: 12, color: colors.primary }}>{t("common.loading")}</Text>
           <View
           style={{
             padding: 8,
@@ -1072,30 +1074,40 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
+            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>webAppApiPoll: {debug.webAppPollCount}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            initData: {debug.initDataLength != null ? debug.initDataLength : "—"}
+            {tf("debug.webAppPollLine", { count: debug.webAppPollCount })}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>initDataPoll: {debug.initDataPollCount}</Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            {t("debug.initData")}{" "}
+            {debug.initDataLength != null ? String(debug.initDataLength) : t("common.emDash")}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            {t("debug.initDataPoll")} {debug.initDataPollCount}
+          </Text>
           <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
-            initDataPoll only runs when a Telegram launch or real WebApp platform is detected; otherwise
-            we stop (no infinite poll outside Telegram).
+            {t("debug.initDataPollNoteLoading")}
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
+            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
           </Text>
           {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>url: {debug.apiUrl}</Text>
+            <Text style={{ fontSize: 10, color: colors.primary }}>
+              {t("debug.url")} {debug.apiUrl}
+            </Text>
           )}
           {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>fetchMs: {debug.fetchDurationMs}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.fetchMs")} {debug.fetchDurationMs}
+            </Text>
           )}
           {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.lastLog")} {debug.lastLog}
+            </Text>
           )}
         </View>
         </AuthenticatedHomePaddedBody>
@@ -1109,7 +1121,7 @@ export function HomeAuthenticatedScreen() {
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
-          Telegram registration failed
+          {t("home.errors.telegramRegistrationFailed")}
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>{error}</Text>
         <View
@@ -1122,25 +1134,32 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)} ·
-            initData: {debug.initDataLength ?? "—"}
+            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })} ·{" "}
+            {t("debug.initData")}{" "}
+            {debug.initDataLength ?? t("common.emDash")}
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            webAppApiPoll: {debug.webAppPollCount} · initDataPoll: {debug.initDataPollCount}
+            {tf("debug.webAppInitLine", { web: String(debug.webAppPollCount), init: String(debug.initDataPollCount) })}
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
+            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
           </Text>
           {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>url: {debug.apiUrl}</Text>
+            <Text style={{ fontSize: 10, color: colors.primary }}>
+              {t("debug.url")} {debug.apiUrl}
+            </Text>
           )}
           {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>fetchMs: {debug.fetchDurationMs}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.fetchMs")} {debug.fetchDurationMs}
+            </Text>
           )}
           {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.lastLog")} {debug.lastLog}
+            </Text>
           )}
         </View>
         </AuthenticatedHomePaddedBody>
@@ -1154,10 +1173,10 @@ export function HomeAuthenticatedScreen() {
         <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
         <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
-          Hyperlinks Space Program
+          {t("home.dev.productTitle")}
         </Text>
         <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>
-          Outside Telegram, authentication abandoned.
+          {t("home.dev.outsideTelegram")}
         </Text>
         <View
           style={{
@@ -1169,30 +1188,40 @@ export function HomeAuthenticatedScreen() {
             borderColor: colors.highlight,
           }}
         >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>Debug</Text>
+          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            hasWebAppApi: {String(debug.hasWebAppApi)} · inTelegram: {String(debug.inTelegramClient)}
+            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>webAppApiPoll: {debug.webAppPollCount}</Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            initData: {debug.initDataLength != null ? debug.initDataLength : "—"}
+            {tf("debug.webAppPollLine", { count: debug.webAppPollCount })}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>initDataPoll: {debug.initDataPollCount}</Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            {t("debug.initData")}{" "}
+            {debug.initDataLength != null ? String(debug.initDataLength) : t("common.emDash")}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.primary }}>
+            {t("debug.initDataPoll")} {debug.initDataPollCount}
+          </Text>
           <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
-            initDataPoll only runs when Telegram launch or real WebApp platform is detected; otherwise
-            we stop (no infinite polling outside Telegram).
+            {t("debug.initDataPollNoteError")}
           </Text>
           <Text style={{ fontSize: 11, color: colors.primary }}>
-            api: {debug.apiStatus ?? "—"} {debug.apiMessage ?? ""}
+            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
           </Text>
           {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>url: {debug.apiUrl}</Text>
+            <Text style={{ fontSize: 10, color: colors.primary }}>
+              {t("debug.url")} {debug.apiUrl}
+            </Text>
           )}
           {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>fetchMs: {debug.fetchDurationMs}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.fetchMs")} {debug.fetchDurationMs}
+            </Text>
           )}
           {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>lastLog: {debug.lastLog}</Text>
+            <Text style={{ fontSize: 11, color: colors.primary }}>
+              {t("debug.lastLog")} {debug.lastLog}
+            </Text>
           )}
         </View>
         </AuthenticatedHomePaddedBody>
@@ -1234,17 +1263,19 @@ export function HomeAuthenticatedScreen() {
                     lineHeight: 24,
                   }}
                 >
-                  You are logged in via Telegram as @{telegramUsername}.
+                  {tf("home.wallet.loggedInAs", { username: telegramUsername })}
                 </Text>
               </View>
             ) : null}
             {flowError ? (
               <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
-                <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>{flowError}</Text>
+                <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
+                  {translateFlowError(flowError)}
+                </Text>
                 {serverOnlyRetry ? (
-                  <Button title="Retry server registration" onPress={retryServerRegistrationOnly} />
+                  <Button title={t("home.wallet.retryServerRegistration")} onPress={retryServerRegistrationOnly} />
                 ) : (
-                  <Button title="Retry wallet creation" onPress={createAndRegisterWalletFlow} />
+                  <Button title={t("home.wallet.retryWalletCreation")} onPress={createAndRegisterWalletFlow} />
                 )}
               </View>
             ) : null}
@@ -1261,7 +1292,7 @@ export function HomeAuthenticatedScreen() {
                     color: colors.secondary,
                   }}
                 >
-                  Generating your wallet keys…
+                  {t("home.wallet.generatingKeys")}
                 </Text>
               </View>
             ) : null}
@@ -1269,7 +1300,7 @@ export function HomeAuthenticatedScreen() {
               <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
                 <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
                 <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
-                  Finishing on the server (saving the row). You can wait or close the app; your address is already shown.
+                  {t("home.wallet.finishingServer")}
                 </Text>
               </View>
             ) : null}
@@ -1283,7 +1314,7 @@ export function HomeAuthenticatedScreen() {
                   paddingHorizontal: 8,
                 }}
               >
-                Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).
+                {t("home.wallet.backupKmsNote")}
               </Text>
             ) : null}
             </View>

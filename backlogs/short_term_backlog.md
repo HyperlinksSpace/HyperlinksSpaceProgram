@@ -1,7 +1,6 @@
-Hovers
+Languages 
 Login and logout termination
 In-App update test
-Languages
 Log out
 Copy with notification
 edit

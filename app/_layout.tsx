@@ -21,6 +21,7 @@ import { Stack } from "expo-router";
 import * as Updates from "expo-updates";
 import { AuthProvider, useAuth } from "../auth/AuthContext";
 import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
+import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
@@ -62,13 +63,10 @@ export default function RootLayout() {
     if (fontsLoaded || fontError) {
       void SplashScreen.hideAsync();
     }
+    if (fontError) {
+      console.warn("[fonts] UI font load failed", fontError);
+    }
   }, [fontsLoaded, fontError]);
-
-  useOtaUpdateChecks();
-
-  if (fontError) {
-    console.warn("[fonts] UI font load failed", fontError);
-  }
 
   if (!fontsLoaded && !fontError) {
     return null;
@@ -80,68 +78,25 @@ export default function RootLayout() {
 
   return (
     <TelegramProvider>
-      <AuthProvider>
-        <BottomBarLayoutProvider>
-          {Platform.OS === "ios" ? (
-            <KeyboardAvoidingView
-              style={styles.keyboardAvoid}
-              behavior="padding"
-              keyboardVerticalOffset={0}
-            >
+      <AppStringsProvider>
+        <AuthProvider>
+          <BottomBarLayoutProvider>
+            {Platform.OS === "ios" ? (
+              <KeyboardAvoidingView
+                style={styles.keyboardAvoid}
+                behavior="padding"
+                keyboardVerticalOffset={0}
+              >
+                <RootContent />
+              </KeyboardAvoidingView>
+            ) : (
               <RootContent />
-            </KeyboardAvoidingView>
-          ) : (
-            <RootContent />
-          )}
-        </BottomBarLayoutProvider>
-      </AuthProvider>
+            )}
+          </BottomBarLayoutProvider>
+        </AuthProvider>
+      </AppStringsProvider>
     </TelegramProvider>
   );
-}
-
-function useOtaUpdateChecks() {
-  const lastCheckAtRef = useRef(0);
-
-  useEffect(() => {
-    if (Platform.OS === "web") return;
-
-    const checkForOtaUpdate = async () => {
-      const now = Date.now();
-      // Throttle checks to avoid noisy network calls while app toggles foreground quickly.
-      if (now - lastCheckAtRef.current < 10 * 60 * 1000) return;
-      lastCheckAtRef.current = now;
-
-      try {
-        const result = await Updates.checkForUpdateAsync();
-        if (!result.isAvailable) return;
-
-        await Updates.fetchUpdateAsync();
-        Alert.alert(
-          "Update ready",
-          "A new version has been downloaded. Restart now to apply it?",
-          [
-            { text: "Later", style: "cancel" },
-            {
-              text: "Restart",
-              onPress: () => {
-                void Updates.reloadAsync();
-              },
-            },
-          ],
-        );
-      } catch (error) {
-        console.warn("[updates] OTA check failed", error);
-      }
-    };
-
-    void checkForOtaUpdate();
-    const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
-        void checkForOtaUpdate();
-      }
-    });
-    return () => sub.remove();
-  }, []);
 }
 
 /** Web: allow browser pinch/Ctrl+wheel zoom; replaces restrictive scale caps from defaults. */
@@ -168,6 +123,45 @@ function RootContent() {
    * subtree is then a client-only paint, which avoids React #418 from TMA / auth / router divergence.
    * Native: no split (always ready).
    */
+  const { t } = useAppStrings();
+  const lastOtaCheckAtRef = useRef(0);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    const checkForOtaUpdate = async () => {
+      const now = Date.now();
+      if (now - lastOtaCheckAtRef.current < 10 * 60 * 1000) return;
+      lastOtaCheckAtRef.current = now;
+
+      try {
+        const result = await Updates.checkForUpdateAsync();
+        if (!result.isAvailable) return;
+
+        await Updates.fetchUpdateAsync();
+        Alert.alert(t("ota.title"), t("ota.message"), [
+          { text: t("ota.later"), style: "cancel" },
+          {
+            text: t("ota.restart"),
+            onPress: () => {
+              void Updates.reloadAsync();
+            },
+          },
+        ]);
+      } catch (error) {
+        console.warn("[updates] OTA check failed", error);
+      }
+    };
+
+    void checkForOtaUpdate();
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void checkForOtaUpdate();
+      }
+    });
+    return () => sub.remove();
+  }, [t]);
+
   const [webHydrationReady, setWebHydrationReady] = useState(Platform.OS !== "web");
   useLayoutEffect(() => {
     if (Platform.OS === "web") {
