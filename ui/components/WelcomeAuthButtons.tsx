@@ -1,6 +1,7 @@
 import { Alert, Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
 import { useState } from "react";
 import { Image } from "expo-image";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
@@ -91,17 +92,22 @@ export function WelcomeAuthButtons() {
   const useBlackIcons = colorScheme === "light";
 
   /**
-   * Browser OIDC (`/api/auth/telegram/start`) when not in a **real** Mini App session.
-   * Do not use `isTelegramMiniAppEnvironment()` here: it is true whenever `Telegram.WebApp`
-   * exists (e.g. script on localhost), which wrongly disabled OIDC and caused a silent no-op
-   * (`!isInTelegram` return) in normal browsers.
+   * Telegram Login / OIDC via `/api/auth/telegram/start` whenever we are **not** in a real Mini App
+   * session (`isActuallyInTelegram`). Includes normal browsers **and** Windows/Electron (or other
+   * `Platform.OS` values) where `window.location.assign` may be absent — then {@link Linking.openURL}
+   * opens the system browser.
+   *
+   * Do not gate on `Platform.OS === "web"` alone: desktop shells report other OS values and would
+   * otherwise fall through to `Alert` only (often invisible / no-op).
    */
-  const useTelegramBrowserOidc =
-    Platform.OS === "web" && typeof window !== "undefined" && !isActuallyInTelegram();
+  const useTelegramWebAuthOutsideMiniApp =
+    typeof globalThis !== "undefined" &&
+    typeof globalThis.fetch === "function" &&
+    !isActuallyInTelegram();
 
   const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
     if (id === "telegram") {
-      if (useTelegramBrowserOidc) {
+      if (useTelegramWebAuthOutsideMiniApp) {
         try {
           setTelegramBrowserPending(true);
           const response = await fetch(buildApiUrl("/api/auth/telegram/start"), {
@@ -115,10 +121,20 @@ export function WelcomeAuthButtons() {
           if (!response.ok || !json?.authUrl) {
             throw new Error(json?.error || `HTTP_${response.status}`);
           }
-          window.location.assign(json.authUrl);
+          const authUrl = json.authUrl;
+          if (
+            typeof window !== "undefined" &&
+            typeof window.location?.assign === "function" &&
+            typeof window.location?.href === "string"
+          ) {
+            window.location.assign(authUrl);
+          } else {
+            await Linking.openURL(authUrl);
+          }
           return;
         } catch (error) {
           console.error("[welcome] telegram browser auth start failed", error);
+          Alert.alert(t("welcome.auth.telegramBrowserAlertTitle"), t("welcome.auth.telegramStartError"));
         } finally {
           setTelegramBrowserPending(false);
         }
@@ -182,11 +198,7 @@ export function WelcomeAuthButtons() {
                   backgroundColor,
                   marginTop: index === 0 ? 0 : BUTTON_GAP,
                   opacity:
-                    row.id === "telegram" && telegramBrowserPending
-                      ? 0.6
-                      : pressed
-                        ? 0.92
-                        : 1,
+                    row.id === "telegram" && telegramBrowserPending ? 0.6 : pressed ? 0.92 : 1,
                 },
               ];
             }}

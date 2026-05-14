@@ -1,5 +1,8 @@
-Languages
+Login and logout termination
+Log out
 In-App update test
+Languages switch on welcome page
+Languages in Windows and in browser (system or browser)
 Login and logout termination
 Log out
 Copy with notification
