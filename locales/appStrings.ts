@@ -198,11 +198,11 @@ const ru = {
   "home.header.copyWalletHint": "Копирует полный адрес кошелька",
   "home.header.walletAddressA11y": "Адрес кошелька {{snippet}}",
 
-  "home.menu.deals": "Сделки",
   "home.menu.get": "Получить",
-  "home.menu.send": "Отправить",
   "home.menu.swap": "Обмен",
-  "home.menu.trade": "Торговля",
+  "home.menu.deals": "Сделки",
+  "home.menu.trade": "Рынок",
+  "home.menu.send": "Отправка",
 
   "home.nav.coins": "Монеты",
   "home.nav.feed": "Лента",
