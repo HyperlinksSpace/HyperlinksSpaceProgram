@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   getInitDataString,
   getPlatform,
@@ -15,14 +23,24 @@ import {
   getAppString,
   translateFlowErrorForDisplay,
 } from "./appStrings";
+import { readStoredManualAppLocale, writeStoredManualAppLocale } from "./manualAppLocaleStorage";
 import { resolveAppLocale, resolveAppLocaleWithMeta } from "./resolveAppLocale";
 
 export type AppStringsContextValue = {
+  /** Effective UI locale (manual override or Telegram-derived). */
   locale: AppLocale;
+  /** Locale from Telegram init / policy only (no manual override). */
+  autoLocale: AppLocale;
+  /** User override from header toggle; `null` = follow {@link autoLocale}. */
+  manualLocale: AppLocale | null;
+  /** Glyph shown on the header language chip: language you switch *to* when tapped. */
+  headerLanguageToggleShows: "en" | "ru";
   t: (key: AppStringKey) => string;
   tf: (key: AppStringKey, vars?: Record<string, string | number | boolean>) => string;
   /** Map known English wallet-flow errors to the current locale. */
   translateFlowError: (message: string) => string;
+  /** Toggle EN ↔ RU; clears override when the new choice matches {@link autoLocale}. */
+  toggleUiLanguage: () => void;
 };
 
 const AppStringsContext = createContext<AppStringsContextValue | null>(null);
@@ -30,7 +48,7 @@ const AppStringsContext = createContext<AppStringsContextValue | null>(null);
 export function AppStringsProvider({ children }: { children: ReactNode }) {
   const { initData, isInTelegram, status, debug } = useTelegram();
 
-  const locale = useMemo(() => {
+  const autoLocale = useMemo(() => {
     const u = getUser();
     const rawLc =
       u && typeof u === "object" && u !== null && "language_code" in u
@@ -39,6 +57,28 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
     const lc = typeof rawLc === "string" ? rawLc : null;
     return resolveAppLocale({ telegramMiniApp: isInTelegram, telegramLanguageCode: lc });
   }, [isInTelegram, status, initData]);
+
+  const [manualLocale, setManualLocale] = useState<AppLocale | null>(() => readStoredManualAppLocale());
+
+  useEffect(() => {
+    writeStoredManualAppLocale(manualLocale);
+  }, [manualLocale]);
+
+  const locale = manualLocale ?? autoLocale;
+
+  const toggleUiLanguage = useCallback(() => {
+    const effective = manualLocale ?? autoLocale;
+    const next: AppLocale = effective === "ru" ? "en" : "ru";
+    const newManual = next === autoLocale ? null : next;
+    logPageDisplay("app_locale_manual_toggle", {
+      effectiveBefore: effective,
+      nextTapTargetLocale: next,
+      autoLocale,
+      manualAfter: newManual,
+      clearedToFollowTelegram: newManual == null,
+    });
+    setManualLocale(newManual);
+  }, [manualLocale, autoLocale]);
 
   useEffect(() => {
     const u = getUser();
@@ -63,9 +103,10 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
         : [];
 
     logPageDisplay("app_locale_resolution", {
-      resolvedLocale: meta.locale,
-      resolutionReason: meta.reason,
-      languageBase: meta.languageBase,
+      effectiveLocale: locale,
+      autoLocale,
+      manualLocale,
+      resolvedFromTelegramMeta: meta,
       telegramLanguageCodeFromGetUser: telegramLanguageCode,
       userId: u?.id ?? null,
       isInTelegram,
@@ -82,6 +123,8 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
     });
   }, [
     locale,
+    autoLocale,
+    manualLocale,
     isInTelegram,
     status,
     initData,
@@ -89,6 +132,8 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
     debug.inTelegramClient,
     debug.initDataLength,
   ]);
+
+  const headerLanguageToggleShows: "en" | "ru" = locale === "ru" ? "en" : "ru";
 
   const t = useCallback((key: AppStringKey) => getAppString(locale, key), [locale]);
 
@@ -104,8 +149,17 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ locale, t, tf, translateFlowError }),
-    [locale, t, tf, translateFlowError],
+    () => ({
+      locale,
+      autoLocale,
+      manualLocale,
+      headerLanguageToggleShows,
+      t,
+      tf,
+      translateFlowError,
+      toggleUiLanguage,
+    }),
+    [locale, autoLocale, manualLocale, headerLanguageToggleShows, t, tf, translateFlowError, toggleUiLanguage],
   );
 
   return <AppStringsContext.Provider value={value}>{children}</AppStringsContext.Provider>;

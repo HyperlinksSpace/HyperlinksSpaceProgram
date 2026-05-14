@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, StyleSheet, Text, useWindowDimensions, View, Platform } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
   authenticatedHomeWideMenuColumnWidthPx,
@@ -22,27 +22,31 @@ import {
   MenuTradeIcon,
 } from "./menu/MenuIcons";
 import { logPageDisplay } from "../pageDisplayLog";
+import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
+  HeaderIconEn,
   HeaderIconExit,
   HeaderIconKey,
+  HeaderIconRu,
 } from "./icons/HeaderActionIcons";
 
 const AH = layout.authenticatedHome;
 
-const HEADER_ICON_DEFS: readonly {
-  id: "copy" | "edit" | "key" | "exit";
+const HEADER_ICONS_BEFORE_LANG: readonly {
+  id: "copy" | "edit" | "key";
   labelKey: AppStringKey;
   Icon: (p: { color: string; size: number }) => ReactNode;
 }[] = [
   { id: "copy", labelKey: "home.header.iconCopy", Icon: HeaderIconCopy },
   { id: "edit", labelKey: "home.header.iconEdit", Icon: HeaderIconEdit },
   { id: "key", labelKey: "home.header.iconKey", Icon: HeaderIconKey },
-  { id: "exit", labelKey: "home.header.iconExit", Icon: HeaderIconExit },
 ];
+
+const HEADER_ICON_EXIT_LABEL_KEY = "home.header.iconExit" as const;
 
 const WIDE_MENU_ITEM_KEYS = [
   { key: "get", labelKey: "home.menu.get" as const, Icon: MenuGetIcon },
@@ -154,7 +158,8 @@ type Props = {
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const router = useRouter();
   const colors = useColors();
-  const { t, tf } = useAppStrings();
+  const { t, tf, toggleUiLanguage, headerLanguageToggleShows } = useAppStrings();
+  const { triggerHaptic } = useTelegram();
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
@@ -327,33 +332,74 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
               : {}),
           }}
         >
-          {HEADER_ICON_DEFS.map(({ id, Icon, labelKey }) => {
+          {HEADER_ICONS_BEFORE_LANG.map(({ id, Icon, labelKey }) => {
             const accessibilityLabel = t(labelKey);
             return (
-            <Pressable
-              key={id}
-              accessibilityRole="button"
-              accessibilityLabel={accessibilityLabel}
-              hitSlop={AH.headerPressableHitSlop}
-              onPress={() => {
-                if (id === "copy") {
-                  void copyFullWalletAddress();
-                  return;
-                }
-                if (id === "key") {
-                  router.push("/key" as any);
-                  return;
-                }
-                /* Wired when flows land */
-              }}
-            >
-              <Icon
+              <Pressable
+                key={id}
+                accessibilityRole="button"
+                accessibilityLabel={accessibilityLabel}
+                hitSlop={AH.headerPressableHitSlop}
+                onPress={() => {
+                  if (id === "copy") {
+                    void copyFullWalletAddress();
+                    return;
+                  }
+                  if (id === "key") {
+                    router.push("/key" as any);
+                    return;
+                  }
+                  /* Wired when flows land */
+                }}
+              >
+                <Icon
+                  color={menuIconStrokeColor(colors, "highlight")}
+                  size={AH.headerIconDisplaySize}
+                />
+              </Pressable>
+            );
+          })}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              headerLanguageToggleShows === "en"
+                ? t("home.header.languageIconSwitchToEn")
+                : t("home.header.languageIconSwitchToRu")
+            }
+            hitSlop={AH.headerPressableHitSlop}
+            onPress={() => {
+              if (Platform.OS !== "web") {
+                triggerHaptic("light");
+              }
+              toggleUiLanguage();
+            }}
+          >
+            {headerLanguageToggleShows === "en" ? (
+              <HeaderIconEn
                 color={menuIconStrokeColor(colors, "highlight")}
                 size={AH.headerIconDisplaySize}
               />
-            </Pressable>
-            );
-          })}
+            ) : (
+              <HeaderIconRu
+                color={menuIconStrokeColor(colors, "highlight")}
+                size={AH.headerIconDisplaySize}
+              />
+            )}
+          </Pressable>
+          <Pressable
+            key="exit"
+            accessibilityRole="button"
+            accessibilityLabel={t(HEADER_ICON_EXIT_LABEL_KEY)}
+            hitSlop={AH.headerPressableHitSlop}
+            onPress={() => {
+              /* Wired when flows land */
+            }}
+          >
+            <HeaderIconExit
+              color={menuIconStrokeColor(colors, "highlight")}
+              size={AH.headerIconDisplaySize}
+            />
+          </Pressable>
         </View>
         <View
           style={{
