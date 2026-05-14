@@ -1,6 +1,6 @@
-Languages 
-Login and logout termination
+Languages
 In-App update test
+Login and logout termination
 Log out
 Copy with notification
 edit
