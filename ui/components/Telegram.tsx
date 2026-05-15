@@ -139,9 +139,12 @@ function classifyThemeFromBgColor(bgColor: string | undefined | null): "dark" | 
   return scheme;
 }
 
-/** Mini App when hash/UA says so OR init data / WebApp is present (isAvailable). */
+/**
+ * Mini App when launch URL / UA says so, or we already have verified init data.
+ * Do not treat `Telegram.WebApp` stub alone (Electron / desktop browser with script loaded) as TMA.
+ */
 function isMiniAppContext(): boolean {
-  return isTelegramLikelyAtStartup() || isAvailable();
+  return isTelegramLaunchHint() || isActuallyInTelegram();
 }
 
 function initialColorSchemeFromBootstrap(): "dark" | "light" {
@@ -926,8 +929,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     };
   }, [status]);
 
-  const miniAppContext =
-    typeof window !== "undefined" && (isTelegramLikelyAtStartup() || isAvailable());
+  const miniAppContext = typeof window !== "undefined" && isMiniAppContext();
   const isInTelegram = status !== "dev" && miniAppContext;
   const useTelegramTheme = miniAppContext;
 

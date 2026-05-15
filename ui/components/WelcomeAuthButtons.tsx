@@ -1,7 +1,6 @@
 import { Alert, Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
 import { useState } from "react";
 import { Image } from "expo-image";
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
@@ -19,6 +18,9 @@ import type { AppStringKey } from "../../locales/appStrings";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
+import { getApiBaseUrl } from "../../api/_base";
+import { openExternalAuthUrl } from "../openExternalUrl";
+import { logPageDisplay } from "../pageDisplayLog";
 
 const BUTTON_HEIGHT = 40;
 /** Same line box as {@link typographyRect15} — used to pad the email field like a flex-centered label row. */
@@ -108,9 +110,16 @@ export function WelcomeAuthButtons() {
   const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
     if (id === "telegram") {
       if (useTelegramWebAuthOutsideMiniApp) {
+        const startUrl = buildApiUrl("/api/auth/telegram/start");
         try {
           setTelegramBrowserPending(true);
-          const response = await fetch(buildApiUrl("/api/auth/telegram/start"), {
+          logPageDisplay("welcome_telegram_oidc_start", {
+            apiBase: getApiBaseUrl(),
+            startUrl,
+            platform: Platform.OS,
+            pageOrigin: typeof window !== "undefined" ? window.location?.origin : null,
+          });
+          const response = await fetch(startUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -121,19 +130,13 @@ export function WelcomeAuthButtons() {
           if (!response.ok || !json?.authUrl) {
             throw new Error(json?.error || `HTTP_${response.status}`);
           }
-          const authUrl = json.authUrl;
-          if (
-            typeof window !== "undefined" &&
-            typeof window.location?.assign === "function" &&
-            typeof window.location?.href === "string"
-          ) {
-            window.location.assign(authUrl);
-          } else {
-            await Linking.openURL(authUrl);
-          }
+          logPageDisplay("welcome_telegram_oidc_redirect", { authUrlHost: new URL(json.authUrl).host });
+          await openExternalAuthUrl(json.authUrl);
           return;
         } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
           console.error("[welcome] telegram browser auth start failed", error);
+          logPageDisplay("welcome_telegram_oidc_error", { message, startUrl });
           Alert.alert(t("welcome.auth.telegramBrowserAlertTitle"), t("welcome.auth.telegramStartError"));
         } finally {
           setTelegramBrowserPending(false);

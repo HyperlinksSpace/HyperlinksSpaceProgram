@@ -2331,6 +2331,38 @@ async function createWindow() {
     mainWindow.setTitle(windowTitle);
   });
 
+  const openHttpUrlExternally = (targetUrl) => {
+    try {
+      if (typeof targetUrl === "string" && /^https?:/i.test(targetUrl)) {
+        void shell.openExternal(targetUrl);
+        return true;
+      }
+    } catch (e) {
+      log(`openExternal: ${e?.message || e}`);
+    }
+    return false;
+  };
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (openHttpUrlExternally(url)) return { action: "deny" };
+    return { action: "allow" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
+    try {
+      const current = mainWindow.webContents.getURL();
+      const leavingAppShell =
+        typeof current === "string" &&
+        (current.startsWith("app:") || current.startsWith("file:") || current.startsWith("http://localhost:8081"));
+      if (leavingAppShell && /^https?:/i.test(targetUrl) && targetUrl !== current) {
+        event.preventDefault();
+        openHttpUrlExternally(targetUrl);
+      }
+    } catch (e) {
+      log(`will-navigate: ${e?.message || e}`);
+    }
+  });
+
   mainWindow.webContents.on("did-fail-load", (_event, code, errMsg, url) => {
     log(`did-fail-load: code=${code} ${errMsg} ${url}`);
   });

@@ -53,6 +53,33 @@ function getExpoNativeDevBaseUrl(): string | null {
   }
 }
 
+/** Electron packaged UI uses `app://`; file:// previews are not valid API hosts. */
+function isHttpPageOrigin(): boolean {
+  if (typeof window === "undefined" || !window.location?.href) return false;
+  try {
+    const { protocol } = new URL(window.location.href);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * When the UI shell is not served over http(s) (e.g. Windows Electron `app://./`), API calls must
+ * target the deployed backend from `EXPO_PUBLIC_API_BASE_URL` (baked in at export build time).
+ */
+function getNonHttpShellApiBaseUrl(): string | null {
+  const envBase = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (envBase) {
+    return normalizeBase(envBase);
+  }
+  if (typeof window !== "undefined" && !isHttpPageOrigin()) {
+    // Last resort for desktop builds without env at compile time (set EXPO_PUBLIC_API_BASE_URL in CI).
+    return normalizeBase("https://hsbexpo.vercel.app");
+  }
+  return null;
+}
+
 function getBrowserBaseUrl(): string | null {
   if (typeof window === "undefined" || !window.location?.href) {
     return null;
@@ -61,6 +88,10 @@ function getBrowserBaseUrl(): string | null {
   try {
     const url = new URL(window.location.href);
     const { protocol, hostname, port } = url;
+
+    if (protocol !== "http:" && protocol !== "https:") {
+      return null;
+    }
 
     // In dev, Expo often runs on 8081/19000/19006; map to 3000 for APIs.
     if (
@@ -108,6 +139,11 @@ export function getApiBaseUrl(): string {
   const browserBase = getBrowserBaseUrl();
   if (browserBase) {
     return browserBase;
+  }
+
+  const shellBase = getNonHttpShellApiBaseUrl();
+  if (shellBase) {
+    return shellBase;
   }
 
   return getNodeBaseUrl();

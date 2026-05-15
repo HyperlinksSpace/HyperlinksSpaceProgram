@@ -1,3 +1,4 @@
+Sign in with Telegram
 Login and logout termination
 Log out
 In-App update test
