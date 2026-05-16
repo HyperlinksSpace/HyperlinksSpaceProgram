@@ -173,6 +173,18 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   const state = url.searchParams.get("state") ?? "";
   const { ip, userAgent } = getClientMeta(request);
 
+  console.log(
+    "[auth-telegram-callback]",
+    JSON.stringify({
+      event: "request",
+      origin: url.origin,
+      hasCode: Boolean(code),
+      hasState: Boolean(state),
+      ip,
+      userAgent: userAgent ? userAgent.slice(0, 120) : null,
+    }),
+  );
+
   if (!code || !state) {
     const response = failRedirect(request, "missing_code_or_state");
     if (res) {
@@ -336,6 +348,15 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       Location: resolvePostAuthRedirectFromCallback(request, attempt.redirectUri),
     });
     appendSetCookie(headers, buildSessionCookie(sessionToken, url.protocol === "https:"));
+    console.log(
+      "[auth-telegram-callback]",
+      JSON.stringify({
+        event: "success",
+        attemptId: attempt.id,
+        telegramUsername,
+        redirectTo: headers.get("Location"),
+      }),
+    );
     const response = new Response(null, { status: 302, headers });
     if (res) {
       res.status(response.status);
@@ -346,6 +367,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     return response;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "callback_failed";
+    console.log(
+      "[auth-telegram-callback]",
+      JSON.stringify({
+        event: "failure",
+        attemptId: attempt.id,
+        reason,
+      }),
+    );
     markAttemptStatus(stateHash, attempt.id, "failed", reason);
     await logLoginEvent({
       attemptId: attempt.id,

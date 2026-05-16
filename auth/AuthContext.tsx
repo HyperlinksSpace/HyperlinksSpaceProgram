@@ -59,6 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           status: response.status,
           authenticated,
           elapsedMs: Date.now() - startedAt,
+          telegramAuthError:
+            typeof window !== "undefined"
+              ? new URLSearchParams(window.location.search).get("telegramAuthError")
+              : null,
         });
         if (!cancelled) {
           setAuthenticated(authenticated);

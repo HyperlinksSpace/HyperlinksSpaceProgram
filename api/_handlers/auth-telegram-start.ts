@@ -152,19 +152,35 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     return sendJson(body, 405);
   }
 
-  let bodyJson: { redirect_uri?: unknown } = {};
+  let bodyJson: { redirect_uri?: unknown; source?: unknown } = {};
   try {
     const webReq = request as Request;
     if (typeof webReq.text === "function") {
       const ct = getHeader(request, "content-type") ?? "";
       if (ct.includes("application/json")) {
         const raw = await webReq.text();
-        bodyJson = raw ? (JSON.parse(raw) as { redirect_uri?: unknown }) : {};
+        bodyJson = raw
+          ? (JSON.parse(raw) as { redirect_uri?: unknown; source?: unknown })
+          : {};
       }
     }
   } catch {
     bodyJson = {};
   }
+
+  const requestOrigin = getRequestOrigin(request);
+  const { ip, userAgent } = getClientMeta(request);
+  console.log(
+    "[auth-telegram-start]",
+    JSON.stringify({
+      event: "request",
+      origin: requestOrigin,
+      source: typeof bodyJson.source === "string" ? bodyJson.source : null,
+      hasClientRedirectUri: Boolean(tryParseClientRedirectUri(bodyJson.redirect_uri)),
+      ip,
+      userAgent: userAgent ? userAgent.slice(0, 120) : null,
+    }),
+  );
 
   const clientId =
     process.env.TELEGRAM_CLIENT_ID?.trim() ??
@@ -190,8 +206,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     if (res) return sendJsonViaRes(res, body, 400);
     return sendJson(body, 400);
   }
-  const origin = getRequestOrigin(request);
-  const { ip, userAgent } = getClientMeta(request);
+  const origin = requestOrigin;
   const { id, expiresAtIso } = createEphemeralAttempt({
     stateHash: sha256Hex(state),
     nonceHash: sha256Hex(nonce),
@@ -229,6 +244,28 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   });
 
   const body = { ok: true, authUrl };
+  let authUrlHost: string | null = null;
+  try {
+    authUrlHost = new URL(authUrl).host;
+  } catch {
+    authUrlHost = null;
+  }
+  console.log(
+    "[auth-telegram-start]",
+    JSON.stringify({
+      event: "issued",
+      attemptId: id,
+      redirectUriHost: (() => {
+        try {
+          return new URL(redirectUri).host;
+        } catch {
+          return null;
+        }
+      })(),
+      authUrlHost,
+      expiresAtIso,
+    }),
+  );
   if (res) return sendJsonViaRes(res, body, 200);
   return sendJson(body, 200);
 }

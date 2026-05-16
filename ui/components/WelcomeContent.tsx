@@ -4,7 +4,9 @@ import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
+import { logPageDisplay } from "../pageDisplayLog";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
+import { isActuallyInTelegram } from "./telegramWebApp";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
 const MAX_TEXT_WIDTH = 360;
@@ -39,21 +41,56 @@ export function WelcomeContent() {
   }, []);
 
   useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    if (isActuallyInTelegram()) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const telegramAuthError = params.get("telegramAuthError");
+    if (telegramAuthError) {
+      logPageDisplay("welcome_telegram_oidc_callback_error", {
+        reason: telegramAuthError,
+        href: window.location.href,
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (isActuallyInTelegram()) return;
+
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void (async () => {
+        const startedAt = Date.now();
+        logPageDisplay("welcome_telegram_oidc_visibility_check", {
+          visibilityState: document.visibilityState,
+        });
         try {
-          const response = await fetch(buildApiUrl("/api/auth/session"), {
+          const sessionUrl = buildApiUrl("/api/auth/session");
+          const response = await fetch(sessionUrl, {
             method: "GET",
             credentials: "include",
           });
           const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
-          if (response.ok && json?.authenticated === true) {
+          const authenticated = response.ok && json?.authenticated === true;
+          logPageDisplay("welcome_telegram_oidc_visibility_session", {
+            status: response.status,
+            ok: response.ok,
+            authenticated,
+            elapsedMs: Date.now() - startedAt,
+          });
+          if (authenticated) {
+            logPageDisplay("welcome_telegram_oidc_sign_in", {
+              source: "visibility_session",
+              elapsedMs: Date.now() - startedAt,
+            });
             signIn();
           }
-        } catch {
-          /* ignore */
+        } catch (error) {
+          logPageDisplay("welcome_telegram_oidc_visibility_error", {
+            message: error instanceof Error ? error.message : String(error),
+            elapsedMs: Date.now() - startedAt,
+          });
         }
       })();
     };
