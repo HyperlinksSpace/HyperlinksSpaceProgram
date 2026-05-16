@@ -127,6 +127,7 @@ const en = {
     "Open this page inside the Telegram app to continue, or use a normal web browser (not an in-app preview that mimics Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Sign in with Telegram",
   "welcome.auth.telegramStartError": "Could not start Telegram sign-in. Try again.",
+  "welcome.auth.telegramCallbackError": "Telegram sign-in failed ({{reason}}). Try again.",
 
   "welcome.subtitle": "This is the best way to earn and spend",
   "welcome.title": "Welcome to our program",
@@ -250,6 +251,7 @@ const ru = {
     "Откройте эту страницу в приложении Telegram или в обычном браузере (не во встроенном предпросмотре, который имитирует Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Вход через Telegram",
   "welcome.auth.telegramStartError": "Не удалось начать вход через Telegram. Попробуйте снова.",
+  "welcome.auth.telegramCallbackError": "Вход через Telegram не удался ({{reason}}). Попробуйте снова.",
 
   "welcome.subtitle": "Лучший способ заработать и потратить",
   "welcome.title": "Добро пожаловать в нашу программу",

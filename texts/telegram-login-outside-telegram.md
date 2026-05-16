@@ -41,9 +41,9 @@ Why this path:
 ## 3) BotFather and web prerequisites
 
 1. Configure bot in `@BotFather` Web Login.
-2. Register allowed browser origins and callback URLs:
-   - `https://<prod-domain>`
-   - `https://<prod-domain>/auth/telegram/callback`
+2. Register allowed browser origins and callback URLs in @BotFather **Web Login**:
+   - `https://<prod-domain>` (site origin)
+   - `https://<prod-domain>/api/auth/telegram/callback` (OIDC redirect URI used by this app)
    - staging equivalents
 3. Store secrets server-side only:
    - `TELEGRAM_CLIENT_ID`
@@ -64,7 +64,7 @@ Why this path:
    - stores attempt in DB with TTL
 4. Backend returns authorization URL.
 5. Browser navigates to Telegram auth URL.
-6. Telegram redirects to `/auth/telegram/callback?code=...&state=...`.
+6. Telegram redirects to `/api/auth/telegram/callback?code=...&state=...` (server route; then 302 to `/` with session cookie).
 7. Backend callback handler:
    - validates `state` and attempt status
    - exchanges `code` at token endpoint (server-to-server)

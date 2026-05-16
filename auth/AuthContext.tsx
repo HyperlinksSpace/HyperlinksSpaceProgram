@@ -66,6 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (!cancelled) {
           setAuthenticated(authenticated);
+          if (authenticated) {
+            logPageDisplay("auth_bootstrap_signed_in", {
+              elapsedMs: Date.now() - startedAt,
+            });
+          }
         }
       } catch (error) {
         logPageDisplay("auth_bootstrap_error", {

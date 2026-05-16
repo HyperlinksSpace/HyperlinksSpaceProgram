@@ -1,5 +1,5 @@
-import { View, Text, useWindowDimensions, StyleSheet, Platform } from "react-native";
-import { useEffect, useMemo, useState } from "react";
+import { Alert, View, Text, useWindowDimensions, StyleSheet, Platform } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
 import { layout, useColors } from "../theme";
@@ -23,7 +23,7 @@ const HEADING_LINE_WIDE = 40;
  */
 export function WelcomeContent() {
   const colors = useColors();
-  const { t } = useAppStrings();
+  const { t, tf } = useAppStrings();
   const { signIn } = useAuth();
   const { width: dimensionsWidth } = useWindowDimensions();
   /** RN-web sometimes reports width 0 on the first frame; `innerWidth` matches the real viewport immediately. */
@@ -51,8 +51,59 @@ export function WelcomeContent() {
         reason: telegramAuthError,
         href: window.location.href,
       });
+      Alert.alert(
+        t("welcome.auth.telegramBrowserAlertTitle"),
+        tf("welcome.auth.telegramCallbackError", { reason: telegramAuthError }),
+      );
+      params.delete("telegramAuthError");
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
     }
-  }, []);
+  }, [t, tf]);
+
+  const probeBrowserSession = useCallback(
+    async (source: "mount" | "visibility") => {
+      const startedAt = Date.now();
+      logPageDisplay("welcome_telegram_oidc_session_probe", { source });
+      try {
+        const sessionUrl = buildApiUrl("/api/auth/session");
+        const response = await fetch(sessionUrl, {
+          method: "GET",
+          credentials: "include",
+        });
+        const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
+        const authenticated = response.ok && json?.authenticated === true;
+        logPageDisplay("welcome_telegram_oidc_session_probe_result", {
+          source,
+          status: response.status,
+          ok: response.ok,
+          authenticated,
+          elapsedMs: Date.now() - startedAt,
+        });
+        if (authenticated) {
+          logPageDisplay("welcome_telegram_oidc_sign_in", {
+            source,
+            elapsedMs: Date.now() - startedAt,
+          });
+          signIn();
+        }
+      } catch (error) {
+        logPageDisplay("welcome_telegram_oidc_session_probe_error", {
+          source,
+          message: error instanceof Error ? error.message : String(error),
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+    },
+    [signIn],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (isActuallyInTelegram()) return;
+    void probeBrowserSession("mount");
+  }, [probeBrowserSession]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -60,43 +111,11 @@ export function WelcomeContent() {
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void (async () => {
-        const startedAt = Date.now();
-        logPageDisplay("welcome_telegram_oidc_visibility_check", {
-          visibilityState: document.visibilityState,
-        });
-        try {
-          const sessionUrl = buildApiUrl("/api/auth/session");
-          const response = await fetch(sessionUrl, {
-            method: "GET",
-            credentials: "include",
-          });
-          const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
-          const authenticated = response.ok && json?.authenticated === true;
-          logPageDisplay("welcome_telegram_oidc_visibility_session", {
-            status: response.status,
-            ok: response.ok,
-            authenticated,
-            elapsedMs: Date.now() - startedAt,
-          });
-          if (authenticated) {
-            logPageDisplay("welcome_telegram_oidc_sign_in", {
-              source: "visibility_session",
-              elapsedMs: Date.now() - startedAt,
-            });
-            signIn();
-          }
-        } catch (error) {
-          logPageDisplay("welcome_telegram_oidc_visibility_error", {
-            message: error instanceof Error ? error.message : String(error),
-            elapsedMs: Date.now() - startedAt,
-          });
-        }
-      })();
+      void probeBrowserSession("visibility");
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [signIn]);
+  }, [probeBrowserSession]);
 
   const isWideLayout = layoutReady && windowWidth > WIDE_LAYOUT_MIN_WIDTH;
 

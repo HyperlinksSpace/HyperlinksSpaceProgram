@@ -19,7 +19,7 @@ import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
 import { getApiBaseUrl } from "../../api/_base";
-import { openExternalAuthUrl } from "../openExternalUrl";
+import { navigateExternalAuthUrl } from "../openExternalUrl";
 import { logPageDisplay } from "../pageDisplayLog";
 
 const BUTTON_HEIGHT = 40;
@@ -120,12 +120,15 @@ export function WelcomeAuthButtons() {
 
       if (useTelegramWebAuthOutsideMiniApp) {
         const startUrl = buildApiUrl("/api/auth/telegram/start");
+        const redirectUri = buildApiUrl("/api/auth/telegram/callback");
         const startedAt = Date.now();
+        let navigatedToTelegram = false;
         try {
           setTelegramBrowserPending(true);
           logPageDisplay("welcome_telegram_oidc_start", {
             apiBase: getApiBaseUrl(),
             startUrl,
+            redirectUri,
             platform: Platform.OS,
             pageOrigin: typeof window !== "undefined" ? window.location?.origin : null,
             actuallyInTelegram,
@@ -136,6 +139,7 @@ export function WelcomeAuthButtons() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               source: "welcome",
+              redirect_uri: redirectUri,
             }),
           });
           const json = (await response.json().catch(() => ({}))) as {
@@ -160,7 +164,8 @@ export function WelcomeAuthButtons() {
           } catch {
             authUrlHost = null;
           }
-          const openMethod = await openExternalAuthUrl(json.authUrl);
+          const openMethod = navigateExternalAuthUrl(json.authUrl);
+          navigatedToTelegram = true;
           logPageDisplay("welcome_telegram_oidc_redirect", {
             authUrlHost,
             openMethod,
@@ -177,7 +182,9 @@ export function WelcomeAuthButtons() {
           });
           Alert.alert(t("welcome.auth.telegramBrowserAlertTitle"), t("welcome.auth.telegramStartError"));
         } finally {
-          setTelegramBrowserPending(false);
+          if (!navigatedToTelegram) {
+            setTelegramBrowserPending(false);
+          }
         }
         return;
       }
