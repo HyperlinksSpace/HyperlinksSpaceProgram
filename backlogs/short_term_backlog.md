@@ -1,17 +1,12 @@
-Sign in with Telegram
-Login and logout termination
-In-App update test
-Languages switch on welcome page
 Languages in Windows and in browser (system or browser)
-Login and logout termination
-Log out
 Copy with notification
 edit
 Username generation
 Private key displayal
-timeout_after_60000ms (offline preview)
 Test bottom border of the footer on Iphone, fix displayal
-Time in web
+Time in web ???
+test again: timeout_after_60000ms (offline preview)
+In-App update test
 Borders review
 Token and NFT mint
 Telegram Connect
