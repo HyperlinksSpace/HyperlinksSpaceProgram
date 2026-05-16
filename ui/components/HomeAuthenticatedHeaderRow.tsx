@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
+import { useAuth } from "../../auth/AuthContext";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, Platform } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -157,6 +158,7 @@ type Props = {
  */
 export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
   const router = useRouter();
+  const { signOut } = useAuth();
   const colors = useColors();
   const { t, tf, toggleUiLanguage, headerLanguageToggleShows } = useAppStrings();
   const { triggerHaptic } = useTelegram();
@@ -172,6 +174,15 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
     if (!trimmed) return;
     await Clipboard.setStringAsync(trimmed);
   }, [trimmed]);
+
+  const handleSignOut = useCallback(() => {
+    if (Platform.OS !== "web") {
+      triggerHaptic("light");
+    }
+    logPageDisplay("home_header_sign_out");
+    signOut();
+    router.replace("/");
+  }, [router, signOut, triggerHaptic]);
 
   const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(widthForLayout);
 
@@ -391,9 +402,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
             accessibilityRole="button"
             accessibilityLabel={t(HEADER_ICON_EXIT_LABEL_KEY)}
             hitSlop={AH.headerPressableHitSlop}
-            onPress={() => {
-              /* Wired when flows land */
-            }}
+            onPress={handleSignOut}
           >
             <HeaderIconExit
               color={menuIconStrokeColor(colors, "highlight")}

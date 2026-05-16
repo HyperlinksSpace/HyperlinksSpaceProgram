@@ -1,6 +1,5 @@
 Sign in with Telegram
 Login and logout termination
-Log out
 In-App update test
 Languages switch on welcome page
 Languages in Windows and in browser (system or browser)
