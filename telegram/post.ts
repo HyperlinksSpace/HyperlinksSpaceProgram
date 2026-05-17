@@ -8,6 +8,7 @@ import {
   listFeedItemsForUser,
 } from '../database/feed.js';
 import {
+  getDisplayNameForUsername,
   normalizeUsername,
   upsertUserFromTma,
 } from '../database/users.js';
@@ -354,7 +355,9 @@ export async function handlePost(
       : null;
   const dbStart = Date.now();
   try {
-    await upsertUserFromTma({ telegramUsername, locale });
+    const userRow = await upsertUserFromTma({ telegramUsername, locale });
+    const displayName =
+      userRow?.displayName ?? (await getDisplayNameForUsername(telegramUsername));
     const wallet = await getDefaultWalletByUsername(telegramUsername);
     log('db_upsert_done', {
       dbMs: Date.now() - dbStart,
@@ -379,6 +382,7 @@ export async function handlePost(
         JSON.stringify({
           ok: true,
           telegram_username: telegramUsername,
+          display_name: displayName,
           has_wallet: true,
           wallet: {
             id: wallet.id,
@@ -406,6 +410,7 @@ export async function handlePost(
       JSON.stringify({
         ok: true,
         telegram_username: telegramUsername,
+        display_name: displayName,
         has_wallet: false,
         wallet_required: true,
         feed_items,

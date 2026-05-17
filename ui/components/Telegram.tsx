@@ -219,6 +219,8 @@ export type TelegramFeedBootstrapRow = {
 export type TelegramContextValue = {
   status: TelegramStatus;
   telegramUsername: string | null;
+  /** App profile label from `users.display_name` (random on first registration). */
+  displayName: string | null;
   hasWallet: boolean | null;
   walletRequired: boolean;
   wallet: TelegramWalletRow | null;
@@ -284,6 +286,7 @@ const INIT_DATA_POLL_MAX = WEBAPP_POLL_MAX;
 const defaultContext: TelegramContextValue = {
   status: "idle",
   telegramUsername: null,
+  displayName: null,
   hasWallet: null,
   walletRequired: false,
   wallet: null,
@@ -315,6 +318,7 @@ export function useTelegram() {
 export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<TelegramStatus>("idle");
   const [telegramUsername, setTelegramUsername] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [walletRequired, setWalletRequired] = useState(false);
   const [wallet, setWallet] = useState<TelegramContextValue["wallet"]>(null);
@@ -736,6 +740,11 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
             throw new Error(json?.error || `HTTP ${res.status}`);
           }
           setTelegramUsername(json.telegram_username ?? null);
+          setDisplayName(
+            typeof json.display_name === "string" && json.display_name.trim()
+              ? json.display_name.trim()
+              : null,
+          );
           setHasWallet(typeof json.has_wallet === "boolean" ? json.has_wallet : null);
           setWalletRequired(Boolean(json.wallet_required));
           setWallet(json?.wallet ?? null);
@@ -910,12 +919,18 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         const json = (await response.json().catch(() => ({}))) as {
           authenticated?: boolean;
           telegram_username?: string;
+          display_name?: string;
           has_wallet?: boolean;
           wallet_required?: boolean;
           wallet?: TelegramContextValue["wallet"];
         };
         if (!response.ok || !json?.authenticated || cancelled) return;
         setTelegramUsername(json.telegram_username ?? null);
+        setDisplayName(
+          typeof json.display_name === "string" && json.display_name.trim()
+            ? json.display_name.trim()
+            : null,
+        );
         setHasWallet(typeof json.has_wallet === "boolean" ? json.has_wallet : null);
         setWalletRequired(Boolean(json.wallet_required));
         setWallet(json.wallet ?? null);
@@ -940,6 +955,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const value: TelegramContextValue = {
     status,
     telegramUsername,
+    displayName,
     hasWallet,
     walletRequired,
     wallet,

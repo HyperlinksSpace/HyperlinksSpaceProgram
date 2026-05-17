@@ -38,6 +38,10 @@ async function runSchemaMigrations() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS feed_welcome_bundle_delivered_at TIMESTAMPTZ;
   `;
 
+  await sql`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+  `;
+
   // wallets table
   await sql`
     CREATE TABLE IF NOT EXISTS wallets (

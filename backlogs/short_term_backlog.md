@@ -1,7 +1,7 @@
+Username generation
 Languages in Windows and in browser (system or browser)
 Copy with notification
 edit
-Username generation
 Private key displayal
 Test bottom border of the footer on Iphone, fix displayal
 Time in web ???

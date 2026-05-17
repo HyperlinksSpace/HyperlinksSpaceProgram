@@ -514,6 +514,7 @@ export function HomeAuthenticatedScreen() {
   const {
     status,
     telegramUsername,
+    displayName,
     hasWallet,
     walletRequired,
     wallet,
@@ -550,6 +551,7 @@ export function HomeAuthenticatedScreen() {
   /** True only when we can actually show a wallet string (avoids "has_wallet" with no row / stale flags). */
   const hasDisplayAddress = Boolean(effectiveWalletAddress);
   const effectiveHasWallet = hasWallet || hasDisplayAddress;
+  const headerDisplayName = displayName?.trim() || t("common.emDash");
   const isBrowserSessionHydrating =
     status === "dev" &&
     !initData &&
@@ -1062,7 +1064,10 @@ export function HomeAuthenticatedScreen() {
   if (status === "idle" || status === "loading") {
     return (
       <AuthenticatedHomeChrome>
-        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+        <HomeAuthenticatedHeaderRow
+          walletAddress={effectiveWalletAddress ?? ""}
+          displayName={headerDisplayName}
+        />
         <AuthenticatedHomePaddedBody>
           <Text style={{ marginBottom: 12, color: colors.primary }}>{t("common.loading")}</Text>
           <View
@@ -1118,7 +1123,10 @@ export function HomeAuthenticatedScreen() {
   if (status === "error") {
     return (
       <AuthenticatedHomeChrome>
-        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+        <HomeAuthenticatedHeaderRow
+          walletAddress={effectiveWalletAddress ?? ""}
+          displayName={headerDisplayName}
+        />
         <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           {t("home.errors.telegramRegistrationFailed")}
@@ -1170,7 +1178,10 @@ export function HomeAuthenticatedScreen() {
   if (status === "dev") {
     return (
       <AuthenticatedHomeChrome>
-        <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+        <HomeAuthenticatedHeaderRow
+          walletAddress={effectiveWalletAddress ?? ""}
+          displayName={headerDisplayName}
+        />
         <AuthenticatedHomePaddedBody>
         <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
           {t("home.dev.productTitle")}
@@ -1242,7 +1253,10 @@ export function HomeAuthenticatedScreen() {
 
   return (
     <AuthenticatedHomeChrome>
-      <HomeAuthenticatedHeaderRow walletAddress={effectiveWalletAddress ?? ""} />
+      <HomeAuthenticatedHeaderRow
+        walletAddress={effectiveWalletAddress ?? ""}
+        displayName={headerDisplayName}
+      />
       <AuthenticatedHomeSplitBody
         left={
           <>

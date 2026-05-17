@@ -149,6 +149,8 @@ function AuthenticatedHomeMenuItems({
 type Props = {
   /** Raw wallet address; clipboard receives trimmed original casing. */
   walletAddress: string;
+  /** Profile label from `users.display_name`. */
+  displayName: string;
 };
 
 /**
@@ -156,7 +158,7 @@ type Props = {
  * Breakpoint uses the header shell width from `onLayout` (not only `useWindowDimensions`) so web layout matches the real column width.
  * At `firstBreakpoint` and above: centered Get/Swap/… strip overlay (painted after side columns so it is not covered on web); below: same strip under balance + profile.
  */
-export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
+export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props) {
   const router = useRouter();
   const { signOut } = useAuth();
   const colors = useColors();
@@ -421,9 +423,10 @@ export function HomeAuthenticatedHeaderRow({ walletAddress }: Props) {
           <View style={{ justifyContent: "center" }}>
             <Text
               style={[homeHeaderProfileNameText, { color: colors.primary }]}
-              accessibilityLabel="Sendal Rodriges"
+              accessibilityLabel={displayName}
+              numberOfLines={1}
             >
-              Sendal Rodriges
+              {displayName}
             </Text>
           </View>
           <View

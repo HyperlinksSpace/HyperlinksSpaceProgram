@@ -1,3 +1,4 @@
+import { getDisplayNameForUsername } from "../../database/users.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { deleteSession, getSessionByHash, touchSession } from "../../database/telegramAuth.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
@@ -120,12 +121,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   }
 
   await touchSession(sha256Hex(token));
+  const displayName = await getDisplayNameForUsername(row.telegram_username);
   const wallet = await getDefaultWalletByUsername(row.telegram_username);
   const body = wallet
     ? {
         ok: true,
         authenticated: true,
         telegram_username: row.telegram_username,
+        display_name: displayName,
         has_wallet: true,
         wallet: {
           id: wallet.id,
@@ -142,6 +145,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         ok: true,
         authenticated: true,
         telegram_username: row.telegram_username,
+        display_name: displayName,
         has_wallet: false,
         wallet_required: true,
       };
