@@ -33,6 +33,8 @@ const en = {
   "debug.webAppPollLine": "webAppApiPoll: {{count}}",
 
   "feed.empty": "No feed items yet.",
+  "feed.manualWelcomeTranslation": "Translate welcome feed with UI language",
+  "feed.manualWelcomeTranslationA11y": "When on, welcome feed messages follow the interface language toggle",
   "feed.offlinePreview": "(offline preview)",
   "feed.placeholder.creatorSubtitle": "Press to access creators page",
   "feed.placeholder.creatorTitle": "You are likely a creator",
@@ -157,6 +159,9 @@ const ru = {
   "debug.webAppPollLine": "webAppApiPoll: {{count}}",
 
   "feed.empty": "Пока нет записей в ленте.",
+  "feed.manualWelcomeTranslation": "Переводить приветственную ленту по языку интерфейса",
+  "feed.manualWelcomeTranslationA11y":
+    "Если включено, приветственные сообщения в ленте следуют выбранному языку интерфейса",
   "feed.offlinePreview": "(просмотр без сети)",
   "feed.placeholder.creatorSubtitle": "Нажмите, чтобы открыть страницу для авторов",
   "feed.placeholder.creatorTitle": "Вероятно, вы автор",

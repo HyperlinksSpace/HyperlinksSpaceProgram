@@ -104,4 +104,96 @@ $json$::jsonb,
 }
 $json$::jsonb,
     1
+  ),
+  (
+    'demo_wallet_created',
+    'ru',
+    'feed_default',
+    'system_action',
+    $json$
+{
+  "card_type": "system_action",
+  "layout_variant": "action_hint",
+  "payload": {
+    "title": "Кошелёк создан",
+    "subtitle": "Нажмите, чтобы сохранить 24 слова",
+    "icon": { "type": "svg_url", "url": "/welcome_messages/welcome.svg" }
+  }
+}
+$json$::jsonb,
+    1
+  ),
+  (
+    'demo_creator_likely',
+    'ru',
+    'feed_default',
+    'user_status',
+    $json$
+{
+  "card_type": "user_status",
+  "layout_variant": "compact",
+  "payload": {
+    "title": "Вероятно, вы автор",
+    "subtitle": "Нажмите, чтобы открыть страницу для авторов",
+    "icon": { "type": "svg_url", "url": "/welcome_messages/creator.svg" }
+  }
+}
+$json$::jsonb,
+    1
+  ),
+  (
+    'demo_nft_received',
+    'ru',
+    'feed_default',
+    'transaction_asset',
+    $json$
+{
+  "card_type": "transaction_asset",
+  "layout_variant": "value_trailing",
+  "payload": {
+    "title": "NFT получен",
+    "subtitle": "$24",
+    "trailing_label": "NFT получен",
+    "icon": { "type": "svg_url", "url": "/welcome_messages/NFT.svg" }
+  }
+}
+$json$::jsonb,
+    1
+  ),
+  (
+    'demo_token_granted',
+    'ru',
+    'feed_default',
+    'reward_token',
+    $json$
+{
+  "card_type": "reward_token",
+  "layout_variant": "value_trailing",
+  "payload": {
+    "title": "Выдан токен",
+    "subtitle": "$1",
+    "trailing_label": "+1 DLLR",
+    "icon": { "type": "svg_url", "url": "/welcome_messages/token.svg" }
+  }
+}
+$json$::jsonb,
+    1
+  ),
+  (
+    'demo_incoming_task',
+    'ru',
+    'feed_default',
+    'task_gig',
+    $json$
+{
+  "card_type": "task_gig",
+  "layout_variant": "compact",
+  "payload": {
+    "title": "Входящее задание",
+    "subtitle": "$24",
+    "icon": { "type": "svg_url", "url": "/welcome_messages/task.svg" }
+  }
+}
+$json$::jsonb,
+    1
   );

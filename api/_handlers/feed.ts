@@ -6,7 +6,15 @@ import {
   getSessionByHash,
   touchSession,
 } from "../../database/telegramAuth.js";
-import { deliverWelcomeFeedIfNeeded, listFeedItemsForUser } from "../../database/feed.js";
+import {
+  deliverWelcomeFeedIfNeeded,
+  listFeedItemsForUser,
+  type FeedCatalogLocale,
+} from "../../database/feed.js";
+import {
+  FEED_CATALOG_FALLBACK_LOCALE,
+  parseFeedCatalogLocaleHint,
+} from "../../locales/resolveFeedCatalogLocale.js";
 import { upsertUserFromTma } from "../../database/users.js";
 import { authByInitData } from "../wallet/_auth.js";
 import { ensureSchema } from "../../database/start.js";
@@ -36,7 +44,10 @@ function getCookieValue(cookieHeader: string | null, key: string): string | null
   return null;
 }
 
-async function telegramUsernameFromRequest(request: Request): Promise<{
+async function telegramUsernameFromRequest(
+  request: Request,
+  postBody?: { initData?: unknown },
+): Promise<{
   username: string;
   locale: string | null;
 } | null> {
@@ -57,11 +68,13 @@ async function telegramUsernameFromRequest(request: Request): Promise<{
   }
 
   if (method !== "POST") return null;
-  let body: { initData?: unknown } = {};
-  try {
-    body = (await request.json()) as { initData?: unknown };
-  } catch {
-    return null;
+  let body = postBody;
+  if (!body) {
+    try {
+      body = (await request.json()) as { initData?: unknown };
+    } catch {
+      return null;
+    }
   }
   const initData = typeof body?.initData === "string" ? body.initData : "";
   if (!initData) return null;
@@ -74,9 +87,34 @@ function jsonResponse(body: object, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
+function catalogLocaleFromRequest(request: Request, bodyCatalogLocale?: unknown): FeedCatalogLocale {
+  const hinted = parseFeedCatalogLocaleHint(bodyCatalogLocale);
+  if (hinted) return hinted;
+  try {
+    const url = new URL(request.url);
+    const fromQuery = parseFeedCatalogLocaleHint(url.searchParams.get("catalog_locale"));
+    if (fromQuery) return fromQuery;
+  } catch {
+    /* ignore */
+  }
+  return FEED_CATALOG_FALLBACK_LOCALE;
+}
+
 async function handler(request: Request): Promise<Response> {
   const t0 = Date.now();
   const method = request.method ?? "GET";
+  let postBody: { initData?: unknown; catalog_locale?: unknown } = {};
+  if (method === "POST") {
+    try {
+      postBody = (await request.json()) as {
+        initData?: unknown;
+        catalog_locale?: unknown;
+      };
+    } catch {
+      postBody = {};
+    }
+  }
+  const displayLocale = catalogLocaleFromRequest(request, postBody.catalog_locale);
 
   feedLog({
     phase: "request_start",
@@ -106,7 +144,7 @@ async function handler(request: Request): Promise<Response> {
 
   try {
     const authStart = Date.now();
-    const user = await telegramUsernameFromRequest(request);
+    const user = await telegramUsernameFromRequest(request, postBody);
     feedLog({
       phase: "auth_resolve",
       durationMs: Date.now() - t0,
@@ -130,9 +168,14 @@ async function handler(request: Request): Promise<Response> {
     const syncStart = Date.now();
     let deliverDiag: Awaited<ReturnType<typeof deliverWelcomeFeedIfNeeded>> = null;
     try {
+      const deliverLocalePreferred =
+        user.locale ??
+        (displayLocale !== FEED_CATALOG_FALLBACK_LOCALE
+          ? displayLocale
+          : null);
       deliverDiag = await deliverWelcomeFeedIfNeeded({
         telegramUsername: user.username,
-        localePreferred: user.locale,
+        localePreferred: deliverLocalePreferred,
       });
     } catch (err) {
       feedLog({
@@ -151,10 +194,11 @@ async function handler(request: Request): Promise<Response> {
     });
 
     const listStart = Date.now();
-    const items = await listFeedItemsForUser(user.username, 80);
+    const items = await listFeedItemsForUser(user.username, 80, displayLocale);
     feedLog({
       phase: "response_ok",
       itemCount: items.length,
+      displayLocale,
       listMs: Date.now() - listStart,
       totalMs: Date.now() - t0,
       usernamePrefix:

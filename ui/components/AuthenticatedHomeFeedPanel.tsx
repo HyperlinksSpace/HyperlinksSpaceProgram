@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { Platform, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../api/_base";
 import {
@@ -9,7 +9,8 @@ import {
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
-import type { AppStringKey } from "../../locales/appStrings";
+import type { AppLocale, AppStringKey } from "../../locales/appStrings";
+import { getAppString } from "../../locales/appStrings";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useTelegram } from "./Telegram";
 
@@ -38,7 +39,8 @@ type FeedRow = {
 /**
  * Matches `sql/seed-welcome-messages.sql` (+ `database/feed.ts` welcome keys): placeholder rows until `/api/feed` hydrates.
  */
-function buildWelcomePlaceholderFeed(t: (key: AppStringKey) => string): FeedRow[] {
+function buildWelcomePlaceholderFeed(catalogLocale: AppLocale): FeedRow[] {
+  const t = (key: AppStringKey) => getAppString(catalogLocale, key);
   return [
     {
       id: -1,
@@ -286,8 +288,16 @@ function FeedFeedRow({
 }
 
 export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) {
-  const { t } = useAppStrings();
-  const welcomePlaceholderFeedItems = useMemo(() => buildWelcomePlaceholderFeed(t), [t]);
+  const {
+    t,
+    welcomeFeedCatalogLocale,
+    welcomeFeedManualTranslation,
+    setWelcomeFeedManualTranslation,
+  } = useAppStrings();
+  const welcomePlaceholderFeedItems = useMemo(
+    () => buildWelcomePlaceholderFeed(welcomeFeedCatalogLocale),
+    [welcomeFeedCatalogLocale],
+  );
   const welcomePlaceholderRef = useRef(welcomePlaceholderFeedItems);
   welcomePlaceholderRef.current = welcomePlaceholderFeedItems;
 
@@ -317,9 +327,9 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
   const feedLoadKey = useMemo(() => {
     if (status === "error") return null;
     const trimmed = typeof initData === "string" ? initData.trim() : "";
-    if (trimmed !== "") return `post:${trimmed}`;
-    return `get:${status}`;
-  }, [initData, status]);
+    if (trimmed !== "") return `post:${trimmed}:${welcomeFeedCatalogLocale}`;
+    return `get:${status}:${welcomeFeedCatalogLocale}`;
+  }, [initData, status, welcomeFeedCatalogLocale]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -371,6 +381,8 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
         telegramStatus: status,
         initDataChars: initDataOk ? initDataTrimmed.length : 0,
         method: initDataOk ? "POST" : "GET",
+        catalogLocale: welcomeFeedCatalogLocale,
+        welcomeFeedManualTranslation,
         dedupedSingleton: true,
         timeoutMs: AUTHENTICATED_FEED_FETCH_TIMEOUT_MS,
       });
@@ -385,7 +397,10 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
             return;
           }
           try {
-            res = await loadAuthenticatedFeedDeduped(initDataOk ? initDataTrimmed : null);
+            res = await loadAuthenticatedFeedDeduped(
+              initDataOk ? initDataTrimmed : null,
+              welcomeFeedCatalogLocale,
+            );
             break;
           } catch (e) {
             const aborted = e instanceof Error && e.name === "AbortError";
@@ -561,6 +576,33 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: welcomeFeedManualTranslation }}
+        accessibilityLabel={t("feed.manualWelcomeTranslationA11y")}
+        onPress={() => setWelcomeFeedManualTranslation(!welcomeFeedManualTranslation)}
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+      >
+        <View
+          style={{
+            width: 16,
+            height: 16,
+            borderWidth: 1,
+            borderColor: colors.accent,
+            marginRight: 8,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: welcomeFeedManualTranslation ? colors.accent : "transparent",
+          }}
+        >
+          {welcomeFeedManualTranslation ? (
+            <Text style={{ color: colors.background, fontSize: 11, lineHeight: 14 }}>✓</Text>
+          ) : null}
+        </View>
+        <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 16, flex: 1 }}>
+          {t("feed.manualWelcomeTranslation")}
+        </Text>
+      </Pressable>
       {error ? (
         <Text
           style={{

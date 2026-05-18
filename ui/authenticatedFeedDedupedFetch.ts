@@ -1,4 +1,5 @@
 import { buildApiUrl } from "../api/_base";
+import type { FeedCatalogLocale } from "../locales/resolveFeedCatalogLocale";
 
 /**
  * Cold Vercel + Neon + Telegram WebView often exceed 60s on first paint; 90s cuts false “offline preview”
@@ -24,16 +25,24 @@ let feedInflight: Inflight = null;
  */
 export function loadAuthenticatedFeedDeduped(
   initDataRaw: string | null | undefined,
+  catalogLocale: FeedCatalogLocale,
 ): Promise<AuthenticatedFeedDedupedResult> {
-  const url = buildApiUrl("/api/feed");
   const trimmed = typeof initDataRaw === "string" ? initDataRaw.trim() : "";
   const method = trimmed ? ("POST" as const) : ("GET" as const);
-  const dedupeKey = trimmed.length > 0 ? `feed:POST:${trimmed}` : `feed:${method}`;
+  const dedupeKey =
+    trimmed.length > 0
+      ? `feed:POST:${trimmed}:${catalogLocale}`
+      : `feed:GET:${catalogLocale}`;
 
   const attach = feedInflight;
   if (attach && attach.dedupeKey === dedupeKey) {
     return attach.promise;
   }
+
+  const url =
+    method === "GET"
+      ? buildApiUrl(`/api/feed?catalog_locale=${encodeURIComponent(catalogLocale)}`)
+      : buildApiUrl("/api/feed");
 
   const promise = (async (): Promise<AuthenticatedFeedDedupedResult> => {
     const abort = new AbortController();
@@ -45,7 +54,9 @@ export function loadAuthenticatedFeedDeduped(
         cache: "no-store",
         signal: abort.signal,
         headers: trimmed ? { "Content-Type": "application/json" } : undefined,
-        body: trimmed ? JSON.stringify({ initData: trimmed }) : undefined,
+        body: trimmed
+          ? JSON.stringify({ initData: trimmed, catalog_locale: catalogLocale })
+          : undefined,
       });
       const bodyText = await res.text();
       return { httpStatus: res.status, httpOk: res.ok, bodyText };

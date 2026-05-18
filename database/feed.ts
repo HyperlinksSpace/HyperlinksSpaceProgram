@@ -1,8 +1,16 @@
 /**
  * Feed catalogue → per-user rows: idempotent sync for `feed_default_messages` deliveries.
  */
+import {
+  FEED_CATALOG_FALLBACK_LOCALE,
+  type FeedCatalogLocale,
+  resolveFeedCatalogLocaleFromLanguageTag,
+} from "../locales/resolveFeedCatalogLocale.js";
 import { sql } from "./start.js";
 import { normalizeUsername } from "./users.js";
+
+export { resolveFeedCatalogLocaleFromLanguageTag as normalizeFeedLocale };
+export type { FeedCatalogLocale };
 
 /** Normalize DB timestamptz/string/Date for JSON (ISO 8601 UTC) so the client can parse local display. */
 function feedRowSentAtIso(raw: unknown): string | null {
@@ -75,13 +83,6 @@ type TemplateBody = {
 
 type CatalogRow = { id: bigint | number | string; key: string; body: unknown };
 
-export function normalizeFeedLocale(raw: string | null | undefined): string {
-  if (!raw || typeof raw !== "string") return "en";
-  const t = raw.trim().toLowerCase();
-  const two = /^[a-z]{2}$/.test(t) ? t : /^([a-z]{2})-/i.exec(t)?.[1]?.toLowerCase();
-  return two ?? "en";
-}
-
 function parseTemplateBody(bodyRaw: unknown): TemplateBody | null {
   let bodyRawMut = bodyRaw;
   if (typeof bodyRawMut === "string") {
@@ -95,7 +96,7 @@ function parseTemplateBody(bodyRaw: unknown): TemplateBody | null {
   return bodyRawMut as TemplateBody;
 }
 
-async function mergeExplicitCatalogKeys(locale: string): Promise<Map<string, CatalogRow>> {
+async function mergeExplicitCatalogKeys(locale: FeedCatalogLocale): Promise<Map<string, CatalogRow>> {
   type CatalogRowTyped = CatalogRow & { body: TemplateBody };
   const merged = new Map<string, CatalogRowTyped>();
   const enRowsUnknown = await sql`
@@ -131,7 +132,7 @@ async function mergeExplicitCatalogKeys(locale: string): Promise<Map<string, Cat
 }
 
 /** Other `kind = feed_default` catalogue rows (new keys) not in {@link FEED_WELCOME_DEFAULT_KEYS_EN}. */
-async function mergeExtraCatalogRows(locale: string): Promise<Map<string, CatalogRow>> {
+async function mergeExtraCatalogRows(locale: FeedCatalogLocale): Promise<Map<string, CatalogRow>> {
   const merged = new Map<string, CatalogRow>();
   const enExtras = await sql`
     SELECT id, key, body
@@ -189,7 +190,7 @@ async function insertCatalogFeedItem(opts: {
     typeof bodyRaw.layout_variant === "string" ? bodyRaw.layout_variant : null;
   const rawPayload =
     bodyRaw.payload && typeof bodyRaw.payload === "object" ? bodyRaw.payload : {};
-  const payload: Record<string, unknown> = { ...rawPayload };
+  const payload: Record<string, unknown> = { ...rawPayload, catalog_key: key };
   if (opts.welcomeOrder != null) {
     payload.welcome_order = opts.welcomeOrder;
   }
@@ -233,7 +234,7 @@ export async function deliverWelcomeFeedIfNeeded(opts: {
   const telegramUsername = normalizeUsername(opts.telegramUsername);
   if (!telegramUsername) return null;
 
-  const locale = normalizeFeedLocale(opts.localePreferred ?? null);
+  const locale = resolveFeedCatalogLocaleFromLanguageTag(opts.localePreferred ?? null);
   const explicitMap = await mergeExplicitCatalogKeys(locale);
   const extraMap = await mergeExtraCatalogRows(locale);
 
@@ -278,9 +279,65 @@ export async function deliverWelcomeFeedIfNeeded(opts: {
   };
 }
 
+const WELCOME_TEXT_PAYLOAD_KEYS = ["title", "subtitle", "trailing_label"] as const;
+
+function mergeCatalogTextIntoPayload(
+  stored: Record<string, unknown>,
+  catalogPayload: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...stored };
+  for (const k of WELCOME_TEXT_PAYLOAD_KEYS) {
+    const v = catalogPayload[k];
+    if (typeof v === "string" && v.trim()) {
+      next[k] = v;
+    }
+  }
+  return next;
+}
+
+/** Load catalogue payloads for keys: requested locale overrides English per key; missing locale falls back to `en`. */
+export async function fetchCatalogPayloadMapForLocale(
+  keys: string[],
+  displayLocale: FeedCatalogLocale,
+): Promise<Map<string, Record<string, unknown>>> {
+  const wanted = new Set(keys.filter((k) => k.trim().length > 0));
+  const out = new Map<string, Record<string, unknown>>();
+  if (wanted.size === 0) return out;
+
+  const explicit = await mergeExplicitCatalogKeys(displayLocale);
+  const extra = await mergeExtraCatalogRows(displayLocale);
+
+  const ingest = (map: Map<string, CatalogRow>) => {
+    for (const [key, row] of map) {
+      if (!wanted.has(key)) continue;
+      const body = parseTemplateBody(row.body);
+      const p =
+        body?.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
+          ? (body.payload as Record<string, unknown>)
+          : {};
+      out.set(key, p);
+    }
+  };
+
+  ingest(explicit);
+  ingest(extra);
+  return out;
+}
+
+function catalogKeyFromSourceId(sourceId: unknown): string | null {
+  if (typeof sourceId !== "string" || !sourceId.startsWith(`${FEED_WELCOME_BUNDLE_MARKER}:`)) {
+    return null;
+  }
+  const parts = sourceId.split(":");
+  if (parts.length < 3) return null;
+  const key = parts[1]?.trim();
+  return key || null;
+}
+
 export async function listFeedItemsForUser(
   telegramUsername: string,
   limit = 80,
+  displayLocale: FeedCatalogLocale = FEED_CATALOG_FALLBACK_LOCALE,
 ): Promise<
   Array<{
     id: number;
@@ -298,7 +355,7 @@ export async function listFeedItemsForUser(
   }
 
   const rows = await sql`
-    SELECT id, sent_at, card_type, layout_variant, payload, read_at, source_type
+    SELECT id, sent_at, card_type, layout_variant, payload, read_at, source_type, default_message_id, source_id
     FROM feed_items
     WHERE lower(btrim(telegram_username)) = ${u}
     ORDER BY
@@ -311,13 +368,62 @@ export async function listFeedItemsForUser(
       id ASC
     LIMIT ${Number(limit)};
   `;
-  return (rows as Array<Record<string, unknown>>).map((r) => ({
-    id: Number(r.id),
-    sent_at: feedRowSentAtIso(r.sent_at),
-    source_type: String(r.source_type),
-    card_type: String(r.card_type),
-    layout_variant: r.layout_variant == null ? null : String(r.layout_variant),
-    payload: r.payload,
-    read_at: feedRowSentAtIso(r.read_at),
-  }));
+
+  const rawRows = rows as Array<Record<string, unknown>>;
+
+  const catalogKeys: string[] = [];
+  for (const r of rawRows) {
+    const stored =
+      r.payload && typeof r.payload === "object" && !Array.isArray(r.payload)
+        ? (r.payload as Record<string, unknown>)
+        : {};
+    const fromPayload =
+      typeof stored.catalog_key === "string" && stored.catalog_key.trim()
+        ? stored.catalog_key.trim()
+        : null;
+    if (fromPayload) {
+      catalogKeys.push(fromPayload);
+      continue;
+    }
+    const fromSource = catalogKeyFromSourceId(r.source_id);
+    if (fromSource) catalogKeys.push(fromSource);
+  }
+
+  const catalogByKey = await fetchCatalogPayloadMapForLocale(catalogKeys, displayLocale);
+
+  return rawRows.map((r) => {
+    const stored =
+      r.payload && typeof r.payload === "object" && !Array.isArray(r.payload)
+        ? (r.payload as Record<string, unknown>)
+        : {};
+    let catalogKey =
+      typeof stored.catalog_key === "string" && stored.catalog_key.trim()
+        ? stored.catalog_key.trim()
+        : null;
+    if (!catalogKey) {
+      catalogKey = catalogKeyFromSourceId(r.source_id);
+    }
+
+    const sourceType = String(r.source_type);
+    const isWelcomeCatalog =
+      sourceType === "welcome_bundle" || catalogKey != null || r.default_message_id != null;
+
+    let payload: unknown = r.payload;
+    if (isWelcomeCatalog && catalogKey) {
+      const catalogPayload = catalogByKey.get(catalogKey);
+      if (catalogPayload) {
+        payload = mergeCatalogTextIntoPayload(stored, catalogPayload);
+      }
+    }
+
+    return {
+      id: Number(r.id),
+      sent_at: feedRowSentAtIso(r.sent_at),
+      source_type: sourceType,
+      card_type: String(r.card_type),
+      layout_variant: r.layout_variant == null ? null : String(r.layout_variant),
+      payload,
+      read_at: feedRowSentAtIso(r.read_at),
+    };
+  });
 }

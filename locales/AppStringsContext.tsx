@@ -24,7 +24,15 @@ import {
   translateFlowErrorForDisplay,
 } from "./appStrings";
 import { readStoredManualAppLocale, writeStoredManualAppLocale } from "./manualAppLocaleStorage";
+import {
+  readStoredWelcomeFeedManualTranslation,
+  writeStoredWelcomeFeedManualTranslation,
+} from "./manualWelcomeFeedTranslationStorage";
 import { resolveAppLocale, resolveAppLocaleWithMeta } from "./resolveAppLocale";
+import {
+  type FeedCatalogLocale,
+  resolveWelcomeFeedDisplayLocale,
+} from "./resolveFeedCatalogLocale";
 
 export type AppStringsContextValue = {
   /** Effective UI locale (manual override or Telegram-derived). */
@@ -41,6 +49,11 @@ export type AppStringsContextValue = {
   translateFlowError: (message: string) => string;
   /** Toggle EN ↔ RU; clears override when the new choice matches {@link autoLocale}. */
   toggleUiLanguage: () => void;
+  /** When true, welcome feed catalogue locale follows {@link locale}; when false, Telegram language rules. */
+  welcomeFeedManualTranslation: boolean;
+  setWelcomeFeedManualTranslation: (enabled: boolean) => void;
+  /** Resolved catalogue locale for welcome-bundle feed copy (`feed_default_messages`). */
+  welcomeFeedCatalogLocale: FeedCatalogLocale;
 };
 
 const AppStringsContext = createContext<AppStringsContextValue | null>(null);
@@ -59,12 +72,33 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
   }, [isInTelegram, status, initData]);
 
   const [manualLocale, setManualLocale] = useState<AppLocale | null>(() => readStoredManualAppLocale());
+  const [welcomeFeedManualTranslation, setWelcomeFeedManualTranslation] = useState(() =>
+    readStoredWelcomeFeedManualTranslation(),
+  );
 
   useEffect(() => {
     writeStoredManualAppLocale(manualLocale);
   }, [manualLocale]);
 
+  useEffect(() => {
+    writeStoredWelcomeFeedManualTranslation(welcomeFeedManualTranslation);
+  }, [welcomeFeedManualTranslation]);
+
   const locale = manualLocale ?? autoLocale;
+
+  const welcomeFeedCatalogLocale = useMemo((): FeedCatalogLocale => {
+    const u = getUser();
+    const rawLc =
+      u && typeof u === "object" && u !== null && "language_code" in u
+        ? (u as Record<string, unknown>).language_code
+        : undefined;
+    const telegramLanguageCode = typeof rawLc === "string" ? rawLc : null;
+    return resolveWelcomeFeedDisplayLocale({
+      telegramLanguageCode,
+      uiLocale: locale,
+      manualWelcomeTranslationEnabled: welcomeFeedManualTranslation,
+    });
+  }, [locale, welcomeFeedManualTranslation, isInTelegram, status, initData]);
 
   const toggleUiLanguage = useCallback(() => {
     const effective = manualLocale ?? autoLocale;
@@ -106,6 +140,8 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
       effectiveLocale: locale,
       autoLocale,
       manualLocale,
+      welcomeFeedManualTranslation,
+      welcomeFeedCatalogLocale,
       resolvedFromTelegramMeta: meta,
       telegramLanguageCodeFromGetUser: telegramLanguageCode,
       userId: u?.id ?? null,
@@ -125,6 +161,8 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
     locale,
     autoLocale,
     manualLocale,
+    welcomeFeedManualTranslation,
+    welcomeFeedCatalogLocale,
     isInTelegram,
     status,
     initData,
@@ -158,8 +196,22 @@ export function AppStringsProvider({ children }: { children: ReactNode }) {
       tf,
       translateFlowError,
       toggleUiLanguage,
+      welcomeFeedManualTranslation,
+      setWelcomeFeedManualTranslation,
+      welcomeFeedCatalogLocale,
     }),
-    [locale, autoLocale, manualLocale, headerLanguageToggleShows, t, tf, translateFlowError, toggleUiLanguage],
+    [
+      locale,
+      autoLocale,
+      manualLocale,
+      headerLanguageToggleShows,
+      t,
+      tf,
+      translateFlowError,
+      toggleUiLanguage,
+      welcomeFeedManualTranslation,
+      welcomeFeedCatalogLocale,
+    ],
   );
 
   return <AppStringsContext.Provider value={value}>{children}</AppStringsContext.Provider>;

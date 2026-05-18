@@ -7,6 +7,7 @@ import {
   deliverWelcomeFeedIfNeeded,
   listFeedItemsForUser,
 } from '../database/feed.js';
+import { resolveFeedCatalogLocaleFromLanguageTag } from '../locales/resolveFeedCatalogLocale.js';
 import {
   getDisplayNameForUsername,
   normalizeUsername,
@@ -64,7 +65,8 @@ async function bootstrapFeedPayloadForMiniApp(opts: {
   });
 
   try {
-    const items = await listFeedItemsForUser(opts.telegramUsername, 80);
+    const catalogLocale = resolveFeedCatalogLocaleFromLanguageTag(opts.locale);
+    const items = await listFeedItemsForUser(opts.telegramUsername, 80, catalogLocale);
     log('feed_list_done', {
       itemCount: items.length,
       feedMsTotal: Date.now() - fb0,
