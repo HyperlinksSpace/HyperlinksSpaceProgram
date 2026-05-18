@@ -11,6 +11,11 @@ export const FONT_UI_MONO_REGULAR = "NotoSansMono_400Regular";
 
 export const WEB_UI_SANS_STACK = `${FONT_UI_SANS_REGULAR}, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 
+/** Brand face (bundle `assets/fonts/` when present); falls back through {@link WEB_UI_SANS_STACK}. */
+export const FONT_AEROPORT_REGULAR = "Aeroport";
+
+export const WEB_AEROPORT_STACK = `${FONT_AEROPORT_REGULAR}, ${WEB_UI_SANS_STACK}`;
+
 export const WEB_UI_MONO_STACK = `${FONT_UI_MONO_REGULAR}, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace`;
 
 /** RN: pick the loaded face that matches `fontWeight` (numeric or string). */

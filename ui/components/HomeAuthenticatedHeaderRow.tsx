@@ -1,5 +1,5 @@
 import * as Clipboard from "expo-clipboard";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, Platform } from "react-native";
@@ -87,12 +87,14 @@ function AuthenticatedHomeMenuItems({
   narrow,
   columnWidth,
   t,
+  onMenuKeyPress,
 }: {
   colors: ThemeColors;
   narrow: boolean;
   /** Used when `narrow` is false (centered strip). */
   columnWidth: number;
   t: (key: AppStringKey) => string;
+  onMenuKeyPress: (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => void;
 }) {
   return WIDE_MENU_ITEM_KEYS.map(({ key, labelKey, Icon }) => {
     const label = t(labelKey);
@@ -109,9 +111,7 @@ function AuthenticatedHomeMenuItems({
         accessibilityRole="button"
         accessibilityLabel={label}
         hitSlop={AH.headerPressableHitSlop}
-        onPress={() => {
-          /* Wired when flows land */
-        }}
+        onPress={() => onMenuKeyPress(key)}
       >
         {({ pressed }) => {
           const variant = pressed ? "highlight" : "primary";
@@ -160,6 +160,7 @@ type Props = {
  */
 export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const { signOut } = useAuth();
   const colors = useColors();
   const { t, tf, toggleUiLanguage, headerLanguageToggleShows } = useAppStrings();
@@ -176,6 +177,19 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
     if (!trimmed) return;
     await Clipboard.setStringAsync(trimmed);
   }, [trimmed]);
+
+  const handleMenuKeyPress = useCallback(
+    (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
+      if (key === "swap") {
+        if (pathname !== "/swap") {
+          router.push("/swap" as any);
+        }
+        return;
+      }
+      /* wired when other menu flows land */
+    },
+    [pathname, router],
+  );
 
   const handleSignOut = useCallback(() => {
     if (Platform.OS !== "web") {
@@ -218,6 +232,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
           narrow={false}
           columnWidth={wideMenuColumnWidth}
           t={t}
+          onMenuKeyPress={handleMenuKeyPress}
         />
       </View>
     </View>
@@ -444,7 +459,13 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
       {!atOrAboveFirstBreakpoint ? (
         <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
           <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-            <AuthenticatedHomeMenuItems colors={colors} narrow columnWidth={0} t={t} />
+            <AuthenticatedHomeMenuItems
+              colors={colors}
+              narrow
+              columnWidth={0}
+              t={t}
+              onMenuKeyPress={handleMenuKeyPress}
+            />
           </View>
         </View>
       ) : null}

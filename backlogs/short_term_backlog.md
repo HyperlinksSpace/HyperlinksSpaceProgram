@@ -1,4 +1,5 @@
-Username generation
+Swap page layout
+More welcome and other messages, test lang semi-fill
 Languages in Windows and in browser (system or browser)
 Copy with notification
 edit
@@ -9,6 +10,7 @@ test again: timeout_after_60000ms (offline preview)
 In-App update test
 Borders review
 Token and NFT mint
+Shield landing
 Telegram Connect
 Trade NFT
 Swap tokens
@@ -38,6 +40,9 @@ GitHub and GitLab bidirectional mirroring<br>
 Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
 README.md: Project news, discussions, where to learn for contributions<br>
+Deals AI analitics
+Arbitration?
+Multi-tokenization (link with multiple protocols)
 
 Issues:<br>
 Several chats async streaming<br>

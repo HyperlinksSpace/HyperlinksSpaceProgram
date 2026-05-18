@@ -1,5 +1,5 @@
 import { Platform, type TextStyle } from "react-native";
-import { FONT_UI_SANS_SEMIBOLD, WEB_UI_MONO_STACK } from "./fonts";
+import { FONT_AEROPORT_REGULAR, FONT_UI_SANS_SEMIBOLD, WEB_AEROPORT_STACK, WEB_UI_MONO_STACK } from "./fonts";
 import {
   getThemeColorsFromLaunchThemeParams,
   getThemeColorsFromTelegramCssVars,
@@ -295,13 +295,21 @@ export type AuthenticatedHomeBottomBarDock = "screenFooter" | "splitColumn2" | "
  * AI & search bar placement on authenticated home only. Welcome `/` stays `screenFooter`.
  * Use {@link useResolvedPathname} + `useWindowDimensions().width` + `useAuth().isAuthenticated`.
  */
+function usesAuthenticatedSplitChrome(
+  pathname: string | null | undefined,
+  isAuthenticated: boolean,
+): boolean {
+  if (!isAuthenticated) return false;
+  if (pathname === "/swap") return true;
+  return pathname === "/" || pathname === "" || pathname == null;
+}
+
 export function authenticatedHomeBottomBarDock(
   pathname: string | null | undefined,
   windowWidth: number,
   isAuthenticated: boolean,
 ): AuthenticatedHomeBottomBarDock {
-  const isHomePath = pathname === "/" || pathname === "" || pathname == null;
-  if (!isHomePath || !isAuthenticated) return "screenFooter";
+  if (!usesAuthenticatedSplitChrome(pathname, isAuthenticated)) return "screenFooter";
   const ah = layout.authenticatedHome;
   if (windowWidth <= ah.firstBreakpoint) return "screenFooter";
   if (windowWidth <= ah.secondBreakpoint) return "splitColumn2";
@@ -421,4 +429,28 @@ export const homeHeaderProfileNameText: TextStyle = {
   includeFontPadding: false,
   paddingVertical: 0,
   textAlignVertical: "center",
+};
+
+/** Aeroport regular 20 / 20 — swap and similar market rows. */
+export const typographyAeroport20: TextStyle = {
+  fontFamily: Platform.OS === "web" ? WEB_AEROPORT_STACK : FONT_AEROPORT_REGULAR,
+  fontSize: 20,
+  lineHeight: 20,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
+  textAlignVertical: "center",
+  ...uiTextVerticalCompensationTransform,
+};
+
+/** Aeroport regular 15 / 20 — swap rate and interval letters. */
+export const typographyAeroport15: TextStyle = {
+  fontFamily: Platform.OS === "web" ? WEB_AEROPORT_STACK : FONT_AEROPORT_REGULAR,
+  fontSize: 15,
+  lineHeight: 20,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
+  textAlignVertical: "center",
+  ...uiTextVerticalCompensationTransform,
 };
