@@ -27,6 +27,9 @@ import {
 } from "../../services/wallet/tonWallet";
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
+import { SwapRateRow } from "../components/SwapRateRow";
+import { useAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
+import { useRouter } from "expo-router";
 
 /**
  * Survives React Strict Mode / remount: component `useRef` resets, but two parallel
@@ -509,8 +512,10 @@ function markWalletSecretStoredOnServer(
 
 export function HomeAuthenticatedScreen() {
   const colors = useColors();
+  const router = useRouter();
   const { t, tf, translateFlowError } = useAppStrings();
   const [homeNavIndex, setHomeNavIndex] = useState(0);
+  const rightPanel = useAuthenticatedHomeRightPanel();
   const {
     status,
     telegramUsername,
@@ -525,7 +530,14 @@ export function HomeAuthenticatedScreen() {
   } = useTelegram();
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
+  const isWideHome = windowWidth > layout.authenticatedHome.firstBreakpoint;
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
+
+  useEffect(() => {
+    if (!isWideHome && rightPanel === "swap") {
+      router.push("/swap" as any);
+    }
+  }, [isWideHome, rightPanel, router]);
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
@@ -1334,7 +1346,23 @@ export function HomeAuthenticatedScreen() {
             </View>
           </>
         }
-        right={<View style={{ flex: 1 }} />}
+        right={
+          rightPanel === "swap" ? (
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                paddingHorizontal: layout.contentSideInsetPx,
+                paddingTop: 8,
+              }}
+            >
+              <SwapRateRow />
+            </View>
+          ) : (
+            <View style={{ flex: 1 }} />
+          )
+        }
         middleColumnFooter={aiBarDock === "splitColumn2" ? embeddedAiBar : null}
         thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
       />

@@ -26,6 +26,7 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
+import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
@@ -181,14 +182,19 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
   const handleMenuKeyPress = useCallback(
     (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
       if (key === "swap") {
-        if (pathname !== "/swap") {
+        if (atOrAboveFirstBreakpoint) {
+          openAuthenticatedHomeRightPanel("swap");
+          if (pathname === "/swap") {
+            router.replace("/");
+          }
+        } else if (pathname !== "/swap") {
           router.push("/swap" as any);
         }
         return;
       }
       /* wired when other menu flows land */
     },
-    [pathname, router],
+    [atOrAboveFirstBreakpoint, pathname, router],
   );
 
   const handleSignOut = useCallback(() => {
