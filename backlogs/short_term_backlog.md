@@ -1,4 +1,5 @@
 Logo on Swap Page
+Back buttons on swap page outside TMA
 Main menu in Russian
 Swap page layout
 More welcome and other messages, test lang semi-fill
