@@ -1348,15 +1348,7 @@ export function HomeAuthenticatedScreen() {
         }
         right={
           rightPanel === "swap" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                paddingHorizontal: layout.contentSideInsetPx,
-                paddingTop: 8,
-              }}
-            >
+            <View style={{ flex: 1, width: "100%", alignSelf: "stretch", paddingTop: 8 }}>
               <SwapRateRow />
             </View>
           ) : (
