@@ -693,11 +693,12 @@ export function AuthenticatedHomeLeftNavStrip({
         >
           {NAV_IDS.map((navId, index) => {
             const label = t(`home.nav.${navId}` as AppStringKey);
+            const isActive = activeIndex >= 0 && index === activeIndex;
             return (
             <Pressable
               key={navId}
               accessibilityRole="button"
-              accessibilityState={{ selected: index === activeIndex }}
+              accessibilityState={{ selected: isActive }}
               accessibilityLabel={label}
               onPress={() => {
                 if (isControlled) {
@@ -710,7 +711,7 @@ export function AuthenticatedHomeLeftNavStrip({
                 marginRight: index < NAV_IDS.length - 1 ? ITEM_GAP_PX : 0,
               }}
             >
-              <Text style={labelStyle(index === activeIndex)}>{label}</Text>
+              <Text style={labelStyle(isActive)}>{label}</Text>
             </Pressable>
             );
           })}

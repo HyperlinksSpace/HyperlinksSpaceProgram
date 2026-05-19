@@ -1,3 +1,5 @@
+Logo on Swap Page
+Main menu in Russian
 Swap page layout
 More welcome and other messages, test lang semi-fill
 Languages in Windows and in browser (system or browser)

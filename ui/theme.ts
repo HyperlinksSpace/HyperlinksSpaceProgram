@@ -41,12 +41,15 @@ export type ThemeColors = {
   accent: string;
 };
 
-/** Home wide strip / stroke-driven glyphs: `primary` vs `highlight` theme colors. */
-export type MenuIconVariant = "primary" | "highlight";
+/** Home wide strip / stroke-driven glyphs: `primary` vs `highlight` / `inactive` theme colors. */
+export type MenuIconVariant = "primary" | "highlight" | "inactive";
 
 export function menuIconStrokeColor(colors: ThemeColors, variant: MenuIconVariant): string {
-  // Program-wide rule: grey icons use `secondary`; `highlight` is reserved for borders/indicators.
-  return variant === "primary" ? colors.primary : colors.secondary;
+  if (variant === "primary") {
+    return colors.primary;
+  }
+  // `highlight` (pressed) and `inactive` (dimmed menu item) use secondary stroke.
+  return colors.secondary;
 }
 
 /** `assets/menu/*.svg` viewBox. */
@@ -169,6 +172,8 @@ export const layout = {
   authenticatedHome: {
     contentInsetTop: 22,
     contentInsetBottom: 22,
+    /** Top inset (px) before the first swap rate row (narrow `/swap` page and wide split column). */
+    swapFirstRowTopInsetPx: 20,
     /**
      * Horizontal inset for header row and padded bodies. Same value as root `layout.contentSideInsetPx`; unrelated to split-pane divider hit width.
      */
@@ -212,9 +217,9 @@ export const layout = {
     /** Second layout breakpoint (px): three-column split body uses `rowWidth > secondBreakpoint` (with two draggable dividers). */
     secondBreakpoint: authenticatedHomeSecondBreakpointPx,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMin` viewport width. */
-    wideMenuColumnWidthMin: 50,
+    wideMenuColumnWidthMin: 59,
     /** Wide menu column width (px) at `wideMenuColumnExpandViewportMax` viewport width and above. */
-    wideMenuColumnWidthMax: 70,
+    wideMenuColumnWidthMax: 79,
     /** Viewport width (px) where wide-menu column width starts at `wideMenuColumnWidthMin` (linear ramp); equals {@link layout.authenticatedHome.firstBreakpoint}. */
     wideMenuColumnExpandViewportMin: authenticatedHomeFirstBreakpointPx,
     /** Viewport width (px) where column width reaches `wideMenuColumnWidthMax`. */

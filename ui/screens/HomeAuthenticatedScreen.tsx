@@ -28,7 +28,10 @@ import {
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { SwapRateRow } from "../components/SwapRateRow";
-import { useAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
+import {
+  openAuthenticatedHomeRightPanel,
+  useAuthenticatedHomeRightPanel,
+} from "../authenticatedHomeRightPanel";
 import { useRouter } from "expo-router";
 
 /**
@@ -531,7 +534,16 @@ export function HomeAuthenticatedScreen() {
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
   const isWideHome = windowWidth > layout.authenticatedHome.firstBreakpoint;
+  const isTripleColumn = windowWidth > layout.authenticatedHome.secondBreakpoint;
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
+  const swapActiveOnWide = isWideHome && rightPanel === "swap";
+  const leftNavSelectedIndex = swapActiveOnWide ? -1 : homeNavIndex;
+
+  useEffect(() => {
+    if (isTripleColumn) {
+      openAuthenticatedHomeRightPanel("swap");
+    }
+  }, [isTripleColumn]);
 
   useEffect(() => {
     if (!isWideHome && rightPanel === "swap") {
@@ -1268,13 +1280,14 @@ export function HomeAuthenticatedScreen() {
       <HomeAuthenticatedHeaderRow
         walletAddress={effectiveWalletAddress ?? ""}
         displayName={headerDisplayName}
+        activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
       />
       <AuthenticatedHomeSplitBody
         left={
           <>
             <AuthenticatedHomeLeftNavStrip
               colors={colors}
-              selectedIndex={homeNavIndex}
+              selectedIndex={leftNavSelectedIndex}
               onSelectIndex={setHomeNavIndex}
             />
             <View style={{ paddingHorizontal: layout.contentSideInsetPx, width: "100%", alignSelf: "stretch" }}>
@@ -1348,7 +1361,14 @@ export function HomeAuthenticatedScreen() {
         }
         right={
           rightPanel === "swap" ? (
-            <View style={{ flex: 1, width: "100%", alignSelf: "stretch", paddingTop: 8 }}>
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                paddingTop: layout.authenticatedHome.swapFirstRowTopInsetPx,
+              }}
+            >
               <SwapRateRow />
             </View>
           ) : (

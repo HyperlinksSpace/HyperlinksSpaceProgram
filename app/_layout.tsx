@@ -250,6 +250,10 @@ function RootContent() {
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
+    if (pathname === "/swap" || pathname === "/key") {
+      // In-screen {@link CenteredLogoOnlyHeader} on narrow swap and key routes.
+      return false;
+    }
     if (isInTelegram && layoutStartup.isTelegramMiniAppDesktop) {
       return false;
     }

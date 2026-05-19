@@ -89,6 +89,7 @@ function AuthenticatedHomeMenuItems({
   columnWidth,
   t,
   onMenuKeyPress,
+  activeMenuKey,
 }: {
   colors: ThemeColors;
   narrow: boolean;
@@ -96,16 +97,23 @@ function AuthenticatedHomeMenuItems({
   columnWidth: number;
   t: (key: AppStringKey) => string;
   onMenuKeyPress: (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => void;
+  /** When set, matching item stays primary; others use inactive (secondary) styling until pressed. */
+  activeMenuKey?: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"] | null;
 }) {
   return WIDE_MENU_ITEM_KEYS.map(({ key, labelKey, Icon }) => {
     const label = t(labelKey);
+    const menuActive = activeMenuKey == null || key === activeMenuKey;
     return (
     <View
       key={key}
       style={
         narrow
           ? { flex: 1, minWidth: 0, alignItems: "center" as const }
-          : { width: columnWidth, alignItems: "center" as const }
+          : {
+              width: columnWidth,
+              minWidth: AH.wideMenuColumnWidthMin,
+              alignItems: "center" as const,
+            }
       }
     >
       <Pressable
@@ -115,15 +123,16 @@ function AuthenticatedHomeMenuItems({
         onPress={() => onMenuKeyPress(key)}
       >
         {({ pressed }) => {
-          const variant = pressed ? "highlight" : "primary";
-          const labelColor =
-            variant === "highlight"
-              ? menuIconStrokeColor(colors, "highlight")
-              : menuIconStrokeColor(colors, "primary");
+          const iconVariant = pressed ? "highlight" : menuActive ? "primary" : "inactive";
+          const labelColor = pressed
+            ? menuIconStrokeColor(colors, "highlight")
+            : menuActive
+              ? menuIconStrokeColor(colors, "primary")
+              : colors.secondary;
           return (
             <View style={{ alignItems: "center" }}>
               <Icon
-                variant={variant}
+                variant={iconVariant}
                 width={AH.headerIconDisplaySize}
                 height={AH.headerIconDisplaySize}
               />
@@ -147,11 +156,15 @@ function AuthenticatedHomeMenuItems({
   });
 }
 
+type HeaderMenuKey = (typeof WIDE_MENU_ITEM_KEYS)[number]["key"];
+
 type Props = {
   /** Raw wallet address; clipboard receives trimmed original casing. */
   walletAddress: string;
   /** Profile label from `users.display_name`. */
   displayName: string;
+  /** Wide layout: highlight this header menu item; others use secondary (inactive) styling. */
+  activeHeaderMenuKey?: HeaderMenuKey | null;
 };
 
 /**
@@ -159,7 +172,7 @@ type Props = {
  * Breakpoint uses the header shell width from `onLayout` (not only `useWindowDimensions`) so web layout matches the real column width.
  * At `firstBreakpoint` and above: centered Get/Swap/… strip overlay (painted after side columns so it is not covered on web); below: same strip under balance + profile.
  */
-export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props) {
+export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeHeaderMenuKey }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { signOut } = useAuth();
@@ -171,6 +184,8 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const widthForLayout = measuredWidth ?? windowWidth;
   const atOrAboveFirstBreakpoint = widthForLayout > AH.firstBreakpoint;
+  const headerMenuActiveKey =
+    atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;
   const trimmed = walletAddress.replace(/\s+/g, "").trim();
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
 
@@ -239,6 +254,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
           columnWidth={wideMenuColumnWidth}
           t={t}
           onMenuKeyPress={handleMenuKeyPress}
+          activeMenuKey={headerMenuActiveKey}
         />
       </View>
     </View>
@@ -471,6 +487,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName }: Props
               columnWidth={0}
               t={t}
               onMenuKeyPress={handleMenuKeyPress}
+              activeMenuKey={headerMenuActiveKey}
             />
           </View>
         </View>
