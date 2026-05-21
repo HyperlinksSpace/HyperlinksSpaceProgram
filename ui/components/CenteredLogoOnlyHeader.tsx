@@ -64,6 +64,11 @@ export function CenteredLogoOnlyHeader() {
   );
   const isDesktopTma = isInTelegram && isTelegramMiniAppDesktop;
   const logoBarTopOffset = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
+  /** Browser / outside TMA: symmetric vertical padding so the glyph centers in the header strip. */
+  const outsideTma = !isInTelegram;
+  const containerPadding = outsideTma
+    ? { paddingVertical: WELCOME_VERTICAL_INDENT }
+    : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
 
   const onPress = () => {
     if (Platform.OS !== "web") {
@@ -79,8 +84,7 @@ export function CenteredLogoOnlyHeader() {
         {
           backgroundColor: colors.background,
           borderBottomColor: colors.highlight,
-          paddingTop: logoBarTopOffset,
-          paddingBottom: BOTTOM_PADDING,
+          ...containerPadding,
           paddingHorizontal: layout.contentSideInsetPx,
         },
       ]}
