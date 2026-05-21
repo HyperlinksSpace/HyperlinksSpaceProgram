@@ -27,7 +27,7 @@ import {
 } from "../../services/wallet/tonWallet";
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { SwapRateRow } from "../components/SwapRateRow";
+import { SwapPanelContent } from "../components/SwapPanelContent";
 import {
   openAuthenticatedHomeRightPanel,
   useAuthenticatedHomeRightPanel,
@@ -1361,15 +1361,8 @@ export function HomeAuthenticatedScreen() {
         }
         right={
           rightPanel === "swap" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                paddingTop: layout.authenticatedHome.swapFirstRowTopInsetPx,
-              }}
-            >
-              <SwapRateRow />
+            <View style={{ flex: 1, width: "100%", alignSelf: "stretch" }}>
+              <SwapPanelContent />
             </View>
           ) : (
             <View style={{ flex: 1 }} />

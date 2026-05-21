@@ -174,6 +174,8 @@ export const layout = {
     contentInsetBottom: 22,
     /** Top inset (px) before the first swap rate row (narrow `/swap` page and wide split column). */
     swapFirstRowTopInsetPx: 20,
+    /** Vertical gap (px) between the swap rate row and the seven-column stats row. */
+    swapStatsRowTopGapPx: 20,
     /**
      * Horizontal inset for header row and padded bodies. Same value as root `layout.contentSideInsetPx`; unrelated to split-pane divider hit width.
      */
@@ -441,6 +443,18 @@ export const typographyAeroport20: TextStyle = {
   fontFamily: Platform.OS === "web" ? WEB_AEROPORT_STACK : FONT_AEROPORT_REGULAR,
   fontSize: 20,
   lineHeight: 20,
+  fontWeight: "400",
+  includeFontPadding: false,
+  paddingVertical: 0,
+  textAlignVertical: "center",
+  ...uiTextVerticalCompensationTransform,
+};
+
+/** Aeroport regular 10 / 10 — swap stats grid labels and values. */
+export const typographyAeroport10: TextStyle = {
+  fontFamily: Platform.OS === "web" ? WEB_AEROPORT_STACK : FONT_AEROPORT_REGULAR,
+  fontSize: 10,
+  lineHeight: 10,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,
