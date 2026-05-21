@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { Platform, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { layout, useColors } from "../theme";
+import { layout, typographySansSemibold, useColors } from "../theme";
 
 /** Match `GlobalLogoBar` default signed-in / TMA logo strip rhythm. */
 const BROWSER_FALLBACK_TOP_PADDING = 30;
@@ -13,6 +13,11 @@ const HEADER_NARROW_MAX_WIDTH = 480;
 const MOBILE_LOGO_SIZE = 24;
 const BOTTOM_PADDING = 10;
 const WELCOME_VERTICAL_INDENT = 15;
+
+/** Browser swap/key header back control (outside TMA). */
+const BROWSER_BACK_BUTTON_HEIGHT_PX = 30;
+const BROWSER_BACK_BUTTON_HORIZONTAL_INSET_PX = 11;
+const BROWSER_BACK_BUTTON_LEFT_OFFSET_PX = 20;
 
 function useLogoGlyphTopOffset(
   safeAreaInsetTop: number,
@@ -32,6 +37,7 @@ function useLogoGlyphTopOffset(
 /**
  * Single centered N-mark header (no wordmark, no side actions). Same vertical rhythm as
  * {@link GlobalLogoBar} logo-only mode; optional tap returns home.
+ * Outside TMA: Back control at 20px from the left, vertically centered in the header strip.
  */
 export function CenteredLogoOnlyHeader() {
   const { t } = useAppStrings();
@@ -70,7 +76,7 @@ export function CenteredLogoOnlyHeader() {
     ? { paddingVertical: WELCOME_VERTICAL_INDENT }
     : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
 
-  const onPress = () => {
+  const goHome = () => {
     if (Platform.OS !== "web") {
       triggerHaptic("light");
     }
@@ -89,8 +95,22 @@ export function CenteredLogoOnlyHeader() {
         },
       ]}
     >
+      {outsideTma ? (
+        <View pointerEvents="box-none" style={styles.backSlot}>
+          <Pressable
+            onPress={goHome}
+            style={styles.backButton}
+            accessibilityRole="button"
+            accessibilityLabel={t("common.back")}
+          >
+            <Text style={[typographySansSemibold, styles.backLabel, { color: colors.highlight }]}>
+              {t("common.back")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       <Pressable
-        onPress={onPress}
+        onPress={goHome}
         style={styles.logoWrap}
         accessibilityRole="button"
         accessibilityLabel={t("key.header.goHomeA11y")}
@@ -111,6 +131,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderBottomWidth: 1,
+    position: "relative",
+  },
+  backSlot: {
+    position: "absolute",
+    left: BROWSER_BACK_BUTTON_LEFT_OFFSET_PX,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    zIndex: 1,
+  },
+  backButton: {
+    height: BROWSER_BACK_BUTTON_HEIGHT_PX,
+    paddingHorizontal: BROWSER_BACK_BUTTON_HORIZONTAL_INSET_PX,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  backLabel: {
+    fontSize: 15,
+    lineHeight: BROWSER_BACK_BUTTON_HEIGHT_PX,
+    textAlign: "center",
   },
   logoWrap: {
     alignItems: "center",

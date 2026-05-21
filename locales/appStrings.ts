@@ -14,6 +14,7 @@ const en = {
   "ai.promptPrefix": "Prompt:",
   "ai.title": "AI",
 
+  "common.back": "Back",
   "common.debug": "Debug",
   "common.emDash": "—",
   "common.loading": "Loading…",
@@ -140,6 +141,7 @@ const ru = {
   "ai.promptPrefix": "Запрос:",
   "ai.title": "ИИ",
 
+  "common.back": "Назад",
   "common.debug": "Отладка",
   "common.emDash": "—",
   "common.loading": "Загрузка…",
