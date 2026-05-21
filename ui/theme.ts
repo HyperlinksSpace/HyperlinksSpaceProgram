@@ -450,11 +450,11 @@ export const typographyAeroport20: TextStyle = {
   ...uiTextVerticalCompensationTransform,
 };
 
-/** Aeroport regular 10 / 10 — swap stats grid labels and values. */
+/** Aeroport regular 10 / 20 — swap stats grid labels and values. */
 export const typographyAeroport10: TextStyle = {
   fontFamily: Platform.OS === "web" ? WEB_AEROPORT_STACK : FONT_AEROPORT_REGULAR,
   fontSize: 10,
-  lineHeight: 10,
+  lineHeight: 20,
   fontWeight: "400",
   includeFontPadding: false,
   paddingVertical: 0,

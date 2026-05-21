@@ -12,11 +12,12 @@ const SWAP_STATS_COLUMNS = [
 ] as const;
 
 /**
- * Second swap row: seven equal columns, each with a label row and value row (10/10 Aeroport).
+ * Second swap row: seven equal columns; label (primary) and value (secondary), 10px / 20px Aeroport.
  */
 export function SwapStatsRow() {
   const colors = useColors();
-  const textStyle = [typographyAeroport10, { color: colors.secondary, textAlign: "center" as const }];
+  const labelStyle = [typographyAeroport10, { color: colors.primary, textAlign: "center" as const }];
+  const valueStyle = [typographyAeroport10, { color: colors.secondary, textAlign: "center" as const }];
 
   return (
     <View
@@ -37,10 +38,10 @@ export function SwapStatsRow() {
             justifyContent: "flex-start",
           }}
         >
-          <Text style={textStyle} numberOfLines={1}>
+          <Text style={labelStyle} numberOfLines={1}>
             {label}
           </Text>
-          <Text style={textStyle} numberOfLines={1}>
+          <Text style={valueStyle} numberOfLines={1}>
             {value}
           </Text>
         </View>

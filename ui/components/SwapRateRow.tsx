@@ -1,16 +1,20 @@
-import { Platform, Text, View } from "react-native";
+import { useState } from "react";
+import { Platform, Pressable, Text, View } from "react-native";
 import { typographyAeroport15, typographyAeroport20, useColors } from "../theme";
 
 const INTERVAL_LETTERS = ["m", "q", "h", "d"] as const;
+type IntervalLetter = (typeof INTERVAL_LETTERS)[number];
 
 /** Width of the centered interval letter group (m q h d spaced inside). */
 const INTERVAL_GROUP_WIDTH_PX = Platform.OS === "web" ? 72 : 56;
 
 /**
  * Single swap summary row: asset label · interval letters (row-centered) · price.
+ * Interval letters are selectable; default active is `m` (primary), others secondary.
  */
 export function SwapRateRow() {
   const colors = useColors();
+  const [activeInterval, setActiveInterval] = useState<IntervalLetter>("m");
 
   return (
     <View
@@ -52,11 +56,28 @@ export function SwapRateRow() {
             width: INTERVAL_GROUP_WIDTH_PX,
           }}
         >
-          {INTERVAL_LETTERS.map((letter) => (
-            <Text key={letter} style={[typographyAeroport15, { color: colors.primary }]}>
-              {letter}
-            </Text>
-          ))}
+          {INTERVAL_LETTERS.map((letter) => {
+            const isActive = letter === activeInterval;
+            return (
+              <Pressable
+                key={letter}
+                onPress={() => setActiveInterval(letter)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={letter}
+                hitSlop={6}
+              >
+                <Text
+                  style={[
+                    typographyAeroport15,
+                    { color: isActive ? colors.primary : colors.secondary },
+                  ]}
+                >
+                  {letter}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </View>
     </View>
