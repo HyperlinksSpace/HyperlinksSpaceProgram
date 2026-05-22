@@ -19,7 +19,7 @@ export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
         backgroundColor: colors.background,
       }}
     >
-      <CenteredLogoOnlyHeader />
+      <CenteredLogoOnlyHeader showBrowserBackButton />
       <View
         style={{
           flex: 1,

@@ -34,12 +34,16 @@ function useLogoGlyphTopOffset(
   }, [safeAreaInsetTop, contentSafeAreaInsetTop, contentGlyphHeight]);
 }
 
+type Props = {
+  /** Narrow browser `/swap`: Back control outside Telegram (hidden in TMA and on `/key`). */
+  showBrowserBackButton?: boolean;
+};
+
 /**
  * Single centered N-mark header (no wordmark, no side actions). Same vertical rhythm as
  * {@link GlobalLogoBar} logo-only mode; optional tap returns home.
- * Outside TMA: Back control at 20px from the left, vertically centered in the header strip.
  */
-export function CenteredLogoOnlyHeader() {
+export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props) {
   const { t } = useAppStrings();
   const router = useRouter();
   const colors = useColors();
@@ -72,6 +76,7 @@ export function CenteredLogoOnlyHeader() {
   const logoBarTopOffset = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
   /** Browser / outside TMA: symmetric vertical padding so the glyph centers in the header strip. */
   const outsideTma = !isInTelegram;
+  const showBack = outsideTma && showBrowserBackButton;
   const containerPadding = outsideTma
     ? { paddingVertical: WELCOME_VERTICAL_INDENT }
     : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
@@ -91,11 +96,11 @@ export function CenteredLogoOnlyHeader() {
           backgroundColor: colors.background,
           borderBottomColor: colors.highlight,
           ...containerPadding,
-          paddingHorizontal: layout.contentSideInsetPx,
+          paddingHorizontal: showBack ? 0 : layout.contentSideInsetPx,
         },
       ]}
     >
-      {outsideTma ? (
+      {showBack ? (
         <View pointerEvents="box-none" style={styles.backSlot}>
           <Pressable
             onPress={goHome}
@@ -146,11 +151,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: BROWSER_BACK_BUTTON_HORIZONTAL_INSET_PX,
     justifyContent: "center",
     alignItems: "center",
+    alignSelf: "flex-start",
   },
   backLabel: {
     fontSize: 15,
     lineHeight: BROWSER_BACK_BUTTON_HEIGHT_PX,
     textAlign: "center",
+    textAlignVertical: "center",
   },
   logoWrap: {
     alignItems: "center",
