@@ -81,11 +81,24 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
     ? { paddingVertical: WELCOME_VERTICAL_INDENT }
     : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
 
-  const goHome = () => {
+  const hapticIfNeeded = () => {
     if (Platform.OS !== "web") {
       triggerHaptic("light");
     }
+  };
+
+  const goHome = () => {
+    hapticIfNeeded();
     router.replace("/");
+  };
+
+  const goBack = () => {
+    hapticIfNeeded();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
   };
 
   return (
@@ -103,7 +116,7 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
       {showBack ? (
         <View pointerEvents="box-none" style={styles.backSlot}>
           <Pressable
-            onPress={goHome}
+            onPress={goBack}
             style={styles.backButton}
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
