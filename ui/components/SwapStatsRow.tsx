@@ -1,21 +1,32 @@
 import { Text, View } from "react-native";
+import type { SwapMarketStats } from "../swap/fetchSwapChart";
+import { formatSwapNumber, formatSwapPercentage } from "../swap/swapChartFormat";
 import { typographyAeroport10, useColors } from "../theme";
 
-const SWAP_STATS_COLUMNS = [
-  { label: "HLDRS", value: "$3.1K" },
-  { label: "FDV", value: "$7K" },
-  { label: "VOL", value: "$1.1K" },
-  { label: "5H", value: "$3.1K" },
-  { label: "1H", value: "+208.13%" },
-  { label: "6H", value: "+208.13%" },
-  { label: "6H", value: "+208.13%" },
-] as const;
+type StatColumn = { label: string; value: string };
+
+function buildColumns(stats: SwapMarketStats | null): StatColumn[] {
+  return [
+    { label: "MCAP", value: formatSwapNumber(stats?.mcap, true) },
+    { label: "FDMC", value: formatSwapNumber(stats?.fdmc, true) },
+    { label: "VOL", value: formatSwapNumber(stats?.volume24h, true) },
+    { label: "5M", value: formatSwapPercentage(stats?.priceChange5m) },
+    { label: "1H", value: formatSwapPercentage(stats?.priceChange1h) },
+    { label: "6H", value: formatSwapPercentage(stats?.priceChange6h) },
+    { label: "24H", value: formatSwapPercentage(stats?.priceChange24h) },
+  ];
+}
+
+type Props = {
+  marketStats: SwapMarketStats | null;
+};
 
 /**
  * Second swap row: seven equal columns; label (primary) and value (secondary), 10px / 20px Aeroport.
  */
-export function SwapStatsRow() {
+export function SwapStatsRow({ marketStats }: Props) {
   const colors = useColors();
+  const columns = buildColumns(marketStats);
   const labelStyle = [typographyAeroport10, { color: colors.primary, textAlign: "center" as const }];
   const valueStyle = [typographyAeroport10, { color: colors.secondary, textAlign: "center" as const }];
 
@@ -28,9 +39,9 @@ export function SwapStatsRow() {
         alignSelf: "stretch",
       }}
     >
-      {SWAP_STATS_COLUMNS.map(({ label, value }, index) => (
+      {columns.map((col, index) => (
         <View
-          key={`${index}-${label}`}
+          key={`${index}-${col.label}`}
           style={{
             flex: 1,
             minWidth: 0,
@@ -39,10 +50,10 @@ export function SwapStatsRow() {
           }}
         >
           <Text style={labelStyle} numberOfLines={1}>
-            {label}
+            {col.label}
           </Text>
           <Text style={valueStyle} numberOfLines={1}>
-            {value}
+            {col.value}
           </Text>
         </View>
       ))}

@@ -1,20 +1,31 @@
-import { useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
+import {
+  SWAP_INTERVAL_TO_RESOLUTION,
+  type SwapIntervalKey,
+} from "../swap/swapChartConstants";
+import { formatSwapPrice, resolutionLabel } from "../swap/swapChartFormat";
 import { typographyAeroport15, typographyAeroport20, useColors } from "../theme";
 
-const INTERVAL_LETTERS = ["m", "q", "h", "d"] as const;
-type IntervalLetter = (typeof INTERVAL_LETTERS)[number];
+const INTERVAL_LETTERS: SwapIntervalKey[] = ["m", "q", "h", "d"];
 
 /** Width of the centered interval letter group (m q h d spaced inside). */
 const INTERVAL_GROUP_WIDTH_PX = Platform.OS === "web" ? 72 : 56;
 
+type Props = {
+  intervalKey: SwapIntervalKey;
+  onIntervalKeyChange: (key: SwapIntervalKey) => void;
+  tonPriceUsd: number | null;
+};
+
 /**
  * Single swap summary row: asset label · interval letters (row-centered) · price.
- * Interval letters are selectable; default active is `m` (primary), others secondary.
  */
-export function SwapRateRow() {
+export function SwapRateRow({ intervalKey, onIntervalKeyChange, tonPriceUsd }: Props) {
   const colors = useColors();
-  const [activeInterval, setActiveInterval] = useState<IntervalLetter>("m");
+  const resolution = SWAP_INTERVAL_TO_RESOLUTION[intervalKey];
+  const title = `TON ${resolutionLabel(resolution)}`;
+  const priceText =
+    tonPriceUsd != null ? `$${formatSwapPrice(tonPriceUsd)}` : "…";
 
   return (
     <View
@@ -28,12 +39,12 @@ export function SwapRateRow() {
     >
       <View style={{ flex: 1, alignItems: "flex-start", minWidth: 0, paddingRight: 8 }}>
         <Text style={[typographyAeroport20, { color: colors.primary }]} numberOfLines={1}>
-          TON (Day)
+          {title}
         </Text>
       </View>
       <View style={{ flex: 1, alignItems: "flex-end", minWidth: 0, paddingLeft: 8 }}>
         <Text style={[typographyAeroport15, { color: colors.primary }]} numberOfLines={1}>
-          $1.47
+          {priceText}
         </Text>
       </View>
       <View
@@ -57,11 +68,11 @@ export function SwapRateRow() {
           }}
         >
           {INTERVAL_LETTERS.map((letter) => {
-            const isActive = letter === activeInterval;
+            const isActive = letter === intervalKey;
             return (
               <Pressable
                 key={letter}
-                onPress={() => setActiveInterval(letter)}
+                onPress={() => onIntervalKeyChange(letter)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
                 accessibilityLabel={letter}

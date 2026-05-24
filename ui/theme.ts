@@ -176,6 +176,8 @@ export const layout = {
     swapFirstRowTopInsetPx: 20,
     /** Vertical gap (px) between the swap rate row and the seven-column stats row. */
     swapStatsRowTopGapPx: 20,
+    /** Vertical gap (px) between stats row and chart (prev-main SizedBox 15). */
+    swapChartTopGapPx: 15,
     /**
      * Horizontal inset for header row and padded bodies. Same value as root `layout.contentSideInsetPx`; unrelated to split-pane divider hit width.
      */
