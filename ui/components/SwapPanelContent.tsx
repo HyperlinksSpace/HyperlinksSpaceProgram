@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { swapChartLog } from "../swap/swapChartDebug";
 import { useSwapChart } from "../swap/useSwapChart";
 import { SwapChartView } from "./swap/SwapChartView";
+import { SwapFormBelowChart } from "./swap/SwapFormBelowChart";
 import { SwapRateRow } from "./SwapRateRow";
 import { SwapStatsRow } from "./SwapStatsRow";
 import { layout } from "../theme";
@@ -30,6 +31,14 @@ export function SwapPanelContent() {
     });
   }, []);
 
+  const displayTonPriceUsd =
+    selectedPointIndex != null &&
+    series &&
+    selectedPointIndex >= 0 &&
+    selectedPointIndex < series.points.length
+      ? series.points[selectedPointIndex]!.price
+      : effectiveTonPriceUsd;
+
   return (
     <View
       style={{
@@ -41,40 +50,36 @@ export function SwapPanelContent() {
         overflow: "hidden",
       }}
     >
-      <SwapRateRow
-        intervalKey={intervalKey}
-        onIntervalKeyChange={setIntervalKey}
-        tonPriceUsd={
-          selectedPointIndex != null &&
-          series &&
-          selectedPointIndex >= 0 &&
-          selectedPointIndex < series.points.length
-            ? series.points[selectedPointIndex]!.price
-            : effectiveTonPriceUsd
-        }
-      />
-      <View style={{ marginTop: layout.authenticatedHome.swapStatsRowTopGapPx }}>
-        <SwapStatsRow marketStats={marketStats} />
-      </View>
-      <View
-        style={{
-          flex: 1,
-          marginTop: layout.authenticatedHome.swapChartTopGapPx,
-          minHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <SwapChartView
-          resolution={resolution}
+      <View style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <SwapRateRow
           intervalKey={intervalKey}
           onIntervalKeyChange={setIntervalKey}
-          series={series}
-          isLoading={isLoadingChart}
-          error={chartError}
-          selectedPointIndex={selectedPointIndex}
-          onSelectedPointIndexChange={setSelectedPointIndex}
+          tonPriceUsd={displayTonPriceUsd}
         />
+        <View style={{ marginTop: layout.authenticatedHome.swapStatsRowTopGapPx }}>
+          <SwapStatsRow marketStats={marketStats} />
+        </View>
+        <View
+          style={{
+            flex: 1,
+            marginTop: layout.authenticatedHome.swapChartTopGapPx,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <SwapChartView
+            resolution={resolution}
+            intervalKey={intervalKey}
+            onIntervalKeyChange={setIntervalKey}
+            series={series}
+            isLoading={isLoadingChart}
+            error={chartError}
+            selectedPointIndex={selectedPointIndex}
+            onSelectedPointIndexChange={setSelectedPointIndex}
+          />
+        </View>
       </View>
+      <SwapFormBelowChart effectiveTonPriceUsd={displayTonPriceUsd} />
     </View>
   );
 }

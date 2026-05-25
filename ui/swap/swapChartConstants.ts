@@ -20,8 +20,8 @@ export const SWAP_INTERVAL_TO_RESOLUTION: Record<SwapIntervalKey, SwapChartResol
 /** prev-main `_resolutionOrder` (swipe indexing). */
 export const SWAP_RESOLUTION_ORDER: SwapIntervalKey[] = ["d", "h", "q", "m"];
 
-/** UI letter order left-to-right on the rate row. */
-export const SWAP_INTERVAL_UI_ORDER: SwapIntervalKey[] = ["m", "q", "h", "d"];
+/** UI letter order left-to-right on the rate row (prev-main `d h q m`). */
+export const SWAP_INTERVAL_UI_ORDER: SwapIntervalKey[] = ["d", "h", "q", "m"];
 
 export const SWAP_RESOLUTION_SWIPE_VELOCITY_THRESHOLD = 200;
 export const SWAP_EDGE_SWIPE_GUARD_WIDTH_PX = 56;
@@ -32,10 +32,10 @@ export function stepSwapIntervalKey(
 ): SwapIntervalKey {
   const idx = SWAP_INTERVAL_UI_ORDER.indexOf(current);
   if (idx < 0) return current;
-  if (direction === "finer" && idx > 0) return SWAP_INTERVAL_UI_ORDER[idx - 1]!;
-  if (direction === "coarser" && idx < SWAP_INTERVAL_UI_ORDER.length - 1) {
+  if (direction === "finer" && idx < SWAP_INTERVAL_UI_ORDER.length - 1) {
     return SWAP_INTERVAL_UI_ORDER[idx + 1]!;
   }
+  if (direction === "coarser" && idx > 0) return SWAP_INTERVAL_UI_ORDER[idx - 1]!;
   return current;
 }
 

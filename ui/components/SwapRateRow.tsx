@@ -1,14 +1,13 @@
 import { Platform, Pressable, Text, View } from "react-native";
 import {
   SWAP_INTERVAL_TO_RESOLUTION,
+  SWAP_INTERVAL_UI_ORDER,
   type SwapIntervalKey,
 } from "../swap/swapChartConstants";
 import { formatSwapPrice, resolutionLabel } from "../swap/swapChartFormat";
 import { typographyAeroport15, typographyAeroport20, useColors } from "../theme";
 
-const INTERVAL_LETTERS: SwapIntervalKey[] = ["m", "q", "h", "d"];
-
-/** Width of the centered interval letter group (m q h d spaced inside). */
+/** Width of the centered interval letter group (d h q m spaced inside). */
 const INTERVAL_GROUP_WIDTH_PX = Platform.OS === "web" ? 72 : 56;
 
 type Props = {
@@ -66,7 +65,7 @@ export function SwapRateRow({ intervalKey, onIntervalKeyChange, tonPriceUsd }: P
             width: INTERVAL_GROUP_WIDTH_PX,
           }}
         >
-          {INTERVAL_LETTERS.map((letter) => {
+          {SWAP_INTERVAL_UI_ORDER.map((letter) => {
             const isActive = letter === intervalKey;
             return (
               <Pressable

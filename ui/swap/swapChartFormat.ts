@@ -6,6 +6,15 @@ export type SwapChartPoint = {
 };
 
 /** Up to 5 decimal places, trailing zeros stripped (matches prev-main). */
+/** Token amount display (up to 6 decimals, trailing zeros stripped; prev-main). */
+export function formatSwapTokenAmount(amount: number): string {
+  const formatted = amount.toFixed(6);
+  if (formatted.includes(".")) {
+    return formatted.replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return formatted;
+}
+
 export function formatSwapPrice(price: number): string {
   const formatted = price.toFixed(5);
   if (formatted.includes(".")) {

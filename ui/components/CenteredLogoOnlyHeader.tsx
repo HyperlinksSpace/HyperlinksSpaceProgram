@@ -1,10 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { layout, typographySansSemibold, useColors } from "../theme";
+import {
+  layout,
+  typographyRect15,
+  useColors,
+  welcomeAuthButtonActiveBackground,
+  welcomeAuthButtonHoverBackground,
+} from "../theme";
 
 /** Match `GlobalLogoBar` default signed-in / TMA logo strip rhythm. */
 const BROWSER_FALLBACK_TOP_PADDING = 30;
@@ -14,9 +20,9 @@ const MOBILE_LOGO_SIZE = 24;
 const BOTTOM_PADDING = 10;
 const WELCOME_VERTICAL_INDENT = 15;
 
-/** Browser swap/key header back control (outside TMA). */
-const BROWSER_BACK_BUTTON_HEIGHT_PX = 30;
-const BROWSER_BACK_BUTTON_HORIZONTAL_INSET_PX = 11;
+/** Browser swap/key header back control (outside TMA); matches welcome auth row sizing. */
+const BROWSER_BACK_BUTTON_HEIGHT_PX = 40;
+const BROWSER_BACK_BUTTON_HORIZONTAL_PADDING_PX = 20;
 const BROWSER_BACK_BUTTON_LEFT_OFFSET_PX = 20;
 
 function useLogoGlyphTopOffset(
@@ -48,12 +54,14 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
   const router = useRouter();
   const colors = useColors();
   const {
+    colorScheme,
     isInTelegram,
     triggerHaptic,
     safeAreaInsetTop,
     contentSafeAreaInsetTop,
     layoutStartup,
   } = useTelegram();
+  const [hoverBack, setHoverBack] = useState(false);
   const isTelegramMiniAppDesktop = layoutStartup.isTelegramMiniAppDesktop;
 
   const { width: dimensionsWidth } = useWindowDimensions();
@@ -117,11 +125,28 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
         <View pointerEvents="box-none" style={styles.backSlot}>
           <Pressable
             onPress={goBack}
-            style={styles.backButton}
             accessibilityRole="button"
             accessibilityLabel={t("common.back")}
+            onHoverIn={Platform.OS === "web" ? () => setHoverBack(true) : undefined}
+            onHoverOut={Platform.OS === "web" ? () => setHoverBack(false) : undefined}
+            style={({ pressed }) => {
+              const webHover = Platform.OS === "web" && hoverBack;
+              let backgroundColor = colors.undercover;
+              if (pressed) {
+                backgroundColor = welcomeAuthButtonActiveBackground(colors, colorScheme);
+              } else if (webHover) {
+                backgroundColor = welcomeAuthButtonHoverBackground(colors, colorScheme);
+              }
+              return [
+                styles.backButton,
+                {
+                  backgroundColor,
+                  opacity: pressed ? 0.92 : 1,
+                },
+              ];
+            }}
           >
-            <Text style={[typographySansSemibold, styles.backLabel, { color: colors.highlight }]}>
+            <Text style={[typographyRect15, { color: colors.primary }]} numberOfLines={1}>
               {t("common.back")}
             </Text>
           </Pressable>
@@ -161,16 +186,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     height: BROWSER_BACK_BUTTON_HEIGHT_PX,
-    paddingHorizontal: BROWSER_BACK_BUTTON_HORIZONTAL_INSET_PX,
+    paddingHorizontal: BROWSER_BACK_BUTTON_HORIZONTAL_PADDING_PX,
     justifyContent: "center",
     alignItems: "center",
     alignSelf: "flex-start",
-  },
-  backLabel: {
-    fontSize: 15,
-    lineHeight: BROWSER_BACK_BUTTON_HEIGHT_PX,
-    textAlign: "center",
-    textAlignVertical: "center",
   },
   logoWrap: {
     alignItems: "center",
