@@ -24,8 +24,7 @@ export function SwapRateRow({ intervalKey, onIntervalKeyChange, tonPriceUsd }: P
   const colors = useColors();
   const resolution = SWAP_INTERVAL_TO_RESOLUTION[intervalKey];
   const title = `TON ${resolutionLabel(resolution)}`;
-  const priceText =
-    tonPriceUsd != null ? `$${formatSwapPrice(tonPriceUsd)}` : "…";
+  const priceText = tonPriceUsd != null ? `${formatSwapPrice(tonPriceUsd)}$` : "…$";
 
   return (
     <View

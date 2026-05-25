@@ -654,7 +654,15 @@ export function AuthenticatedHomeSplitBody({
   const middleColumn = (() => {
     if (middleColumnFooter && !isTriple) {
       return (
-        <View style={{ ...middleFlexBase, flexDirection: "column" }}>
+        <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
+          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
+          <View style={columnAiBarWrapStyle}>{middleColumnFooter}</View>
+        </View>
+      );
+    }
+    if (middleColumnFooter && isTriple) {
+      return (
+        <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
           <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
           <View style={columnAiBarWrapStyle}>{middleColumnFooter}</View>
         </View>
@@ -666,6 +674,7 @@ export function AuthenticatedHomeSplitBody({
           ...middleFlexBase,
           paddingHorizontal: inset,
           paddingBottom: bottomInset,
+          minHeight: 0,
         }}
       >
         {right}

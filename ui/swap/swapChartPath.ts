@@ -1,4 +1,20 @@
-/** SVG path for swap chart line (port of prev-main DiagonalLinePainter). */
+/** Max points used to build the visible line (full series kept for pointer hit-testing). */
+export const SWAP_CHART_MAX_RENDER_POINTS = 500;
+
+export const SWAP_CHART_LINE_WIDTH_PX = 1;
+
+/** SVG path: straight segments between points (no curve smoothing). */
+
+export function downsampleNormalizedPoints(points: number[], maxPoints: number): number[] {
+  if (points.length <= maxPoints || maxPoints < 2) return points;
+  const out: number[] = [];
+  const last = points.length - 1;
+  for (let i = 0; i < maxPoints; i++) {
+    const idx = Math.round((i / (maxPoints - 1)) * last);
+    out.push(points[idx]!);
+  }
+  return out;
+}
 
 export function buildSwapChartPath(
   normalizedPoints: number[],
@@ -21,20 +37,7 @@ export function buildSwapChartPath(
   for (let i = 1; i < pointCount; i++) {
     const x = i * stepSize;
     const y = height - points[i]! * height;
-
-    if (i === 1) {
-      const controlX = x * 0.5;
-      const controlY = height - points[0]! * height * 0.7 - points[i]! * height * 0.3;
-      path += ` Q ${controlX} ${controlY} ${x} ${y}`;
-    } else {
-      const prevX = (i - 1) * stepSize;
-      const prevY = height - points[i - 1]! * height;
-      const cp1X = prevX + (x - prevX) * 0.3;
-      const cp1Y = prevY;
-      const cp2X = prevX + (x - prevX) * 0.7;
-      const cp2Y = y;
-      path += ` C ${cp1X} ${cp1Y} ${cp2X} ${cp2Y} ${x} ${y}`;
-    }
+    path += ` L ${x} ${y}`;
   }
 
   const lastX = (pointCount - 1) * stepSize;
@@ -57,4 +60,46 @@ export function chartPointCoordinates(
   const x = index * stepSize;
   const y = height - normalizedPoints[index]! * height;
   return { x, y };
+}
+
+/** Draw chart line on canvas (straight segments, same geometry as {@link buildSwapChartPath}). */
+export function strokeSwapChartLine(
+  ctx: CanvasRenderingContext2D,
+  normalizedPoints: number[],
+  width: number,
+  height: number,
+  strokeStyle: string,
+  lineWidth = SWAP_CHART_LINE_WIDTH_PX,
+): void {
+  if (width <= 0 || height <= 0 || normalizedPoints.length === 0) return;
+
+  const points = normalizedPoints;
+  const pointCount = points.length;
+  const stepSize = pointCount > 1 ? width / (pointCount - 1) : 0;
+
+  ctx.beginPath();
+  const startY = height - points[0]! * height;
+  ctx.moveTo(0, startY);
+
+  if (pointCount === 1) {
+    ctx.lineTo(width, startY);
+  } else {
+    for (let i = 1; i < pointCount; i++) {
+      const x = i * stepSize;
+      const y = height - points[i]! * height;
+      ctx.lineTo(x, y);
+    }
+
+    const lastX = (pointCount - 1) * stepSize;
+    if (lastX < width) {
+      const lastY = height - points[pointCount - 1]! * height;
+      ctx.lineTo(width, lastY);
+    }
+  }
+
+  ctx.strokeStyle = strokeStyle;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = "butt";
+  ctx.lineJoin = "miter";
+  ctx.stroke();
 }

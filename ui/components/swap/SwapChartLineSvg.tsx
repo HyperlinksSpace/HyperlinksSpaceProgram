@@ -1,63 +1,71 @@
-import Svg, { Path, Rect } from "react-native-svg";
-import { buildSwapChartPath, chartPointCoordinates } from "../../swap/swapChartPath";
+import { useEffect, useMemo } from "react";
+import { Platform } from "react-native";
+import Svg, { Path } from "react-native-svg";
+import { swapChartLog, swapChartWarn } from "../../swap/swapChartDebug";
+import {
+  buildSwapChartPath,
+  downsampleNormalizedPoints,
+  SWAP_CHART_LINE_WIDTH_PX,
+  SWAP_CHART_MAX_RENDER_POINTS,
+} from "../../swap/swapChartPath";
 
 type Props = {
   width: number;
   height: number;
   normalizedPoints: number[];
-  selectedPointIndex: number | null;
   lineColor: string;
-  dotFillColor: string;
-  dotStrokeColor: string;
 };
 
-const STROKE_WIDTH = 1.33;
-const DOT_SIZE = 5;
+const STROKE_WIDTH = SWAP_CHART_LINE_WIDTH_PX;
 
 export function SwapChartLineSvg({
   width,
   height,
   normalizedPoints,
-  selectedPointIndex,
   lineColor,
-  dotFillColor,
-  dotStrokeColor,
 }: Props) {
+  const renderPoints = useMemo(
+    () => downsampleNormalizedPoints(normalizedPoints, SWAP_CHART_MAX_RENDER_POINTS),
+    [normalizedPoints],
+  );
+
+  useEffect(() => {
+    if (width <= 0 || height <= 0 || normalizedPoints.length === 0) {
+      swapChartWarn("svg_skip", { width, height, pointCount: normalizedPoints.length });
+      return;
+    }
+    const pathD = buildSwapChartPath(renderPoints, width, height);
+    swapChartLog("svg_render", {
+      width,
+      height,
+      pointCount: normalizedPoints.length,
+      renderPointCount: renderPoints.length,
+      pathLength: pathD.length,
+      renderer: "svg",
+    });
+  }, [width, height, normalizedPoints, renderPoints]);
+
   if (width <= 0 || height <= 0 || normalizedPoints.length === 0) {
     return null;
   }
 
-  const pathD = buildSwapChartPath(normalizedPoints, width, height);
-  let dot: { x: number; y: number } | null = null;
-  if (
-    selectedPointIndex != null &&
-    selectedPointIndex >= 0 &&
-    selectedPointIndex < normalizedPoints.length
-  ) {
-    dot = chartPointCoordinates(selectedPointIndex, normalizedPoints, width, height);
-  }
+  const pathD = buildSwapChartPath(renderPoints, width, height);
 
   return (
-    <Svg width={width} height={height}>
+    <Svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={Platform.OS === "web" ? ({ width, height, display: "block" } as object) : undefined}
+    >
       <Path
         d={pathD}
         stroke={lineColor}
         strokeWidth={STROKE_WIDTH}
         fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        strokeLinecap="butt"
+        strokeLinejoin="miter"
       />
-      {dot ? (
-        <Rect
-          x={dot.x - DOT_SIZE / 2}
-          y={dot.y - DOT_SIZE / 2}
-          width={DOT_SIZE}
-          height={DOT_SIZE}
-          fill={dotFillColor}
-          stroke={dotStrokeColor}
-          strokeWidth={STROKE_WIDTH}
-        />
-      ) : null}
     </Svg>
   );
 }

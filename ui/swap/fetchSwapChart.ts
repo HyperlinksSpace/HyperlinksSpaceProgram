@@ -8,6 +8,7 @@ import {
   type SwapChartResolution,
 } from "./swapChartConstants";
 import type { SwapChartPoint } from "./swapChartFormat";
+import { swapChartError, swapChartLog, swapChartWarn } from "./swapChartDebug";
 
 export type SwapMarketStats = {
   priceUsd: number | null;
@@ -50,30 +51,75 @@ function getTimeRange(resolution: SwapChartResolution): { from: string; to: stri
 }
 
 function parseChartPoints(raw: unknown): SwapChartPoint[] {
-  if (!raw || typeof raw !== "object") return [];
-  const points = (raw as { points?: unknown }).points;
-  if (!Array.isArray(points)) return [];
+  if (!raw || typeof raw !== "object") {
+    swapChartWarn("parse_empty_raw", { rawType: typeof raw });
+    return [];
+  }
+  const envelope = raw as Record<string, unknown>;
+  if ("code" in envelope && !("points" in envelope)) {
+    swapChartWarn("parse_api_error_envelope", {
+      code: envelope.code,
+      message: envelope.message,
+    });
+    return [];
+  }
+  const points = envelope.points;
+  if (!Array.isArray(points)) {
+    swapChartWarn("parse_no_points_array", { keys: Object.keys(envelope) });
+    return [];
+  }
 
   const out: SwapChartPoint[] = [];
+  let skipped = 0;
   for (const point of points) {
-    if (!point || typeof point !== "object") continue;
+    if (!point || typeof point !== "object") {
+      skipped += 1;
+      continue;
+    }
     const valueObj = (point as { value?: unknown }).value;
     const timeStr = (point as { time?: unknown }).time;
-    if (!valueObj || typeof valueObj !== "object" || typeof timeStr !== "string") continue;
+    if (!valueObj || typeof valueObj !== "object" || typeof timeStr !== "string") {
+      skipped += 1;
+      continue;
+    }
 
     const valueStr = (valueObj as { value?: unknown }).value;
     const decimals = (valueObj as { decimals?: unknown }).decimals;
-    if (typeof valueStr !== "string" || typeof decimals !== "number") continue;
+    if (typeof valueStr !== "string" || typeof decimals !== "number") {
+      skipped += 1;
+      continue;
+    }
 
     const value = Number.parseInt(valueStr, 10);
-    if (!Number.isFinite(value)) continue;
+    if (!Number.isFinite(value)) {
+      skipped += 1;
+      continue;
+    }
     const realValue = value * 10 ** -decimals;
 
     const timestamp = new Date(timeStr);
-    if (Number.isNaN(timestamp.getTime())) continue;
+    if (Number.isNaN(timestamp.getTime())) {
+      skipped += 1;
+      continue;
+    }
 
     out.push({ price: realValue, timestamp });
   }
+
+  swapChartLog("parse_done", {
+    rawCount: points.length,
+    parsedCount: out.length,
+    skipped,
+    sampleFirst: out[0]
+      ? { price: out[0].price, time: out[0].timestamp.toISOString() }
+      : null,
+    sampleLast: out[out.length - 1]
+      ? {
+          price: out[out.length - 1]!.price,
+          time: out[out.length - 1]!.timestamp.toISOString(),
+        }
+      : null,
+  });
 
   return out.reverse();
 }
@@ -113,12 +159,35 @@ export async function fetchSwapChartSeries(
   url.searchParams.set("from", timeRange.from);
   url.searchParams.set("to", timeRange.to);
 
+      swapChartLog("fetch_start", {
+    resolution,
+    url: url.toString(),
+    from: timeRange.from,
+    to: timeRange.to,
+  });
+
   try {
+    const startedAt = Date.now();
     const response = await fetch(url.toString());
+    const elapsedMs = Date.now() - startedAt;
+
+    swapChartLog("fetch_response", {
+      status: response.status,
+      ok: response.ok,
+      elapsedMs,
+    });
+
     if (response.status === 429) {
       return { ok: false, error: "Rate limit exceeded. Retrying…", retryable: true };
     }
     if (!response.ok) {
+      let bodyPreview = "";
+      try {
+        bodyPreview = (await response.text()).slice(0, 240);
+      } catch {
+        bodyPreview = "(unreadable body)";
+      }
+      swapChartWarn("fetch_http_error", { status: response.status, bodyPreview });
       return {
         ok: false,
         error: `Failed to load chart (${response.status})`,
@@ -127,19 +196,34 @@ export async function fetchSwapChartSeries(
     }
 
     const data = await response.json();
+    swapChartLog("fetch_json", {
+      topLevelKeys: data && typeof data === "object" ? Object.keys(data as object) : [],
+    });
+
     const parsed = parseChartPoints(data);
     if (parsed.length === 0) {
+      swapChartWarn("fetch_no_parsed_points");
       return { ok: false, error: "No price data available", retryable: false };
     }
 
     const series = normalizeChartSeries(parsed);
     if (!series) {
+      swapChartWarn("fetch_normalize_failed");
       return { ok: false, error: "No price data available", retryable: false };
     }
+
+    swapChartLog("fetch_success", {
+      pointCount: series.points.length,
+      minPrice: series.minPrice,
+      maxPrice: series.maxPrice,
+      firstTs: series.firstTimestamp?.toISOString() ?? null,
+      lastTs: series.lastTimestamp?.toISOString() ?? null,
+    });
 
     return { ok: true, series };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
+    swapChartError("fetch_exception", { message, name: e instanceof Error ? e.name : "unknown" });
     return { ok: false, error: `Network error: ${message}`, retryable: true };
   }
 }
@@ -158,7 +242,9 @@ export async function fetchSwapMarketStats(): Promise<SwapMarketStats> {
 
   try {
     const url = `${SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "")}/api/v3/jettons/${encodeURIComponent(TON_JETTON_ADDRESS)}`;
+    swapChartLog("market_stats_start", { url });
     const response = await fetch(url);
+    swapChartLog("market_stats_response", { status: response.status, ok: response.ok });
     if (!response.ok) return empty;
 
     const data = await response.json();
@@ -172,7 +258,7 @@ export async function fetchSwapMarketStats(): Promise<SwapMarketStats> {
       return typeof v === "number" && Number.isFinite(v) ? v : null;
     };
 
-    return {
+    const stats = {
       priceUsd: num("price_usd"),
       mcap: num("mcap"),
       fdmc: num("fdmc"),
@@ -182,7 +268,12 @@ export async function fetchSwapMarketStats(): Promise<SwapMarketStats> {
       priceChange6h: num("price_change_6h"),
       priceChange24h: num("price_change_24h"),
     };
-  } catch {
+    swapChartLog("market_stats_success", stats);
+    return stats;
+  } catch (e) {
+    swapChartWarn("market_stats_exception", {
+      message: e instanceof Error ? e.message : String(e),
+    });
     return empty;
   }
 }

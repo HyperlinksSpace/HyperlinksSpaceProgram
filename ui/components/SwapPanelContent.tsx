@@ -1,4 +1,6 @@
+import { useEffect } from "react";
 import { View } from "react-native";
+import { swapChartLog } from "../swap/swapChartDebug";
 import { useSwapChart } from "../swap/useSwapChart";
 import { SwapChartView } from "./swap/SwapChartView";
 import { SwapRateRow } from "./SwapRateRow";
@@ -18,7 +20,15 @@ export function SwapPanelContent() {
     setSelectedPointIndex,
     marketStats,
     effectiveTonPriceUsd,
-  } = useSwapChart("m");
+  } = useSwapChart("d");
+
+  useEffect(() => {
+    swapChartLog("panel_mount", {
+      swapFirstRowTopInsetPx: layout.authenticatedHome.swapFirstRowTopInsetPx,
+      swapStatsRowTopGapPx: layout.authenticatedHome.swapStatsRowTopGapPx,
+      swapChartTopGapPx: layout.authenticatedHome.swapChartTopGapPx,
+    });
+  }, []);
 
   return (
     <View
@@ -28,12 +38,20 @@ export function SwapPanelContent() {
         alignSelf: "stretch",
         paddingTop: layout.authenticatedHome.swapFirstRowTopInsetPx,
         minHeight: 0,
+        overflow: "hidden",
       }}
     >
       <SwapRateRow
         intervalKey={intervalKey}
         onIntervalKeyChange={setIntervalKey}
-        tonPriceUsd={effectiveTonPriceUsd}
+        tonPriceUsd={
+          selectedPointIndex != null &&
+          series &&
+          selectedPointIndex >= 0 &&
+          selectedPointIndex < series.points.length
+            ? series.points[selectedPointIndex]!.price
+            : effectiveTonPriceUsd
+        }
       />
       <View style={{ marginTop: layout.authenticatedHome.swapStatsRowTopGapPx }}>
         <SwapStatsRow marketStats={marketStats} />
@@ -43,6 +61,7 @@ export function SwapPanelContent() {
           flex: 1,
           marginTop: layout.authenticatedHome.swapChartTopGapPx,
           minHeight: 0,
+          overflow: "hidden",
         }}
       >
         <SwapChartView

@@ -21,9 +21,7 @@ type Props = {
   marketStats: SwapMarketStats | null;
 };
 
-/**
- * Second swap row: seven equal columns; label (primary) and value (secondary), 10px / 20px Aeroport.
- */
+/** Stats legend row — Aeroport regular (labels + values). */
 export function SwapStatsRow({ marketStats }: Props) {
   const colors = useColors();
   const columns = buildColumns(marketStats);
@@ -35,6 +33,7 @@ export function SwapStatsRow({ marketStats }: Props) {
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
+        justifyContent: "space-around",
         width: "100%",
         alignSelf: "stretch",
       }}
@@ -43,8 +42,6 @@ export function SwapStatsRow({ marketStats }: Props) {
         <View
           key={`${index}-${col.label}`}
           style={{
-            flex: 1,
-            minWidth: 0,
             alignItems: "center",
             justifyContent: "flex-start",
           }}
@@ -52,6 +49,7 @@ export function SwapStatsRow({ marketStats }: Props) {
           <Text style={labelStyle} numberOfLines={1}>
             {col.label}
           </Text>
+          <View style={{ height: 5 }} />
           <Text style={valueStyle} numberOfLines={1}>
             {col.value}
           </Text>

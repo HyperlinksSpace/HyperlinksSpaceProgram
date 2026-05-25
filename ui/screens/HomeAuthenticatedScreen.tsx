@@ -546,6 +546,16 @@ export function HomeAuthenticatedScreen() {
   }, [isTripleColumn]);
 
   useEffect(() => {
+    if (!isWideHome || rightPanel !== "swap") return;
+    logPageDisplay("swap_panel_visible", {
+      windowWidth,
+      isTripleColumn,
+      rightPanel,
+      pathname,
+    });
+  }, [isWideHome, rightPanel, isTripleColumn, windowWidth, pathname]);
+
+  useEffect(() => {
     if (!isWideHome && rightPanel === "swap") {
       router.push("/swap" as any);
     }
@@ -1361,7 +1371,14 @@ export function HomeAuthenticatedScreen() {
         }
         right={
           rightPanel === "swap" ? (
-            <View style={{ flex: 1, width: "100%", alignSelf: "stretch" }}>
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                minHeight: 0,
+              }}
+            >
               <SwapPanelContent />
             </View>
           ) : (

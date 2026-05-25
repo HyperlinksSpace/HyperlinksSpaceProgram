@@ -1,12 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   LayoutChangeEvent,
   PanResponder,
   Platform,
+  StyleSheet,
   Text,
   View,
   type GestureResponderEvent,
+  type ViewStyle,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
@@ -19,12 +21,19 @@ import {
 import type { NormalizedChartSeries } from "../../swap/fetchSwapChart";
 import { pickChartPointIndex } from "../../swap/swapChartPointer";
 import { formatChartTimestamp, formatSwapPrice, maxPriceColumnWidth } from "../../swap/swapChartFormat";
-import { typographySansSemibold, useColors } from "../../theme";
+import { chartPointCoordinates } from "../../swap/swapChartPath";
+import { selectedDotX, selectedTimestampOffsetX } from "../../swap/swapChartSelectedTimestamp";
+import { swapChartLog, swapChartWarn } from "../../swap/swapChartDebug";
+import { typographyAeroport10, useColors } from "../../theme";
+import { SwapChartCanvas } from "./SwapChartCanvas";
 import { SwapChartLineSvg } from "./SwapChartLineSvg";
+import { SwapChartSelectionMarker } from "./SwapChartSelectionMarker";
 
+const CHART_TIMESTAMP_GAP_PX = 5;
 const CHART_TIMESTAMP_ROW_HEIGHT = 15;
 const CHART_PRICE_COLUMN_GAP = 5;
 const TEXT_CENTER_OFFSET = 4.5;
+const TIMESTAMP_CHAR_WIDTH_PX = 5.6;
 
 type Props = {
   resolution: SwapChartResolution;
@@ -48,16 +57,9 @@ export function SwapChartView({
   onSelectedPointIndexChange,
 }: Props) {
   const colors = useColors();
-  const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [outerSize, setOuterSize] = useState({ width: 0, height: 0 });
   const swipeStartXRef = useRef<number | null>(null);
-
-  const pointerStateRef = useRef({
-    series,
-    chartSize,
-    onSelectedPointIndexChange,
-  });
-  pointerStateRef.current = { series, chartSize, onSelectedPointIndexChange };
+  const pointerActiveRef = useRef(false);
 
   const priceColumnWidth = useMemo(
     () =>
@@ -69,17 +71,90 @@ export function SwapChartView({
     [series],
   );
 
-  const onChartLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    if (width > 0 && height > 0) {
-      setChartSize({ width, height });
-    }
-  }, []);
+  const chartSpaceHeight = useMemo(() => {
+    if (outerSize.height <= 0) return 0;
+    return Math.max(0, outerSize.height - CHART_TIMESTAMP_GAP_PX - CHART_TIMESTAMP_ROW_HEIGHT);
+  }, [outerSize.height]);
+
+  const derivedChartWidth = useMemo(() => {
+    if (outerSize.width <= 0) return 0;
+    return Math.max(0, outerSize.width - CHART_PRICE_COLUMN_GAP - priceColumnWidth);
+  }, [outerSize.width, priceColumnWidth]);
+
+  /** Chart drawable size from outer layout (prev-main: Expanded chart + fixed timestamp row). */
+  const renderSize = useMemo(
+    () => ({
+      width: derivedChartWidth,
+      height: chartSpaceHeight,
+    }),
+    [derivedChartWidth, chartSpaceHeight],
+  );
+
+  const pointerStateRef = useRef({
+    series,
+    chartSize: renderSize,
+    onSelectedPointIndexChange,
+  });
+  pointerStateRef.current = { series, chartSize: renderSize, onSelectedPointIndexChange };
 
   const onOuterLayout = useCallback((e: LayoutChangeEvent) => {
-    const { width } = e.nativeEvent.layout;
-    if (width > 0) setContainerWidth(width);
+    const { width, height } = e.nativeEvent.layout;
+    swapChartLog("view_outer_layout", { width, height, platform: Platform.OS });
+    setOuterSize((prev) => {
+      // Ignore transient 0×0 during column remount (wide ↔ triple); keeps chart visible.
+      if (width <= 0 || height <= 0) return prev;
+      if (prev.width === width && prev.height === height) return prev;
+      return { width, height };
+    });
   }, []);
+
+  useEffect(() => {
+    const phase = isLoading
+      ? "loading"
+      : error
+        ? "error"
+        : !series?.normalized.length
+          ? "empty-series"
+          : renderSize.width <= 0 || renderSize.height <= 0
+            ? "awaiting-layout"
+            : "rendering-chart";
+
+    swapChartLog("view_phase", {
+      phase,
+      isLoading,
+      error,
+      pointCount: series?.normalized.length ?? 0,
+      outerSize,
+      derivedChartWidth,
+      chartSpaceHeight,
+      renderSize,
+      priceColumnWidth,
+      selectedPointIndex,
+      resolution,
+      intervalKey,
+    });
+
+    if (phase === "awaiting-layout" && (series?.normalized.length ?? 0) > 0) {
+      swapChartWarn("view_data_ready_no_layout", {
+        outerSize,
+        derivedChartWidth,
+        chartSpaceHeight,
+        renderSize,
+      });
+    }
+  }, [
+    isLoading,
+    error,
+    series?.normalized.length,
+    outerSize,
+    derivedChartWidth,
+    chartSpaceHeight,
+    renderSize,
+    priceColumnWidth,
+    selectedPointIndex,
+    resolution,
+    intervalKey,
+  ]);
 
   const handlePointer = useCallback((x: number, y: number) => {
     const { series: s, chartSize: size, onSelectedPointIndexChange: onSelect } =
@@ -88,6 +163,62 @@ export function SwapChartView({
     const idx = pickChartPointIndex(x, y, size.width, size.height, s.normalized);
     if (idx != null) onSelect(idx);
   }, []);
+
+  const resolvePointerCoords = useCallback((e: GestureResponderEvent) => {
+    const ne = e.nativeEvent as {
+      locationX?: number;
+      locationY?: number;
+      offsetX?: number;
+      offsetY?: number;
+      clientX?: number;
+      clientY?: number;
+    };
+    if (typeof ne.offsetX === "number" && typeof ne.offsetY === "number") {
+      return { x: ne.offsetX, y: ne.offsetY };
+    }
+    const target = e.currentTarget as unknown as HTMLElement | null;
+    if (
+      target?.getBoundingClientRect &&
+      typeof ne.clientX === "number" &&
+      typeof ne.clientY === "number"
+    ) {
+      const rect = target.getBoundingClientRect();
+      return { x: ne.clientX - rect.left, y: ne.clientY - rect.top };
+    }
+    return { x: ne.locationX ?? 0, y: ne.locationY ?? 0 };
+  }, []);
+
+  const handleWebPointerDown = useCallback(
+    (e: GestureResponderEvent) => {
+      pointerActiveRef.current = true;
+      const el = e.currentTarget as unknown as HTMLElement | null;
+      const ne = e.nativeEvent as { pointerId?: number };
+      if (el?.setPointerCapture && typeof ne.pointerId === "number") {
+        try {
+          el.setPointerCapture(ne.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      const { x, y } = resolvePointerCoords(e);
+      handlePointer(x, y);
+    },
+    [handlePointer, resolvePointerCoords],
+  );
+
+  const handleWebPointerMove = useCallback(
+    (e: GestureResponderEvent) => {
+      if (!pointerActiveRef.current) return;
+      const { x, y } = resolvePointerCoords(e);
+      handlePointer(x, y);
+    },
+    [handlePointer, resolvePointerCoords],
+  );
+
+  const endWebPointer = useCallback(() => {
+    pointerActiveRef.current = false;
+    onSelectedPointIndexChange(null);
+  }, [onSelectedPointIndexChange]);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -99,20 +230,10 @@ export function SwapChartView({
       onPanResponderMove: (e) => {
         handlePointer(e.nativeEvent.locationX, e.nativeEvent.locationY);
       },
-      onPanResponderRelease: () => pointerStateRef.current.onSelectedPointIndexChange(null),
-      onPanResponderTerminate: () => pointerStateRef.current.onSelectedPointIndexChange(null),
+      onPanResponderRelease: () => onSelectedPointIndexChange(null),
+      onPanResponderTerminate: () => onSelectedPointIndexChange(null),
     }),
   ).current;
-
-  const webPointerProps =
-    Platform.OS === "web"
-      ? {
-          onMouseMove: (e: GestureResponderEvent) => {
-            handlePointer(e.nativeEvent.locationX, e.nativeEvent.locationY);
-          },
-          onMouseLeave: () => onSelectedPointIndexChange(null),
-        }
-      : {};
 
   const resolutionSwipeGesture = useMemo(
     () =>
@@ -125,10 +246,10 @@ export function SwapChartView({
         .onEnd((e) => {
           const startX = swipeStartXRef.current;
           swipeStartXRef.current = null;
-          if (startX == null || containerWidth <= 0) return;
+          if (startX == null || outerSize.width <= 0) return;
 
           const leftBound = SWAP_EDGE_SWIPE_GUARD_WIDTH_PX;
-          const rightBound = containerWidth - SWAP_EDGE_SWIPE_GUARD_WIDTH_PX;
+          const rightBound = outerSize.width - SWAP_EDGE_SWIPE_GUARD_WIDTH_PX;
           if (startX <= leftBound || startX >= rightBound) return;
 
           const velocity = e.velocityX;
@@ -140,18 +261,13 @@ export function SwapChartView({
             if (next !== intervalKey) onIntervalKeyChange(next);
           }
         }),
-    [containerWidth, intervalKey, onIntervalKeyChange],
+    [outerSize.width, intervalKey, onIntervalKeyChange],
   );
 
   const label10 = useMemo(
     () => [
-      typographySansSemibold,
-      {
-        fontSize: 10,
-        lineHeight: 10,
-        color: colors.secondary,
-        fontWeight: "400" as const,
-      },
+      typographyAeroport10,
+      { color: colors.secondary, fontSize: 10, lineHeight: 10 },
     ],
     [colors.secondary],
   );
@@ -161,57 +277,90 @@ export function SwapChartView({
     [label10],
   );
 
-  const renderTimestampRow = () => {
+  const selectionCoords = useMemo(() => {
     if (
-      selectedPointIndex != null &&
-      series &&
-      selectedPointIndex < series.points.length
+      selectedPointIndex == null ||
+      !series?.normalized.length ||
+      renderSize.width <= 0 ||
+      renderSize.height <= 0
     ) {
-      const point = series.points[selectedPointIndex]!;
+      return null;
+    }
+    return chartPointCoordinates(
+      selectedPointIndex,
+      series.normalized,
+      renderSize.width,
+      renderSize.height,
+    );
+  }, [selectedPointIndex, series?.normalized, renderSize.width, renderSize.height]);
+
+  const renderSelectedTimestampRow = () => {
+    if (
+      selectedPointIndex == null ||
+      !series ||
+      selectedPointIndex >= series.points.length ||
+      renderSize.width <= 0
+    ) {
+      return null;
+    }
+
+    const point = series.points[selectedPointIndex]!;
+    const label = formatChartTimestamp(
+      point.timestamp,
+      resolution,
+      series.firstTimestamp,
+      series.lastTimestamp,
+    );
+    const textWidth = label.length * TIMESTAMP_CHAR_WIDTH_PX;
+    const dotX = selectedDotX(selectedPointIndex, series.normalized.length, renderSize.width);
+    const offsetX = selectedTimestampOffsetX(dotX, renderSize.width, textWidth);
+
+    const textEl = (
+      <Text style={[...label10, { textAlign: "center" }]} numberOfLines={1}>
+        {label}
+      </Text>
+    );
+
+    if (offsetX == null) {
+      const align =
+        dotX - textWidth / 2 < 0 ? "flex-start" : dotX + textWidth / 2 > renderSize.width ? "flex-end" : "center";
       return (
-        <Text style={[...label10, { textAlign: "center" }]} numberOfLines={1}>
-          {formatChartTimestamp(
-            point.timestamp,
-            resolution,
-            series.firstTimestamp,
-            series.lastTimestamp,
-          )}
-        </Text>
+        <View style={[styles.timestampRowSelected, { alignItems: align as "flex-start" | "center" | "flex-end" }]}>
+          {textEl}
+        </View>
       );
     }
 
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <Text style={label10} numberOfLines={1}>
-          {formatChartTimestamp(
-            series?.firstTimestamp ?? null,
-            resolution,
-            series?.firstTimestamp ?? null,
-            series?.lastTimestamp ?? null,
-          )}
-        </Text>
-        <Text style={label10} numberOfLines={1}>
-          {formatChartTimestamp(
-            series?.lastTimestamp ?? null,
-            resolution,
-            series?.firstTimestamp ?? null,
-            series?.lastTimestamp ?? null,
-          )}
-        </Text>
+      <View style={styles.timestampRowSelected}>
+        <View style={{ transform: [{ translateX: offsetX }] }}>{textEl}</View>
       </View>
     );
   };
 
-  const renderPriceColumn = (height: number) => {
-    if (!series || height <= 0) {
-      return null;
-    }
+  const renderDefaultTimestampRow = () => (
+    <View style={styles.timestampRowInner}>
+      <Text style={label10} numberOfLines={1}>
+        {formatChartTimestamp(
+          series?.firstTimestamp ?? null,
+          resolution,
+          series?.firstTimestamp ?? null,
+          series?.lastTimestamp ?? null,
+        )}
+      </Text>
+      <Text style={label10} numberOfLines={1}>
+        {formatChartTimestamp(
+          series?.lastTimestamp ?? null,
+          resolution,
+          series?.firstTimestamp ?? null,
+          series?.lastTimestamp ?? null,
+        )}
+      </Text>
+    </View>
+  );
+
+  const renderPriceColumn = () => {
+    if (!series || chartSpaceHeight <= 0) return null;
 
     if (
       selectedPointIndex != null &&
@@ -220,8 +369,8 @@ export function SwapChartView({
     ) {
       const price = series.points[selectedPointIndex]!.price;
       const normalized = series.normalized[selectedPointIndex]!;
-      const dotY = height - normalized * height;
-      const textTop = Math.min(Math.max(0, dotY - TEXT_CENTER_OFFSET), height - 10);
+      const dotY = chartSpaceHeight - normalized * chartSpaceHeight;
+      const textTop = Math.min(Math.max(0, dotY - TEXT_CENTER_OFFSET), chartSpaceHeight - 10);
       return (
         <Text style={[priceLabelStyle, { position: "absolute", top: textTop, right: 0 }]}>
           {formatSwapPrice(price)}
@@ -229,7 +378,7 @@ export function SwapChartView({
       );
     }
 
-    const minTop = Math.max(0, height - 10);
+    const minTop = Math.max(0, chartSpaceHeight - 10);
     return (
       <>
         <Text style={[priceLabelStyle, { position: "absolute", top: 0, right: 0 }]}>
@@ -242,10 +391,30 @@ export function SwapChartView({
     );
   };
 
-  const renderChartCanvas = () => {
+  const webPointerHandlers =
+    Platform.OS === "web"
+      ? ({
+          onPointerDown: handleWebPointerDown,
+          onPointerMove: handleWebPointerMove,
+          onPointerUp: endWebPointer,
+          onPointerCancel: endWebPointer,
+          onPointerLeave: endWebPointer,
+          onMouseDown: handleWebPointerDown,
+          onMouseMove: (e: GestureResponderEvent) => {
+            if (pointerActiveRef.current) {
+              const { x, y } = resolvePointerCoords(e);
+              handlePointer(x, y);
+            }
+          },
+          onMouseUp: endWebPointer,
+          onMouseLeave: endWebPointer,
+        } as Record<string, unknown>)
+      : panResponder.panHandlers;
+
+  const renderChartBody = () => {
     if (isLoading) {
       return (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <View style={styles.chartCentered}>
           <ActivityIndicator size="small" color={colors.secondary} />
         </View>
       );
@@ -253,72 +422,165 @@ export function SwapChartView({
 
     if (error) {
       return (
-        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 8 }}>
+        <View style={[styles.chartCentered, { padding: 8 }]}>
           <Text style={[...label10, { textAlign: "center" }]}>{error}</Text>
         </View>
       );
     }
 
     if (!series?.normalized.length) {
-      return <View style={{ flex: 1 }} />;
+      return null;
     }
 
-    const chartBody = (
+    const ready = renderSize.width > 0 && renderSize.height > 0;
+    if (!ready) return null;
+
+    const chartSlot = (
       <View
-        style={{ flex: 1 }}
-        onLayout={onChartLayout}
-        {...(Platform.OS === "web" ? webPointerProps : panResponder.panHandlers)}
+        style={[
+          styles.chartSlot,
+          {
+            width: renderSize.width,
+            height: renderSize.height,
+          },
+          Platform.OS === "web"
+            ? ({ touchAction: "none", cursor: "crosshair" } as unknown as ViewStyle)
+            : null,
+        ]}
       >
-        {chartSize.width > 0 && chartSize.height > 0 ? (
-          <SwapChartLineSvg
-            width={chartSize.width}
-            height={chartSize.height}
-            normalizedPoints={series.normalized}
-            selectedPointIndex={selectedPointIndex}
-            lineColor={colors.primary}
-            dotFillColor={colors.background}
-            dotStrokeColor={colors.primary}
+        <View pointerEvents="none" style={{ width: renderSize.width, height: renderSize.height }}>
+          {Platform.OS === "web" ? (
+            <SwapChartCanvas
+              width={renderSize.width}
+              height={renderSize.height}
+              normalizedPoints={series.normalized}
+              lineColor={colors.primary}
+            />
+          ) : (
+            <SwapChartLineSvg
+              width={renderSize.width}
+              height={renderSize.height}
+              normalizedPoints={series.normalized}
+              lineColor={colors.primary}
+            />
+          )}
+        </View>
+        {selectionCoords ? (
+          <SwapChartSelectionMarker
+            x={selectionCoords.x}
+            y={selectionCoords.y}
+            fillColor={colors.background}
+            strokeColor={colors.primary}
           />
         ) : null}
+        <View
+          style={[StyleSheet.absoluteFill, styles.pointerLayer]}
+          {...webPointerHandlers}
+        />
       </View>
     );
 
     if (Platform.OS === "web") {
-      return chartBody;
+      return chartSlot;
     }
 
-    return <GestureDetector gesture={resolutionSwipeGesture}>{chartBody}</GestureDetector>;
+    return <GestureDetector gesture={resolutionSwipeGesture}>{chartSlot}</GestureDetector>;
   };
 
-  const chartSpaceHeight = chartSize.height;
-
   return (
-    <View style={{ flex: 1, width: "100%", minHeight: 120 }} onLayout={onOuterLayout}>
-      <View style={{ flex: 1, flexDirection: "row", alignItems: "flex-start" }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <View style={{ flex: 1, minHeight: 0 }}>{renderChartCanvas()}</View>
-          <View style={{ height: CHART_PRICE_COLUMN_GAP }} />
+    <View style={styles.root} onLayout={onOuterLayout}>
+      <View style={styles.row}>
+        <View style={styles.leftColumn}>
           <View
-            style={{
-              height: CHART_TIMESTAMP_ROW_HEIGHT,
-              justifyContent: "center",
-            }}
+            style={[
+              styles.chartArea,
+              chartSpaceHeight > 0
+                ? { height: chartSpaceHeight, flexGrow: 0, flexShrink: 0 }
+                : null,
+            ]}
           >
-            {renderTimestampRow()}
+            {renderChartBody()}
+          </View>
+          <View style={{ height: CHART_TIMESTAMP_GAP_PX }} />
+          <View style={styles.timestampRow}>
+            {selectedPointIndex != null ? renderSelectedTimestampRow() : renderDefaultTimestampRow()}
           </View>
         </View>
         <View style={{ width: CHART_PRICE_COLUMN_GAP }} />
         <View
-          style={{
-            width: priceColumnWidth,
-            height: chartSpaceHeight > 0 ? chartSpaceHeight : undefined,
-            alignSelf: "flex-start",
-            position: "relative",
-          }}
+          style={[
+            styles.priceColumn,
+            chartSpaceHeight > 0 ? { height: chartSpaceHeight } : null,
+            { width: priceColumnWidth },
+          ]}
         >
-          {chartSpaceHeight > 0 ? renderPriceColumn(chartSpaceHeight) : null}
+          {renderPriceColumn()}
         </View>
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+    alignSelf: "stretch",
+    overflow: "hidden",
+  },
+  row: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  leftColumn: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  chartArea: {
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  chartSlot: {
+    position: "relative",
+    alignSelf: "flex-start",
+  },
+  pointerLayer: {
+    zIndex: 2,
+  },
+  chartCentered: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 0,
+  },
+  timestampRow: {
+    height: CHART_TIMESTAMP_ROW_HEIGHT,
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  timestampRowInner: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+  },
+  timestampRowSelected: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  priceColumn: {
+    position: "relative",
+    overflow: "hidden",
+  },
+});
