@@ -48,3 +48,13 @@ export const SWAP_MAX_TIME_RANGE_DAYS: Record<SwapChartResolution, number> = {
 
 export const CHART_RATE_LIMIT_MS = 1000;
 export const CHART_MAX_RETRIES = 5;
+
+/** Gap between chart line area and timestamp row (prev-main). */
+export const SWAP_CHART_TIMESTAMP_GAP_PX = 5;
+export const SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX = 15;
+/** Minimum drawable height for the price line (not including timestamps). */
+export const SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX = 55;
+export const SWAP_CHART_BLOCK_MIN_HEIGHT_PX =
+  SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX +
+  SWAP_CHART_TIMESTAMP_GAP_PX +
+  SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX;

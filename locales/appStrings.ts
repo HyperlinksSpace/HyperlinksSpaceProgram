@@ -58,6 +58,10 @@ const en = {
   "global.bottomBar.premade1": "What is the universe?",
   "global.bottomBar.premade2": "Tell me about dogs token",
 
+  "home.mainColumnFooter.telegramMessages": "Telegram Messages",
+
+  "swap.footer.insufficientAmount": "Insufficient amount",
+
   "global.logoBar.about": "About",
   "global.logoBar.aboutHint": "Opens the Hyperlinks Space Program landing page in the browser",
   "global.logoBar.wordmarkA11y": "Hyperlinks Space",
@@ -185,6 +189,10 @@ const ru = {
   "global.bottomBar.placeholderWeb": "ИИ и поиск",
   "global.bottomBar.premade1": "Что такое Вселенная?",
   "global.bottomBar.premade2": "Расскажи про токен dogs",
+
+  "home.mainColumnFooter.telegramMessages": "Сообщения Telegram",
+
+  "swap.footer.insufficientAmount": "Недостаточная сумма",
 
   "global.logoBar.about": "О программе",
   "global.logoBar.aboutHint": "Откроет сайт программы Hyperlinks Space в браузере",

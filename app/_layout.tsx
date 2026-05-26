@@ -10,11 +10,7 @@ import {
   KeyboardAvoidingView,
   AppState,
   Alert,
-  ScrollView,
   useWindowDimensions,
-  type LayoutChangeEvent,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   type ViewStyle,
 } from "react-native";
 import { Stack } from "expo-router";
@@ -24,25 +20,23 @@ import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
+import { HspScrollColumn } from "../ui/components/HspScrollColumn";
+import {
+  MainColumnInactiveFooter,
+  SwapColumnInactiveFooter,
+} from "../ui/components/InactiveWelcomeColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
-import {
-  scrollIndicatorHairlineBorderWidthPx,
-  scrollIndicatorThumbSpanAndOffset,
-  snapScrollIndicatorCoordPx,
-} from "../ui/scrollIndicatorPx";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ComponentRef,
   type ReactNode,
 } from "react";
 
@@ -114,6 +108,29 @@ function useWebViewportAllowsPageZoom() {
     parts.push("minimum-scale=0.25", "maximum-scale=5", "user-scalable=yes");
     meta.setAttribute("content", parts.join(", "));
   }, []);
+}
+
+/** Narrow authenticated `/` and `/swap`: inactive column footers; other routes keep {@link GlobalBottomBar}. */
+function AuthenticatedScreenFooter({
+  pathname,
+  bottomBarDock,
+  isAuthenticated,
+  themeBgReady,
+  useTelegramTheme,
+}: {
+  pathname: string | null | undefined;
+  bottomBarDock: ReturnType<typeof authenticatedHomeBottomBarDock>;
+  isAuthenticated: boolean;
+  themeBgReady: boolean;
+  useTelegramTheme: boolean;
+}) {
+  if (!isAuthenticated || bottomBarDock !== "screenFooter") return null;
+  if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
+  if (pathname === "/swap") return <SwapColumnInactiveFooter />;
+  if (pathname === "/" || pathname === "" || pathname == null) {
+    return <MainColumnInactiveFooter />;
+  }
+  return <GlobalBottomBar />;
 }
 
 function RootContent() {
@@ -291,9 +308,13 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <MainWebScrollColumn indicatorColor={colors.accent}>
+        <HspScrollColumn
+          indicatorColor={colors.accent}
+          style={styles.mainShell}
+          contentContainerStyle={styles.mainScrollContent}
+        >
           <Stack screenOptions={{ headerShown: false }} />
-        </MainWebScrollColumn>
+        </HspScrollColumn>
       ) : (
         <View style={styles.main}>
           <Stack screenOptions={{ headerShown: false }} />
@@ -303,195 +324,17 @@ function RootContent() {
         // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
         // Wide authenticated home mounts the same bar inside split columns instead.
         Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? (
-          bottomBarDock === "screenFooter" ? <GlobalBottomBar /> : null
+          <AuthenticatedScreenFooter
+            pathname={pathname}
+            bottomBarDock={bottomBarDock}
+            isAuthenticated={isAuthenticated}
+            themeBgReady={themeBgReady}
+            useTelegramTheme={useTelegramTheme}
+          />
         ) : null
       }
       {authHydrated && authReady && (isAuthenticated || isWelcomeLayoutRoute(pathname, auth)) ? (
         <FloatingShield />
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * Web: `global.css` keeps vertical overflow in the app column; root allows horizontal overflow when zoomed.
- * Custom indicator: 1px vertical line, theme `accent`, inset `layout.bottomBar.scrollbarRightInsetPx` from the right.
- * Hidden until content height is known and exceeds the viewport (web: DOM sync on load + ResizeObserver).
- */
-function MainWebScrollColumn({
-  children,
-  indicatorColor,
-}: {
-  children: ReactNode;
-  /** Scroll thumb / overlay line: theme `accent`. */
-  indicatorColor: string;
-}) {
-  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
-  const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
-
-  /** RN-web: read real scrollHeight vs clientHeight on first paint (onContentSizeChange can lag). */
-  const syncScrollMetricsFromDom = useCallback(() => {
-    if (Platform.OS !== "web") return;
-    const instance = scrollRef.current as unknown as {
-      getScrollableNode?: () => HTMLElement | null | undefined;
-    } | null;
-    const el = instance?.getScrollableNode?.();
-    if (!el) return;
-    const layoutH = el.clientHeight;
-    const contentH = el.scrollHeight;
-    const scrollY = el.scrollTop;
-    if (layoutH <= 0) return;
-    setScroll((prev) => ({
-      ...prev,
-      layoutH,
-      scrollY,
-      ...(contentH > 0 ? { contentH } : {}),
-    }));
-  }, []);
-
-  useLayoutEffect(() => {
-    if (Platform.OS !== "web") return;
-    syncScrollMetricsFromDom();
-    const id = requestAnimationFrame(() => {
-      syncScrollMetricsFromDom();
-      requestAnimationFrame(syncScrollMetricsFromDom);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [syncScrollMetricsFromDom, children]);
-
-  /**
-   * Web: hide the **native** scrollbar (it is much wider than 1px). Scrolling stays on the same node;
-   * the thin custom overlay is drawn in React. `scrollbar-color` alone does not set width.
-   */
-  useLayoutEffect(() => {
-    if (Platform.OS !== "web") return;
-    const run = () => {
-      const instance = scrollRef.current as unknown as {
-        getScrollableNode?: () => HTMLElement | null | undefined;
-      } | null;
-      const el = instance?.getScrollableNode?.();
-      if (!el?.style) return;
-      el.classList.add("hsp-main-scroll-hide-native-scrollbar");
-      el.style.setProperty("scrollbar-width", "none");
-      el.style.setProperty("-ms-overflow-style", "none");
-    };
-    const id = requestAnimationFrame(() => {
-      run();
-      requestAnimationFrame(run);
-    });
-    return () => cancelAnimationFrame(id);
-  }, [children]);
-
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof ResizeObserver === "undefined") return;
-    const t = requestAnimationFrame(() => {
-      resizeObserverRef.current?.disconnect();
-      const instance = scrollRef.current as unknown as {
-        getScrollableNode?: () => HTMLElement | null | undefined;
-      } | null;
-      const scrollEl = instance?.getScrollableNode?.();
-      if (!scrollEl) return;
-      const ro = new ResizeObserver(() => syncScrollMetricsFromDom());
-      resizeObserverRef.current = ro;
-      ro.observe(scrollEl);
-      const inner = scrollEl.firstElementChild;
-      if (inner) ro.observe(inner);
-    });
-    return () => {
-      cancelAnimationFrame(t);
-      resizeObserverRef.current?.disconnect();
-      resizeObserverRef.current = null;
-    };
-  }, [syncScrollMetricsFromDom, children]);
-
-  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const ne = e.nativeEvent;
-    const ch = ne.contentSize?.height ?? 0;
-    setScroll((prev) => ({
-      ...prev,
-      scrollY: ne.contentOffset.y,
-      ...(ch > 0 ? { contentH: ch } : {}),
-    }));
-    if (Platform.OS === "web") {
-      syncScrollMetricsFromDom();
-    }
-  };
-
-  const onLayout = (e: LayoutChangeEvent) => {
-    const lh = e.nativeEvent.layout.height;
-    setScroll((prev) => ({ ...prev, layoutH: lh }));
-    if (Platform.OS === "web") {
-      requestAnimationFrame(syncScrollMetricsFromDom);
-    }
-  };
-
-  const onContentSizeChange = (_w: number, h: number) => {
-    setScroll((prev) => ({ ...prev, contentH: h }));
-    if (Platform.OS === "web") {
-      requestAnimationFrame(syncScrollMetricsFromDom);
-    }
-  };
-
-  const indicator = useMemo(() => {
-    const viewH = scroll.layoutH;
-    const contentH = scroll.contentH;
-    const y = scroll.scrollY;
-    if (viewH <= 0 || contentH <= 0 || contentH <= viewH + 0.5) {
-      return { show: false as const, thumbH: 0, thumbTop: 0 };
-    }
-    const maxScroll = Math.max(1e-6, contentH - viewH);
-    const { thumbSpan, thumbOffset } = scrollIndicatorThumbSpanAndOffset(
-      viewH,
-      viewH,
-      contentH,
-      y,
-      maxScroll,
-    );
-    const hairline = scrollIndicatorHairlineBorderWidthPx();
-    const thumbH = Math.max(hairline, thumbSpan);
-    const thumbTop = thumbOffset;
-    return { show: true as const, thumbH, thumbTop };
-  }, [scroll]);
-
-  return (
-    <View style={styles.mainShell}>
-      <ScrollView
-        ref={scrollRef}
-        style={styles.mainScroll}
-        contentContainerStyle={styles.mainScrollContent}
-        showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        onLayout={onLayout}
-        onContentSizeChange={onContentSizeChange}
-        scrollEventThrottle={16}
-      >
-        {children}
-      </ScrollView>
-      {indicator.show ? (
-        <View
-          style={[
-            styles.scrollIndicatorWrap,
-            { right: snapScrollIndicatorCoordPx(layout.bottomBar.scrollbarRightInsetPx) },
-          ]}
-        >
-          <View
-            {...(Platform.OS === "web"
-              ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
-              : {})}
-            style={[
-              styles.scrollIndicatorThumb,
-              {
-                top: indicator.thumbTop,
-                height: indicator.thumbH,
-                width: 0,
-                borderLeftWidth: scrollIndicatorHairlineBorderWidthPx(),
-                borderLeftColor: indicatorColor,
-                borderStyle: "solid",
-              },
-            ]}
-          />
-        </View>
       ) : null}
     </View>
   );
@@ -523,25 +366,8 @@ const styles = StyleSheet.create({
     minHeight: 0,
     position: "relative",
   },
-  mainScroll: {
-    flex: 1,
-  },
   /** Lets `flex: 1` screens fill at least the column height so centered content is not clipped (RN-web). */
   mainScrollContent: {
     flexGrow: 1,
-  },
-  scrollIndicatorWrap: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 0,
-    overflow: "visible",
-    zIndex: 20,
-    pointerEvents: "none",
-  },
-  scrollIndicatorThumb: {
-    position: "absolute",
-    right: 0,
-    top: 0,
   },
 });

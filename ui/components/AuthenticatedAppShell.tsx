@@ -25,7 +25,6 @@ export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
           flex: 1,
           width: "100%",
           paddingHorizontal: layout.contentSideInsetPx,
-          paddingBottom: layout.authenticatedHome.contentInsetBottom,
         }}
       >
         {children}

@@ -12,6 +12,9 @@ import {
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import {
+  SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX,
+  SWAP_CHART_TIMESTAMP_GAP_PX,
+  SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX,
   SWAP_EDGE_SWIPE_GUARD_WIDTH_PX,
   SWAP_RESOLUTION_SWIPE_VELOCITY_THRESHOLD,
   stepSwapIntervalKey,
@@ -29,8 +32,6 @@ import { SwapChartCanvas } from "./SwapChartCanvas";
 import { SwapChartLineSvg } from "./SwapChartLineSvg";
 import { SwapChartSelectionMarker } from "./SwapChartSelectionMarker";
 
-const CHART_TIMESTAMP_GAP_PX = 5;
-const CHART_TIMESTAMP_ROW_HEIGHT = 15;
 const CHART_PRICE_COLUMN_GAP = 5;
 const TEXT_CENTER_OFFSET = 4.5;
 const TIMESTAMP_CHAR_WIDTH_PX = 5.6;
@@ -44,6 +45,8 @@ type Props = {
   error: string | null;
   selectedPointIndex: number | null;
   onSelectedPointIndexChange: (index: number | null) => void;
+  /** When false, chart block keeps at least {@link SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX} for scroll layouts. */
+  expandToFill?: boolean;
 };
 
 export function SwapChartView({
@@ -55,6 +58,7 @@ export function SwapChartView({
   error,
   selectedPointIndex,
   onSelectedPointIndexChange,
+  expandToFill = true,
 }: Props) {
   const colors = useColors();
   const [outerSize, setOuterSize] = useState({ width: 0, height: 0 });
@@ -72,8 +76,9 @@ export function SwapChartView({
   );
 
   const chartSpaceHeight = useMemo(() => {
-    if (outerSize.height <= 0) return 0;
-    return Math.max(0, outerSize.height - CHART_TIMESTAMP_GAP_PX - CHART_TIMESTAMP_ROW_HEIGHT);
+    const overhead = SWAP_CHART_TIMESTAMP_GAP_PX + SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX;
+    if (outerSize.height <= 0) return SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX;
+    return Math.max(SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX, outerSize.height - overhead);
   }, [outerSize.height]);
 
   const derivedChartWidth = useMemo(() => {
@@ -488,7 +493,10 @@ export function SwapChartView({
   };
 
   return (
-    <View style={styles.root} onLayout={onOuterLayout}>
+    <View
+      style={[styles.root, expandToFill ? styles.rootFill : styles.rootIntrinsic]}
+      onLayout={onOuterLayout}
+    >
       <View style={styles.row}>
         <View style={styles.leftColumn}>
           <View
@@ -501,7 +509,7 @@ export function SwapChartView({
           >
             {renderChartBody()}
           </View>
-          <View style={{ height: CHART_TIMESTAMP_GAP_PX }} />
+          <View style={{ height: SWAP_CHART_TIMESTAMP_GAP_PX }} />
           <View style={styles.timestampRow}>
             {selectedPointIndex != null ? renderSelectedTimestampRow() : renderDefaultTimestampRow()}
           </View>
@@ -523,11 +531,19 @@ export function SwapChartView({
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
     width: "100%",
-    minHeight: 0,
     alignSelf: "stretch",
     overflow: "hidden",
+  },
+  rootFill: {
+    flex: 1,
+    minHeight: 0,
+  },
+  rootIntrinsic: {
+    minHeight:
+      SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX +
+      SWAP_CHART_TIMESTAMP_GAP_PX +
+      SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX,
   },
   row: {
     flex: 1,
@@ -544,7 +560,7 @@ const styles = StyleSheet.create({
   },
   chartArea: {
     flex: 1,
-    minHeight: 0,
+    minHeight: SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX,
     width: "100%",
     alignSelf: "stretch",
   },
@@ -562,7 +578,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   timestampRow: {
-    height: CHART_TIMESTAMP_ROW_HEIGHT,
+    height: SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX,
     justifyContent: "center",
     overflow: "hidden",
   },

@@ -3,16 +3,12 @@ import { Pressable, Text, View } from "react-native";
 import { SWAP_BUY_AMOUNT_TON } from "../../swap/fetchSwapAmount";
 import { formatSwapPrice, formatSwapTokenAmount } from "../../swap/swapChartFormat";
 import { useSwapAmount } from "../../swap/useSwapAmount";
-import { typographyAeroport15, typographyAeroport20, typographyRect15, useColors } from "../../theme";
+import { typographyAeroport15, typographyAeroport20, useColors } from "../../theme";
 import { SwapRotateIcon, SwapSelectChevron } from "./SwapFormIcons";
 import { SwapSampleTokenStrip } from "./SwapSampleTokenStrip";
 import { swapDllrTokenImage, swapTonTokenImage } from "./swapFormAssets";
 
 const SWAP_MUTED = "#818181";
-
-/** Matches welcome auth row (`WelcomeAuthButtons` `BUTTON_HEIGHT`). */
-const INACTIVE_CTA_HEIGHT_PX = 40;
-const INACTIVE_CTA_HORIZONTAL_PADDING_PX = 20;
 
 const amountTextStyle = [typographyAeroport20, { fontWeight: "500" as const }];
 const muted15 = [typographyAeroport15, { color: SWAP_MUTED }];
@@ -150,24 +146,6 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
           <Text style={muted15}>{sellPriceText}</Text>
           <Text style={muted15}>TON</Text>
         </View>
-      </View>
-
-      <View
-        accessibilityRole="button"
-        accessibilityState={{ disabled: true }}
-        style={{
-          marginBottom: 10,
-          width: "100%",
-          height: INACTIVE_CTA_HEIGHT_PX,
-          paddingHorizontal: INACTIVE_CTA_HORIZONTAL_PADDING_PX,
-          backgroundColor: colors.undercover,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={[typographyRect15, { color: colors.secondary, textAlign: "center" }]}>
-          Insufficient amount
-        </Text>
       </View>
     </View>
   );

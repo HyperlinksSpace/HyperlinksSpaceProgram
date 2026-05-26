@@ -10,6 +10,10 @@ import {
 } from "react";
 import { ActivityIndicator, Button, Text, View, useWindowDimensions } from "react-native";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
+import {
+  MainColumnInactiveFooter,
+  SwapColumnInactiveFooter,
+} from "../components/InactiveWelcomeColumnFooter";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
@@ -561,6 +565,8 @@ export function HomeAuthenticatedScreen() {
     }
   }, [isWideHome, rightPanel, router]);
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
+  const mainColumnFooter = <MainColumnInactiveFooter />;
+  const swapColumnFooter = <SwapColumnInactiveFooter />;
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
   const [createdWalletAddress, setCreatedWalletAddress] = useState<string | null>(null);
@@ -1293,6 +1299,7 @@ export function HomeAuthenticatedScreen() {
         activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
       />
       <AuthenticatedHomeSplitBody
+        leftColumnFooter={isWideHome ? mainColumnFooter : null}
         left={
           <>
             <AuthenticatedHomeLeftNavStrip
@@ -1385,7 +1392,13 @@ export function HomeAuthenticatedScreen() {
             <View style={{ flex: 1 }} />
           )
         }
-        middleColumnFooter={aiBarDock === "splitColumn2" ? embeddedAiBar : null}
+        middleColumnFooter={
+          swapActiveOnWide
+            ? swapColumnFooter
+            : aiBarDock === "splitColumn2"
+              ? embeddedAiBar
+              : null
+        }
         thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
       />
     </AuthenticatedHomeChrome>

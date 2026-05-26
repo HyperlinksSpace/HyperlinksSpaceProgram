@@ -71,12 +71,16 @@ type Props = {
   /** Third (rightmost) column when `rowWidth > secondBreakpoint`; optional placeholder if omitted. */
   farRight?: ReactNode;
   /**
-   * Wide two-column layout: same {@link GlobalBottomBar} instance as the root footer, pinned under `right`.
-   * Root layout omits the footer when this is set (see `authenticatedHomeBottomBarDock`).
+   * Feed / main column: inactive footer pinned under `left` (all breakpoints when set).
+   */
+  leftColumnFooter?: ReactNode;
+  /**
+   * Wide two-column layout: footer pinned under `right` (swap or {@link GlobalBottomBar}).
+   * Root layout omits the screen footer when this is set (see `authenticatedHomeBottomBarDock`).
    */
   middleColumnFooter?: ReactNode;
   /**
-   * Wide three-column layout: same bar pinned under `farRight`; `middleColumnFooter` should be omitted.
+   * Wide three-column layout: footer pinned under `farRight` (typically {@link GlobalBottomBar}).
    */
   thirdColumnFooter?: ReactNode;
 };
@@ -90,6 +94,7 @@ export function AuthenticatedHomeSplitBody({
   left,
   right,
   farRight,
+  leftColumnFooter,
   middleColumnFooter,
   thirdColumnFooter,
 }: Props) {
@@ -732,7 +737,14 @@ export function AuthenticatedHomeSplitBody({
     >
       <AuthenticatedHomeSplitLayoutMetricsProvider value={splitLayoutMetrics}>
         {!isWide ? (
-          <View style={{ flex: 1, width: "100%" }}>{left}</View>
+          leftColumnFooter ? (
+            <View style={{ flex: 1, width: "100%", flexDirection: "column", minHeight: 0 }}>
+              <View style={{ flex: 1, minHeight: 0 }}>{left}</View>
+              <View style={columnAiBarWrapStyle}>{leftColumnFooter}</View>
+            </View>
+          ) : (
+            <View style={{ flex: 1, width: "100%" }}>{left}</View>
+          )
         ) : (
           <View
             style={{
@@ -744,15 +756,29 @@ export function AuthenticatedHomeSplitBody({
               position: "relative",
             }}
           >
-            <View
-              style={{
-                width: leftPanePx,
-                flexShrink: 0,
-                paddingBottom: bottomInset,
-              }}
-            >
-              {left}
-            </View>
+            {leftColumnFooter ? (
+              <View
+                style={{
+                  width: leftPanePx,
+                  flexShrink: 0,
+                  flexDirection: "column",
+                  minHeight: 0,
+                }}
+              >
+                <View style={{ flex: 1, minHeight: 0 }}>{left}</View>
+                <View style={columnAiBarWrapStyle}>{leftColumnFooter}</View>
+              </View>
+            ) : (
+              <View
+                style={{
+                  width: leftPanePx,
+                  flexShrink: 0,
+                  paddingBottom: bottomInset,
+                }}
+              >
+                {left}
+              </View>
+            )}
             {middleColumn}
             {thirdColumn}
             <View

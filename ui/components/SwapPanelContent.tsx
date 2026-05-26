@@ -1,14 +1,16 @@
-import { useEffect } from "react";
-import { View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, type LayoutChangeEvent } from "react-native";
+import { SWAP_CHART_BLOCK_MIN_HEIGHT_PX } from "../swap/swapChartConstants";
 import { swapChartLog } from "../swap/swapChartDebug";
 import { useSwapChart } from "../swap/useSwapChart";
+import { HspScrollColumn, type HspScrollMetrics } from "./HspScrollColumn";
 import { SwapChartView } from "./swap/SwapChartView";
 import { SwapFormBelowChart } from "./swap/SwapFormBelowChart";
 import { SwapRateRow } from "./SwapRateRow";
 import { SwapStatsRow } from "./SwapStatsRow";
 import { layout } from "../theme";
 
-/** Swap panel body: rate row, stats, and interactive chart (fills remaining height). */
+/** Swap panel body: rate row, stats, chart (min 55px line area), and buy/sell form. Scrolls when content exceeds viewport (footer bar excluded). */
 export function SwapPanelContent() {
   const {
     intervalKey,
@@ -23,6 +25,11 @@ export function SwapPanelContent() {
     effectiveTonPriceUsd,
   } = useSwapChart("d");
 
+  const [viewportH, setViewportH] = useState(0);
+  /** `null` = intrinsic measure pass; then fixed scroll vs flex-fill layout. */
+  const [needsScroll, setNeedsScroll] = useState<boolean | null>(null);
+  const scrollLayoutReady = needsScroll !== null;
+
   useEffect(() => {
     swapChartLog("panel_mount", {
       swapFirstRowTopInsetPx: layout.authenticatedHome.swapFirstRowTopInsetPx,
@@ -30,6 +37,35 @@ export function SwapPanelContent() {
       swapChartTopGapPx: layout.authenticatedHome.swapChartTopGapPx,
     });
   }, []);
+
+  useEffect(() => {
+    setNeedsScroll(null);
+  }, [viewportH]);
+
+  const onViewportLayout = useCallback((e: LayoutChangeEvent) => {
+    setViewportH(e.nativeEvent.layout.height);
+  }, []);
+
+  const onScrollMetrics = useCallback((metrics: HspScrollMetrics) => {
+    if (needsScroll !== null) return;
+    const overflow = metrics.layoutH > 0 && metrics.contentH > metrics.layoutH + 0.5;
+    setNeedsScroll(overflow);
+    swapChartLog("panel_scroll_state", {
+      viewportH,
+      layoutH: metrics.layoutH,
+      contentH: metrics.contentH,
+      needsScroll: overflow,
+    });
+  }, [viewportH, needsScroll]);
+
+  const ah = layout.authenticatedHome;
+  const contentInset = layout.contentSideInsetPx;
+  /** Bleed scroll shell to column/screen edge so the thumb uses {@link layout.scrollIndicatorRightInsetPx} like welcome `/`. */
+  const scrollShellBleed = { marginHorizontal: -contentInset };
+  const scrollContentPadding = {
+    paddingTop: ah.swapFirstRowTopInsetPx,
+    paddingHorizontal: contentInset,
+  };
 
   const displayTonPriceUsd =
     selectedPointIndex != null &&
@@ -45,12 +81,23 @@ export function SwapPanelContent() {
         flex: 1,
         width: "100%",
         alignSelf: "stretch",
-        paddingTop: layout.authenticatedHome.swapFirstRowTopInsetPx,
         minHeight: 0,
-        overflow: "hidden",
       }}
+      onLayout={onViewportLayout}
     >
-      <View style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+      <HspScrollColumn
+        style={{ flex: 1, ...scrollShellBleed }}
+        onMetricsChange={onScrollMetrics}
+        contentContainerStyle={
+          scrollLayoutReady && !needsScroll
+            ? {
+                ...scrollContentPadding,
+                flexGrow: 1,
+                ...(viewportH > 0 ? { minHeight: viewportH } : {}),
+              }
+            : scrollContentPadding
+        }
+      >
         <SwapRateRow
           intervalKey={intervalKey}
           onIntervalKeyChange={setIntervalKey}
@@ -61,10 +108,9 @@ export function SwapPanelContent() {
         </View>
         <View
           style={{
-            flex: 1,
             marginTop: layout.authenticatedHome.swapChartTopGapPx,
-            minHeight: 0,
-            overflow: "hidden",
+            minHeight: SWAP_CHART_BLOCK_MIN_HEIGHT_PX,
+            ...(scrollLayoutReady && !needsScroll ? { flex: 1 } : null),
           }}
         >
           <SwapChartView
@@ -76,10 +122,11 @@ export function SwapPanelContent() {
             error={chartError}
             selectedPointIndex={selectedPointIndex}
             onSelectedPointIndexChange={setSelectedPointIndex}
+            expandToFill={scrollLayoutReady && !needsScroll}
           />
         </View>
-      </View>
-      <SwapFormBelowChart effectiveTonPriceUsd={displayTonPriceUsd} />
+        <SwapFormBelowChart effectiveTonPriceUsd={displayTonPriceUsd} />
+      </HspScrollColumn>
     </View>
   );
 }

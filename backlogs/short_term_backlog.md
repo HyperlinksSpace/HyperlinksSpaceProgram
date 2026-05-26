@@ -1,4 +1,6 @@
-Logo on Swap Page
+Shield and settings positioning
+Resizing bugs fix
+Rotation icon positioning
 Back buttons on swap page outside TMA
 Main menu in Russian
 Swap page layout

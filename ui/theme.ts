@@ -165,6 +165,8 @@ const contentSideInsetPx = 15;
 export const layout = {
   maxContentWidth: 600,
   contentSideInsetPx,
+  /** 1px vertical scroll thumb inset (px) from the viewport or column edge (welcome `/`, swap panel, etc.). */
+  scrollIndicatorRightInsetPx: 3,
   /**
    * Authenticated home (`/` signed-in): padding inside the root scroll column (same outer scroll as welcome).
    * Central place to tune per breakpoint/platform later (e.g. `Platform.select` or responsive hook).
@@ -292,7 +294,7 @@ export const layout = {
     horizontalPadding: contentSideInsetPx,
     /** Horizontal gap (px) between the text field and the send icon on all platforms. */
     textToSendIconGapPx: 15,
-    /** Custom 1px scroll-thumb columns (main web column + bottom bar); separate from `horizontalPadding`. */
+    /** Custom 1px scroll-thumb in the AI bar; main column uses {@link layout.scrollIndicatorRightInsetPx}. */
     scrollbarRightInsetPx: 5,
   },
 };
