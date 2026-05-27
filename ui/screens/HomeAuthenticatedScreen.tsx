@@ -542,7 +542,8 @@ export function HomeAuthenticatedScreen() {
   const isTripleColumn = windowWidth > layout.authenticatedHome.secondBreakpoint;
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
-  const leftNavSelectedIndex = swapActiveOnWide ? -1 : homeNavIndex;
+  // Feed (left column) remains the active item when it is the displayed content.
+  const leftNavSelectedIndex = homeNavIndex;
 
   useEffect(() => {
     // Wide home (2- or 3-column): keep swap visible in the right pane by default.
