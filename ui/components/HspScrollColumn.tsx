@@ -60,6 +60,7 @@ export function HspScrollColumn({
   const colors = useColors();
   const thumbColor = indicatorColor ?? colors.accent;
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const didInitialTopResetRef = useRef(false);
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
 
   const syncScrollMetricsFromDom = useCallback(() => {
@@ -71,7 +72,8 @@ export function HspScrollColumn({
     if (!el) return;
     const layoutH = el.clientHeight;
     const contentH = el.scrollHeight;
-    const scrollY = el.scrollTop;
+    const scrollYRaw = el.scrollTop;
+    const scrollY = scrollYRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : scrollYRaw;
     if (layoutH <= 0) return;
     setScroll((prev) => ({
       ...prev,
@@ -149,9 +151,11 @@ export function HspScrollColumn({
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const ne = e.nativeEvent;
     const ch = ne.contentSize?.height ?? 0;
+    const yRaw = ne.contentOffset.y;
+    const y = yRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : yRaw;
     setScroll((prev) => ({
       ...prev,
-      scrollY: ne.contentOffset.y,
+      scrollY: y,
       ...(ch > 0 ? { contentH: ch } : {}),
     }));
     if (Platform.OS === "web") {
@@ -162,6 +166,21 @@ export function HspScrollColumn({
   const onLayout = (e: LayoutChangeEvent) => {
     const lh = e.nativeEvent.layout.height;
     setScroll((prev) => ({ ...prev, layoutH: lh }));
+    if (!didInitialTopResetRef.current) {
+      didInitialTopResetRef.current = true;
+      requestAnimationFrame(() => {
+        if (Platform.OS === "web") {
+          const instance = scrollRef.current as unknown as {
+            getScrollableNode?: () => HTMLElement | null | undefined;
+          } | null;
+          const el = instance?.getScrollableNode?.();
+          if (el) el.scrollTop = 0;
+        } else {
+          scrollRef.current?.scrollTo({ y: 0, animated: false });
+        }
+        setScroll((prev) => ({ ...prev, scrollY: 0 }));
+      });
+    }
     if (Platform.OS === "web") {
       requestAnimationFrame(syncScrollMetricsFromDom);
     }

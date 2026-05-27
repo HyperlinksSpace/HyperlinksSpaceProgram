@@ -18,6 +18,7 @@ import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeade
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
+import { HspScrollColumn } from "../components/HspScrollColumn";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -544,10 +545,11 @@ export function HomeAuthenticatedScreen() {
   const leftNavSelectedIndex = swapActiveOnWide ? -1 : homeNavIndex;
 
   useEffect(() => {
-    if (isTripleColumn) {
+    // Wide home (2- or 3-column): keep swap visible in the right pane by default.
+    if (isWideHome) {
       openAuthenticatedHomeRightPanel("swap");
     }
-  }, [isTripleColumn]);
+  }, [isWideHome]);
 
   useEffect(() => {
     if (!isWideHome || rightPanel !== "swap") return;
@@ -1307,73 +1309,76 @@ export function HomeAuthenticatedScreen() {
               selectedIndex={leftNavSelectedIndex}
               onSelectIndex={setHomeNavIndex}
             />
-            <View style={{ paddingHorizontal: layout.contentSideInsetPx, width: "100%", alignSelf: "stretch" }}>
-            {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} /> : null}
-            {telegramUsername ? (
-              <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
-                <Text
-                  style={{
-                    textAlign: "center",
-                    color: colors.primary,
-                    fontSize: 16,
-                    lineHeight: 24,
-                  }}
+            <HspScrollColumn
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={{ paddingHorizontal: layout.contentSideInsetPx, paddingBottom: layout.contentSideInsetPx }}
+            >
+              {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} /> : null}
+              {telegramUsername ? (
+                <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      color: colors.primary,
+                      fontSize: 16,
+                      lineHeight: 24,
+                    }}
+                  >
+                    {tf("home.wallet.loggedInAs", { username: telegramUsername })}
+                  </Text>
+                </View>
+              ) : null}
+              {flowError ? (
+                <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
+                  <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
+                    {translateFlowError(flowError)}
+                  </Text>
+                  {serverOnlyRetry ? (
+                    <Button title={t("home.wallet.retryServerRegistration")} onPress={retryServerRegistrationOnly} />
+                  ) : (
+                    <Button title={t("home.wallet.retryWalletCreation")} onPress={createAndRegisterWalletFlow} />
+                  )}
+                </View>
+              ) : null}
+              {showWalletProvisioning ? (
+                <View
+                  style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}
                 >
-                  {tf("home.wallet.loggedInAs", { username: telegramUsername })}
-                </Text>
-              </View>
-            ) : null}
-            {flowError ? (
-              <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
-                <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
-                  {translateFlowError(flowError)}
-                </Text>
-                {serverOnlyRetry ? (
-                  <Button title={t("home.wallet.retryServerRegistration")} onPress={retryServerRegistrationOnly} />
-                ) : (
-                  <Button title={t("home.wallet.retryWalletCreation")} onPress={createAndRegisterWalletFlow} />
-                )}
-              </View>
-            ) : null}
-            {showWalletProvisioning ? (
-              <View
-                style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}
-              >
-                <ActivityIndicator size="small" color={colors.primary} />
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text
+                    style={{
+                      textAlign: "center",
+                      fontSize: 13,
+                      lineHeight: 20,
+                      color: colors.secondary,
+                    }}
+                  >
+                    {t("home.wallet.generatingKeys")}
+                  </Text>
+                </View>
+              ) : null}
+              {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
+                <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
+                  <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
+                    {t("home.wallet.finishingServer")}
+                  </Text>
+                </View>
+              ) : null}
+              {masterKeyStorageTier === "server" ? (
                 <Text
                   style={{
-                    textAlign: "center",
-                    fontSize: 13,
-                    lineHeight: 20,
+                    marginTop: 14,
+                    fontSize: 12,
                     color: colors.secondary,
+                    textAlign: "center",
+                    paddingHorizontal: 8,
                   }}
                 >
-                  {t("home.wallet.generatingKeys")}
+                  {t("home.wallet.backupKmsNote")}
                 </Text>
-              </View>
-            ) : null}
-            {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
-              <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
-                <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
-                  {t("home.wallet.finishingServer")}
-                </Text>
-              </View>
-            ) : null}
-            {masterKeyStorageTier === "server" ? (
-              <Text
-                style={{
-                  marginTop: 14,
-                  fontSize: 12,
-                  color: colors.secondary,
-                  textAlign: "center",
-                  paddingHorizontal: 8,
-                }}
-              >
-                {t("home.wallet.backupKmsNote")}
-              </Text>
-            ) : null}
-            </View>
+              ) : null}
+            </HspScrollColumn>
           </>
         }
         right={

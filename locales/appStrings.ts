@@ -58,7 +58,7 @@ const en = {
   "global.bottomBar.premade1": "What is the universe?",
   "global.bottomBar.premade2": "Tell me about dogs token",
 
-  "home.mainColumnFooter.telegramMessages": "Telegram Messages",
+  "home.mainColumnFooter.telegramMessages": "Connect Telegram",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
 
@@ -190,7 +190,7 @@ const ru = {
   "global.bottomBar.premade1": "Что такое Вселенная?",
   "global.bottomBar.premade2": "Расскажи про токен dogs",
 
-  "home.mainColumnFooter.telegramMessages": "Сообщения Telegram",
+  "home.mainColumnFooter.telegramMessages": "Подключить Telegram",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
 

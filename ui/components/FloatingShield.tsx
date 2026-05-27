@@ -92,7 +92,13 @@ export function FloatingShield() {
         styles.hostBase,
         shieldOnRight ? styles.hostRight : styles.hostLeft,
         {
-          bottom: (footerDockedToScreenEdge ? bottomBarHeight : 0) + FOOTER_TOP_GAP_PX,
+          // Wide layouts embed footer bars inside columns; keep the floating stack above the first-column footer.
+          bottom:
+            (footerDockedToScreenEdge
+              ? bottomBarHeight
+              : shieldOnRight
+                ? 0
+                : layout.bottomBar.barMinHeight) + FOOTER_TOP_GAP_PX,
           // box-none: lightning/GL spill and chip corners pass through; only the circular Svg hit mask in each chip captures.
           pointerEvents: "box-none",
         },

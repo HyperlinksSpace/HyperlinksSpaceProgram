@@ -1,5 +1,6 @@
+
+Resizing and zoom in and out bugs fix
 Shield and settings positioning
-Resizing bugs fix
 Rotation icon positioning
 Back buttons on swap page outside TMA
 Main menu in Russian

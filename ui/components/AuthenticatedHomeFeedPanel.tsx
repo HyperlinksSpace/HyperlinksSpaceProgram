@@ -287,7 +287,14 @@ function FeedFeedRow({
   );
 }
 
-export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) {
+export function AuthenticatedHomeFeedPanel({
+  colors,
+  scrollable = true,
+}: {
+  colors: ThemeColors;
+  /** When false, the parent owns vertical scrolling (e.g. wide home left column with a pinned footer). */
+  scrollable?: boolean;
+}) {
   const {
     t,
     welcomeFeedCatalogLocale,
@@ -568,14 +575,8 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
     );
   }
 
-  return (
-    <ScrollView
-      ref={feedScrollRef}
-      style={{ alignSelf: "stretch" }}
-      contentContainerStyle={{ paddingBottom: layout.contentSideInsetPx }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
+  const body = (
+    <>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: welcomeFeedManualTranslation }}
@@ -626,6 +627,26 @@ export function AuthenticatedHomeFeedPanel({ colors }: { colors: ThemeColors }) 
           timePendingLabel={t("feed.timePending")}
         />
       ))}
+    </>
+  );
+
+  if (!scrollable) {
+    return (
+      <View style={{ alignSelf: "stretch", paddingBottom: layout.contentSideInsetPx }}>
+        {body}
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      ref={feedScrollRef}
+      style={{ alignSelf: "stretch" }}
+      contentContainerStyle={{ paddingBottom: layout.contentSideInsetPx }}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      {body}
     </ScrollView>
   );
 }
