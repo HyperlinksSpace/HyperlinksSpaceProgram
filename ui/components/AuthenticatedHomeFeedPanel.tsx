@@ -353,6 +353,16 @@ export function AuthenticatedHomeFeedPanel({
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const feedLoadSeqRef = useRef(0);
   const lastRenderSnapshotIdRef = useRef<number | null>(null);
+  /** True once session/telegram/API applied rows with positive ids — suppress background fetch errors. */
+  const hasRealFeedRef = useRef(false);
+
+  const surfaceFeedFetchError = (message: string, meta?: Record<string, unknown>) => {
+    if (hasRealFeedRef.current) {
+      logPageDisplay("feed_fetch_error_suppressed", { message, ...meta });
+      return;
+    }
+    setError(message);
+  };
 
   useEffect(() => {
     setItems((prev) => {
@@ -391,8 +401,10 @@ export function AuthenticatedHomeFeedPanel({
     const trimmed = typeof initData === "string" ? initData.trim() : "";
     if (trimmed !== "") return `post:${trimmed}:${welcomeFeedCatalogLocale}`;
     if (!authReady || !isAuthenticated) return null;
+    // Cookie web auth: feed_items already ship in GET /api/auth/session (~700ms).
+    if (Array.isArray(sessionFeedItems) && sessionFeedItems.length > 0) return null;
     return `get:${welcomeFeedCatalogLocale}`;
-  }, [initData, status, welcomeFeedCatalogLocale, authReady, isAuthenticated]);
+  }, [initData, status, welcomeFeedCatalogLocale, authReady, isAuthenticated, sessionFeedItems]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -419,6 +431,7 @@ export function AuthenticatedHomeFeedPanel({
     });
     const normalized = normalizeFeedRows(telegramBootstrapFeed as unknown[]);
     if (normalized.length > 0) {
+      hasRealFeedRef.current = normalized.some((r) => r.id > 0);
       setItems(normalized);
     }
   }, [telegramBootstrapFeed]);
@@ -431,6 +444,8 @@ export function AuthenticatedHomeFeedPanel({
     const normalized = normalizeFeedRows(sessionFeedItems as unknown[]);
     if (normalized.length > 0) {
       const first = normalized[0];
+      hasRealFeedRef.current = normalized.some((r) => r.id > 0);
+      if (hasRealFeedRef.current) setError(null);
       logPageDisplay("feed_panel_session_items_applied", {
         itemCount: normalized.length,
         firstId: first.id,
@@ -513,7 +528,10 @@ export function AuthenticatedHomeFeedPanel({
               attempt: attempt + 1,
             });
             if (loadSeq === feedLoadSeqRef.current) {
-              setError(aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg);
+              surfaceFeedFetchError(
+                aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg,
+                { aborted, attempt: attempt + 1 },
+              );
             }
             return;
           }
@@ -526,7 +544,7 @@ export function AuthenticatedHomeFeedPanel({
           durationMs: Date.now() - startedAt,
           telegramStatus: status,
         });
-        if (loadSeq === feedLoadSeqRef.current) setError(msg);
+        if (loadSeq === feedLoadSeqRef.current) surfaceFeedFetchError(msg);
         return;
       }
 
@@ -559,7 +577,10 @@ export function AuthenticatedHomeFeedPanel({
             logPageDisplay("feed_fetch_json_invalid_superseded", { loadSeq });
             return;
           }
-          setError(`bad_json (${res.httpStatus})`);
+          surfaceFeedFetchError(`gateway_${res.httpStatus}`, {
+            httpStatus: res.httpStatus,
+            reason: "non_json_body",
+          });
           return;
         }
 
@@ -606,12 +627,13 @@ export function AuthenticatedHomeFeedPanel({
         }
 
         if (!res.httpOk || !ok || !Array.isArray(itemsRaw)) {
-          setError(errStr ?? `HTTP ${res.httpStatus}`);
+          surfaceFeedFetchError(errStr ?? `HTTP ${res.httpStatus}`, { httpStatus: res.httpStatus });
           return;
         }
 
         setError(null);
         const next = normalizeFeedRows(itemsRaw as unknown[]);
+        if (next.some((r) => r.id > 0)) hasRealFeedRef.current = true;
         if (next.length === 0) {
           logPageDisplay("feed_fetch_empty_server", {
             durationMs: Date.now() - startedAt,
@@ -641,7 +663,7 @@ export function AuthenticatedHomeFeedPanel({
           message: msg,
           durationMs: Date.now() - startedAt,
         });
-        if (loadSeq === feedLoadSeqRef.current) setError(msg);
+        if (loadSeq === feedLoadSeqRef.current) surfaceFeedFetchError(msg);
       } finally {
         logPageDisplay("feed_fetch_finally", {
           durationMs: Date.now() - startedAt,
