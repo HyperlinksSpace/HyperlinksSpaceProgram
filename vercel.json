@@ -39,6 +39,9 @@
     },
     "api/auth/session.ts": {
       "maxDuration": 30
+    },
+    "api/feed.ts": {
+      "maxDuration": 30
     }
   }
 }

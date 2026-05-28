@@ -1,6 +1,12 @@
+import { bootstrapAuthenticatedFeedItems } from "../../database/feed.js";
 import { getDisplayNameForUsername } from "../../database/users.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { deleteSession, getSessionByHash, touchSession } from "../../database/telegramAuth.js";
+import {
+  FEED_CATALOG_FALLBACK_LOCALE,
+  parseFeedCatalogLocaleHint,
+  type FeedCatalogLocale,
+} from "../../locales/resolveFeedCatalogLocale.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
 
 type NodeRes = {
@@ -58,6 +64,20 @@ function clearSessionCookie(secure: boolean): string {
   const parts = [`${SESSION_COOKIE}=`, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"];
   if (secure) parts.push("Secure");
   return parts.join("; ");
+}
+
+function catalogLocaleFromRequest(request: AnyRequest): FeedCatalogLocale {
+  try {
+    const rawUrl = (request as { url?: string }).url ?? "";
+    if (rawUrl) {
+      const url = new URL(rawUrl, "http://localhost");
+      const fromQuery = parseFeedCatalogLocaleHint(url.searchParams.get("catalog_locale"));
+      if (fromQuery) return fromQuery;
+    }
+  } catch {
+    /* ignore */
+  }
+  return FEED_CATALOG_FALLBACK_LOCALE;
 }
 
 async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | void> {
@@ -123,6 +143,17 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   await touchSession(sha256Hex(token));
   const displayName = await getDisplayNameForUsername(row.telegram_username);
   const wallet = await getDefaultWalletByUsername(row.telegram_username);
+  const catalogLocale = catalogLocaleFromRequest(request);
+  let feed_items: Awaited<ReturnType<typeof bootstrapAuthenticatedFeedItems>> = [];
+  try {
+    feed_items = await bootstrapAuthenticatedFeedItems({
+      telegramUsername: row.telegram_username,
+      catalogLocale,
+    });
+  } catch {
+    feed_items = [];
+  }
+  const feedFields = { feed_items };
   const body = wallet
     ? {
         ok: true,
@@ -140,6 +171,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
           is_default: wallet.is_default,
           source: wallet.source,
         },
+        ...feedFields,
       }
     : {
         ok: true,
@@ -148,6 +180,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         display_name: displayName,
         has_wallet: false,
         wallet_required: true,
+        ...feedFields,
       };
   if (res) return sendJsonViaRes(res, body, 200);
   return sendJson(body, 200);

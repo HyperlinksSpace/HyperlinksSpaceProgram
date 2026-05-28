@@ -7,8 +7,7 @@ import {
   touchSession,
 } from "../../database/telegramAuth.js";
 import {
-  deliverWelcomeFeedIfNeeded,
-  listFeedItemsForUser,
+  bootstrapAuthenticatedFeedItems,
   type FeedCatalogLocale,
 } from "../../database/feed.js";
 import {
@@ -17,7 +16,6 @@ import {
 } from "../../locales/resolveFeedCatalogLocale.js";
 import { upsertUserFromTma } from "../../database/users.js";
 import { authByInitData } from "../wallet/_auth.js";
-import { ensureSchema } from "../../database/start.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
 
 const SESSION_COOKIE = "hs_auth_session";
@@ -126,17 +124,6 @@ async function handler(request: Request): Promise<Response> {
     urlSnippet: typeof request.url === "string" ? request.url.slice(0, 120) : null,
   });
 
-  try {
-    await ensureSchema();
-  } catch (e) {
-    feedLog({
-      phase: "schema_failed",
-      durationMs: Date.now() - t0,
-      error: e instanceof Error ? e.message : String(e),
-    });
-    return jsonResponse({ ok: false, error: "schema_unavailable" }, 503);
-  }
-
   if (method !== "GET" && method !== "POST") {
     feedLog({ phase: "method_reject", durationMs: Date.now() - t0, method });
     return new Response("Method Not Allowed", { status: 405 });
@@ -165,36 +152,15 @@ async function handler(request: Request): Promise<Response> {
       return jsonResponse({ ok: false, error: "unauthorized" }, 401);
     }
 
-    const syncStart = Date.now();
-    let deliverDiag: Awaited<ReturnType<typeof deliverWelcomeFeedIfNeeded>> = null;
-    try {
-      const deliverLocalePreferred =
-        user.locale ??
-        (displayLocale !== FEED_CATALOG_FALLBACK_LOCALE
-          ? displayLocale
-          : null);
-      deliverDiag = await deliverWelcomeFeedIfNeeded({
-        telegramUsername: user.username,
-        localePreferred: deliverLocalePreferred,
-      });
-    } catch (err) {
-      feedLog({
-        phase: "deliver_catch_soft",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    feedLog({
-      phase: "deliver_done",
-      deliverMs: Date.now() - syncStart,
-      durationMs: Date.now() - t0,
-      deliverExplicitCatalogSize: deliverDiag?.explicitCatalogSize ?? null,
-      deliverExtraCatalogSize: deliverDiag?.extraCatalogSize ?? null,
-      deliverWelcomeRowsResolved: deliverDiag?.welcomeRowsResolved ?? null,
-      deliverLocale: deliverDiag?.locale ?? null,
-    });
-
     const listStart = Date.now();
-    const items = await listFeedItemsForUser(user.username, 80, displayLocale);
+    const deliverLocalePreferred =
+      user.locale ??
+      (displayLocale !== FEED_CATALOG_FALLBACK_LOCALE ? displayLocale : null);
+    const items = await bootstrapAuthenticatedFeedItems({
+      telegramUsername: user.username,
+      catalogLocale: displayLocale,
+      localePreferred: deliverLocalePreferred,
+    });
     feedLog({
       phase: "response_ok",
       itemCount: items.length,

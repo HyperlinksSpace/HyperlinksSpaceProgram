@@ -1,11 +1,13 @@
 import { buildApiUrl } from "../api/_base";
 import type { FeedCatalogLocale } from "../locales/resolveFeedCatalogLocale";
 
-/**
- * Cold Vercel + Neon + Telegram WebView often exceed 60s on first paint; 90s cuts false “offline preview”
- * timeouts while still bounding hung requests.
- */
-export const AUTHENTICATED_FEED_FETCH_TIMEOUT_MS = 90_000;
+/** After `/api/feed` no longer runs schema migrations, responses should land in a few seconds. */
+export const AUTHENTICATED_FEED_FETCH_TIMEOUT_MS = 45_000;
+
+export type LoadAuthenticatedFeedOptions = {
+  /** Skip singleton reuse (e.g. after client abort timeout retry). */
+  bypassDedupe?: boolean;
+};
 
 export type AuthenticatedFeedDedupedResult = {
   httpStatus: number;
@@ -23,9 +25,14 @@ let feedInflight: Inflight = null;
  * Reads **`.text()` once** inside the singleton (no `response.clone()`), which some embedded
  * WebViews handle poorly when Strict Mode attaches two consumers.
  */
+export function clearAuthenticatedFeedInflight(): void {
+  feedInflight = null;
+}
+
 export function loadAuthenticatedFeedDeduped(
   initDataRaw: string | null | undefined,
   catalogLocale: FeedCatalogLocale,
+  options?: LoadAuthenticatedFeedOptions,
 ): Promise<AuthenticatedFeedDedupedResult> {
   const trimmed = typeof initDataRaw === "string" ? initDataRaw.trim() : "";
   const method = trimmed ? ("POST" as const) : ("GET" as const);
@@ -35,7 +42,7 @@ export function loadAuthenticatedFeedDeduped(
       : `feed:GET:${catalogLocale}`;
 
   const attach = feedInflight;
-  if (attach && attach.dedupeKey === dedupeKey) {
+  if (!options?.bypassDedupe && attach && attach.dedupeKey === dedupeKey) {
     return attach.promise;
   }
 

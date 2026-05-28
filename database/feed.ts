@@ -15,10 +15,15 @@ export type { FeedCatalogLocale };
 /** Normalize DB timestamptz/string/Date for JSON (ISO 8601 UTC) so the client can parse local display. */
 function feedRowSentAtIso(raw: unknown): string | null {
   if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw < 12_000_000_000 ? raw * 1000 : raw;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
   if (typeof raw === "string") {
     const t = raw.trim();
     if (!t) return null;
-    const asDate = new Date(t);
+    const asDate = new Date(t.includes("T") ? t : t.replace(" ", "T"));
     return Number.isNaN(asDate.getTime()) ? null : asDate.toISOString();
   }
   if (raw instanceof Date) {
@@ -26,11 +31,17 @@ function feedRowSentAtIso(raw: unknown): string | null {
     return Number.isNaN(t) ? null : raw.toISOString();
   }
   try {
-    const d = new Date(String(raw));
+    const s = String(raw).trim();
+    if (!s) return null;
+    const d = new Date(s.includes("T") ? s : s.replace(" ", "T"));
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   } catch {
     return null;
   }
+}
+
+function feedRowSentAtForClient(row: Record<string, unknown>): string | null {
+  return feedRowSentAtIso(row.sent_at) ?? feedRowSentAtIso(row.created_at);
 }
 
 function parseDefaultMessageId(raw: unknown): bigint | null {
@@ -418,7 +429,7 @@ export async function listFeedItemsForUser(
 
     return {
       id: Number(r.id),
-      sent_at: feedRowSentAtIso(r.sent_at),
+      sent_at: feedRowSentAtForClient(r),
       source_type: sourceType,
       card_type: String(r.card_type),
       layout_variant: r.layout_variant == null ? null : String(r.layout_variant),
@@ -426,4 +437,28 @@ export async function listFeedItemsForUser(
       read_at: feedRowSentAtIso(r.read_at),
     };
   });
+}
+
+export type FeedItemForClient = Awaited<ReturnType<typeof listFeedItemsForUser>>[number];
+
+/** Deliver missing welcome catalogue rows, then list feed items (no schema migrations). */
+export async function bootstrapAuthenticatedFeedItems(opts: {
+  telegramUsername: string;
+  catalogLocale?: FeedCatalogLocale;
+  localePreferred?: string | null;
+  limit?: number;
+}): Promise<FeedItemForClient[]> {
+  const catalogLocale = opts.catalogLocale ?? FEED_CATALOG_FALLBACK_LOCALE;
+  const deliverLocalePreferred =
+    opts.localePreferred ??
+    (catalogLocale !== FEED_CATALOG_FALLBACK_LOCALE ? catalogLocale : null);
+  try {
+    await deliverWelcomeFeedIfNeeded({
+      telegramUsername: opts.telegramUsername,
+      localePreferred: deliverLocalePreferred,
+    });
+  } catch {
+    // Best effort — still return whatever rows exist.
+  }
+  return listFeedItemsForUser(opts.telegramUsername, opts.limit ?? 80, catalogLocale);
 }

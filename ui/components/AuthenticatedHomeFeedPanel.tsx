@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import { buildApiUrl } from "../../api/_base";
 import {
   AUTHENTICATED_FEED_FETCH_TIMEOUT_MS,
+  clearAuthenticatedFeedInflight,
   loadAuthenticatedFeedDeduped,
 } from "../authenticatedFeedDedupedFetch";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
@@ -12,6 +13,7 @@ import { layout, type ThemeColors } from "../theme";
 import type { AppLocale, AppStringKey } from "../../locales/appStrings";
 import { getAppString } from "../../locales/appStrings";
 import { useAppStrings } from "../../locales/AppStringsContext";
+import { useAuth } from "../../auth/AuthContext";
 import { useTelegram } from "./Telegram";
 
 /** One extra attempt after client abort (slow TMA / cold API) before showing timeout + offline preview. */
@@ -34,6 +36,41 @@ type FeedRow = {
   card_type: string;
   layout_variant: string | null;
   payload: unknown;
+};
+
+function firstPresent(...values: unknown[]): unknown {
+  for (const v of values) {
+    if (v != null && v !== "") return v;
+  }
+  return null;
+}
+
+function normalizeFeedRow(raw: unknown): FeedRow | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  const idRaw = firstPresent(row.id, row.feed_id);
+  const idNum = typeof idRaw === "number" ? idRaw : Number(idRaw);
+  if (!Number.isFinite(idNum)) return null;
+  const cardType = firstPresent(row.card_type, row.cardType);
+  if (typeof cardType !== "string" || !cardType) return null;
+  const layoutVariant = firstPresent(row.layout_variant, row.layoutVariant);
+  const sentAt = firstPresent(row.sent_at, row.sentAt, row.created_at, row.createdAt);
+  return {
+    id: idNum,
+    sent_at: (sentAt as string | number | null | undefined) ?? null,
+    card_type: cardType,
+    layout_variant: layoutVariant == null ? null : String(layoutVariant),
+    payload: row.payload ?? {},
+  };
+}
+
+function normalizeFeedRows(rows: unknown[]): FeedRow[] {
+  const out: FeedRow[] = [];
+  for (const r of rows) {
+    const row = normalizeFeedRow(r);
+    if (row) out.push(row);
+  }
+  return out;
 }
 
 /**
@@ -120,7 +157,8 @@ function formatWallClock(raw: unknown): string {
     }
   }
   if (typeof raw === "string" && raw.trim()) {
-    const d = new Date(raw.trim());
+    const t = raw.trim();
+    const d = new Date(t.includes("T") ? t : t.replace(" ", "T"));
     if (!Number.isNaN(d.getTime())) {
       const hh = String(d.getHours()).padStart(2, "0");
       const mm = String(d.getMinutes()).padStart(2, "0");
@@ -308,10 +346,13 @@ export function AuthenticatedHomeFeedPanel({
   const welcomePlaceholderRef = useRef(welcomePlaceholderFeedItems);
   welcomePlaceholderRef.current = welcomePlaceholderFeedItems;
 
+  const { authReady, isAuthenticated, sessionFeedItems } = useAuth();
   const { initData, status, telegramBootstrapFeed } = useTelegram();
   const [items, setItems] = useState<FeedRow[]>(welcomePlaceholderFeedItems);
   const [error, setError] = useState<string | null>(null);
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const feedLoadSeqRef = useRef(0);
+  const lastRenderSnapshotIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     setItems((prev) => {
@@ -326,17 +367,32 @@ export function AuthenticatedHomeFeedPanel({
     });
   }, [welcomePlaceholderFeedItems]);
 
+  useEffect(() => {
+    const first = items[0];
+    if (!first || first.id === lastRenderSnapshotIdRef.current) return;
+    lastRenderSnapshotIdRef.current = first.id;
+    logPageDisplay("feed_panel_render_snapshot", {
+      firstId: first.id,
+      itemCount: items.length,
+      allPlaceholder: items.every((r) => r.id < 0),
+      firstClock: formatWallClock(first.sent_at),
+      firstSentAtPreview:
+        typeof first.sent_at === "string" ? first.sent_at.slice(0, 32) : first.sent_at ?? null,
+    });
+  }, [items]);
+
   /**
    * When `initData` is present, key is **only** the trimmed string so `status` going `loading`→`ok`
    * does not cancel an in-flight `/api/feed` and restart (that duplicated cold work and slowed updates).
-   * Session-only GET keeps `status` in the key so a refetch can run after the session cookie is ready.
+   * Session GET waits for `authReady` + cookie sign-in, then uses a stable locale key (no telegram status).
    */
   const feedLoadKey = useMemo(() => {
     if (status === "error") return null;
     const trimmed = typeof initData === "string" ? initData.trim() : "";
     if (trimmed !== "") return `post:${trimmed}:${welcomeFeedCatalogLocale}`;
-    return `get:${status}:${welcomeFeedCatalogLocale}`;
-  }, [initData, status, welcomeFeedCatalogLocale]);
+    if (!authReady || !isAuthenticated) return null;
+    return `get:${welcomeFeedCatalogLocale}`;
+  }, [initData, status, welcomeFeedCatalogLocale, authReady, isAuthenticated]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -361,14 +417,35 @@ export function AuthenticatedHomeFeedPanel({
     logPageDisplay("feed_panel_bootstrap_from_telegram", {
       itemCount: telegramBootstrapFeed.length,
     });
-    setItems(telegramBootstrapFeed as FeedRow[]);
+    const normalized = normalizeFeedRows(telegramBootstrapFeed as unknown[]);
+    if (normalized.length > 0) {
+      setItems(normalized);
+    }
   }, [telegramBootstrapFeed]);
+
+  useEffect(() => {
+    if (!sessionFeedItems || sessionFeedItems.length === 0) return;
+    logPageDisplay("feed_panel_bootstrap_from_session", {
+      itemCount: sessionFeedItems.length,
+    });
+    const normalized = normalizeFeedRows(sessionFeedItems as unknown[]);
+    if (normalized.length > 0) {
+      const first = normalized[0];
+      logPageDisplay("feed_panel_session_items_applied", {
+        itemCount: normalized.length,
+        firstId: first.id,
+        firstClock: formatWallClock(first.sent_at),
+        allPlaceholder: normalized.every((r) => r.id < 0),
+      });
+      setItems(normalized);
+    }
+  }, [sessionFeedItems]);
 
   useEffect(() => {
     if (feedLoadKey === null) return;
 
     const feedKey = feedLoadKey;
-    let cancelled = false;
+    const loadSeq = ++feedLoadSeqRef.current;
 
     async function load() {
       const startedAt = Date.now();
@@ -380,7 +457,7 @@ export function AuthenticatedHomeFeedPanel({
         telegramStatus: status,
         initDataChars: initDataOk ? initDataTrimmed.length : 0,
         feedLoadKey: feedKey.slice(0, 64),
-        note: initDataOk ? "feed_key_stable_across_status" : "session_feed_key_includes_status",
+        note: initDataOk ? "feed_key_stable_across_status" : "session_feed_key_after_auth_ready",
       });
 
       logPageDisplay("feed_fetch_start", {
@@ -394,28 +471,30 @@ export function AuthenticatedHomeFeedPanel({
         timeoutMs: AUTHENTICATED_FEED_FETCH_TIMEOUT_MS,
       });
 
-      if (!cancelled) setError(null);
+      if (loadSeq === feedLoadSeqRef.current) setError(null);
 
       let res: Awaited<ReturnType<typeof loadAuthenticatedFeedDeduped>> | undefined;
       try {
         for (let attempt = 0; attempt < FEED_FETCH_ATTEMPTS_ON_TIMEOUT; attempt++) {
-          if (cancelled) {
-            logPageDisplay("feed_fetch_superseded_before_attempt");
+          if (loadSeq !== feedLoadSeqRef.current) {
+            logPageDisplay("feed_fetch_superseded_before_attempt", { loadSeq });
             return;
           }
           try {
             res = await loadAuthenticatedFeedDeduped(
               initDataOk ? initDataTrimmed : null,
               welcomeFeedCatalogLocale,
+              attempt > 0 ? { bypassDedupe: true } : undefined,
             );
             break;
           } catch (e) {
             const aborted = e instanceof Error && e.name === "AbortError";
-            if (cancelled) {
-              logPageDisplay("feed_fetch_superseded_catch");
+            if (loadSeq !== feedLoadSeqRef.current) {
+              logPageDisplay("feed_fetch_superseded_catch", { loadSeq });
               return;
             }
             if (aborted && attempt < FEED_FETCH_ATTEMPTS_ON_TIMEOUT - 1) {
+              clearAuthenticatedFeedInflight();
               logPageDisplay("feed_fetch_timeout_retry", {
                 attempt: attempt + 1,
                 delayMs: FEED_FETCH_RETRY_DELAY_MS,
@@ -428,12 +507,14 @@ export function AuthenticatedHomeFeedPanel({
             logPageDisplay("feed_fetch_catch", {
               message: msg,
               aborted,
-              fromCleanupAbort: aborted && cancelled,
+              fromCleanupAbort: aborted && loadSeq !== feedLoadSeqRef.current,
               durationMs: Date.now() - startedAt,
               telegramStatus: status,
               attempt: attempt + 1,
             });
-            setError(aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg);
+            if (loadSeq === feedLoadSeqRef.current) {
+              setError(aborted ? `timeout_after_${AUTHENTICATED_FEED_FETCH_TIMEOUT_MS}ms` : msg);
+            }
             return;
           }
         }
@@ -445,12 +526,14 @@ export function AuthenticatedHomeFeedPanel({
           durationMs: Date.now() - startedAt,
           telegramStatus: status,
         });
-        if (!cancelled) setError(msg);
+        if (loadSeq === feedLoadSeqRef.current) setError(msg);
         return;
       }
 
-      if (!res || cancelled) {
-        if (cancelled) logPageDisplay("feed_fetch_headers_superseded");
+      if (!res || loadSeq !== feedLoadSeqRef.current) {
+        if (loadSeq !== feedLoadSeqRef.current) {
+          logPageDisplay("feed_fetch_headers_superseded", { loadSeq });
+        }
         return;
       }
 
@@ -459,13 +542,8 @@ export function AuthenticatedHomeFeedPanel({
           httpStatus: res.httpStatus,
           ok: res.httpOk,
           durationMs: Date.now() - startedAt,
-          cancelledBeforeBody: cancelled,
+          loadSeq,
         });
-
-        if (cancelled) {
-          logPageDisplay("feed_fetch_headers_superseded");
-          return;
-        }
 
         const text = res.bodyText;
         let j: Record<string, unknown> = {};
@@ -477,8 +555,8 @@ export function AuthenticatedHomeFeedPanel({
             bodyPreview: text.slice(0, 280),
             durationMs: Date.now() - startedAt,
           });
-          if (cancelled) {
-            logPageDisplay("feed_fetch_json_invalid_superseded");
+          if (loadSeq !== feedLoadSeqRef.current) {
+            logPageDisplay("feed_fetch_json_invalid_superseded", { loadSeq });
             return;
           }
           setError(`bad_json (${res.httpStatus})`);
@@ -495,24 +573,35 @@ export function AuthenticatedHomeFeedPanel({
             : null;
         const firstSentAtRaw = firstRow?.sent_at;
 
+        const normalizedPreview = normalizeFeedRows(
+          Array.isArray(itemsRaw) ? (itemsRaw as unknown[]) : [],
+        );
+        const firstNormalizedSentAt = normalizedPreview[0]?.sent_at ?? null;
+
         logPageDisplay("feed_fetch_response", {
           httpStatus: res.httpStatus,
           ok,
           durationMs: Date.now() - startedAt,
           itemCount: Array.isArray(itemsRaw) ? itemsRaw.length : null,
           error: errStr,
+          firstItemId: normalizedPreview[0]?.id ?? null,
           firstItemSentAtType:
             firstSentAtRaw == null ? "absent" : typeof firstSentAtRaw,
           firstItemSentAtPreview:
             typeof firstSentAtRaw === "string" ? firstSentAtRaw.slice(0, 32) : null,
+          firstNormalizedSentAtPreview:
+            typeof firstNormalizedSentAt === "string"
+              ? firstNormalizedSentAt.slice(0, 32)
+              : firstNormalizedSentAt,
+          firstNormalizedClock: formatWallClock(firstNormalizedSentAt),
           keys:
             typeof j === "object" && j !== null
               ? Object.keys(j).filter((k) => k !== "items")
               : [],
         });
 
-        if (cancelled) {
-          logPageDisplay("feed_fetch_response_superseded");
+        if (loadSeq !== feedLoadSeqRef.current) {
+          logPageDisplay("feed_fetch_response_superseded", { loadSeq });
           return;
         }
 
@@ -522,10 +611,23 @@ export function AuthenticatedHomeFeedPanel({
         }
 
         setError(null);
-        const next = itemsRaw as FeedRow[];
+        const next = normalizeFeedRows(itemsRaw as unknown[]);
         if (next.length === 0) {
           logPageDisplay("feed_fetch_empty_server", {
             durationMs: Date.now() - startedAt,
+          });
+        } else {
+          const first = next[0];
+          logPageDisplay("feed_panel_items_applied", {
+            source: first.id > 0 ? "api" : "placeholder",
+            itemCount: next.length,
+            firstId: first.id,
+            firstSentAtType:
+              first.sent_at == null ? "nullish" : typeof first.sent_at,
+            firstSentAtPreview:
+              typeof first.sent_at === "string" ? first.sent_at.slice(0, 32) : first.sent_at,
+            firstClock: formatWallClock(first.sent_at),
+            allPlaceholder: next.every((r) => r.id < 0),
           });
         }
         setItems((prev) => {
@@ -539,20 +641,17 @@ export function AuthenticatedHomeFeedPanel({
           message: msg,
           durationMs: Date.now() - startedAt,
         });
-        if (!cancelled) setError(msg);
+        if (loadSeq === feedLoadSeqRef.current) setError(msg);
       } finally {
         logPageDisplay("feed_fetch_finally", {
           durationMs: Date.now() - startedAt,
-          supersededRun: cancelled,
+          loadSeq,
+          supersededRun: loadSeq !== feedLoadSeqRef.current,
         });
       }
     }
 
     void load();
-
-    return () => {
-      cancelled = true;
-    };
     // Intentionally only `feedLoadKey`: for POST-with-initData the key omits `status` so `loading`→`ok`
     // does not cancel/restart the in-flight fetch. `load()` still reads the latest `initData`/`status`
     // from the render that created this effect run.

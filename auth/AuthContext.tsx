@@ -1,11 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../api/_base";
+import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
 
 export type AuthContextValue = {
   isAuthenticated: boolean;
   authReady: boolean;
   authHydrated: boolean;
+  /** Feed rows from `GET /api/auth/session` (same shape as `/api/feed` → `items`). */
+  sessionFeedItems: unknown[] | null;
   signIn: () => void;
   signOut: () => void;
 };
@@ -25,6 +28,7 @@ function writeAuthHint(value: AuthHint): void {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { welcomeFeedCatalogLocale } = useAppStrings();
   // SSR / first paint: keep default state. Do not read the stored auth hint before session:
   // a stale "in" hint flashed `HomeAuthenticatedScreen` before `GET /api/auth/session` returned
   // (welcome blink) and could participate in client/server tree mismatch (React #418). Session
@@ -33,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
+  const [sessionFeedItems, setSessionFeedItems] = useState<unknown[] | null>(null);
 
   useLayoutEffect(() => {
     setAuthHydrated(true);
@@ -42,23 +47,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     async function bootstrap() {
       const startedAt = Date.now();
-      const sessionUrl = buildApiUrl("/api/auth/session");
+      const sessionUrl = buildApiUrl(
+        `/api/auth/session?catalog_locale=${encodeURIComponent(welcomeFeedCatalogLocale)}`,
+      );
       logPageDisplay("auth_bootstrap_start", {
         sessionUrl,
+        catalogLocale: welcomeFeedCatalogLocale,
       });
       try {
         const response = await fetch(sessionUrl, {
           method: "GET",
           credentials: "include",
         });
-        const json = (await response.json().catch(() => ({}))) as { authenticated?: boolean };
+        const json = (await response.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+          feed_items?: unknown;
+        };
         const authenticated = response.ok && json?.authenticated === true;
         writeAuthHint(authenticated ? "in" : "out");
+        const feedRaw = json.feed_items;
+        const feedItems = Array.isArray(feedRaw) ? feedRaw : null;
         logPageDisplay("auth_bootstrap_response", {
           ok: response.ok,
           status: response.status,
           authenticated,
           elapsedMs: Date.now() - startedAt,
+          feedItemCount: feedItems?.length ?? null,
           telegramAuthError:
             typeof window !== "undefined"
               ? new URLSearchParams(window.location.search).get("telegramAuthError")
@@ -66,9 +80,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         if (!cancelled) {
           setAuthenticated(authenticated);
+          setSessionFeedItems(authenticated && feedItems && feedItems.length > 0 ? feedItems : null);
           if (authenticated) {
             logPageDisplay("auth_bootstrap_signed_in", {
               elapsedMs: Date.now() - startedAt,
+              feedItemCount: feedItems?.length ?? 0,
             });
           }
         }
@@ -91,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [welcomeFeedCatalogLocale]);
 
   const signIn = useCallback(() => {
     writeAuthHint("in");
@@ -103,6 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     writeAuthHint("out");
     setAuthenticated(false);
     setAuthReady(true);
+    setSessionFeedItems(null);
     void fetch(buildApiUrl("/api/auth/session"), {
       method: "DELETE",
       credentials: "include",
@@ -112,8 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, authReady, authHydrated, signIn, signOut }),
-    [isAuthenticated, authReady, authHydrated, signIn, signOut],
+    () => ({ isAuthenticated, authReady, authHydrated, sessionFeedItems, signIn, signOut }),
+    [isAuthenticated, authReady, authHydrated, sessionFeedItems, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
