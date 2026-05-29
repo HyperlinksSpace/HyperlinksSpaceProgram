@@ -60,6 +60,22 @@ export function WelcomeContent() {
       const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
       window.history.replaceState(null, "", nextUrl);
     }
+
+    const googleAuthError = params.get("googleAuthError");
+    if (googleAuthError) {
+      logPageDisplay("welcome_google_oidc_callback_error", {
+        reason: googleAuthError,
+        href: window.location.href,
+      });
+      Alert.alert(
+        t("welcome.auth.googleBrowserAlertTitle"),
+        tf("welcome.auth.googleCallbackError", { reason: googleAuthError }),
+      );
+      params.delete("googleAuthError");
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
   }, [t, tf]);
 
   const probeBrowserSession = useCallback(

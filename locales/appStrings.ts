@@ -130,6 +130,9 @@ const en = {
   "welcome.auth.signInGithub": "Sign in with GitHub",
   "welcome.auth.signInGoogle": "Sign in with Google",
   "welcome.auth.signInTelegram": "Sign in with Telegram",
+  "welcome.auth.googleStartError": "Could not start Google sign-in. Try again.",
+  "welcome.auth.googleCallbackError": "Google sign-in failed ({{reason}}). Try again.",
+  "welcome.auth.googleBrowserAlertTitle": "Sign in with Google",
   "welcome.auth.telegramBrowserAlertMessage":
     "Open this page inside the Telegram app to continue, or use a normal web browser (not an in-app preview that mimics Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Sign in with Telegram",
@@ -262,6 +265,9 @@ const ru = {
   "welcome.auth.signInGithub": "Войти через GitHub",
   "welcome.auth.signInGoogle": "Войти через Google",
   "welcome.auth.signInTelegram": "Войти через Telegram",
+  "welcome.auth.googleStartError": "Не удалось начать вход через Google. Попробуйте снова.",
+  "welcome.auth.googleCallbackError": "Вход через Google не удался ({{reason}}). Попробуйте снова.",
+  "welcome.auth.googleBrowserAlertTitle": "Вход через Google",
   "welcome.auth.telegramBrowserAlertMessage":
     "Откройте эту страницу в приложении Telegram или в обычном браузере (не во встроенном предпросмотре, который имитирует Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Вход через Telegram",

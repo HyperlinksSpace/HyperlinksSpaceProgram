@@ -65,6 +65,24 @@ const ROWS: { id: keyof typeof ICONS; labelKey: AppStringKey }[] = [
   { id: "telegram", labelKey: "welcome.auth.signInTelegram" },
 ];
 
+type BrowserOAuthProvider = "telegram" | "google";
+
+const BROWSER_OAUTH: Record<
+  BrowserOAuthProvider,
+  { startPath: string; callbackPath: string; logPrefix: string }
+> = {
+  telegram: {
+    startPath: "/api/auth/telegram/start",
+    callbackPath: "/api/auth/telegram/callback",
+    logPrefix: "welcome_telegram_oidc",
+  },
+  google: {
+    startPath: "/api/auth/google/start",
+    callbackPath: "/api/auth/google/callback",
+    logPrefix: "welcome_google_oidc",
+  },
+};
+
 /**
  * Stacked auth provider rows: label + icon (reference: assets/networks/auth.png).
  * Light theme → black icons on `undercover`; dark → white icons.
@@ -86,6 +104,7 @@ export function WelcomeAuthButtons() {
   const { t } = useAppStrings();
   const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
   const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
+  const [googleBrowserPending, setGoogleBrowserPending] = useState(false);
   const [email, setEmail] = useState("");
   const [emailInvalid, setEmailInvalid] = useState(false);
   /** Web hover: RN `Pressable` style state has no `hovered` in typings; use hover events (see theme hover helpers). */
@@ -107,7 +126,92 @@ export function WelcomeAuthButtons() {
     typeof globalThis.fetch === "function" &&
     !isActuallyInTelegram();
 
+  const useBrowserOAuth =
+    typeof globalThis !== "undefined" && typeof globalThis.fetch === "function";
+
+  const startBrowserOAuth = async (provider: BrowserOAuthProvider) => {
+    const cfg = BROWSER_OAUTH[provider];
+    const startUrl = buildApiUrl(cfg.startPath);
+    const redirectUri = buildApiUrl(cfg.callbackPath);
+    const startedAt = Date.now();
+    let navigated = false;
+    const setPending = provider === "telegram" ? setTelegramBrowserPending : setGoogleBrowserPending;
+    const alertTitle =
+      provider === "telegram"
+        ? t("welcome.auth.telegramBrowserAlertTitle")
+        : t("welcome.auth.googleBrowserAlertTitle");
+    const startError =
+      provider === "telegram" ? t("welcome.auth.telegramStartError") : t("welcome.auth.googleStartError");
+
+    try {
+      setPending(true);
+      logPageDisplay(`${cfg.logPrefix}_start`, {
+        apiBase: getApiBaseUrl(),
+        startUrl,
+        redirectUri,
+        platform: Platform.OS,
+        pageOrigin: typeof window !== "undefined" ? window.location?.origin : null,
+      });
+      const response = await fetch(startUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "welcome",
+          redirect_uri: redirectUri,
+        }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        authUrl?: string;
+        error?: string;
+      };
+      logPageDisplay(`${cfg.logPrefix}_response`, {
+        status: response.status,
+        ok: response.ok,
+        bodyOk: json?.ok,
+        hasAuthUrl: Boolean(json?.authUrl),
+        error: json?.error ?? null,
+        elapsedMs: Date.now() - startedAt,
+      });
+      if (!response.ok || !json?.authUrl) {
+        throw new Error(json?.error || `HTTP_${response.status}`);
+      }
+      let authUrlHost: string | null = null;
+      try {
+        authUrlHost = new URL(json.authUrl).host;
+      } catch {
+        authUrlHost = null;
+      }
+      const openMethod = navigateExternalAuthUrl(json.authUrl);
+      navigated = true;
+      logPageDisplay(`${cfg.logPrefix}_redirect`, {
+        authUrlHost,
+        openMethod,
+        elapsedMs: Date.now() - startedAt,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[welcome] ${provider} browser auth start failed`, error);
+      logPageDisplay(`${cfg.logPrefix}_error`, {
+        message,
+        startUrl,
+        elapsedMs: Date.now() - startedAt,
+      });
+      Alert.alert(alertTitle, startError);
+    } finally {
+      if (!navigated) {
+        setPending(false);
+      }
+    }
+  };
+
   const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
+    if (id === "google") {
+      if (!useBrowserOAuth) return;
+      await startBrowserOAuth("google");
+      return;
+    }
+
     if (id === "telegram") {
       const actuallyInTelegram = isActuallyInTelegram();
       logPageDisplay("welcome_telegram_press", {
@@ -119,73 +223,7 @@ export function WelcomeAuthButtons() {
       });
 
       if (useTelegramWebAuthOutsideMiniApp) {
-        const startUrl = buildApiUrl("/api/auth/telegram/start");
-        const redirectUri = buildApiUrl("/api/auth/telegram/callback");
-        const startedAt = Date.now();
-        let navigatedToTelegram = false;
-        try {
-          setTelegramBrowserPending(true);
-          logPageDisplay("welcome_telegram_oidc_start", {
-            apiBase: getApiBaseUrl(),
-            startUrl,
-            redirectUri,
-            platform: Platform.OS,
-            pageOrigin: typeof window !== "undefined" ? window.location?.origin : null,
-            actuallyInTelegram,
-            isInTelegram,
-          });
-          const response = await fetch(startUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              source: "welcome",
-              redirect_uri: redirectUri,
-            }),
-          });
-          const json = (await response.json().catch(() => ({}))) as {
-            ok?: boolean;
-            authUrl?: string;
-            error?: string;
-          };
-          logPageDisplay("welcome_telegram_oidc_response", {
-            status: response.status,
-            ok: response.ok,
-            bodyOk: json?.ok,
-            hasAuthUrl: Boolean(json?.authUrl),
-            error: json?.error ?? null,
-            elapsedMs: Date.now() - startedAt,
-          });
-          if (!response.ok || !json?.authUrl) {
-            throw new Error(json?.error || `HTTP_${response.status}`);
-          }
-          let authUrlHost: string | null = null;
-          try {
-            authUrlHost = new URL(json.authUrl).host;
-          } catch {
-            authUrlHost = null;
-          }
-          const openMethod = navigateExternalAuthUrl(json.authUrl);
-          navigatedToTelegram = true;
-          logPageDisplay("welcome_telegram_oidc_redirect", {
-            authUrlHost,
-            openMethod,
-            elapsedMs: Date.now() - startedAt,
-          });
-          return;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error("[welcome] telegram browser auth start failed", error);
-          logPageDisplay("welcome_telegram_oidc_error", {
-            message,
-            startUrl,
-            elapsedMs: Date.now() - startedAt,
-          });
-          Alert.alert(t("welcome.auth.telegramBrowserAlertTitle"), t("welcome.auth.telegramStartError"));
-        } finally {
-          if (!navigatedToTelegram) {
-            setTelegramBrowserPending(false);
-          }
-        }
+        await startBrowserOAuth("telegram");
         return;
       }
       if (!isInTelegram) {
@@ -252,7 +290,12 @@ export function WelcomeAuthButtons() {
                   backgroundColor,
                   marginTop: index === 0 ? 0 : BUTTON_GAP,
                   opacity:
-                    row.id === "telegram" && telegramBrowserPending ? 0.6 : pressed ? 0.92 : 1,
+                    (row.id === "telegram" && telegramBrowserPending) ||
+                    (row.id === "google" && googleBrowserPending)
+                      ? 0.6
+                      : pressed
+                        ? 0.92
+                        : 1,
                 },
               ];
             }}

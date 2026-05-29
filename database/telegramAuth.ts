@@ -1,5 +1,7 @@
 import { sql } from "./start.js";
 
+export type AuthProvider = "telegram" | "google";
+
 export type LoginAttemptStatus = "created" | "consumed" | "expired" | "failed";
 
 export type TelegramSessionRow = {
@@ -9,7 +11,7 @@ export type TelegramSessionRow = {
 
 export async function createLoginAttempt(input: {
   id: string;
-  provider: "telegram";
+  provider: AuthProvider;
   stateHash: string;
   nonceHash: string;
   pkceVerifier: string;
@@ -82,7 +84,7 @@ export async function markLoginAttemptStatus(input: {
 
 export async function logLoginEvent(input: {
   attemptId: string | null;
-  provider: "telegram";
+  provider: AuthProvider;
   eventType: string;
   telegramUsername?: string | null;
   providerSubject?: string | null;
@@ -153,6 +155,54 @@ export async function upsertTelegramIdentity(input: {
           display_name = EXCLUDED.display_name,
           picture_url = EXCLUDED.picture_url,
           phone_number = EXCLUDED.phone_number,
+          claims_version = EXCLUDED.claims_version,
+          updated_at = NOW(),
+          last_login_at = NOW();
+  `;
+}
+
+export async function upsertGoogleIdentity(input: {
+  providerSubject: string;
+  telegramUsername: string;
+  email: string | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+  claimsVersion: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_identities (
+      provider,
+      provider_subject,
+      telegram_username,
+      telegram_id,
+      username,
+      display_name,
+      picture_url,
+      phone_number,
+      claims_version,
+      created_at,
+      updated_at,
+      last_login_at
+    )
+    VALUES (
+      'google',
+      ${input.providerSubject},
+      ${input.telegramUsername},
+      NULL,
+      ${input.email},
+      ${input.displayName},
+      ${input.pictureUrl},
+      NULL,
+      ${input.claimsVersion},
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT (provider, provider_subject) DO UPDATE
+      SET telegram_username = EXCLUDED.telegram_username,
+          username = EXCLUDED.username,
+          display_name = EXCLUDED.display_name,
+          picture_url = EXCLUDED.picture_url,
           claims_version = EXCLUDED.claims_version,
           updated_at = NOW(),
           last_login_at = NOW();
