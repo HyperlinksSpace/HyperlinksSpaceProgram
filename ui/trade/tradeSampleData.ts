@@ -1,8 +1,6 @@
 import {
-  tradeDllrImage,
   tradeHaramartaImage,
   tradePixakatsImage,
-  tradeTonSampleImage,
 } from "./tradeAssets";
 
 export type TradeCollectionItem = {
@@ -15,8 +13,8 @@ export type TradeCollectionItem = {
 export const TRADE_SAMPLE_COLLECTIONS: TradeCollectionItem[] = [
   { image: tradePixakatsImage, title: "pixa kats", subtitle: "Tandam" },
   { image: tradeHaramartaImage, title: "Haramarta", subtitle: "Bid Raits" },
-  { image: tradeDllrImage, title: "DLLR", subtitle: "Stable" },
-  { image: tradeTonSampleImage, title: "TON", subtitle: "Native" },
+  { image: tradePixakatsImage, title: "pixa kats", subtitle: "Tandam" },
+  { image: tradeHaramartaImage, title: "Haramarta", subtitle: "Bid Raits" },
 ];
 
 export type TradeFeedItem = {
