@@ -127,6 +127,7 @@ function AuthenticatedScreenFooter({
   if (!isAuthenticated || bottomBarDock !== "screenFooter") return null;
   if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
   if (pathname === "/swap") return <SwapColumnInactiveFooter />;
+  if (pathname === "/trade") return <SwapColumnInactiveFooter />;
   if (pathname === "/" || pathname === "" || pathname == null) {
     return <MainColumnInactiveFooter />;
   }
@@ -267,7 +268,7 @@ function RootContent() {
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
-    if (pathname === "/swap" || pathname === "/key") {
+    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade") {
       // In-screen {@link CenteredLogoOnlyHeader} on narrow swap and key routes.
       return false;
     }

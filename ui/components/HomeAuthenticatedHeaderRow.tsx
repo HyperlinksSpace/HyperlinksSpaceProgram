@@ -207,6 +207,12 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
         }
         return;
       }
+      if (key === "trade") {
+        if (pathname !== "/trade") {
+          router.push("/trade" as any);
+        }
+        return;
+      }
       /* wired when other menu flows land */
     },
     [atOrAboveFirstBreakpoint, pathname, router],

@@ -4,8 +4,8 @@ import { CenteredLogoOnlyHeader } from "./CenteredLogoOnlyHeader";
 import { layout, useColors } from "../theme";
 
 /**
- * Narrow `/swap` chrome: centered logo header (same as `/key` / TMA logo-only strip) and padded body.
- * Wide swap renders in the home split column on `/`, not this shell.
+ * Narrow `/swap` and `/trade` chrome: centered logo header (same as `/key` / TMA logo-only strip) and padded body.
+ * Wide swap/trade render in the home split column on `/`, not this shell.
  */
 export function AuthenticatedAppShell({ children }: { children: ReactNode }) {
   const colors = useColors();

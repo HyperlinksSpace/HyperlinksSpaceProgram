@@ -1391,7 +1391,7 @@ export function HomeAuthenticatedScreen() {
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
       displayName={headerDisplayName}
-      activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
+        activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
     />
   );
 
