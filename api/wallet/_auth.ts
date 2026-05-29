@@ -1,5 +1,9 @@
 import crypto from 'crypto';
+import { getSessionByHash } from '../../database/telegramAuth.js';
 import { normalizeUsername } from '../../database/users.js';
+import { sha256Hex } from '../_lib/telegram-oidc.js';
+
+const SESSION_COOKIE = 'hs_auth_session';
 
 type TelegramUserPayload = {
   username?: string;
@@ -139,5 +143,61 @@ export function authByInitData(initData: string): AuthResult {
   const locale =
     typeof user.language_code === 'string' ? user.language_code : null;
   return { telegramUsername, locale };
+}
+
+type CookieRequest = Request | {
+  headers?: Headers | Record<string, string | string[] | undefined>;
+};
+
+function getHeader(request: CookieRequest, name: string): string | null {
+  const lower = name.toLowerCase();
+  const webHeaders = (request as Request).headers as Headers | undefined;
+  if (webHeaders && typeof webHeaders.get === 'function') {
+    return webHeaders.get(name);
+  }
+  const nodeHeaders = (request as { headers?: Record<string, string | string[] | undefined> }).headers;
+  if (!nodeHeaders) return null;
+  const raw = nodeHeaders[lower];
+  if (Array.isArray(raw)) return raw[0] ?? null;
+  return typeof raw === 'string' ? raw : null;
+}
+
+function getCookieValue(cookieHeader: string | null, key: string): string | null {
+  if (!cookieHeader) return null;
+  const pairs = cookieHeader.split(';').map((p) => p.trim());
+  for (const p of pairs) {
+    if (!p.startsWith(`${key}=`)) continue;
+    const raw = p.slice(key.length + 1);
+    return decodeURIComponent(raw);
+  }
+  return null;
+}
+
+/** Browser OAuth session (`hs_auth_session` cookie), e.g. Google sign-in on welcome. */
+export async function authBySessionCookie(request: CookieRequest): Promise<AuthResult | null> {
+  const token = getCookieValue(getHeader(request, 'cookie'), SESSION_COOKIE);
+  if (!token) return null;
+  const row = await getSessionByHash(sha256Hex(token));
+  if (!row) return null;
+  if (Date.parse(row.expires_at) <= Date.now()) return null;
+  const telegramUsername = normalizeUsername(row.telegram_username);
+  if (!telegramUsername) return null;
+  return { telegramUsername, locale: null };
+}
+
+/** Telegram Mini App initData, or browser session cookie when initData is absent. */
+export async function authWalletRequest(
+  request: CookieRequest,
+  initData: string,
+): Promise<AuthResult> {
+  const trimmed = initData.trim();
+  if (trimmed) {
+    return authByInitData(trimmed);
+  }
+  const fromSession = await authBySessionCookie(request);
+  if (fromSession) {
+    return fromSession;
+  }
+  throw new Error('missing_auth');
 }
 

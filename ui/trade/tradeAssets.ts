@@ -1,6 +1,8 @@
 /** prev-main trade page assets (`front/assets/sample`, `front/assets/icons/ap.svg`). */
 export const tradePixakatsImage = require("../../assets/sample/pixakats.svg");
 export const tradeHaramartaImage = require("../../assets/sample/Haramarta.svg");
+export const tradeDllrImage = require("../../assets/sample/DLLR.svg");
+export const tradeTonSampleImage = require("../../assets/sample/ton.png");
 
 export const tradeFeedItemImages = [
   require("../../assets/sample/items/1.svg"),

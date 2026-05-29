@@ -33,6 +33,7 @@ import {
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { SwapPanelContent } from "../components/SwapPanelContent";
+import { TradePanelContent } from "../components/trade/TradePanelContent";
 import {
   openAuthenticatedHomeRightPanel,
   useAuthenticatedHomeRightPanel,
@@ -249,10 +250,12 @@ function sameTonAddressForPoll(a: string, b: string): boolean {
  * already stored when the register `fetch` is stuck in Telegram WebView.
  */
 async function fetchDefaultWalletStatusRow(
-  initData: string,
+  initData: string | null,
   timeoutMs: number,
 ): Promise<TelegramWalletRow | null> {
   try {
+    const body =
+      initData != null && initData.trim() !== "" ? { initData } : {};
     const r = await fetchWithTimeout(
       buildApiUrl("/api/wallet/status"),
       {
@@ -260,7 +263,7 @@ async function fetchDefaultWalletStatusRow(
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         cache: "no-store",
-        body: JSON.stringify({ initData }),
+        body: JSON.stringify(body),
       },
       timeoutMs,
     );
@@ -280,7 +283,7 @@ async function fetchDefaultWalletStatusRow(
 
 /** After `POST /api/wallet/register` returns 502/503/504, keep matching the status endpoint. */
 async function tryRecoverAfterRegisterGatewayError(
-  initData: string,
+  initData: string | null,
   expectedWalletAddress: string,
 ): Promise<TelegramWalletRow | null> {
   const matchExpected = (row: TelegramWalletRow) =>
@@ -307,7 +310,7 @@ type RegisterRaceOutcome =
 function raceRegisterPostWithStatusPoll(
   registerUrl: string,
   registerInit: RequestInit,
-  initData: string,
+  initData: string | null,
   expectedWalletAddress: string,
 ): Promise<RegisterRaceOutcome> {
   const matchExpected = (row: TelegramWalletRow) => sameTonAddressForPoll(row.wallet_address, expectedWalletAddress);
@@ -424,7 +427,7 @@ function registerWalletFromJson(raw: unknown): TelegramWalletRow | null {
 }
 
 type PendingServerWalletRegPayload = {
-  initData: string;
+  initData: string | null;
   walletAddress: string;
   mnemonic: string[];
   masterKey: string;
@@ -459,7 +462,7 @@ type SetCreateStep = (s: CreateStep) => void;
  * before awaiting this (provisional UX); this finishes server + React wallet row application.
  */
 async function executeWalletServerRegistration(
-  initData: string,
+  initData: string | null,
   walletAddress: string,
   registerUrl: string,
   registerInit: RequestInit,
@@ -485,10 +488,7 @@ async function executeWalletServerRegistration(
       const gateway = response.status >= 502 && response.status <= 504;
       if (gateway) {
         logPageDisplay("wallet_create_flow", { flow: "register_retry_status_after_gateway", status: response.status });
-        const recovered = await tryRecoverAfterRegisterGatewayError(
-          typeof initData === "string" ? initData : "",
-          walletAddress,
-        );
+        const recovered = await tryRecoverAfterRegisterGatewayError(initData, walletAddress);
         if (recovered) {
           apply(recovered);
           setCreated(recovered.wallet_address);
@@ -552,15 +552,17 @@ export function HomeAuthenticatedScreen() {
   const isTripleColumn = windowWidth > layout.authenticatedHome.secondBreakpoint;
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
+  const tradeActiveOnWide = isWideHome && rightPanel === "trade";
+  const splitColumnActiveOnWide = swapActiveOnWide || tradeActiveOnWide;
   // Feed (left column) remains the active item when it is the displayed content.
   const leftNavSelectedIndex = homeNavIndex;
 
   useEffect(() => {
-    // Wide home (2- or 3-column): keep swap visible in the right pane by default.
-    if (isWideHome) {
+    // Wide home (2- or 3-column): default right pane to swap when nothing else is open.
+    if (isWideHome && rightPanel === null) {
       openAuthenticatedHomeRightPanel("swap");
     }
-  }, [isWideHome]);
+  }, [isWideHome, rightPanel]);
 
   useEffect(() => {
     if (!isWideHome || rightPanel !== "swap") return;
@@ -575,6 +577,12 @@ export function HomeAuthenticatedScreen() {
   useEffect(() => {
     if (!isWideHome && rightPanel === "swap") {
       router.push("/swap" as any);
+    }
+  }, [isWideHome, rightPanel, router]);
+
+  useEffect(() => {
+    if (!isWideHome && rightPanel === "trade") {
+      router.push("/trade" as any);
     }
   }, [isWideHome, rightPanel, router]);
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
@@ -635,8 +643,10 @@ export function HomeAuthenticatedScreen() {
       logPageDisplay("wallet_create_flow", { flow: "dedup_skip" });
       return;
     }
-    if (!initData || (typeof initData === "string" && initData.trim() === "")) {
-      setFlowError("Missing Telegram initData.");
+    const initDataOk = Boolean(initData && (typeof initData !== "string" || initData.trim() !== ""));
+    const browserSessionOk = Boolean(telegramUsername?.trim()) && !initDataOk;
+    if (!initDataOk && !browserSessionOk) {
+      setFlowError("Missing sign-in credentials.");
       return;
     }
     walletCreateModuleInFlight = true;
@@ -679,18 +689,21 @@ export function HomeAuthenticatedScreen() {
         ]);
         logPageDisplay("wallet_create_flow", { flow: "pre_register_done" });
 
-        const registerBody = JSON.stringify({
-          initData,
+        const registerBodyPayload: Record<string, unknown> = {
           wallet_address: walletAddress,
           wallet_blockchain: "ton",
           wallet_net: "mainnet",
           type: "internal",
           label: "Main wallet",
-          source: "miniapp",
+          source: initDataOk ? "miniapp" : "browser",
           wallet_payload_ciphertext: envelope.wallet_payload_ciphertext,
           wallet_payload_nonce: envelope.wallet_payload_nonce,
           dek: envelope.dek,
-        });
+        };
+        if (initDataOk) {
+          registerBodyPayload.initData = initData;
+        }
+        const registerBody = JSON.stringify(registerBodyPayload);
         const registerUrl = buildApiUrl("/api/wallet/register");
         const registerInit: RequestInit = {
           method: "POST",
@@ -701,7 +714,7 @@ export function HomeAuthenticatedScreen() {
         };
 
         const pendingPayload: PendingServerWalletRegPayload = {
-          initData: initData as string,
+          initData: initDataOk ? (initData as string) : null,
           walletAddress,
           mnemonic,
           masterKey,
@@ -785,7 +798,7 @@ export function HomeAuthenticatedScreen() {
     } finally {
       walletCreateModuleInFlight = false;
     }
-  }, [initData, applyServerWalletAfterRegister, applyCreatedForRegister]);
+  }, [initData, telegramUsername, applyServerWalletAfterRegister, applyCreatedForRegister]);
 
   const retryServerRegistrationOnly = useCallback(async () => {
     const p = pendingServerRegRef.current ?? pendingServerRegModule;
@@ -859,7 +872,8 @@ export function HomeAuthenticatedScreen() {
       return;
     }
     const init = typeof initData === "string" && initData.trim() !== "" ? initData : null;
-    if (!init) {
+    const hasSidePollAuth = init != null || Boolean(telegramUsername?.trim());
+    if (!hasSidePollAuth) {
       return;
     }
     const expectAddr = getHomeBootstrap().provisionalAddress;
@@ -992,6 +1006,7 @@ export function HomeAuthenticatedScreen() {
   }, [
     homeBootstrapVersion,
     initData,
+    telegramUsername,
     status,
     applyServerWalletAfterRegister,
     applyCreatedForRegister,
@@ -1001,6 +1016,8 @@ export function HomeAuthenticatedScreen() {
   /** useLayoutEffect: start as soon as the home shell commits (before paint) so the flow is less likely to race hydration recovery (#418) or sit on idle+spinner. */
   useLayoutEffect(() => {
     const initDataOk = Boolean(initData && (typeof initData !== "string" || initData.trim() !== ""));
+    const browserSessionOk = Boolean(telegramUsername?.trim()) && !initDataOk;
+    const walletAuthOk = initDataOk || browserSessionOk;
     const guard = {
       hasFlowError: Boolean(flowError),
       status,
@@ -1009,6 +1026,8 @@ export function HomeAuthenticatedScreen() {
       step,
       initDataLen: initData == null ? 0 : typeof initData === "string" ? initData.length : -1,
       initDataOk,
+      browserSessionOk,
+      walletAuthOk,
     } as const;
 
     if (flowError) {
@@ -1020,7 +1039,7 @@ export function HomeAuthenticatedScreen() {
       walletRequired &&
       !hasDisplayAddress &&
       step === "idle" &&
-      initDataOk
+      walletAuthOk
     ) {
       logPageDisplay("wallet_start_guard", { ...guard, action: "start" });
       void createAndRegisterWalletFlow();
@@ -1038,12 +1057,12 @@ export function HomeAuthenticatedScreen() {
       if (step !== "idle") {
         reasons.push(`step_${step}`);
       }
-      if (!initDataOk) {
-        reasons.push("init_data_missing_or_blank");
+      if (!walletAuthOk) {
+        reasons.push("wallet_auth_missing");
       }
       logPageDisplay("wallet_start_guard", { ...guard, action: "skip_conditions", reasons });
     }
-  }, [flowError, status, walletRequired, hasDisplayAddress, step, initData, createAndRegisterWalletFlow]);
+  }, [flowError, status, walletRequired, hasDisplayAddress, step, initData, telegramUsername, createAndRegisterWalletFlow]);
 
   /**
    * If the layout effect never started the flow (e.g. timing with deferred web root mount), kick once
@@ -1057,7 +1076,9 @@ export function HomeAuthenticatedScreen() {
       return;
     }
     const initDataOk = Boolean(initData && (typeof initData !== "string" || initData.trim() !== ""));
-    if (status !== "ok" || !walletRequired || hasDisplayAddress || !initDataOk || step !== "idle") {
+    const browserSessionOk = Boolean(telegramUsername?.trim()) && !initDataOk;
+    const walletAuthOk = initDataOk || browserSessionOk;
+    if (status !== "ok" || !walletRequired || hasDisplayAddress || !walletAuthOk || step !== "idle") {
       return;
     }
     const kickTimer = setTimeout(() => {
@@ -1067,7 +1088,7 @@ export function HomeAuthenticatedScreen() {
       if (isWalletCreateFlowModuleLocked()) {
         return;
       }
-      if (status !== "ok" || !walletRequired || hasDisplayAddress || !initDataOk || step !== "idle") {
+      if (status !== "ok" || !walletRequired || hasDisplayAddress || !walletAuthOk || step !== "idle") {
         return;
       }
       logPageDisplay("wallet_create_flow", { flow: "effect_fallback" });
@@ -1076,7 +1097,7 @@ export function HomeAuthenticatedScreen() {
     return () => {
       clearTimeout(kickTimer);
     };
-  }, [flowError, status, walletRequired, hasDisplayAddress, step, initData, createAndRegisterWalletFlow]);
+  }, [flowError, status, walletRequired, hasDisplayAddress, step, initData, telegramUsername, createAndRegisterWalletFlow]);
 
   useEffect(() => {
     logPageDisplay("home_authenticated_phase", {
@@ -1391,7 +1412,7 @@ export function HomeAuthenticatedScreen() {
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
       displayName={headerDisplayName}
-        activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
+        activeHeaderMenuKey={swapActiveOnWide ? "swap" : tradeActiveOnWide ? "trade" : null}
     />
   );
 
@@ -1445,12 +1466,23 @@ export function HomeAuthenticatedScreen() {
             >
               <SwapPanelContent />
             </View>
+          ) : rightPanel === "trade" ? (
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                minHeight: 0,
+              }}
+            >
+              <TradePanelContent />
+            </View>
           ) : (
             <View style={{ flex: 1 }} />
           )
         }
         middleColumnFooter={
-          swapActiveOnWide
+          splitColumnActiveOnWide
             ? swapColumnFooter
             : aiBarDock === "splitColumn2"
               ? embeddedAiBar

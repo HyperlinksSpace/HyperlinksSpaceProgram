@@ -1,16 +1,12 @@
-import { useCallback, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { Text, View, type LayoutChangeEvent } from "react-native";
 import { Image } from "expo-image";
 import { HspScrollColumn, type HspScrollMetrics } from "../HspScrollColumn";
 import { TradeCollectionColumn } from "./TradeCollectionColumn";
 import { TradeFeedRow } from "./TradeFeedRow";
-import {
-  tradeApIcon,
-  tradeFeedItemImages,
-  tradeHaramartaImage,
-  tradePixakatsImage,
-} from "../../trade/tradeAssets";
-import { TRADE_SAMPLE_FEED_ITEMS } from "../../trade/tradeSampleData";
+import { tradeApIcon, tradeFeedItemImages } from "../../trade/tradeAssets";
+import { resolveTradeCollectionColumnCount } from "../../trade/tradeCollectionLayout";
+import { TRADE_SAMPLE_COLLECTIONS, TRADE_SAMPLE_FEED_ITEMS } from "../../trade/tradeSampleData";
 import { layout, typographyRect15, useColors } from "../../theme";
 
 const TOP_INSET_PX = 15;
@@ -65,11 +61,25 @@ export function TradePanelContent() {
   const colors = useColors();
   const contentInset = layout.contentSideInsetPx;
   const [viewportH, setViewportH] = useState(0);
+  const [collectionsRowWidth, setCollectionsRowWidth] = useState(0);
   const [needsScroll, setNeedsScroll] = useState<boolean | null>(null);
   const scrollLayoutReady = needsScroll !== null;
 
+  const collectionColumnCount = useMemo(
+    () => resolveTradeCollectionColumnCount(collectionsRowWidth, contentInset),
+    [collectionsRowWidth, contentInset],
+  );
+  const visibleCollections = useMemo(
+    () => TRADE_SAMPLE_COLLECTIONS.slice(0, collectionColumnCount),
+    [collectionColumnCount],
+  );
+
   const onViewportLayout = useCallback((e: LayoutChangeEvent) => {
     setViewportH(e.nativeEvent.layout.height);
+  }, []);
+
+  const onCollectionsRowLayout = useCallback((e: LayoutChangeEvent) => {
+    setCollectionsRowWidth(e.nativeEvent.layout.width);
   }, []);
 
   const onScrollMetrics = useCallback(
@@ -106,20 +116,23 @@ export function TradePanelContent() {
             : scrollContentPadding
         }
       >
-        <View style={{ flexDirection: "row", alignItems: "flex-start", width: "100%" }}>
-          <TradeCollectionColumn
-            image={tradePixakatsImage}
-            title="pixa kats"
-            subtitle="Tandam"
-            colors={colors}
-          />
-          <View style={{ width: contentInset }} />
-          <TradeCollectionColumn
-            image={tradeHaramartaImage}
-            title="Haramarta"
-            subtitle="Bid Raits"
-            colors={colors}
-          />
+        <View
+          style={{ flexDirection: "row", alignItems: "flex-start", width: "100%" }}
+          onLayout={onCollectionsRowLayout}
+        >
+          {visibleCollections.map((collection, index) => (
+            <Fragment key={`${collection.title}-${index}`}>
+              {index > 0 ? <View style={{ width: contentInset }} /> : null}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <TradeCollectionColumn
+                  image={collection.image}
+                  title={collection.title}
+                  subtitle={collection.subtitle}
+                  colors={colors}
+                />
+              </View>
+            </Fragment>
+          ))}
         </View>
 
         <View style={{ height: SECTION_GAP_PX }} />

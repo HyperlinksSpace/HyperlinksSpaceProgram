@@ -1,7 +1,7 @@
 import { deliverWelcomeFeedIfNeeded } from '../../database/feed.js';
 import { getDefaultWalletByUsername } from '../../database/wallets.js';
 import { upsertUserFromTma } from '../../database/users.js';
-import { authByInitData } from '../wallet/_auth.js';
+import { authWalletRequest } from '../wallet/_auth.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -27,7 +27,7 @@ async function handler(request: Request): Promise<Response> {
   const method = (request as { method?: string }).method ?? request.method;
   if (method === 'GET') {
     return jsonResponse(
-      { ok: true, endpoint: 'wallet/status', use: 'POST with initData' },
+      { ok: true, endpoint: 'wallet/status', use: 'POST with initData or hs_auth_session cookie' },
       200,
     );
   }
@@ -37,10 +37,9 @@ async function handler(request: Request): Promise<Response> {
 
   const body = (await getBody(request)) as { initData?: unknown } | null;
   const initData = typeof body?.initData === 'string' ? body.initData : '';
-  if (!initData) return jsonResponse({ ok: false, error: 'missing_initData' }, 400);
 
   try {
-    const auth = authByInitData(initData);
+    const auth = await authWalletRequest(request, initData);
     await upsertUserFromTma({
       telegramUsername: auth.telegramUsername,
       locale: auth.locale,
@@ -90,7 +89,13 @@ async function handler(request: Request): Promise<Response> {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'internal_error';
-    const status = msg === 'bot_token_not_configured' ? 500 : msg === 'invalid_initdata' ? 401 : 400;
+    const status = msg === 'bot_token_not_configured'
+      ? 500
+      : msg === 'invalid_initdata'
+        ? 401
+        : msg === 'missing_auth'
+          ? 401
+          : 400;
     return jsonResponse({ ok: false, error: msg }, status);
   }
 }

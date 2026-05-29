@@ -1,6 +1,6 @@
 import { registerWallet } from '../../database/wallets.js';
 import { upsertUserFromTma } from '../../database/users.js';
-import { authByInitData } from '../wallet/_auth.js';
+import { authWalletRequest } from '../wallet/_auth.js';
 import { kmsEncrypt } from '../_lib/envelope-crypto.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -81,7 +81,7 @@ async function handler(request: Request): Promise<Response> {
       {
         ok: true,
         endpoint: 'wallet/register',
-        use: 'POST with initData, public wallet fields, and envelope (wallet_payload_ciphertext, wallet_payload_nonce, dek)',
+        use: 'POST with initData or hs_auth_session cookie, public wallet fields, and envelope (wallet_payload_ciphertext, wallet_payload_nonce, dek)',
       },
       200,
     );
@@ -102,7 +102,6 @@ async function handler(request: Request): Promise<Response> {
   }
 
   const initData = toTrimmedString(rawBody.initData);
-  if (!initData) return jsonResponse({ ok: false, error: 'missing_initData' }, 400);
 
   const ct = toTrimmedString(rawBody.wallet_payload_ciphertext);
   const nonce = toTrimmedString(rawBody.wallet_payload_nonce);
@@ -141,7 +140,7 @@ async function handler(request: Request): Promise<Response> {
   const wrappedDekB64 = wrappedDekBuf.toString('base64');
 
   try {
-    const auth = authByInitData(initData);
+    const auth = await authWalletRequest(request, initData);
     await upsertUserFromTma({
       telegramUsername: auth.telegramUsername,
       locale: auth.locale,
@@ -215,7 +214,13 @@ async function handler(request: Request): Promise<Response> {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'internal_error';
-    const status = msg === 'bot_token_not_configured' ? 500 : msg === 'invalid_initdata' ? 401 : 400;
+    const status = msg === 'bot_token_not_configured'
+      ? 500
+      : msg === 'invalid_initdata'
+        ? 401
+        : msg === 'missing_auth'
+          ? 401
+          : 400;
     return jsonResponse({ ok: false, error: msg }, status);
   }
 }
