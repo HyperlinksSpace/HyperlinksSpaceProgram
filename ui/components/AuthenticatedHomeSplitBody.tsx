@@ -720,7 +720,11 @@ export function AuthenticatedHomeSplitBody({
 
   return (
     <View
-      style={{ flex: 1, width: "100%", alignSelf: "stretch" }}
+      style={{
+        ...(isWide || Platform.OS !== "web" ? { flex: 1 } : {}),
+        width: "100%",
+        alignSelf: "stretch",
+      }}
       onLayout={(e) => {
         const w = Math.round(e.nativeEvent.layout.width);
         setRowWidth((cur) => {
@@ -743,7 +747,7 @@ export function AuthenticatedHomeSplitBody({
               <View style={columnAiBarWrapStyle}>{leftColumnFooter}</View>
             </View>
           ) : (
-            <View style={{ flex: 1, width: "100%" }}>{left}</View>
+            <View style={{ width: "100%", alignSelf: "stretch" }}>{left}</View>
           )
         ) : (
           <View

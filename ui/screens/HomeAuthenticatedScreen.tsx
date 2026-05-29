@@ -8,7 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { ActivityIndicator, Button, Text, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Button, Platform, Text, View, useWindowDimensions } from "react-native";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import {
   MainColumnInactiveFooter,
@@ -107,16 +107,26 @@ function AuthenticatedHomePaddedBody({ children }: { children: ReactNode }) {
   );
 }
 
-function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
+function AuthenticatedHomeChrome({
+  children,
+  /** When set (including `null`), overrides legacy first-child header slot. */
+  header,
+  /** Below `firstBreakpoint` on web: body grows with content so root scroll moves the main block. */
+  compactScroll = false,
+}: {
+  children: ReactNode;
+  header?: ReactNode | null;
+  compactScroll?: boolean;
+}) {
   const colors = useColors();
   const p = layout.authenticatedHome;
   const nodes = Children.toArray(children);
-  const head = nodes[0];
-  const body = nodes.slice(1);
+  const head = header !== undefined ? header : nodes[0];
+  const body = header !== undefined ? nodes : nodes.slice(1);
   return (
     <View
       style={{
-        flex: 1,
+        ...(compactScroll ? {} : { flex: 1 }),
         width: "100%",
         alignSelf: "stretch",
         backgroundColor: colors.background,
@@ -124,14 +134,14 @@ function AuthenticatedHomeChrome({ children }: { children: ReactNode }) {
     >
       <View
         style={{
-          flex: 1,
+          ...(compactScroll ? {} : { flex: 1 }),
           width: "100%",
           paddingTop: p.contentInsetTop,
           paddingBottom: p.contentInsetBottom,
         }}
       >
         {head}
-        <View style={{ flex: 1, width: "100%" }}>{body}</View>
+        <View style={compactScroll ? { width: "100%" } : { flex: 1, width: "100%" }}>{body}</View>
       </View>
     </View>
   );
@@ -1294,94 +1304,135 @@ export function HomeAuthenticatedScreen() {
     walletRequired &&
     step === "saving";
 
+  const homeMainColumnInsetStyle = {
+    paddingHorizontal: layout.contentSideInsetPx,
+    paddingBottom: layout.contentSideInsetPx,
+  } as const;
+
+  const homeMainColumnBlocks = (
+    <>
+      {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} /> : null}
+      {telegramUsername ? (
+        <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
+          <Text
+            style={{
+              textAlign: "center",
+              color: colors.primary,
+              fontSize: 16,
+              lineHeight: 24,
+            }}
+          >
+            {tf("home.wallet.loggedInAs", { username: telegramUsername })}
+          </Text>
+        </View>
+      ) : null}
+      {flowError ? (
+        <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
+          <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
+            {translateFlowError(flowError)}
+          </Text>
+          {serverOnlyRetry ? (
+            <Button title={t("home.wallet.retryServerRegistration")} onPress={retryServerRegistrationOnly} />
+          ) : (
+            <Button title={t("home.wallet.retryWalletCreation")} onPress={createAndRegisterWalletFlow} />
+          )}
+        </View>
+      ) : null}
+      {showWalletProvisioning ? (
+        <View
+          style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}
+        >
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text
+            style={{
+              textAlign: "center",
+              fontSize: 13,
+              lineHeight: 20,
+              color: colors.secondary,
+            }}
+          >
+            {t("home.wallet.generatingKeys")}
+          </Text>
+        </View>
+      ) : null}
+      {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
+        <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
+          <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
+            {t("home.wallet.finishingServer")}
+          </Text>
+        </View>
+      ) : null}
+      {masterKeyStorageTier === "server" ? (
+        <Text
+          style={{
+            marginTop: 14,
+            fontSize: 12,
+            color: colors.secondary,
+            textAlign: "center",
+            paddingHorizontal: 8,
+          }}
+        >
+          {t("home.wallet.backupKmsNote")}
+        </Text>
+      ) : null}
+    </>
+  );
+
+  const homeLeftNavStrip = (
+    <AuthenticatedHomeLeftNavStrip
+      colors={colors}
+      selectedIndex={leftNavSelectedIndex}
+      onSelectIndex={setHomeNavIndex}
+    />
+  );
+
+  const homeHeaderRow = (
+    <HomeAuthenticatedHeaderRow
+      walletAddress={effectiveWalletAddress ?? ""}
+      displayName={headerDisplayName}
+      activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
+    />
+  );
+
+  /**
+   * Compact: wallet header → nav strip → feed → “logged in as …” scroll as one block (root scroll on web).
+   * Wide: header pinned in chrome; nav pinned; feed + status copy scroll in the left column only.
+   */
+  const homeCompactMainBlock = (
+    <>
+      {homeHeaderRow}
+      {homeLeftNavStrip}
+      <View style={homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
+    </>
+  );
+
+  const homeLeftColumn = isWideHome ? (
+    <>
+      {homeLeftNavStrip}
+      <HspScrollColumn
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={homeMainColumnInsetStyle}
+      >
+        {homeMainColumnBlocks}
+      </HspScrollColumn>
+    </>
+  ) : Platform.OS === "web" ? (
+    homeCompactMainBlock
+  ) : (
+    <HspScrollColumn style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ flexGrow: 0 }}>
+      {homeCompactMainBlock}
+    </HspScrollColumn>
+  );
+
   return (
-    <AuthenticatedHomeChrome>
-      <HomeAuthenticatedHeaderRow
-        walletAddress={effectiveWalletAddress ?? ""}
-        displayName={headerDisplayName}
-        activeHeaderMenuKey={swapActiveOnWide ? "swap" : null}
-      />
+    <AuthenticatedHomeChrome
+      compactScroll={!isWideHome && Platform.OS === "web"}
+      header={isWideHome ? homeHeaderRow : null}
+    >
       <AuthenticatedHomeSplitBody
         leftColumnFooter={isWideHome ? mainColumnFooter : null}
-        left={
-          <>
-            <AuthenticatedHomeLeftNavStrip
-              colors={colors}
-              selectedIndex={leftNavSelectedIndex}
-              onSelectIndex={setHomeNavIndex}
-            />
-            <HspScrollColumn
-              style={{ flex: 1, minHeight: 0 }}
-              contentContainerStyle={{ paddingHorizontal: layout.contentSideInsetPx, paddingBottom: layout.contentSideInsetPx }}
-            >
-              {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} /> : null}
-              {telegramUsername ? (
-                <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      color: colors.primary,
-                      fontSize: 16,
-                      lineHeight: 24,
-                    }}
-                  >
-                    {tf("home.wallet.loggedInAs", { username: telegramUsername })}
-                  </Text>
-                </View>
-              ) : null}
-              {flowError ? (
-                <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
-                  <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
-                    {translateFlowError(flowError)}
-                  </Text>
-                  {serverOnlyRetry ? (
-                    <Button title={t("home.wallet.retryServerRegistration")} onPress={retryServerRegistrationOnly} />
-                  ) : (
-                    <Button title={t("home.wallet.retryWalletCreation")} onPress={createAndRegisterWalletFlow} />
-                  )}
-                </View>
-              ) : null}
-              {showWalletProvisioning ? (
-                <View
-                  style={{ marginTop: 12, marginBottom: 4, maxWidth: 360, alignItems: "center", gap: 8, alignSelf: "center" }}
-                >
-                  <ActivityIndicator size="small" color={colors.primary} />
-                  <Text
-                    style={{
-                      textAlign: "center",
-                      fontSize: 13,
-                      lineHeight: 20,
-                      color: colors.secondary,
-                    }}
-                  >
-                    {t("home.wallet.generatingKeys")}
-                  </Text>
-                </View>
-              ) : null}
-              {!flowError && isServerRegPendingFromModule && effectiveWalletAddress ? (
-                <View style={{ marginTop: 10, maxWidth: 360, alignItems: "center", alignSelf: "center" }}>
-                  <ActivityIndicator size="small" color={colors.primary} style={{ marginBottom: 6 }} />
-                  <Text style={{ textAlign: "center", fontSize: 12, lineHeight: 18, color: colors.secondary }}>
-                    {t("home.wallet.finishingServer")}
-                  </Text>
-                </View>
-              ) : null}
-              {masterKeyStorageTier === "server" ? (
-                <Text
-                  style={{
-                    marginTop: 14,
-                    fontSize: 12,
-                    color: colors.secondary,
-                    textAlign: "center",
-                    paddingHorizontal: 8,
-                  }}
-                >
-                  {t("home.wallet.backupKmsNote")}
-                </Text>
-              ) : null}
-            </HspScrollColumn>
-          </>
-        }
+        left={homeLeftColumn}
         right={
           rightPanel === "swap" ? (
             <View
