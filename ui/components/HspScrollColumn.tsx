@@ -84,6 +84,16 @@ export function HspScrollColumn({
   }, []);
 
   useLayoutEffect(() => {
+    if (Platform.OS === "web") {
+      const instance = scrollRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (el) el.scrollTop = 0;
+    } else {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
+    setScroll((prev) => ({ ...prev, scrollY: 0 }));
     if (Platform.OS !== "web") return;
     syncScrollMetricsFromDom();
     const id = requestAnimationFrame(() => {
@@ -110,19 +120,6 @@ export function HspScrollColumn({
       requestAnimationFrame(run);
     });
     return () => cancelAnimationFrame(id);
-  }, [children]);
-
-  useLayoutEffect(() => {
-    if (Platform.OS === "web") {
-      const instance = scrollRef.current as unknown as {
-        getScrollableNode?: () => HTMLElement | null | undefined;
-      } | null;
-      const el = instance?.getScrollableNode?.();
-      if (el) el.scrollTop = 0;
-    } else {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }
-    setScroll((prev) => ({ ...prev, scrollY: 0 }));
   }, [children]);
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);

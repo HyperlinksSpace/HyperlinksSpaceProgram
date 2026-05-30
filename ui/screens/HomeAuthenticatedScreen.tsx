@@ -1333,6 +1333,11 @@ export function HomeAuthenticatedScreen() {
     paddingHorizontal: layout.contentSideInsetPx,
     paddingBottom: layout.contentSideInsetPx,
   } as const;
+  /** Wide left column: gap below nav strip lives in scroll padding so the thumb track starts on the nav bottom rule. */
+  const homeWideScrollContentStyle = {
+    ...homeMainColumnInsetStyle,
+    paddingTop: 8,
+  } as const;
 
   const homeMainColumnBlocks = (
     <>
@@ -1437,7 +1442,7 @@ export function HomeAuthenticatedScreen() {
       {homeLeftNavStrip}
       <HspScrollColumn
         style={{ flex: 1, minHeight: 0 }}
-        contentContainerStyle={homeMainColumnInsetStyle}
+        contentContainerStyle={homeWideScrollContentStyle}
       >
         {homeMainColumnBlocks}
       </HspScrollColumn>
