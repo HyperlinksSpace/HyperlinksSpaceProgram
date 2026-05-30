@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /** Right split column content on authenticated home (wide layout only). */
-export type AuthenticatedHomeRightPanelKey = "swap" | "trade";
+export type AuthenticatedHomeRightPanelKey = "swap" | "trade" | "send" | "get";
 
 let activePanel: AuthenticatedHomeRightPanelKey | null = null;
 let storeVersion = 0;

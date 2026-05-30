@@ -62,6 +62,8 @@ const en = {
 
   "swap.footer.insufficientAmount": "Insufficient amount",
 
+  "send.footer.submit": "N / A",
+
   "global.logoBar.about": "About",
   "global.logoBar.aboutHint": "Opens the Hyperlinks Space Program landing page in the browser",
   "global.logoBar.wordmarkA11y": "Hyperlinks Space",
@@ -196,6 +198,8 @@ const ru = {
   "home.mainColumnFooter.telegramMessages": "Подключить Telegram",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
+
+  "send.footer.submit": "N / A",
 
   "global.logoBar.about": "О программе",
   "global.logoBar.aboutHint": "Откроет сайт программы Hyperlinks Space в браузере",

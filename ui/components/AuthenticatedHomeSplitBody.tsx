@@ -674,15 +674,8 @@ export function AuthenticatedHomeSplitBody({
       );
     }
     return (
-      <View
-        style={{
-          ...middleFlexBase,
-          paddingHorizontal: inset,
-          paddingBottom: bottomInset,
-          minHeight: 0,
-        }}
-      >
-        {right}
+      <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
+        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
       </View>
     );
   })();

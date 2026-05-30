@@ -12,11 +12,14 @@ import { ActivityIndicator, Button, Platform, Text, View, useWindowDimensions } 
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import {
   MainColumnInactiveFooter,
+  SendColumnInactiveFooter,
   SwapColumnInactiveFooter,
 } from "../components/InactiveWelcomeColumnFooter";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
+import { GetPanelContent } from "../components/get/GetPanelContent";
+import { SendPanelContent } from "../components/send/SendPanelContent";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
 import { HspScrollColumn } from "../components/HspScrollColumn";
 import { Address } from "@ton/core";
@@ -553,7 +556,8 @@ export function HomeAuthenticatedScreen() {
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
   const tradeActiveOnWide = isWideHome && rightPanel === "trade";
-  const splitColumnActiveOnWide = swapActiveOnWide || tradeActiveOnWide;
+  const sendActiveOnWide = isWideHome && rightPanel === "send";
+  const getActiveOnWide = isWideHome && rightPanel === "get";
   // Feed (left column) remains the active item when it is the displayed content.
   const leftNavSelectedIndex = homeNavIndex;
 
@@ -587,11 +591,20 @@ export function HomeAuthenticatedScreen() {
     }
     if (rightPanel === "trade" && pathname !== "/trade") {
       router.push("/trade" as any);
+      return;
+    }
+    if (rightPanel === "send" && pathname !== "/send") {
+      router.push("/send" as any);
+      return;
+    }
+    if (rightPanel === "get" && pathname !== "/get") {
+      router.push("/get" as any);
     }
   }, [isWideHome, rightPanel, pathname, router]);
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
   const mainColumnFooter = <MainColumnInactiveFooter />;
   const swapColumnFooter = <SwapColumnInactiveFooter />;
+  const sendColumnFooter = <SendColumnInactiveFooter />;
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
   const [createdWalletAddress, setCreatedWalletAddress] = useState<string | null>(null);
@@ -1421,7 +1434,17 @@ export function HomeAuthenticatedScreen() {
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
       displayName={headerDisplayName}
-        activeHeaderMenuKey={swapActiveOnWide ? "swap" : tradeActiveOnWide ? "trade" : null}
+        activeHeaderMenuKey={
+          swapActiveOnWide
+            ? "swap"
+            : tradeActiveOnWide
+              ? "trade"
+              : sendActiveOnWide
+                ? "send"
+                : getActiveOnWide
+                  ? "get"
+                  : null
+        }
     />
   );
 
@@ -1486,16 +1509,44 @@ export function HomeAuthenticatedScreen() {
             >
               <TradePanelContent />
             </View>
+          ) : rightPanel === "send" ? (
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                minHeight: 0,
+              }}
+            >
+              <SendPanelContent />
+            </View>
+          ) : rightPanel === "get" ? (
+            <View
+              style={{
+                flex: 1,
+                width: "100%",
+                alignSelf: "stretch",
+                minHeight: 0,
+              }}
+            >
+              <GetPanelContent
+                showTitleRow={!isWideHome}
+                walletAddress={effectiveWalletAddress ?? ""}
+                displayName={headerDisplayName}
+              />
+            </View>
           ) : (
             <View style={{ flex: 1 }} />
           )
         }
         middleColumnFooter={
-          splitColumnActiveOnWide
-            ? swapColumnFooter
-            : aiBarDock === "splitColumn2"
-              ? embeddedAiBar
-              : null
+          sendActiveOnWide
+            ? sendColumnFooter
+            : swapActiveOnWide
+              ? swapColumnFooter
+              : aiBarDock === "splitColumn2"
+                ? embeddedAiBar
+                : null
         }
         thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
       />

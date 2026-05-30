@@ -58,12 +58,7 @@ const WIDE_MENU_ITEM_KEYS = [
   { key: "send", labelKey: "home.menu.send" as const, Icon: MenuSendIcon },
 ] as const;
 
-/** Shown in header as `walletAddressSnippetPrefix` + last N chars (lowercase); clipboard keeps original casing. */
-function walletAddressHeaderSnippet(trimmed: string): string {
-  if (trimmed.length === 0) return AH.walletAddressSnippetPlaceholder;
-  const tail = trimmed.slice(-AH.walletAddressSnippetTailLength).toLowerCase();
-  return `${AH.walletAddressSnippetPrefix}${tail}`;
-}
+import { trimWalletAddress, walletAddressHeaderSnippet } from "../wallet/walletAddressFormat";
 
 /** Chevron from `assets/header/right.svg`; fill uses theme `highlight`. */
 function HeaderProfileChevronIcon({ color }: { color: string }) {
@@ -186,7 +181,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
   const atOrAboveFirstBreakpoint = widthForLayout > AH.firstBreakpoint;
   const headerMenuActiveKey =
     atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;
-  const trimmed = walletAddress.replace(/\s+/g, "").trim();
+  const trimmed = trimWalletAddress(walletAddress);
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
 
   const copyFullWalletAddress = useCallback(async () => {
@@ -215,6 +210,28 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
           }
         } else if (pathname !== "/trade") {
           router.push("/trade" as any);
+        }
+        return;
+      }
+      if (key === "send") {
+        if (atOrAboveFirstBreakpoint) {
+          openAuthenticatedHomeRightPanel("send");
+          if (pathname === "/send") {
+            router.replace("/");
+          }
+        } else if (pathname !== "/send") {
+          router.push("/send" as any);
+        }
+        return;
+      }
+      if (key === "get") {
+        if (atOrAboveFirstBreakpoint) {
+          openAuthenticatedHomeRightPanel("get");
+          if (pathname === "/get") {
+            router.replace("/");
+          }
+        } else if (pathname !== "/get") {
+          router.push("/get" as any);
         }
         return;
       }

@@ -23,7 +23,6 @@ import { getBottomBarMetrics } from "./bottomBarMetrics";
 import { getPrimaryTextColorFromLaunch } from "./telegramWebApp";
 import { useAppStrings } from "../../locales/AppStringsContext";
 
-const { maxContentWidth } = layout;
 const {
   lineHeight: LINE_HEIGHT,
   horizontalPadding: HORIZONTAL_PADDING,
@@ -156,8 +155,7 @@ const styles = StyleSheet.create({
    */
   container: {
     width: "100%",
-    maxWidth: maxContentWidth,
-    alignSelf: "center",
+    alignSelf: "stretch",
     paddingHorizontal: HORIZONTAL_PADDING,
   },
   row: {

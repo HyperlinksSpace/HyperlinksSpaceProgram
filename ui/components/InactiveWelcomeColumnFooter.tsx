@@ -77,6 +77,11 @@ export function SwapColumnInactiveFooter() {
   return <InactiveWelcomeColumnFooter label={t("swap.footer.insufficientAmount")} />;
 }
 
+export function SendColumnInactiveFooter() {
+  const { t } = useAppStrings();
+  return <InactiveWelcomeColumnFooter label={t("send.footer.submit")} />;
+}
+
 const styles = StyleSheet.create({
   wrapper: {
     width: "100%",

@@ -23,6 +23,7 @@ import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { HspScrollColumn } from "../ui/components/HspScrollColumn";
 import {
   MainColumnInactiveFooter,
+  SendColumnInactiveFooter,
   SwapColumnInactiveFooter,
 } from "../ui/components/InactiveWelcomeColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
@@ -127,7 +128,8 @@ function AuthenticatedScreenFooter({
   if (!isAuthenticated || bottomBarDock !== "screenFooter") return null;
   if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
   if (pathname === "/swap") return <SwapColumnInactiveFooter />;
-  if (pathname === "/trade") return <SwapColumnInactiveFooter />;
+  if (pathname === "/send") return <SendColumnInactiveFooter />;
+  if (pathname === "/trade" || pathname === "/get") return null;
   if (pathname === "/" || pathname === "" || pathname == null) {
     return <MainColumnInactiveFooter />;
   }
@@ -268,8 +270,8 @@ function RootContent() {
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
-    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade") {
-      // In-screen {@link CenteredLogoOnlyHeader} on narrow swap and key routes.
+    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade" || pathname === "/send" || pathname === "/get") {
+      // In-screen {@link CenteredLogoOnlyHeader} on narrow swap, trade, send, get, and key routes.
       return false;
     }
     if (isInTelegram && layoutStartup.isTelegramMiniAppDesktop) {
