@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
+import { navigateBackOrHome } from "../navigateBackOrHome";
 import {
   layout,
   typographyRect15,
@@ -102,11 +103,7 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
 
   const goBack = () => {
     hapticIfNeeded();
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/");
-    }
+    navigateBackOrHome(router);
   };
 
   return (

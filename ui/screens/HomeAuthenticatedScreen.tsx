@@ -574,17 +574,21 @@ export function HomeAuthenticatedScreen() {
     });
   }, [isWideHome, rightPanel, isTripleColumn, windowWidth, pathname]);
 
+  const prevIsWideHomeRef = useRef(isWideHome);
   useEffect(() => {
-    if (!isWideHome && rightPanel === "swap") {
-      router.push("/swap" as any);
+    const wasWide = prevIsWideHomeRef.current;
+    prevIsWideHomeRef.current = isWideHome;
+    if (!wasWide || isWideHome) {
+      return;
     }
-  }, [isWideHome, rightPanel, router]);
-
-  useEffect(() => {
-    if (!isWideHome && rightPanel === "trade") {
+    if (rightPanel === "swap" && pathname !== "/swap") {
+      router.push("/swap" as any);
+      return;
+    }
+    if (rightPanel === "trade" && pathname !== "/trade") {
       router.push("/trade" as any);
     }
-  }, [isWideHome, rightPanel, router]);
+  }, [isWideHome, rightPanel, pathname, router]);
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
   const mainColumnFooter = <MainColumnInactiveFooter />;
   const swapColumnFooter = <SwapColumnInactiveFooter />;
