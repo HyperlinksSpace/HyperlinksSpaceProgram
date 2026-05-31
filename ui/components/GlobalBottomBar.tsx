@@ -102,6 +102,8 @@ export function GlobalBottomBar() {
   /** TMA phone: omit bottom hairline. Wide authenticated home: bar sits in a split column past `firstBreakpoint`, not the screen footer — no bottom rule. */
   const hideBottomBorder =
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
+  /** Full-bleed chrome at the screen edge; inner field row caps at {@link layout.maxContentWidth}. */
+  const contentMaxWidth = footerDockedToScreenEdge ? layout.maxContentWidth : undefined;
 
   if (Platform.OS === "web") {
     return (
@@ -112,6 +114,7 @@ export function GlobalBottomBar() {
         scrollbarColor={scrollbarThumbColor}
         topBorderColor={topBorderColor}
         hideBottomBorder={hideBottomBorder}
+        contentMaxWidth={contentMaxWidth}
         value={draftText}
         setValue={setDraftText}
         premadePrompts={premadePrompts}
@@ -128,6 +131,7 @@ export function GlobalBottomBar() {
       scrollbarColor={scrollbarThumbColor}
       topBorderColor={topBorderColor}
       hideBottomBorder={hideBottomBorder}
+      contentMaxWidth={contentMaxWidth}
       value={draftText}
       setValue={setDraftText}
       premadePrompts={premadePrompts}
@@ -217,6 +221,7 @@ function WebBottomBar({
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
+  contentMaxWidth,
   value,
   setValue,
   premadePrompts,
@@ -228,6 +233,7 @@ function WebBottomBar({
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
+  contentMaxWidth?: number;
   value: string;
   setValue: (next: string) => void;
   premadePrompts: readonly [string, string];
@@ -419,7 +425,13 @@ function WebBottomBar({
       ]}
     >
       <BottomBarHeightReporter height={metrics.barHeight} />
-      <View style={[styles.container, { backgroundColor }]}>
+      <View
+        style={[
+          styles.container,
+          { backgroundColor },
+          contentMaxWidth != null ? { maxWidth: contentMaxWidth, alignSelf: "center" as const } : null,
+        ]}
+      >
         <View style={[styles.row, styles.webFooterRow, { height: metrics.barHeight }]}>
           <View style={styles.inputWrap}>
             <textarea
@@ -488,6 +500,7 @@ function NativeBottomBar({
   scrollbarColor,
   topBorderColor,
   hideBottomBorder,
+  contentMaxWidth,
   value,
   setValue,
   premadePrompts,
@@ -499,6 +512,7 @@ function NativeBottomBar({
   scrollbarColor: string;
   topBorderColor: string;
   hideBottomBorder: boolean;
+  contentMaxWidth?: number;
   value: string;
   setValue: (next: string) => void;
   premadePrompts: readonly [string, string];
@@ -604,7 +618,13 @@ function NativeBottomBar({
       ]}
     >
       <BottomBarHeightReporter height={metrics.barHeight} />
-      <View style={[styles.container, { height: metrics.barHeight, backgroundColor }]}>
+      <View
+        style={[
+          styles.container,
+          { height: metrics.barHeight, backgroundColor },
+          contentMaxWidth != null ? { maxWidth: contentMaxWidth, alignSelf: "center" as const } : null,
+        ]}
+      >
         <View style={styles.row}>
           <View style={{ flex: 1 }}>
             <View style={{ height: metrics.viewportHeight, justifyContent: "flex-start" }}>

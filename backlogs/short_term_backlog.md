@@ -1,7 +1,8 @@
+Cursor appearing on elements click
+Page loading issues, chart loading
 Swap page bugs
 Time in feed is not displayed
 Translation
-Cursor appearing on elements click
 Resizing and zoom in and out bugs fix
 Shield and settings positioning
 Rotation icon positioning

@@ -111,29 +111,42 @@ function useWebViewportAllowsPageZoom() {
   }, []);
 }
 
-/** Narrow authenticated `/` and `/swap`: inactive column footers; other routes keep {@link GlobalBottomBar}. */
-function AuthenticatedScreenFooter({
+/** Screen footer: welcome AI bar when signed out; authenticated narrow routes use inactive footers or {@link GlobalBottomBar}. */
+function RootScreenFooter({
   pathname,
   bottomBarDock,
   isAuthenticated,
+  authHydrated,
+  authReady,
   themeBgReady,
   useTelegramTheme,
 }: {
   pathname: string | null | undefined;
   bottomBarDock: ReturnType<typeof authenticatedHomeBottomBarDock>;
   isAuthenticated: boolean;
+  authHydrated: boolean;
+  authReady: boolean;
   themeBgReady: boolean;
   useTelegramTheme: boolean;
 }) {
-  if (!isAuthenticated || bottomBarDock !== "screenFooter") return null;
   if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
-  if (pathname === "/swap") return <SwapColumnInactiveFooter />;
-  if (pathname === "/send") return <SendColumnInactiveFooter />;
-  if (pathname === "/trade" || pathname === "/get") return null;
-  if (pathname === "/" || pathname === "" || pathname == null) {
-    return <MainColumnInactiveFooter />;
+
+  if (isAuthenticated) {
+    if (bottomBarDock !== "screenFooter") return null;
+    if (pathname === "/swap") return <SwapColumnInactiveFooter />;
+    if (pathname === "/send") return <SendColumnInactiveFooter />;
+    if (pathname === "/trade" || pathname === "/get") return null;
+    if (pathname === "/" || pathname === "" || pathname == null) {
+      return <MainColumnInactiveFooter />;
+    }
+    return <GlobalBottomBar />;
   }
-  return <GlobalBottomBar />;
+
+  if (isWelcomeLayoutRoute(pathname, { authHydrated, authReady, isAuthenticated })) {
+    return <GlobalBottomBar />;
+  }
+
+  return null;
 }
 
 function RootContent() {
@@ -327,10 +340,12 @@ function RootContent() {
         // Avoid mounting web internals before theme — kills dark flash from RN-web inputs.
         // Wide authenticated home mounts the same bar inside split columns instead.
         Platform.OS !== "web" || !useTelegramTheme || themeBgReady ? (
-          <AuthenticatedScreenFooter
+          <RootScreenFooter
             pathname={pathname}
             bottomBarDock={bottomBarDock}
             isAuthenticated={isAuthenticated}
+            authHydrated={authHydrated}
+            authReady={authReady}
             themeBgReady={themeBgReady}
             useTelegramTheme={useTelegramTheme}
           />
