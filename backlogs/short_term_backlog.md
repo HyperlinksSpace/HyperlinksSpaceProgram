@@ -50,7 +50,7 @@ GitHub and GitLab bidirectional mirroring<br>
 Windows setup refactor<br>
 https://azure.microsoft.com/en-us/products/artifact-signing<br>
 README.md: Project news, discussions, where to learn for contributions<br>
-Deals AI analitics
+Smarts AI analitics
 Arbitration?
 Multi-tokenization (link with multiple protocols)
 

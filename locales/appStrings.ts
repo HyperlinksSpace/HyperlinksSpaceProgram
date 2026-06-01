@@ -84,7 +84,7 @@ const en = {
   "home.header.copyWalletHint": "Copies the full wallet address",
   "home.header.walletAddressA11y": "Wallet address {{snippet}}",
 
-  "home.menu.deals": "Deals",
+  "home.menu.smarts": "Smarts",
   "home.menu.get": "Get",
   "home.menu.send": "Send",
   "home.menu.swap": "Swap",
@@ -223,7 +223,7 @@ const ru = {
 
   "home.menu.get": "Получить",
   "home.menu.swap": "Обмен",
-  "home.menu.deals": "Сделки",
+  "home.menu.smarts": "Смарты",
   "home.menu.trade": "Рынок",
   "home.menu.send": "Отправка",
 

@@ -49,7 +49,7 @@ export function MenuSwapIcon({
   );
 }
 
-export function MenuDealsIcon({
+export function MenuSmartsIcon({
   variant = "primary",
   width = MENU_ICON_DEFAULT_SIZE,
   height = MENU_ICON_DEFAULT_SIZE,

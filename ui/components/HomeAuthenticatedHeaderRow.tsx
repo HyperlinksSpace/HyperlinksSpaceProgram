@@ -16,7 +16,7 @@ import {
   useColors,
 } from "../theme";
 import {
-  MenuDealsIcon,
+  MenuSmartsIcon,
   MenuGetIcon,
   MenuSendIcon,
   MenuSwapIcon,
@@ -53,7 +53,7 @@ const HEADER_ICON_EXIT_LABEL_KEY = "home.header.iconExit" as const;
 const WIDE_MENU_ITEM_KEYS = [
   { key: "get", labelKey: "home.menu.get" as const, Icon: MenuGetIcon },
   { key: "swap", labelKey: "home.menu.swap" as const, Icon: MenuSwapIcon },
-  { key: "deals", labelKey: "home.menu.deals" as const, Icon: MenuDealsIcon },
+  { key: "smarts", labelKey: "home.menu.smarts" as const, Icon: MenuSmartsIcon },
   { key: "trade", labelKey: "home.menu.trade" as const, Icon: MenuTradeIcon },
   { key: "send", labelKey: "home.menu.send" as const, Icon: MenuSendIcon },
 ] as const;
