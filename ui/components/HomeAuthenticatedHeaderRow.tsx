@@ -202,6 +202,17 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
         }
         return;
       }
+      if (key === "smarts") {
+        if (atOrAboveFirstBreakpoint) {
+          openAuthenticatedHomeRightPanel("smarts");
+          if (pathname === "/smarts") {
+            router.replace("/");
+          }
+        } else if (pathname !== "/smarts") {
+          router.push("/smarts" as any);
+        }
+        return;
+      }
       if (key === "trade") {
         if (atOrAboveFirstBreakpoint) {
           openAuthenticatedHomeRightPanel("trade");

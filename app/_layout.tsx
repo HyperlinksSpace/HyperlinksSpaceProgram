@@ -135,7 +135,7 @@ function RootScreenFooter({
     if (bottomBarDock !== "screenFooter") return null;
     if (pathname === "/swap") return <SwapColumnInactiveFooter />;
     if (pathname === "/send") return <SendColumnInactiveFooter />;
-    if (pathname === "/trade" || pathname === "/get") return null;
+    if (pathname === "/trade" || pathname === "/get" || pathname === "/smarts") return null;
     if (pathname === "/" || pathname === "" || pathname == null) {
       return <MainColumnInactiveFooter />;
     }
@@ -283,8 +283,8 @@ function RootContent() {
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
-    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade" || pathname === "/send" || pathname === "/get") {
-      // In-screen {@link CenteredLogoOnlyHeader} on narrow swap, trade, send, get, and key routes.
+    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade" || pathname === "/send" || pathname === "/get" || pathname === "/smarts") {
+      // In-screen {@link CenteredLogoOnlyHeader} on narrow swap, smarts, trade, send, get, and key routes.
       return false;
     }
     if (isInTelegram && layoutStartup.isTelegramMiniAppDesktop) {

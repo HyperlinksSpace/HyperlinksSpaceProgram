@@ -90,6 +90,8 @@ const en = {
   "home.menu.swap": "Swap",
   "home.menu.trade": "Trade",
 
+  "smarts.deployTitle": "Deploy smart contract in 1 minute",
+
   "home.nav.coins": "Coins",
   "home.nav.feed": "Feed",
   "home.nav.items": "Items",
@@ -226,6 +228,8 @@ const ru = {
   "home.menu.smarts": "Смарты",
   "home.menu.trade": "Рынок",
   "home.menu.send": "Отправка",
+
+  "smarts.deployTitle": "Развернуть смарт-контракт за 1 минуту",
 
   "home.nav.coins": "Монеты",
   "home.nav.feed": "Лента",

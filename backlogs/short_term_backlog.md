@@ -1,3 +1,4 @@
+Tune redirect for hs main
 Cursor appearing on elements click
 Page loading issues, chart loading
 Swap page bugs
