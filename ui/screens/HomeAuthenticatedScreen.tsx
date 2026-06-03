@@ -36,7 +36,7 @@ import {
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { SwapPanelContent } from "../components/SwapPanelContent";
-import { SmartsPanelContent } from "../components/smarts/SmartsPanelContent";
+import { SmartPanelContent } from "../components/smart/SmartPanelContent";
 import { TradePanelContent } from "../components/trade/TradePanelContent";
 import {
   openAuthenticatedHomeRightPanel,
@@ -557,7 +557,7 @@ export function HomeAuthenticatedScreen() {
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
   const tradeActiveOnWide = isWideHome && rightPanel === "trade";
-  const smartsActiveOnWide = isWideHome && rightPanel === "smarts";
+  const smartActiveOnWide = isWideHome && rightPanel === "smart";
   const sendActiveOnWide = isWideHome && rightPanel === "send";
   const getActiveOnWide = isWideHome && rightPanel === "get";
   // Feed (left column) remains the active item when it is the displayed content.
@@ -595,8 +595,8 @@ export function HomeAuthenticatedScreen() {
       router.push("/trade" as any);
       return;
     }
-    if (rightPanel === "smarts" && pathname !== "/smarts") {
-      router.push("/smarts" as any);
+    if (rightPanel === "smart" && pathname !== "/smart") {
+      router.push("/smart" as any);
       return;
     }
     if (rightPanel === "send" && pathname !== "/send") {
@@ -1443,8 +1443,8 @@ export function HomeAuthenticatedScreen() {
         activeHeaderMenuKey={
           swapActiveOnWide
             ? "swap"
-            : smartsActiveOnWide
-              ? "smarts"
+            : smartActiveOnWide
+              ? "smart"
               : tradeActiveOnWide
                 ? "trade"
                 : sendActiveOnWide
@@ -1517,7 +1517,7 @@ export function HomeAuthenticatedScreen() {
             >
               <TradePanelContent />
             </View>
-          ) : rightPanel === "smarts" ? (
+          ) : rightPanel === "smart" ? (
             <View
               style={{
                 flex: 1,
@@ -1526,7 +1526,7 @@ export function HomeAuthenticatedScreen() {
                 minHeight: 0,
               }}
             >
-              <SmartsPanelContent />
+              <SmartPanelContent />
             </View>
           ) : rightPanel === "send" ? (
             <View

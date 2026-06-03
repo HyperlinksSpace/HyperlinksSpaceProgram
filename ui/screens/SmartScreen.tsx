@@ -1,10 +1,10 @@
 import { AuthenticatedAppShell } from "../components/AuthenticatedAppShell";
-import { SmartsPanelContent } from "../components/smarts/SmartsPanelContent";
+import { SmartPanelContent } from "../components/smart/SmartPanelContent";
 
-export function SmartsScreen() {
+export function SmartScreen() {
   return (
     <AuthenticatedAppShell>
-      <SmartsPanelContent />
+      <SmartPanelContent />
     </AuthenticatedAppShell>
   );
 }

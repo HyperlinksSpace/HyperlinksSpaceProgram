@@ -1,15 +1,22 @@
 import { Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import {
+  smartLeadEnImage,
+  smartLeadRuImage,
+} from "../../smart/smartAssets";
 import { typographyAeroport20, useColors } from "../../theme";
+import { SmartLeadImage } from "./SmartLeadImage";
 
 const TOP_INSET_PX = 30;
+const LEAD_TO_TITLE_GAP_PX = 30;
 const TITLE_FONT_SIZE_PX = 40;
 const TITLE_LINE_HEIGHT_PX = 55;
 
-/** Smarts panel body: deploy flow (wide split column + narrow `/smarts`). */
-export function SmartsPanelContent() {
+/** Smart panel body: deploy flow (wide split column + narrow `/smart`). */
+export function SmartPanelContent() {
   const colors = useColors();
-  const { t } = useAppStrings();
+  const { t, locale } = useAppStrings();
+  const leadSource = locale === "ru" ? smartLeadRuImage : smartLeadEnImage;
 
   return (
     <View
@@ -21,6 +28,8 @@ export function SmartsPanelContent() {
         paddingTop: TOP_INSET_PX,
       }}
     >
+      <SmartLeadImage source={leadSource} />
+      <View style={{ height: LEAD_TO_TITLE_GAP_PX }} />
       <Text
         style={[
           typographyAeroport20,
@@ -31,7 +40,7 @@ export function SmartsPanelContent() {
           },
         ]}
       >
-        {t("smarts.deployTitle")}
+        {t("smart.deployTitle")}
       </Text>
     </View>
   );

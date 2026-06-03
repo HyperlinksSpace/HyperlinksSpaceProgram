@@ -3,17 +3,17 @@ import { useLayoutEffect } from "react";
 import { useWindowDimensions } from "react-native";
 import { useAuth } from "../../auth/AuthContext";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
-import { SmartsScreen } from "../../ui/screens/SmartsScreen";
+import { SmartScreen } from "../../ui/screens/SmartScreen";
 import { layout } from "../../ui/theme";
 
-export default function SmartsRoute() {
+export default function SmartRoute() {
   const { isAuthenticated, authReady } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth > layout.authenticatedHome.firstBreakpoint;
 
   useLayoutEffect(() => {
     if (isWide) {
-      openAuthenticatedHomeRightPanel("smarts");
+      openAuthenticatedHomeRightPanel("smart");
     }
   }, [isWide]);
 
@@ -27,5 +27,5 @@ export default function SmartsRoute() {
     return <Redirect href="/" />;
   }
 
-  return <SmartsScreen />;
+  return <SmartScreen />;
 }

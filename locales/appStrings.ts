@@ -84,13 +84,13 @@ const en = {
   "home.header.copyWalletHint": "Copies the full wallet address",
   "home.header.walletAddressA11y": "Wallet address {{snippet}}",
 
-  "home.menu.smarts": "Smarts",
+  "home.menu.smart": "Smart",
   "home.menu.get": "Get",
   "home.menu.send": "Send",
   "home.menu.swap": "Swap",
   "home.menu.trade": "Trade",
 
-  "smarts.deployTitle": "Deploy smart contract in 1 minute",
+  "smart.deployTitle": "Create a smart in 1 min",
 
   "home.nav.coins": "Coins",
   "home.nav.feed": "Feed",
@@ -225,11 +225,11 @@ const ru = {
 
   "home.menu.get": "Получить",
   "home.menu.swap": "Обмен",
-  "home.menu.smarts": "Смарты",
+  "home.menu.smart": "Смарт",
   "home.menu.trade": "Рынок",
   "home.menu.send": "Отправка",
 
-  "smarts.deployTitle": "Развернуть смарт-контракт за 1 минуту",
+  "smart.deployTitle": "Задеплой смарт контракт за 1 мин",
 
   "home.nav.coins": "Монеты",
   "home.nav.feed": "Лента",

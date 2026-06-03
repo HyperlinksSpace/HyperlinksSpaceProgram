@@ -76,7 +76,7 @@ Rules:
 Header behavior should adapt by width:
 
 - `compact`: compact icons + balance + user info; horizontal action row may wrap/scroll.
-- `wide`: full action row visible (Get, Swap, Smarts, Trade, Send), with clearer spacing.
+- `wide`: full action row visible (Get, Swap, Smart, Trade, Send), with clearer spacing.
 - `ultra`: add secondary context in header (selected market title, quick help, or account details).
 
 Implementation:
