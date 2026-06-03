@@ -91,6 +91,35 @@ const en = {
   "home.menu.trade": "Trade",
 
   "smart.deployTitle": "Create a smart in 1 min",
+  "smart.intro":
+    "Blockchain secure deals provide for the real protection of its terms. Counterparties now really have no chance to break the agreement.",
+  "smart.purposeSubtitle": "Smart Contract Purpose",
+  "smart.purpose.company": "Company",
+  "smart.purpose.agreement": "Agreement",
+  "smart.purpose.investment": "Investment",
+  "smart.purpose.revenue": "Revenue",
+  "smart.purpose.partners": "Partners",
+  "smart.purposeDescLead.company": "Company Smart Contract",
+  "smart.purposeDescBody.company":
+    " provides for launching a company secured by blockchain without signing any paper. The contract stipulates the counterparties, their shares and secures the distribution of the incoming amount accordingly to this shares.",
+  "smart.purposeDescLead.agreement": "Agreement Smart Contract",
+  "smart.purposeDescBody.agreement":
+    " records mutual obligations between parties on-chain so every term is enforceable without paper. It defines deliverables, deadlines, and penalties when either side fails to perform.",
+  "smart.purposeDescLead.investment": "Investment Smart Contract",
+  "smart.purposeDescBody.investment":
+    " channels capital into a project with transparent milestones and automatic release of funds as conditions are met. Investors see exactly how proceeds are allocated and when payouts occur.",
+  "smart.purposeDescLead.revenue": "Revenue Smart Contract",
+  "smart.purposeDescBody.revenue":
+    " splits incoming payments among stakeholders according to pre-set rules. Each sale or royalty event is accounted for on-chain so shares are distributed without manual reconciliation.",
+  "smart.purposeDescLead.partners": "Partners Smart Contract",
+  "smart.purposeDescBody.partners":
+    " formalizes a joint venture with shared roles, contributions, and profit splits on blockchain. Partner exits, buyouts, and dispute resolution follow the same immutable rules for everyone.",
+  "smart.standardSubtitle": "Standart",
+  "smart.dealVersion.company": "Company Smart Deal v.1",
+  "smart.dealVersion.agreement": "Agreement Smart Deal v.1",
+  "smart.dealVersion.investment": "Investment Smart Deal v.1",
+  "smart.dealVersion.revenue": "Revenue Smart Deal v.1",
+  "smart.dealVersion.partners": "Partners Smart Deal v.1",
 
   "home.nav.coins": "Coins",
   "home.nav.feed": "Feed",
@@ -230,6 +259,35 @@ const ru = {
   "home.menu.send": "Отправка",
 
   "smart.deployTitle": "Задеплой смарт контракт за 1 мин",
+  "smart.intro":
+    "Защищённые блокчейном сделки обеспечивают реальную охрану их условий. Контрагенты теперь действительно не могут нарушить соглашение.",
+  "smart.purposeSubtitle": "Назначение смарт-контракта",
+  "smart.purpose.company": "Компания",
+  "smart.purpose.agreement": "Соглашение",
+  "smart.purpose.investment": "Инвестиции",
+  "smart.purpose.revenue": "Доход",
+  "smart.purpose.partners": "Партнёры",
+  "smart.purposeDescLead.company": "Смарт-контракт компании",
+  "smart.purposeDescBody.company":
+    " позволяет запустить компанию, защищённую блокчейном, без подписания бумажных документов. Контракт фиксирует контрагентов, их доли и обеспечивает распределение поступающих сумм в соответствии с этими долями.",
+  "smart.purposeDescLead.agreement": "Смарт-контракт соглашения",
+  "smart.purposeDescBody.agreement":
+    " фиксирует взаимные обязательства сторон в блокчейне, делая каждый пункт исполнимым без бумаги. Определяет результаты, сроки и санкции при невыполнении любой из сторон.",
+  "smart.purposeDescLead.investment": "Смарт-контракт инвестиций",
+  "smart.purposeDescBody.investment":
+    " направляет капитал в проект с прозрачными этапами и автоматическим высвобождением средств по мере выполнения условий. Инвесторы видят, как распределяются средства и когда наступают выплаты.",
+  "smart.purposeDescLead.revenue": "Смарт-контракт дохода",
+  "smart.purposeDescBody.revenue":
+    " делит входящие платежи между участниками по заранее заданным правилам. Каждая продажа или роялти учитываются в блокчейне, доли распределяются без ручной сверки.",
+  "smart.purposeDescLead.partners": "Смарт-контракт партнёров",
+  "smart.purposeDescBody.partners":
+    " оформляет совместное предприятие с общими ролями, вкладами и распределением прибыли в блокчейне. Выход партнёра, выкуп и разрешение споров следуют одним неизменным правилам для всех.",
+  "smart.standardSubtitle": "Standart",
+  "smart.dealVersion.company": "Company Smart Deal v.1",
+  "smart.dealVersion.agreement": "Agreement Smart Deal v.1",
+  "smart.dealVersion.investment": "Investment Smart Deal v.1",
+  "smart.dealVersion.revenue": "Revenue Smart Deal v.1",
+  "smart.dealVersion.partners": "Partners Smart Deal v.1",
 
   "home.nav.coins": "Монеты",
   "home.nav.feed": "Лента",

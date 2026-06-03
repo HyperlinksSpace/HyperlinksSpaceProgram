@@ -1,4 +1,9 @@
+Smart default
+Smart horizontal menu slider, vertical scrolling indicator, 
+Images and header
+AI & Search: Ask me anything, e.g. "What tokens are people talking about today?"
 Tune redirect for hs main
+
 Cursor appearing on elements click
 Page loading issues, chart loading
 Swap page bugs
