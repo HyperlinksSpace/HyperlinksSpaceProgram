@@ -26,6 +26,7 @@ import {
   SendColumnInactiveFooter,
   SwapColumnInactiveFooter,
 } from "../ui/components/InactiveWelcomeColumnFooter";
+import { SmartColumnFooter } from "../ui/components/smart/SmartColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
@@ -135,7 +136,8 @@ function RootScreenFooter({
     if (bottomBarDock !== "screenFooter") return null;
     if (pathname === "/swap") return <SwapColumnInactiveFooter />;
     if (pathname === "/send") return <SendColumnInactiveFooter />;
-    if (pathname === "/trade" || pathname === "/get" || pathname === "/smart") return null;
+    if (pathname === "/smart") return <SmartColumnFooter />;
+    if (pathname === "/trade" || pathname === "/get") return null;
     if (pathname === "/" || pathname === "" || pathname == null) {
       return <MainColumnInactiveFooter />;
     }

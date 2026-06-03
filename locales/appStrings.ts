@@ -90,7 +90,7 @@ const en = {
   "home.menu.swap": "Swap",
   "home.menu.trade": "Trade",
 
-  "smart.deployTitle": "Create a smart in 1 min",
+  "smart.deployTitle": "Create Smart in 1 min",
   "smart.intro":
     "Blockchain secure deals provide for the real protection of its terms. Counterparties now really have no chance to break the agreement.",
   "smart.purposeSubtitle": "Smart Contract Purpose",
@@ -120,6 +120,9 @@ const en = {
   "smart.dealVersion.investment": "Investment Smart Deal v.1",
   "smart.dealVersion.revenue": "Revenue Smart Deal v.1",
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
+  "smart.footer.deployCost": "Deploy the Smart for 10 TON",
+  "smart.footer.deployCostShort": "10 TON",
+  "smart.footer.deployButton": "Deploy Smart",
 
   "home.nav.coins": "Coins",
   "home.nav.feed": "Feed",
@@ -258,7 +261,7 @@ const ru = {
   "home.menu.trade": "Рынок",
   "home.menu.send": "Отправка",
 
-  "smart.deployTitle": "Задеплой смарт контракт за 1 мин",
+  "smart.deployTitle": "Создай Смарт за 1 мин",
   "smart.intro":
     "Защищённые блокчейном сделки обеспечивают реальную охрану их условий. Контрагенты теперь действительно не могут нарушить соглашение.",
   "smart.purposeSubtitle": "Назначение смарт-контракта",
@@ -288,6 +291,9 @@ const ru = {
   "smart.dealVersion.investment": "Investment Smart Deal v.1",
   "smart.dealVersion.revenue": "Revenue Smart Deal v.1",
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
+  "smart.footer.deployCost": "Задеплой Смарт за 10 TON",
+  "smart.footer.deployCostShort": "10 TON",
+  "smart.footer.deployButton": "Задеплоить Смарт",
 
   "home.nav.coins": "Монеты",
   "home.nav.feed": "Лента",

@@ -36,6 +36,7 @@ import {
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { SwapPanelContent } from "../components/SwapPanelContent";
+import { SmartColumnFooter } from "../components/smart/SmartColumnFooter";
 import { SmartPanelContent } from "../components/smart/SmartPanelContent";
 import { TradePanelContent } from "../components/trade/TradePanelContent";
 import {
@@ -611,6 +612,7 @@ export function HomeAuthenticatedScreen() {
   const mainColumnFooter = <MainColumnInactiveFooter />;
   const swapColumnFooter = <SwapColumnInactiveFooter />;
   const sendColumnFooter = <SendColumnInactiveFooter />;
+  const smartColumnFooter = <SmartColumnFooter />;
   const [step, setStep] = useState<CreateStep>("idle");
   const [flowError, setFlowError] = useState<string | null>(null);
   const [createdWalletAddress, setCreatedWalletAddress] = useState<string | null>(null);
@@ -1563,9 +1565,11 @@ export function HomeAuthenticatedScreen() {
             ? sendColumnFooter
             : swapActiveOnWide
               ? swapColumnFooter
-              : aiBarDock === "splitColumn2"
-                ? embeddedAiBar
-                : null
+              : smartActiveOnWide
+                ? smartColumnFooter
+                : aiBarDock === "splitColumn2"
+                  ? embeddedAiBar
+                  : null
         }
         thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
       />
