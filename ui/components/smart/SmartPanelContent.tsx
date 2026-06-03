@@ -1,9 +1,16 @@
+import { useEffect, useMemo, useRef } from "react";
 import { Text, View } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
+import { logPageDisplay } from "../../pageDisplayLog";
+import { useObservedWidth } from "../../smart/useObservedWidth";
 import {
   smartLeadEnImage,
   smartLeadRuImage,
+  SMART_LEAD_HEIGHT_COMPACT_PX,
+  SMART_LEAD_WIDTH_BREAKPOINT_PX,
+  smartLeadHeightPxForWidth,
 } from "../../smart/smartAssets";
 import { layout, typographyAeroport20, typographyRect15, useColors } from "../../theme";
 import { HspScrollColumn } from "../HspScrollColumn";
@@ -24,6 +31,7 @@ const INTRO_TO_PURPOSE_GAP_PX = 20;
 export function SmartPanelContent() {
   const colors = useColors();
   const { t, locale } = useAppStrings();
+  const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const leadSource = locale === "ru" ? smartLeadRuImage : smartLeadEnImage;
   const contentInset = layout.contentSideInsetPx;
   const scrollShellBleed = { marginHorizontal: -contentInset };
@@ -32,11 +40,67 @@ export function SmartPanelContent() {
     paddingHorizontal: contentInset,
     paddingBottom: BOTTOM_INSET_PX,
   };
+  const { widthPx: observedPanelWidthPx, onLayout: onPanelLayout, onRef: onPanelRef } =
+    useObservedWidth("smart_panel_root");
+
+  const splitPanelWidthPx = useMemo(() => {
+    const middleColumnWidthPx = splitMetrics?.middleColumnWidthPx ?? 0;
+    if (middleColumnWidthPx <= 0) {
+      return 0;
+    }
+    return Math.max(0, middleColumnWidthPx - 2 * contentInset);
+  }, [contentInset, splitMetrics?.middleColumnWidthPx]);
+
+  const panelWidthPx = splitPanelWidthPx > 0 ? splitPanelWidthPx : observedPanelWidthPx;
+  const panelWidthSource = splitPanelWidthPx > 0 ? "split_middle_column" : "observed_panel_root";
+  const leadHeightPx = smartLeadHeightPxForWidth(panelWidthPx);
+  const lastLoggedKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const key = [
+      panelWidthPx,
+      panelWidthSource,
+      splitMetrics?.middleColumnWidthPx ?? 0,
+      observedPanelWidthPx,
+      leadHeightPx,
+    ].join("|");
+    if (lastLoggedKeyRef.current === key) {
+      return;
+    }
+    lastLoggedKeyRef.current = key;
+    logPageDisplay("smart_panel_layout_width", {
+      panelWidthPx,
+      panelWidthSource,
+      leadHeightPx,
+      compactLead: leadHeightPx === SMART_LEAD_HEIGHT_COMPACT_PX,
+      breakpointPx: SMART_LEAD_WIDTH_BREAKPOINT_PX,
+      observedPanelWidthPx: observedPanelWidthPx > 0 ? observedPanelWidthPx : null,
+      splitMiddleColumnWidthPx: splitMetrics?.middleColumnWidthPx ?? null,
+      splitPanelWidthPx: splitPanelWidthPx > 0 ? splitPanelWidthPx : null,
+      splitRowWidthPx: splitMetrics?.splitRowWidthPx ?? null,
+      splitColumnCount: splitMetrics?.columnCount ?? null,
+      contentInsetPx: contentInset,
+    });
+  }, [
+    contentInset,
+    leadHeightPx,
+    observedPanelWidthPx,
+    panelWidthPx,
+    panelWidthSource,
+    splitMetrics?.columnCount,
+    splitMetrics?.middleColumnWidthPx,
+    splitMetrics?.splitRowWidthPx,
+    splitPanelWidthPx,
+  ]);
 
   return (
-    <View style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}>
+    <View
+      ref={onPanelRef ? (node) => onPanelRef(node) : undefined}
+      style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}
+      onLayout={onPanelLayout}
+    >
       <HspScrollColumn style={{ flex: 1, ...scrollShellBleed }} contentContainerStyle={scrollContentPadding}>
-        <SmartLeadImage source={leadSource} />
+        <SmartLeadImage source={leadSource} layoutWidthPx={panelWidthPx} />
         <View style={{ height: LEAD_TO_TITLE_GAP_PX }} />
         <Text
           style={[

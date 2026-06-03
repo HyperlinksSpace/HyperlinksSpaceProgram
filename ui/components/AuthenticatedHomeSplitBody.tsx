@@ -153,13 +153,19 @@ export function AuthenticatedHomeSplitBody({
     const columnCount: 1 | 2 | 3 = !isWide ? 1 : isTriple ? 3 : 2;
     const measuredRow = rowWidth > 0 ? rowWidth : effectiveSplitWidthPx;
     const firstColumnWidthPx = isWide ? leftPanePx : effectiveSplitWidthPx;
+    const middleColumnWidthPx = !isWide
+      ? 0
+      : isTriple
+        ? Math.max(0, measuredRow - leftPanePx - thirdPanePx)
+        : Math.max(0, measuredRow - leftPanePx);
     return {
       splitRowWidthPx: measuredRow,
       effectiveSplitWidthPx,
       firstColumnWidthPx,
+      middleColumnWidthPx,
       columnCount,
     };
-  }, [effectiveWidth, isWide, isTriple, rowWidth, leftPanePx]);
+  }, [effectiveWidth, isWide, isTriple, rowWidth, leftPanePx, thirdPanePx]);
 
   useEffect(() => {
     if (isWide) return;

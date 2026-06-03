@@ -12,6 +12,8 @@ export type AuthenticatedHomeSplitLayoutMetrics = {
   effectiveSplitWidthPx: number;
   /** Width of the first column: `leftPanePx` when multi-column, else full effective row width. */
   firstColumnWidthPx: number;
+  /** Flex middle column width when wide (0 on compact single-column layout). */
+  middleColumnWidthPx: number;
   columnCount: 1 | 2 | 3;
 };
 
