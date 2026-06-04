@@ -115,6 +115,7 @@ const en = {
   "smart.purposeDescBody.partners":
     " formalizes a joint venture with shared roles, contributions, and profit splits on blockchain. Partner exits, buyouts, and dispute resolution follow the same immutable rules for everyone.",
   "smart.standardSubtitle": "Standart",
+  "smart.standardHelp.a11y": "About this standard",
   "smart.dealVersion.company": "Company Smart Deal v.1",
   "smart.dealVersion.agreement": "Agreement Smart Deal v.1",
   "smart.dealVersion.investment": "Investment Smart Deal v.1",
@@ -286,6 +287,7 @@ const ru = {
   "smart.purposeDescBody.partners":
     " оформляет совместное предприятие с общими ролями, вкладами и распределением прибыли в блокчейне. Выход партнёра, выкуп и разрешение споров следуют одним неизменным правилам для всех.",
   "smart.standardSubtitle": "Standart",
+  "smart.standardHelp.a11y": "О стандарте",
   "smart.dealVersion.company": "Company Smart Deal v.1",
   "smart.dealVersion.agreement": "Agreement Smart Deal v.1",
   "smart.dealVersion.investment": "Investment Smart Deal v.1",

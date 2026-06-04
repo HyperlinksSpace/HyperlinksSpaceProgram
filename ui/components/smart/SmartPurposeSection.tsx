@@ -9,6 +9,7 @@ import {
 } from "../../smart/smartPurposeTypes";
 import { typographyAeroport20, typographyRect15, useColors } from "../../theme";
 import { SmartGradientDivider } from "./SmartGradientDivider";
+import { SmartStandardHelpHint } from "./SmartStandardHelpHint";
 
 const SUBTITLE_TO_MENU_GAP_PX = 15;
 const MENU_ITEM_GAP_PX = 20;
@@ -145,18 +146,23 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
 
       <View style={{ height: STANDARD_TO_VERSION_GAP_PX }} />
 
-      <Text
-        style={[
-          typographyRect15,
-          {
-            fontSize: VERSION_FONT_SIZE_PX,
-            lineHeight: VERSION_LINE_HEIGHT_PX,
-            color: colors.primary,
-          },
-        ]}
-      >
-        {t(DEAL_VERSION_KEYS[activeKey])}
-      </Text>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Text
+          style={[
+            typographyRect15,
+            {
+              fontSize: VERSION_FONT_SIZE_PX,
+              lineHeight: VERSION_LINE_HEIGHT_PX,
+              color: colors.primary,
+            },
+          ]}
+        >
+          {t(DEAL_VERSION_KEYS[activeKey])}
+        </Text>
+        <SmartStandardHelpHint
+          labelStyle={{ fontSize: VERSION_FONT_SIZE_PX, lineHeight: VERSION_LINE_HEIGHT_PX }}
+        />
+      </View>
     </>
   );
 }
