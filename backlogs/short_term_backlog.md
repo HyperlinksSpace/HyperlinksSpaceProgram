@@ -8,7 +8,6 @@ Wallet (Get, Send)
 Swap.Coffee
 TDLIB
 
-Cursor appearing on elements click
 Page loading issues, chart loading
 Swap page bugs
 Time in feed is not displayed

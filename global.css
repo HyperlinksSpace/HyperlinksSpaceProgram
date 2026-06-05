@@ -1,6 +1,41 @@
 /* Global web-only overrides */
 
 /*
+ * Interactive controls: use pointer (not text I-beam) and suppress label selection on click.
+ * RN-web renders `Text` as nested spans; without this, hovering button labels shows the text cursor.
+ */
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="link"],
+[role="switch"],
+[role="checkbox"],
+[role="radio"] {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+[role="button"] *,
+[role="tab"] *,
+[role="menuitem"] *,
+[role="link"] *,
+[role="switch"] *,
+[role="checkbox"] *,
+[role="radio"] * {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+[role="button"][aria-disabled="true"],
+[role="button"][aria-disabled="true"] *,
+[role="link"][aria-disabled="true"],
+[role="link"][aria-disabled="true"] * {
+  cursor: default;
+}
+
+/*
  * Main RN-web column (`MainWebScrollColumn`): native scrollbar is hidden; a 1px custom thumb is drawn in React.
  * Inline `scrollbar-width: none` covers Firefox; WebKit needs the pseudo-element on the scrolling node class.
  */

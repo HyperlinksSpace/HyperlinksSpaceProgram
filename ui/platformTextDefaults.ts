@@ -1,4 +1,4 @@
-import { Text, TextInput } from "react-native";
+import { Platform, Pressable, Text, TextInput } from "react-native";
 import { FONT_UI_SANS_REGULAR } from "./fonts";
 import { uiTextVerticalCompensationTransform } from "./theme";
 
@@ -23,6 +23,18 @@ function appendDefaultStyle(ctor: WithDefaultStyle, patch: object): void {
 export function applyPlatformTextDefaults(): void {
   appendDefaultStyle(Text as WithDefaultStyle, { includeFontPadding: false });
   appendDefaultStyle(TextInput as WithDefaultStyle, { includeFontPadding: false });
+  applyPlatformWebInteractionDefaults();
+}
+
+/** Web: pointer cursor on pressables; avoids I-beam over label text inside buttons. */
+export function applyPlatformWebInteractionDefaults(): void {
+  if (Platform.OS !== "web") {
+    return;
+  }
+  appendDefaultStyle(Pressable as WithDefaultStyle, {
+    cursor: "pointer",
+    userSelect: "none",
+  });
 }
 
 let uiSansFontFamilyApplied = false;
