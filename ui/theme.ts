@@ -255,6 +255,10 @@ export const layout = {
     splitPaneDividerHitWidthPx: 12,
     /** Two-column body: vertical split line width (px). Kept separate from horizontal `headerDividerHeight` to avoid conflating axes. */
     splitPaneDividerStrokePx: 1,
+    /** Divider hit overlay `zIndex`; keep below {@link scrollColumnAboveSplitDividerZIndex} so vertical scroll thumbs win at column seams. */
+    splitPaneDividerOverlayZIndex: 1,
+    /** Wide split columns with a right-edge scroll thumb stack above the divider overlay on their side of the seam. */
+    scrollColumnAboveSplitDividerZIndex: 2,
     /**
      * Two-column body: first column cannot be dragged wider than this (px). Matches {@link firstBreakpoint}
      * so the layout stays consistent with the compact single-column regime.
@@ -271,6 +275,8 @@ export const layout = {
     leftNavStripScrollbarAboveBorderPx: 3,
     /** Left column nav strip: width (px) of each horizontal edge fade (15px; mirrors `contentSideInsetPx`). */
     leftNavStripRightFadeWidthPx: contentSideInsetPx,
+    /** Vertical scroll thumb layer inside {@link HspScrollColumn} (above split divider overlay when column uses {@link scrollColumnAboveSplitDividerZIndex}). */
+    scrollIndicatorOverlayZIndex: 10,
   },
   /** FloatingShield glass discs — diameters match original `settingsCircle` / `circle` (dp). */
   floatingShield: {

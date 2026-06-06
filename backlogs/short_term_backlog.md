@@ -1,4 +1,3 @@
-scrolling moving the slider, ? sign
 All sign in methods
 Sign in on windows app
 Smart horizontal menu slider

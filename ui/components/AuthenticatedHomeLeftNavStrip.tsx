@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -17,6 +17,7 @@ import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
 import { scrollIndicatorThumbSpanAndOffset } from "../scrollIndicatorPx";
+import { ScrollIndicatorDragHandle } from "./ScrollIndicatorDragHandle";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "./AuthenticatedHomeSplitLayoutMetricsContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
@@ -197,6 +198,7 @@ export function AuthenticatedHomeLeftNavStrip({
   const [outerW, setOuterW] = useState(0);
   /** RN-web: real horizontal scroll width from DOM when `contentSize` understates `scrollWidth`. */
   const [domHScrollSpanPx, setDomHScrollSpanPx] = useState(0);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
   const lineT = menuStripRuleThickness();
   /** Edge fades; matches `contentSideInsetPx` (15px) in theme. */
@@ -392,6 +394,28 @@ export function AuthenticatedHomeLeftNavStrip({
   const thumbSnapLeft = snapToPixelGrid(thumbLeft);
   const thumbSnapW = Math.max(1, snapToPixelGrid(thumbW));
 
+  const scrollToX = useCallback(
+    (x: number) => {
+      const clamped = Math.max(0, Math.min(x, scrollRange));
+      scrollRef.current?.scrollTo({ x: clamped, animated: false });
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const root =
+          document.getElementById("ah-nav-strip-hscroll") ??
+          document.querySelector('[data-testid="ah-nav-strip-hscroll"]') ??
+          document.querySelector(".ah-nav-strip-hscroll");
+        const scrollEl = pickWebNavStripScrollEl(root, layoutW);
+        if (scrollEl) {
+          scrollEl.scrollLeft = clamped;
+        }
+      }
+      if (clamped > maxScrollXSeenRef.current) {
+        maxScrollXSeenRef.current = clamped;
+      }
+      setScrollX(clamped);
+    },
+    [layoutW, scrollRange],
+  );
+
   const borderLineStyle = useMemo((): ViewStyle => {
     return {
       position: "absolute",
@@ -416,27 +440,20 @@ export function AuthenticatedHomeLeftNavStrip({
       minHeight: lineT,
       maxHeight: lineT,
       zIndex: 3,
-      overflow: "hidden",
+      overflow: "visible",
+      pointerEvents: "box-none",
     };
   }, [showScrollbar, thumbW, thumbBottomSnapped, lineT]);
 
   const thumbFillStyle = useMemo((): ViewStyle | null => {
     if (!showScrollbar || thumbW <= 0) return null;
-    /**
-     * RN-web often fails to repaint when only `left` changes on an absolutely positioned child inside an
-     * `overflow: hidden` track; `translateX` promotes its own layer so the thumb visibly tracks scroll.
-     */
     return {
-      position: "absolute",
-      left: 0,
-      top: 0,
-      transform: [{ translateX: thumbSnapLeft }],
       width: thumbSnapW,
       height: lineT,
       backgroundColor: colors.accent,
       ...(Platform.OS === "web" ? ({ willChange: "transform" } as ViewStyle) : null),
     };
-  }, [showScrollbar, thumbW, thumbSnapLeft, thumbSnapW, colors.accent, lineT]);
+  }, [showScrollbar, thumbW, thumbSnapW, colors.accent, lineT]);
 
   const labelStyle = (active: boolean) => ({
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -665,6 +682,7 @@ export function AuthenticatedHomeLeftNavStrip({
     >
       {/* Full-width scroll + 15px content insets: at scroll 0 / thumb left, row starts 15px in; at max scroll / thumb right, row ends 15px before edge. Edge fades sit on top for motion blur to the real edge. */}
       <ScrollView
+        ref={scrollRef}
         horizontal
         nativeID="ah-nav-strip-hscroll"
         testID="ah-nav-strip-hscroll"
@@ -767,8 +785,18 @@ export function AuthenticatedHomeLeftNavStrip({
       ) : null}
 
       {thumbTrackStyle && thumbFillStyle ? (
-        <View pointerEvents="none" style={[thumbTrackStyle, lineAxisLock]}>
-          <View pointerEvents="none" collapsable={false} style={[thumbFillStyle, lineAxisLock]} />
+        <View pointerEvents="box-none" style={[thumbTrackStyle, lineAxisLock]}>
+          <ScrollIndicatorDragHandle
+            axis="horizontal"
+            trackSpan={scrollTrackWidth}
+            thumbSpan={thumbSnapW}
+            thumbOffset={thumbSnapLeft}
+            scrollRange={scrollRange}
+            onScrollTo={scrollToX}
+            crossAxisVisualSpan={lineT}
+          >
+            <View pointerEvents="none" collapsable={false} style={[thumbFillStyle, lineAxisLock]} />
+          </ScrollIndicatorDragHandle>
         </View>
       ) : null}
 

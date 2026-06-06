@@ -30,6 +30,25 @@ export const SCROLL_INDICATOR_THUMB_MIN_PX = 4;
 /** Pin thumb to track ends when scroll offset is within this many px of 0 / max. */
 export const SCROLL_INDICATOR_SCROLL_EPS = 2;
 
+/** Extra hit area (px) perpendicular to the scroll axis for dragging hairline thumbs. */
+export const SCROLL_INDICATOR_DRAG_HIT_INSET_PX = 3;
+
+/** Map thumb position on track (px) to scroll offset (px). Inverse of thumb offset math. */
+export function scrollOffsetFromThumbPosition(
+  thumbPos: number,
+  trackSpan: number,
+  thumbSpan: number,
+  scrollRange: number,
+): number {
+  if (scrollRange <= 0 || trackSpan <= 0) return 0;
+  const maxTravel = Math.max(0, trackSpan - thumbSpan);
+  const clamped = Math.max(0, Math.min(thumbPos, maxTravel));
+  if (clamped <= SCROLL_INDICATOR_SCROLL_EPS) return 0;
+  if (clamped >= maxTravel - SCROLL_INDICATOR_SCROLL_EPS) return scrollRange;
+  if (maxTravel <= 0) return 0;
+  return (clamped / maxTravel) * scrollRange;
+}
+
 /**
  * Thumb span and offset along the scroll axis: horizontal → width + `left`, vertical → height + `top`.
  * Same rules as `AuthenticatedHomeLeftNavStrip` (proportional size, {@link SCROLL_INDICATOR_THUMB_MAX_TRACK_FRAC} cap,

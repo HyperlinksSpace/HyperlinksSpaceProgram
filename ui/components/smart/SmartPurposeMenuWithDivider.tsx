@@ -24,6 +24,7 @@ import {
   snapScrollIndicatorCoordPx,
 } from "../../scrollIndicatorPx";
 import { layout, useColors } from "../../theme";
+import { ScrollIndicatorDragHandle } from "../ScrollIndicatorDragHandle";
 import { SmartGradientDivider } from "./SmartGradientDivider";
 
 const SCROLL_EPS = 2;
@@ -291,6 +292,25 @@ export function SmartPurposeMenuWithDivider({
     setTrackW(Math.round(event.nativeEvent.layout.width));
   }, []);
 
+  const scrollToX = useCallback(
+    (x: number) => {
+      const clamped = Math.max(0, Math.min(x, scrollRange > 0 ? scrollRange : x));
+      scrollRef.current?.scrollTo({ x: clamped, animated: false });
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        const root =
+          document.getElementById(SCROLL_NATIVE_ID) ??
+          document.querySelector(`[data-testid="${SCROLL_NATIVE_ID}"]`) ??
+          document.querySelector(".smart-purpose-menu-hscroll");
+        const scrollEl = pickWebScrollEl(root, layoutW);
+        if (scrollEl) {
+          scrollEl.scrollLeft = clamped;
+        }
+      }
+      setScrollX(clamped);
+    },
+    [layoutW, scrollRange],
+  );
+
   useEffect(() => {
     if (Platform.OS !== "web" || typeof ResizeObserver === "undefined") return;
     const root =
@@ -380,7 +400,6 @@ export function SmartPurposeMenuWithDivider({
 
         {showScrollbar ? (
           <View
-            pointerEvents="none"
             style={{
               position: "absolute",
               left: -contentInset,
@@ -388,27 +407,34 @@ export function SmartPurposeMenuWithDivider({
               bottom: thumbBottomPx,
               paddingHorizontal: overflowLinePaddingPx,
               zIndex: 1,
+              pointerEvents: "box-none",
             }}
           >
             <View
               onLayout={onTrackLayout}
               style={{
                 height: lineT,
-                overflow: "hidden",
+                overflow: "visible",
               }}
             >
-              <View
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 0,
-                  transform: [{ translateX: thumbSnapLeft }],
-                  width: thumbSnapW,
-                  height: lineT,
-                  backgroundColor: colors.accent,
-                  ...(Platform.OS === "web" ? ({ willChange: "transform" } as ViewStyle) : null),
-                }}
-              />
+              <ScrollIndicatorDragHandle
+                axis="horizontal"
+                trackSpan={scrollTrackWidth}
+                thumbSpan={thumbSnapW}
+                thumbOffset={thumbSnapLeft}
+                scrollRange={scrollRange}
+                onScrollTo={scrollToX}
+                crossAxisVisualSpan={lineT}
+              >
+                <View
+                  style={{
+                    width: thumbSnapW,
+                    height: lineT,
+                    backgroundColor: colors.accent,
+                    ...(Platform.OS === "web" ? ({ willChange: "transform" } as ViewStyle) : null),
+                  }}
+                />
+              </ScrollIndicatorDragHandle>
             </View>
           </View>
         ) : null}

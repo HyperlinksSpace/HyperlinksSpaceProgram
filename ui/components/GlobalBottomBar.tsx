@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, uiTextVerticalCompensationY, useColors } from "../theme";
 import { scrollIndicatorHairlineBorderWidthPx, snapScrollIndicatorCoordPx } from "../scrollIndicatorPx";
+import { ScrollIndicatorDragHandle } from "./ScrollIndicatorDragHandle";
 import { BottomBarSendCircleButton } from "./BottomBarSendCircleButton";
 import { useTelegram } from "./Telegram";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
@@ -44,17 +45,21 @@ function Scrollbar({
   indicatorHeight,
   topPosition,
   color,
+  scrollRange,
+  onScrollTo,
 }: {
   show: boolean;
   height: number;
   indicatorHeight: number;
   topPosition: number;
   color: string;
+  scrollRange: number;
+  onScrollTo: (offset: number) => void;
 }) {
   if (!show || indicatorHeight <= 0) return null;
   const hairline = scrollIndicatorHairlineBorderWidthPx();
   const h = Math.max(hairline, indicatorHeight);
-  const mt = topPosition;
+  const effectiveRange = Math.max(0, scrollRange);
   return (
     <View
       style={[
@@ -62,21 +67,31 @@ function Scrollbar({
         { height, right: snapScrollIndicatorCoordPx(SCROLLBAR_RIGHT_INSET) },
       ]}
     >
-      <View
-        {...(Platform.OS === "web"
-          ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
-          : {})}
-        style={{
-          position: "absolute",
-          right: 0,
-          top: mt,
-          width: 0,
-          height: h,
-          borderLeftWidth: hairline,
-          borderLeftColor: color,
-          borderStyle: "solid",
-        }}
-      />
+      <ScrollIndicatorDragHandle
+        axis="vertical"
+        trackSpan={height}
+        thumbSpan={h}
+        thumbOffset={topPosition}
+        scrollRange={effectiveRange}
+        onScrollTo={onScrollTo}
+        crossAxisVisualSpan={hairline}
+      >
+        <View
+          {...(Platform.OS === "web"
+            ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
+            : {})}
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            width: 0,
+            height: h,
+            borderLeftWidth: hairline,
+            borderLeftColor: color,
+            borderStyle: "solid",
+          }}
+        />
+      </ScrollIndicatorDragHandle>
     </View>
   );
 }
@@ -210,6 +225,7 @@ const styles = StyleSheet.create({
     overflow: "visible",
     alignItems: "flex-start",
     justifyContent: "flex-start",
+    pointerEvents: "box-none",
   },
 });
 
@@ -484,6 +500,18 @@ function WebBottomBar({
         indicatorHeight={metrics.scrollbar.indicatorHeight}
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
+        scrollRange={
+          domScrollRange > 0
+            ? domScrollRange
+            : Math.max(0, metrics.contentHeightWithGaps - metrics.viewportHeight)
+        }
+        onScrollTo={(y) => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.scrollTop = y;
+          setScrollY(y);
+          setDomScrollRange(Math.max(0, el.scrollHeight - el.clientHeight));
+        }}
       />
       {!hideBottomBorder ? (
         <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
@@ -700,6 +728,12 @@ function NativeBottomBar({
         indicatorHeight={metrics.scrollbar.indicatorHeight}
         topPosition={metrics.scrollbar.topPosition}
         color={scrollbarColor}
+        scrollRange={Math.max(0, metrics.contentHeightWithGaps - metrics.viewportHeight)}
+        onScrollTo={(y) => {
+          scrollRef.current?.scrollTo({ y, animated: false });
+          scrollYRef.current = y;
+          setScrollY(y);
+        }}
       />
       {!hideBottomBorder ? (
         <View style={[styles.bottomDivider, { backgroundColor: topBorderColor }]} />
