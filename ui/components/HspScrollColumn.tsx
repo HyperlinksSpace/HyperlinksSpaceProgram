@@ -83,7 +83,11 @@ export function HspScrollColumn({
     }));
   }, []);
 
+  /** Reset scroll only on first mount — not when `children` change (e.g. split-pane resize reflow). */
+  const didMountScrollResetRef = useRef(false);
   useLayoutEffect(() => {
+    if (didMountScrollResetRef.current) return;
+    didMountScrollResetRef.current = true;
     if (Platform.OS === "web") {
       const instance = scrollRef.current as unknown as {
         getScrollableNode?: () => HTMLElement | null | undefined;
@@ -101,7 +105,7 @@ export function HspScrollColumn({
       requestAnimationFrame(syncScrollMetricsFromDom);
     });
     return () => cancelAnimationFrame(id);
-  }, [syncScrollMetricsFromDom, children]);
+  }, [syncScrollMetricsFromDom]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;

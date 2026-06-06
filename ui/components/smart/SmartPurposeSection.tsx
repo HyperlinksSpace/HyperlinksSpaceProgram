@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Platform, Pressable, Text, View } from "react-native";
 
 import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -8,7 +8,7 @@ import {
   type SmartPurposeKey,
 } from "../../smart/smartPurposeTypes";
 import { typographyAeroport20, typographyRect15, useColors } from "../../theme";
-import { SmartGradientDivider } from "./SmartGradientDivider";
+import { SmartPurposeMenuWithDivider } from "./SmartPurposeMenuWithDivider";
 import { SmartStandardHelpHint } from "./SmartStandardHelpHint";
 
 const SUBTITLE_TO_MENU_GAP_PX = 15;
@@ -68,6 +68,36 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
   const { t } = useAppStrings();
   const [activeKey, setActiveKey] = useState<SmartPurposeKey>("company");
 
+  const renderMenuItems = useCallback(
+    () =>
+      SMART_PURPOSE_KEYS.map((key, index) => (
+        <View key={key} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+          {index > 0 ? <View style={{ width: MENU_ITEM_GAP_PX }} /> : null}
+          <Pressable
+            onPress={() => setActiveKey(key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: activeKey === key }}
+          >
+            <Text
+              style={[
+                typographyRect15,
+                {
+                  fontSize: MENU_FONT_SIZE_PX,
+                  lineHeight: MENU_LINE_HEIGHT_PX,
+                  color: activeKey === key ? colors.primary : colors.secondary,
+                  flexShrink: 0,
+                  ...(Platform.OS === "web" ? { whiteSpace: "nowrap" as const } : null),
+                },
+              ]}
+            >
+              {t(MENU_LABEL_KEYS[key])}
+            </Text>
+          </Pressable>
+        </View>
+      )),
+    [activeKey, colors.primary, colors.secondary, t],
+  );
+
   return (
     <>
       <Text
@@ -85,34 +115,12 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
 
       <View style={{ height: SUBTITLE_TO_MENU_GAP_PX }} />
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start" }}>
-        {SMART_PURPOSE_KEYS.map((key, index) => (
-          <View key={key} style={{ flexDirection: "row", alignItems: "flex-start" }}>
-            {index > 0 ? <View style={{ width: MENU_ITEM_GAP_PX }} /> : null}
-            <Pressable
-              onPress={() => setActiveKey(key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: activeKey === key }}
-            >
-              <Text
-                style={[
-                  typographyRect15,
-                  {
-                    fontSize: MENU_FONT_SIZE_PX,
-                    lineHeight: MENU_LINE_HEIGHT_PX,
-                    color: activeKey === key ? colors.primary : colors.secondary,
-                  },
-                ]}
-              >
-                {t(MENU_LABEL_KEYS[key])}
-              </Text>
-            </Pressable>
-          </View>
-        ))}
-      </View>
+      <SmartPurposeMenuWithDivider
+        menuLineHeightPx={MENU_LINE_HEIGHT_PX}
+        gapAboveDividerPx={MENU_TO_DIVIDER_GAP_PX}
+        renderMenuItems={renderMenuItems}
+      />
 
-      <View style={{ height: MENU_TO_DIVIDER_GAP_PX }} />
-      <SmartGradientDivider />
       <View style={{ height: DIVIDER_TO_DESC_GAP_PX }} />
 
       <Text

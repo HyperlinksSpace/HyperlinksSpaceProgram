@@ -39,6 +39,21 @@
  * Main RN-web column (`MainWebScrollColumn`): native scrollbar is hidden; a 1px custom thumb is drawn in React.
  * Inline `scrollbar-width: none` covers Firefox; WebKit needs the pseudo-element on the scrolling node class.
  */
+[data-smart-purpose-menu-bleed="true"] {
+  margin-left: -15px;
+  margin-right: -15px;
+  width: calc(100% + 30px);
+  max-width: calc(100% + 30px);
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+/* Horizontal menu: prefer horizontal pan so nested vertical scroll does not steal the gesture. */
+.smart-purpose-menu-hscroll {
+  touch-action: pan-x;
+}
+
 .hsp-main-scroll-hide-native-scrollbar::-webkit-scrollbar {
   width: 0;
   height: 0;
