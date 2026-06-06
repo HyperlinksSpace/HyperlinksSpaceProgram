@@ -149,20 +149,20 @@ textarea::-webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
 
-/* Smart lead: inline SVG host — fixed height, full column width, no letterboxing. */
+/* Smart lead: inline SVG host — height from `--smart-lead-height-px` (set in SmartLeadImage.web.tsx). */
 [data-smart-lead-host="true"] {
   display: block !important;
   width: 100% !important;
-  height: 301px !important;
-  min-height: 301px !important;
-  max-height: 301px !important;
+  height: var(--smart-lead-height-px, 301px) !important;
+  min-height: var(--smart-lead-height-px, 301px) !important;
+  max-height: var(--smart-lead-height-px, 301px) !important;
   overflow: hidden !important;
 }
 
 [data-smart-lead-host="true"] svg {
   display: block !important;
   width: 100% !important;
-  height: 301px !important;
+  height: var(--smart-lead-height-px, 301px) !important;
 }
 
 /* Make the AI & Search textarea truly 20px tall for one line */

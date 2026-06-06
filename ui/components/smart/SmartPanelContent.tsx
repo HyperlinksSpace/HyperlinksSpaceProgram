@@ -51,8 +51,18 @@ export function SmartPanelContent() {
     return Math.max(0, middleColumnWidthPx - 2 * contentInset);
   }, [contentInset, splitMetrics?.middleColumnWidthPx]);
 
-  const panelWidthPx = splitPanelWidthPx > 0 ? splitPanelWidthPx : observedPanelWidthPx;
-  const panelWidthSource = splitPanelWidthPx > 0 ? "split_middle_column" : "observed_panel_root";
+  const panelWidthPx =
+    observedPanelWidthPx > 0
+      ? observedPanelWidthPx
+      : splitPanelWidthPx > 0
+        ? splitPanelWidthPx
+        : 0;
+  const panelWidthSource =
+    observedPanelWidthPx > 0
+      ? "observed_panel_root"
+      : splitPanelWidthPx > 0
+        ? "split_middle_column"
+        : "none";
   const leadHeightPx = smartLeadHeightPxForWidth(panelWidthPx);
   const lastLoggedKeyRef = useRef<string | null>(null);
 

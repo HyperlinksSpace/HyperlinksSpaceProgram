@@ -76,6 +76,7 @@ export function SmartLeadImage({ source, style, layoutWidthPx = 0 }: Props) {
     height,
     overflow: "hidden",
     flexShrink: 0,
+    ["--smart-lead-height-px" as string]: `${height}px`,
     ...(style as CSSProperties | undefined),
   };
 
