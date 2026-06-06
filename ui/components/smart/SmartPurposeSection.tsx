@@ -167,9 +167,7 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
         >
           {t(DEAL_VERSION_KEYS[activeKey])}
         </Text>
-        <SmartStandardHelpHint
-          labelStyle={{ fontSize: VERSION_FONT_SIZE_PX, lineHeight: VERSION_LINE_HEIGHT_PX }}
-        />
+        <SmartStandardHelpHint labelStyle={{ fontSize: VERSION_FONT_SIZE_PX }} />
       </View>
     </>
   );
