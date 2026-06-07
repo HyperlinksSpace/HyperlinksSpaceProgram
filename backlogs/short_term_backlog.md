@@ -1,8 +1,9 @@
+Smart layout
+Wallets on get page
 All sign in methods
 Sign in on windows app
-Smart horizontal menu slider
 Smart default item
-Images and header
+Images and header ???
 AI & Search: Ask me anything, e.g. "What tokens are people talking about today?"
 Tune redirect for hs main
 
