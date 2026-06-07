@@ -8,8 +8,8 @@ import { SmartUndercoverTextField } from "./SmartUndercoverTextField";
 const VERSION_TO_TITLE_GAP_PX = 30;
 const TITLE_LABEL_TO_INPUT_GAP_PX = 10;
 
-const TITLE_LABEL_FONT_SIZE_PX = 15;
-const TITLE_LABEL_LINE_HEIGHT_PX = 30;
+const TITLE_LABEL_FONT_SIZE_PX = 25;
+const TITLE_LABEL_LINE_HEIGHT_PX = 40;
 
 const SMART_COMPANY_TITLE_INPUT_ID = "smart-company-title-input";
 
