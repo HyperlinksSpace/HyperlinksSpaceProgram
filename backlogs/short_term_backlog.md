@@ -1,4 +1,5 @@
 Check translations
+AI responce
 Smart layout (left sections or soon's)
 Updates delivering
 All sign in methods
