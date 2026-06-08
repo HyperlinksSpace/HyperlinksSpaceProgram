@@ -8,11 +8,11 @@ Smart-contract minting
 Images and header (Smart page)
 AI & Search: Ask me anything, e.g. "What tokens are people talking about today?"
 Tune redirect for hs main
-
+Chineese
 Wallet (Get, Send)
 Swap.Coffee
 TDLIB
-
+Sun colors
 Page loading issues, chart loading
 Swap page bugs
 Time in feed is not displayed

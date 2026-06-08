@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Text, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Text, View, type LayoutChangeEvent } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographyRect15, useColors } from "../../theme";
@@ -29,6 +29,12 @@ export function AiSearchColumnEmptyState() {
   const colors = useColors();
   const { t } = useAppStrings();
   const { setDraftText } = useBottomBarLayout();
+  const [columnWidth, setColumnWidth] = useState(0);
+
+  const onColumnLayout = useCallback((event: LayoutChangeEvent) => {
+    const next = Math.round(event.nativeEvent.layout.width);
+    setColumnWidth((current) => (current === next ? current : next));
+  }, []);
 
   const prompts = useMemo(() => PREMADE_PROMPT_KEYS.map((key) => t(key)), [t]);
 
@@ -43,7 +49,10 @@ export function AiSearchColumnEmptyState() {
   ];
 
   return (
-    <View style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}>
+    <View
+      style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}
+      onLayout={onColumnLayout}
+    >
       <HspScrollColumn
         style={{ flex: 1 }}
         indicatorColor={colors.accent}
@@ -82,7 +91,11 @@ export function AiSearchColumnEmptyState() {
         {prompts.map((prompt, index) => (
           <View key={PREMADE_PROMPT_KEYS[index]}>
             {index > 0 ? <View style={{ height: PROMPT_BUTTON_GAP_PX }} /> : null}
-            <AiSearchPromptButton label={prompt} onPress={() => setDraftText(prompt)} />
+            <AiSearchPromptButton
+              label={prompt}
+              columnWidth={columnWidth}
+              onPress={() => setDraftText(prompt)}
+            />
           </View>
         ))}
       </HspScrollColumn>
