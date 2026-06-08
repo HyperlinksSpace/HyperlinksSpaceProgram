@@ -13,6 +13,11 @@ const en = {
   "ai.noPrompt": "No prompt",
   "ai.promptPrefix": "Prompt:",
   "ai.title": "AI",
+  "ai.search.emptyTitle": "Do smarter",
+  "ai.search.emptyIntro": "AI and Search helps you throughout all the features of the app.",
+  "ai.search.emptyList":
+    "1. Analise messages and social messages\n2. Conduct smart decisions while trading or swaping\n3.Automize actions in program",
+  "ai.search.emptyTryPrompts": "Try this prompts:",
 
   "common.back": "Back",
   "common.debug": "Debug",
@@ -55,8 +60,9 @@ const en = {
 
   "global.bottomBar.placeholderNative": "AI & Search",
   "global.bottomBar.placeholderWeb": "AI and search",
-  "global.bottomBar.premade1": "What is the universe?",
-  "global.bottomBar.premade2": "Tell me about dogs token",
+  "global.bottomBar.premade1": "What tokens people are talking about now?",
+  "global.bottomBar.premade2": "What famous artist has recently launched digital goods?",
+  "global.bottomBar.premade3": "Buy eth for my 10 ton at the current rate",
 
   "home.mainColumnFooter.telegramMessages": "Connect Telegram",
 
@@ -199,6 +205,11 @@ const ru = {
   "ai.noPrompt": "Нет запроса",
   "ai.promptPrefix": "Запрос:",
   "ai.title": "ИИ",
+  "ai.search.emptyTitle": "Думай умнее",
+  "ai.search.emptyIntro": "ИИ и поиск помогают вам во всех функциях приложения.",
+  "ai.search.emptyList":
+    "1. Анализируйте сообщения и посты в соцсетях\n2. Принимайте умные решения при торговле и обмене\n3. Автоматизируйте действия в программе",
+  "ai.search.emptyTryPrompts": "Попробуйте эти запросы:",
 
   "common.back": "Назад",
   "common.debug": "Отладка",
@@ -242,8 +253,9 @@ const ru = {
 
   "global.bottomBar.placeholderNative": "ИИ и поиск",
   "global.bottomBar.placeholderWeb": "ИИ и поиск",
-  "global.bottomBar.premade1": "Что такое Вселенная?",
-  "global.bottomBar.premade2": "Расскажи про токен dogs",
+  "global.bottomBar.premade1": "О каких токенах сейчас говорят люди?",
+  "global.bottomBar.premade2": "Какой известный артист недавно выпустил цифровые товары?",
+  "global.bottomBar.premade3": "Купи eth на мои 10 ton по текущему курсу",
 
   "home.mainColumnFooter.telegramMessages": "Подключить Telegram",
 

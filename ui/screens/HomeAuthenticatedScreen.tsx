@@ -10,6 +10,8 @@ import {
 } from "react";
 import { ActivityIndicator, Button, Platform, Text, View, useWindowDimensions } from "react-native";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
+import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
+import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
 import {
   MainColumnInactiveFooter,
   SendColumnInactiveFooter,
@@ -609,7 +611,10 @@ export function HomeAuthenticatedScreen() {
       router.push("/get" as any);
     }
   }, [isWideHome, rightPanel, pathname, router]);
+  const { draftText } = useBottomBarLayout();
   const embeddedAiBar = aiBarDock === "screenFooter" ? null : <GlobalBottomBar />;
+  const aiSearchColumnContent =
+    aiBarDock === "splitColumn3" && draftText.trim().length === 0 ? <AiSearchColumnEmptyState /> : null;
   const mainColumnFooter = <MainColumnInactiveFooter />;
   const swapColumnFooter = <SwapColumnInactiveFooter />;
   const sendColumnFooter = <SendColumnInactiveFooter />;
@@ -1496,6 +1501,7 @@ export function HomeAuthenticatedScreen() {
     >
       <AuthenticatedHomeSplitBody
         leftColumnFooter={isWideHome ? mainColumnFooter : null}
+        farRight={aiSearchColumnContent}
         left={homeLeftColumn}
         right={
           rightPanel === "swap" ? (

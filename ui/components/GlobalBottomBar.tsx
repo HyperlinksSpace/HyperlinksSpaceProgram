@@ -101,7 +101,12 @@ export function GlobalBottomBar() {
   const colors = useColors();
   const { t } = useAppStrings();
   const premadePrompts = React.useMemo(
-    () => [t("global.bottomBar.premade1"), t("global.bottomBar.premade2")] as const,
+    () =>
+      [
+        t("global.bottomBar.premade1"),
+        t("global.bottomBar.premade2"),
+        t("global.bottomBar.premade3"),
+      ] as const,
     [t],
   );
   const placeholderWeb = t("global.bottomBar.placeholderWeb");
@@ -252,7 +257,7 @@ function WebBottomBar({
   contentMaxWidth?: number;
   value: string;
   setValue: (next: string) => void;
-  premadePrompts: readonly [string, string];
+  premadePrompts: readonly [string, string, string];
   placeholderText: string;
 }) {
   const router = useRouter();
@@ -543,7 +548,7 @@ function NativeBottomBar({
   contentMaxWidth?: number;
   value: string;
   setValue: (next: string) => void;
-  premadePrompts: readonly [string, string];
+  premadePrompts: readonly [string, string, string];
   placeholderText: string;
 }) {
   const router = useRouter();
