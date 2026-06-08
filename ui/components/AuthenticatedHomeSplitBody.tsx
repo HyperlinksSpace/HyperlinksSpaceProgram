@@ -655,17 +655,7 @@ export function AuthenticatedHomeSplitBody({
     flex: 1 as const,
     minWidth: AH.splitPaneMinSecondColumnPx,
     minHeight: 0,
-    ...(isWide && isTriple
-      ? ({
-          position: "relative" as const,
-          zIndex: AH.scrollColumnAboveSplitDividerZIndex,
-        } satisfies ViewStyle)
-      : {}),
   };
-
-  const firstColumnStackStyle: ViewStyle = isWide
-    ? { position: "relative", zIndex: AH.scrollColumnAboveSplitDividerZIndex }
-    : {};
 
   const columnAiBarWrapStyle: ViewStyle =
     Platform.OS === "web"
@@ -776,7 +766,6 @@ export function AuthenticatedHomeSplitBody({
                   flexShrink: 0,
                   flexDirection: "column",
                   minHeight: 0,
-                  ...firstColumnStackStyle,
                 }}
               >
                 <View style={{ flex: 1, minHeight: 0 }}>{left}</View>
@@ -788,7 +777,6 @@ export function AuthenticatedHomeSplitBody({
                   width: leftPanePx,
                   flexShrink: 0,
                   paddingBottom: bottomInset,
-                  ...firstColumnStackStyle,
                 }}
               >
                 {left}
