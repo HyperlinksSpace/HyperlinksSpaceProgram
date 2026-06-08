@@ -229,3 +229,25 @@ textarea[data-ai-input="true"] {
   transition: background-color 99999s ease-out;
 }
 
+#smart-company-text-input,
+.smart-undercover-multiline-input {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+#smart-company-text-input::-webkit-scrollbar,
+.smart-undercover-multiline-input::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+#smart-company-text-input::placeholder,
+.smart-undercover-multiline-input::placeholder {
+  font-size: 15px;
+  line-height: 30px;
+}
+

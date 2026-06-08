@@ -123,6 +123,9 @@ const en = {
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
   "smart.company.titleLabel": "Title*",
   "smart.company.titleDefault": "Company Smart Deal v.1 №123",
+  "smart.company.textLabel": "Text",
+  "smart.company.textPlaceholder":
+    "e.g. Hyperlinks.Space: The core for a multi-planetary future\nHerewith we agree to create a company on the following terms...",
   "smart.footer.deployCost": "Deploy the Smart for 10 TON",
   "smart.footer.deployCostShort": "10 TON",
   "smart.footer.deployButton": "Deploy Smart",
@@ -297,6 +300,9 @@ const ru = {
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
   "smart.company.titleLabel": "Title*",
   "smart.company.titleDefault": "Company Smart Deal v.1 №123",
+  "smart.company.textLabel": "Text",
+  "smart.company.textPlaceholder":
+    "e.g. Hyperlinks.Space: The core for a multi-planetary future\nHerewith we agree to create a company on the following terms...",
   "smart.footer.deployCost": "Задеплой Смарт за 10 TON",
   "smart.footer.deployCostShort": "10 TON",
   "smart.footer.deployButton": "Задеплоить Смарт",
