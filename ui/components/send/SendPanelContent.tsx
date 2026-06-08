@@ -6,6 +6,7 @@ import {
   Pressable,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type LayoutChangeEvent,
 } from "react-native";
@@ -61,6 +62,8 @@ function SendLabelActionRow({
 /** Send panel body (prev-main `SendPage`). */
 export function SendPanelContent() {
   const colors = useColors();
+  const { width: windowWidth } = useWindowDimensions();
+  const showWalletTitleRow = windowWidth <= layout.authenticatedHome.firstBreakpoint;
   const contentInset = layout.contentSideInsetPx;
   const scrollShellBleed = { marginHorizontal: -contentInset };
   const scrollContentPadding = {
@@ -129,8 +132,12 @@ export function SendPanelContent() {
             : scrollContentPadding
         }
       >
-        <SendGetTitleRow />
-        <View style={{ height: TITLE_TO_SEND_GAP_PX }} />
+        {showWalletTitleRow ? (
+          <>
+            <SendGetTitleRow />
+            <View style={{ height: TITLE_TO_SEND_GAP_PX }} />
+          </>
+        ) : null}
 
         <View
           style={{
