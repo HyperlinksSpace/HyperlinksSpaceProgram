@@ -191,62 +191,17 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
 
   const handleMenuKeyPress = useCallback(
     (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
-      if (key === "swap") {
-        if (atOrAboveFirstBreakpoint) {
-          openAuthenticatedHomeRightPanel("swap");
-          if (pathname === "/swap") {
-            router.replace("/");
-          }
-        } else if (pathname !== "/swap") {
-          router.push("/swap" as any);
+      openAuthenticatedHomeRightPanel(key);
+      const route = `/${key}`;
+      if (atOrAboveFirstBreakpoint) {
+        if (pathname === route) {
+          router.replace("/");
         }
         return;
       }
-      if (key === "smart") {
-        if (atOrAboveFirstBreakpoint) {
-          openAuthenticatedHomeRightPanel("smart");
-          if (pathname === "/smart") {
-            router.replace("/");
-          }
-        } else if (pathname !== "/smart") {
-          router.push("/smart" as any);
-        }
-        return;
+      if (pathname !== route) {
+        router.push(route as any);
       }
-      if (key === "trade") {
-        if (atOrAboveFirstBreakpoint) {
-          openAuthenticatedHomeRightPanel("trade");
-          if (pathname === "/trade") {
-            router.replace("/");
-          }
-        } else if (pathname !== "/trade") {
-          router.push("/trade" as any);
-        }
-        return;
-      }
-      if (key === "send") {
-        if (atOrAboveFirstBreakpoint) {
-          openAuthenticatedHomeRightPanel("send");
-          if (pathname === "/send") {
-            router.replace("/");
-          }
-        } else if (pathname !== "/send") {
-          router.push("/send" as any);
-        }
-        return;
-      }
-      if (key === "get") {
-        if (atOrAboveFirstBreakpoint) {
-          openAuthenticatedHomeRightPanel("get");
-          if (pathname === "/get") {
-            router.replace("/");
-          }
-        } else if (pathname !== "/get") {
-          router.push("/get" as any);
-        }
-        return;
-      }
-      /* wired when other menu flows land */
     },
     [atOrAboveFirstBreakpoint, pathname, router],
   );

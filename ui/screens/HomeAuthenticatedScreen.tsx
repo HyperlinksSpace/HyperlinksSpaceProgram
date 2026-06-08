@@ -40,6 +40,7 @@ import { SmartColumnFooter } from "../components/smart/SmartColumnFooter";
 import { SmartPanelContent } from "../components/smart/SmartPanelContent";
 import { TradePanelContent } from "../components/trade/TradePanelContent";
 import {
+  DEFAULT_AUTHENTICATED_HOME_RIGHT_PANEL_KEY,
   openAuthenticatedHomeRightPanel,
   useAuthenticatedHomeRightPanel,
 } from "../authenticatedHomeRightPanel";
@@ -565,9 +566,9 @@ export function HomeAuthenticatedScreen() {
   const leftNavSelectedIndex = homeNavIndex;
 
   useEffect(() => {
-    // Wide home (2- or 3-column): default right pane to swap when nothing else is open.
+    // Wide home (2- or 3-column): default right pane when nothing is stored yet.
     if (isWideHome && rightPanel === null) {
-      openAuthenticatedHomeRightPanel("swap");
+      openAuthenticatedHomeRightPanel(DEFAULT_AUTHENTICATED_HOME_RIGHT_PANEL_KEY);
     }
   }, [isWideHome, rightPanel]);
 
