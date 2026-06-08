@@ -1,8 +1,10 @@
-Smart layout
+Check translations
+Smart layout (left sections or soon's)
 Updates delivering
 All sign in methods
 Sign in on windows app
 Wallets on get page
+Smart-contract minting
 Images and header (Smart page)
 AI & Search: Ask me anything, e.g. "What tokens are people talking about today?"
 Tune redirect for hs main
