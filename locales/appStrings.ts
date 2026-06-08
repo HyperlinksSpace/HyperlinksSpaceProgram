@@ -14,7 +14,7 @@ const en = {
   "ai.promptPrefix": "Prompt:",
   "ai.title": "AI",
   "ai.search.emptyTitle": "Do smarter",
-  "ai.search.emptyIntro": "AI and Search helps you throughout all the features of the app.",
+  "ai.search.emptyIntro": "AI and search will help you in everything you do in the program.",
   "ai.search.emptyList":
     "1. Analise messages and social messages\n2. Conduct smart decisions while trading or swaping\n3.Automize actions in program",
   "ai.search.emptyTryPrompts": "Try this prompts:",
@@ -206,10 +206,10 @@ const ru = {
   "ai.promptPrefix": "Запрос:",
   "ai.title": "ИИ",
   "ai.search.emptyTitle": "Сделай умнее",
-  "ai.search.emptyIntro": "ИИ и поиск помогают вам во всех функциях приложения.",
+  "ai.search.emptyIntro": "ИИ и поиск охватывают весь функционал программы и станут вашими верными спутниками во всех делах.",
   "ai.search.emptyList":
-    "1. Анализируйте сообщения и посты в соцсетях\n2. Принимайте умные решения при торговле и обмене\n3. Автоматизируйте действия в программе",
-  "ai.search.emptyTryPrompts": "Попробуйте эти запросы:",
+    "1. Анализируй сообщения и посты в соцсетях\n2. Принимай умные решения при торговле и обмене\n3. Автоматизируй действия в программе",
+  "ai.search.emptyTryPrompts": "Попробуй эти промпты:",
 
   "common.back": "Назад",
   "common.debug": "Отладка",
