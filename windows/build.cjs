@@ -28,6 +28,9 @@ if (process.platform === "win32" && process.env.HSP_DISABLE_GPU === "1") {
   } catch (_) {}
 }
 const path = require("path");
+const { registerOAuthIpc } = require("./oauth-window.cjs");
+const preloadPath = path.join(__dirname, "preload.cjs");
+let mainWindowRef = null;
 const fs = require("fs");
 const crypto = require("crypto");
 const { Readable } = require("stream");
@@ -2002,6 +2005,12 @@ function log(msg) {
   } catch (_) {}
 }
 
+registerOAuthIpc({
+  ipcMain,
+  getMainWindow: () => mainWindowRef,
+  log,
+});
+
 /** Windows: resolve before the first show(); omit `icon` if empty so the shell can fall back to the exe. */
 async function resolveBrowserWindowIcon() {
   const fromFile = nativeImageFromAppIcon();
@@ -2288,9 +2297,11 @@ async function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       spellcheck: false,
+      ...(fs.existsSync(preloadPath) ? { preload: preloadPath } : {}),
     },
     show: false,
   });
+  mainWindowRef = mainWindow;
 
   try {
     mainWindow.webContents.setIgnoreMenuShortcuts(false);
@@ -2384,6 +2395,7 @@ async function createWindow() {
   }
 
   mainWindow.on("closed", () => {
+    mainWindowRef = null;
     if (suppressQuitForUpdateInstall) return;
     app.quit();
   });

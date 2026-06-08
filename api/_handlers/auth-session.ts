@@ -8,6 +8,7 @@ import {
   type FeedCatalogLocale,
 } from "../../locales/resolveFeedCatalogLocale.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
+import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -50,13 +51,20 @@ function isSecureRequest(request: AnyRequest): boolean {
   return rawUrl.startsWith("https://");
 }
 
-function sendJson(body: object, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+function sendJson(body: object, status = 200, request?: AnyRequest): Response {
+  const headers = new Headers(JSON_HEADERS);
+  if (request) applyAuthApiCors(request, headers);
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
-function sendJsonViaRes(res: NodeRes, body: object, status = 200): void {
+function sendJsonViaRes(res: NodeRes, body: object, status = 200, request?: AnyRequest): void {
   res.status(status);
   res.setHeader("Content-Type", "application/json");
+  if (request) {
+    const headers = new Headers();
+    applyAuthApiCors(request, headers);
+    headers.forEach((v, k) => res.setHeader(k, v));
+  }
   res.end(JSON.stringify(body));
 }
 
@@ -81,6 +89,17 @@ function catalogLocaleFromRequest(request: AnyRequest): FeedCatalogLocale {
 }
 
 async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) {
+    if (res) {
+      res.status(preflight.status);
+      preflight.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end();
+      return;
+    }
+    return preflight;
+  }
+
   const method = (request as { method?: string }).method ?? request.method;
   const token = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
   const secure = isSecureRequest(request);
@@ -89,7 +108,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     if (token) {
       await deleteSession(sha256Hex(token));
     }
-    const response = sendJson({ ok: true, cleared: true });
+    const response = sendJson({ ok: true, cleared: true }, 200, request);
     response.headers.append("Set-Cookie", clearSessionCookie(secure));
     if (res) {
       res.status(response.status);
@@ -102,20 +121,20 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
 
   if (method !== "GET") {
     const body = { ok: false, error: "method_not_allowed" };
-    if (res) return sendJsonViaRes(res, body, 405);
-    return sendJson(body, 405);
+    if (res) return sendJsonViaRes(res, body, 405, request);
+    return sendJson(body, 405, request);
   }
 
   if (!token) {
     const body = { ok: true, authenticated: false };
-    if (res) return sendJsonViaRes(res, body, 200);
-    return sendJson(body, 200);
+    if (res) return sendJsonViaRes(res, body, 200, request);
+    return sendJson(body, 200, request);
   }
 
   const row = await getSessionByHash(sha256Hex(token));
   if (!row) {
     const body = { ok: true, authenticated: false };
-    const response = sendJson(body, 200);
+    const response = sendJson(body, 200, request);
     response.headers.append("Set-Cookie", clearSessionCookie(secure));
     if (res) {
       res.status(response.status);
@@ -129,7 +148,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   if (Date.parse(row.expires_at) <= Date.now()) {
     await deleteSession(sha256Hex(token));
     const body = { ok: true, authenticated: false };
-    const response = sendJson(body, 200);
+    const response = sendJson(body, 200, request);
     response.headers.append("Set-Cookie", clearSessionCookie(secure));
     if (res) {
       res.status(response.status);
@@ -182,11 +201,12 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         wallet_required: true,
         ...feedFields,
       };
-  if (res) return sendJsonViaRes(res, body, 200);
-  return sendJson(body, 200);
+  if (res) return sendJsonViaRes(res, body, 200, request);
+  return sendJson(body, 200, request);
 }
 
 export default handler;
 export const GET = handler;
 export const DELETE = handler;
+export const OPTIONS = handler;
 

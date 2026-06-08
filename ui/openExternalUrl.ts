@@ -1,12 +1,15 @@
 import * as Linking from "expo-linking";
 import { logPageDisplay } from "./pageDisplayLog";
+import { getApiBaseUrl } from "../api/_base";
+import { getDesktopOAuthBridge, isDesktopAppShell } from "./appShell";
 
 export type ExternalAuthOpenMethod =
   | "top_location_replace"
   | "top_location_href"
   | "anchor_top"
   | "window_open"
-  | "linking";
+  | "linking"
+  | "desktop_oauth_window";
 
 function isInNestedFrame(): boolean {
   if (typeof window === "undefined") return false;
@@ -22,6 +25,14 @@ function isInNestedFrame(): boolean {
  * @see https://core.telegram.org/bots/telegram-login — Authorization Code + PKCE; URL must open in the user's browser, not a subframe.
  */
 export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
+  if (isDesktopAppShell()) {
+    const bridge = getDesktopOAuthBridge();
+    if (bridge) {
+      void bridge.openOAuthUrl(url, getApiBaseUrl());
+      return "desktop_oauth_window";
+    }
+  }
+
   if (typeof window === "undefined") {
     void Linking.openURL(url);
     return "linking";

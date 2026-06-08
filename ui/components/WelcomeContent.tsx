@@ -5,6 +5,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
+import { hasWelcomeBrowserAuthContext } from "../appShell";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 import { isActuallyInTelegram } from "./telegramWebApp";
 
@@ -41,7 +42,7 @@ export function WelcomeContent() {
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    if (!hasWelcomeBrowserAuthContext() || typeof window === "undefined") return;
     if (isActuallyInTelegram()) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -79,7 +80,7 @@ export function WelcomeContent() {
   }, [t, tf]);
 
   const probeBrowserSession = useCallback(
-    async (source: "mount" | "visibility") => {
+    async (source: "mount" | "visibility" | "oauth_complete") => {
       const startedAt = Date.now();
       logPageDisplay("welcome_telegram_oidc_session_probe", { source });
       try {
@@ -116,22 +117,40 @@ export function WelcomeContent() {
   );
 
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
     if (isActuallyInTelegram()) return;
     void probeBrowserSession("mount");
   }, [probeBrowserSession]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
     if (isActuallyInTelegram()) return;
+
+    const onOAuthComplete = (event: Event) => {
+      const detail = (event as CustomEvent<{ error?: string | null; success?: boolean }>).detail;
+      if (detail?.error) {
+        logPageDisplay("welcome_oauth_desktop_callback_error", { reason: detail.error });
+        Alert.alert(
+          t("welcome.auth.googleBrowserAlertTitle"),
+          tf("welcome.auth.googleCallbackError", { reason: detail.error }),
+        );
+        return;
+      }
+      void probeBrowserSession("oauth_complete");
+    };
+
+    document.addEventListener("hsp-oauth-complete", onOAuthComplete);
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void probeBrowserSession("visibility");
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [probeBrowserSession]);
+    return () => {
+      document.removeEventListener("hsp-oauth-complete", onOAuthComplete);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [probeBrowserSession, t, tf]);
 
   const isWideLayout = layoutReady && windowWidth > WIDE_LAYOUT_MIN_WIDTH;
 

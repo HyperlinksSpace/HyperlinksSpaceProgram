@@ -1,5 +1,5 @@
 import { Alert, Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
@@ -21,6 +21,7 @@ import { isActuallyInTelegram } from "./telegramWebApp";
 import { getApiBaseUrl } from "../../api/_base";
 import { navigateExternalAuthUrl } from "../openExternalUrl";
 import { logPageDisplay } from "../pageDisplayLog";
+import { isDesktopAppShell } from "../appShell";
 
 const BUTTON_HEIGHT = 40;
 /** Same line box as {@link typographyRect15} — used to pad the email field like a flex-centered label row. */
@@ -112,6 +113,16 @@ export function WelcomeAuthButtons() {
   const [hoverEmailSignIn, setHoverEmailSignIn] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
+  useEffect(() => {
+    if (!isDesktopAppShell() || typeof document === "undefined") return;
+    const onOAuthComplete = () => {
+      setTelegramBrowserPending(false);
+      setGoogleBrowserPending(false);
+    };
+    document.addEventListener("hsp-oauth-complete", onOAuthComplete);
+    return () => document.removeEventListener("hsp-oauth-complete", onOAuthComplete);
+  }, []);
+
   /**
    * Telegram Login / OIDC via `/api/auth/telegram/start` whenever we are **not** in a real Mini App
    * session (`isActuallyInTelegram`). Includes normal browsers **and** Windows/Electron (or other
@@ -183,7 +194,7 @@ export function WelcomeAuthButtons() {
         authUrlHost = null;
       }
       const openMethod = navigateExternalAuthUrl(json.authUrl);
-      navigated = true;
+      navigated = openMethod !== "desktop_oauth_window";
       logPageDisplay(`${cfg.logPrefix}_redirect`, {
         authUrlHost,
         openMethod,

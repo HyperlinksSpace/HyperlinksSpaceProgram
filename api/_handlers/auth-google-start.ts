@@ -6,6 +6,7 @@ import {
 } from "../_lib/google-oidc.js";
 import { createEphemeralAttempt } from "../_lib/telegram-attempt-store.js";
 import { createLoginAttempt } from "../../database/telegramAuth.js";
+import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const ATTEMPT_TTL_MS = 10 * 60 * 1000;
@@ -130,22 +131,40 @@ function resolveRedirectUri(request: AnyRequest, bodyRedirectUri: unknown): stri
   return getRedirectUri(request);
 }
 
-function sendJson(body: object, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+function sendJson(body: object, status = 200, request?: AnyRequest): Response {
+  const headers = new Headers(JSON_HEADERS);
+  if (request) applyAuthApiCors(request, headers);
+  return new Response(JSON.stringify(body), { status, headers });
 }
 
-function sendJsonViaRes(res: NodeRes, body: object, status = 200): void {
+function sendJsonViaRes(res: NodeRes, body: object, status = 200, request?: AnyRequest): void {
   res.status(status);
   res.setHeader("Content-Type", "application/json");
+  if (request) {
+    const headers = new Headers();
+    applyAuthApiCors(request, headers);
+    headers.forEach((v, k) => res.setHeader(k, v));
+  }
   res.end(JSON.stringify(body));
 }
 
 async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) {
+    if (res) {
+      res.status(preflight.status);
+      preflight.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end();
+      return;
+    }
+    return preflight;
+  }
+
   const method = (request as { method?: string }).method ?? request.method;
   if (method !== "POST") {
     const body = { ok: false, error: "method_not_allowed" };
-    if (res) return sendJsonViaRes(res, body, 405);
-    return sendJson(body, 405);
+    if (res) return sendJsonViaRes(res, body, 405, request);
+    return sendJson(body, 405, request);
   }
 
   let bodyJson: { redirect_uri?: unknown; source?: unknown } = {};
@@ -181,8 +200,8 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() ?? "";
   if (!clientId) {
     const body = { ok: false, error: "google_client_id_not_configured" };
-    if (res) return sendJsonViaRes(res, body, 500);
-    return sendJson(body, 500);
+    if (res) return sendJsonViaRes(res, body, 500, request);
+    return sendJson(body, 500, request);
   }
 
   const state = randomUrlSafe(24);
@@ -196,8 +215,8 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   } catch (e) {
     const code = e instanceof Error ? e.message : "redirect_uri_invalid";
     const body = { ok: false, error: code };
-    if (res) return sendJsonViaRes(res, body, 400);
-    return sendJson(body, 400);
+    if (res) return sendJsonViaRes(res, body, 400, request);
+    return sendJson(body, 400, request);
   }
 
   const { id, expiresAtIso } = createEphemeralAttempt({
@@ -223,8 +242,8 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   } catch (err) {
     console.error("[auth-google-start] createLoginAttempt failed:", err);
     const body = { ok: false, error: "login_attempt_persist_failed" };
-    if (res) return sendJsonViaRes(res, body, 500);
-    return sendJson(body, 500);
+    if (res) return sendJsonViaRes(res, body, 500, request);
+    return sendJson(body, 500, request);
   }
 
   const authUrl = buildGoogleAuthorizeUrl({
@@ -258,10 +277,11 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       expiresAtIso,
     }),
   );
-  if (res) return sendJsonViaRes(res, body, 200);
-  return sendJson(body, 200);
+  if (res) return sendJsonViaRes(res, body, 200, request);
+  return sendJson(body, 200, request);
 }
 
 export default handler;
 export const POST = handler;
 export const GET = handler;
+export const OPTIONS = handler;
