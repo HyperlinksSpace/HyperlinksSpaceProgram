@@ -149,7 +149,9 @@ export function TelegramConnectFooterStrip({
               isLightTheme={isLightTheme}
             >
               <View style={styles.pillContent}>
-                <TelegramLogoIcon size={LOGO_SIZE_PX} />
+                <View style={styles.pillLogo}>
+                  <TelegramLogoIcon size={LOGO_SIZE_PX} />
+                </View>
                 <Text
                   style={[typographyRect15, styles.pillLabel, { color: colors.primary }]}
                   numberOfLines={1}
@@ -228,8 +230,14 @@ const styles = StyleSheet.create({
     paddingRight: PILL_TEXT_RIGHT_PX,
     gap: PILL_LOGO_TO_TEXT_GAP_PX,
   },
-  pillLabel: {
+  pillLogo: {
+    width: LOGO_SIZE_PX,
+    height: LOGO_SIZE_PX,
     flexShrink: 0,
+  },
+  pillLabel: {
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: "400",

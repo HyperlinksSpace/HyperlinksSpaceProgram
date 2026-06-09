@@ -1,4 +1,6 @@
+Automation
 "Connect Telegram" issues before the firstBreakpoint
+Users
 Check translations
 AI responce
 Smart layout (left sections or soon's)
