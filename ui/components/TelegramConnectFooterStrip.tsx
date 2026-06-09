@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -7,6 +7,8 @@ import {
   useWindowDimensions,
   View,
   type LayoutChangeEvent,
+  type NativeSyntheticEvent,
+  type TextLayoutEventData,
 } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
@@ -21,19 +23,22 @@ import { SettingsIcon } from "./icons/SettingsIcon";
 import { ShieldIcon } from "./icons/ShieldIcon";
 import { TelegramLogoIcon } from "./icons/TelegramLogoIcon";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
+import {
+  measureTelegramConnectPillLabelLineWidthPx,
+  TELEGRAM_CONNECT_PILL_LOGO_LEFT_PX,
+  TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX,
+  TELEGRAM_CONNECT_PILL_LOGO_TO_TEXT_GAP_PX,
+  TELEGRAM_CONNECT_PILL_TEXT_RIGHT_PX,
+  telegramConnectMaxPillWidthInStripPx,
+  telegramConnectPillWidthFromLabelLinePx,
+} from "./telegramConnectPillMeasure";
 
 const STRIP_HEIGHT_PX = 60;
 const CHIP_SIZE_PX = 40;
 const ICON_SIZE_PX = 20;
 const SHIELD_ICON_WIDTH_PX = 20;
 const SHIELD_ICON_HEIGHT_PX = 22;
-const LOGO_SIZE_PX = 20;
-const PILL_WIDTH_PX = 193;
 const PILL_HEIGHT_PX = 40;
-
-const PILL_LOGO_LEFT_PX = 15;
-const PILL_LOGO_TO_TEXT_GAP_PX = 10;
-const PILL_TEXT_RIGHT_PX = 20;
 
 type Props = {
   onConnectPress?: () => void;
@@ -103,11 +108,39 @@ export function TelegramConnectFooterStrip({
   const iconColor = colors.primary;
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
   const [stripWidth, setStripWidth] = useState(0);
+  const [nativeLabelLineWidth, setNativeLabelLineWidth] = useState(0);
 
   const onStripLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.ceil(event.nativeEvent.layout.width);
     setStripWidth((current) => (current === next ? current : next));
   }, []);
+
+  const onNativeLabelTextLayout = useCallback((event: NativeSyntheticEvent<TextLayoutEventData>) => {
+    const lineWidth = Math.ceil(event.nativeEvent.lines[0]?.width ?? 0);
+    setNativeLabelLineWidth((current) => (current === lineWidth ? current : lineWidth));
+  }, []);
+
+  useEffect(() => {
+    setNativeLabelLineWidth(0);
+  }, [label]);
+
+  const webLabelLineWidth = useMemo(
+    () => (Platform.OS === "web" ? measureTelegramConnectPillLabelLineWidthPx(label) : 0),
+    [label],
+  );
+
+  const maxPillWidthPx = telegramConnectMaxPillWidthInStripPx(
+    stripWidth,
+    CHIP_SIZE_PX,
+    layout.contentSideInsetPx,
+  );
+
+  const labelLineWidth = Platform.OS === "web" ? webLabelLineWidth : nativeLabelLineWidth;
+
+  const pillWidth = useMemo(() => {
+    if (!label || stripWidth <= 0 || labelLineWidth <= 0) return 0;
+    return telegramConnectPillWidthFromLabelLinePx(labelLineWidth, maxPillWidthPx);
+  }, [label, stripWidth, labelLineWidth, maxPillWidthPx]);
 
   if (!isNarrowHome || isTelegramMessagesConnected || !footerDockedToScreenEdge) {
     return null;
@@ -115,11 +148,18 @@ export function TelegramConnectFooterStrip({
 
   return (
     <View pointerEvents="box-none" style={[styles.overlayHost, { bottom: stripBottomOffsetPx }]}>
-      <View
-        onLayout={onStripLayout}
-        style={styles.strip}
-        pointerEvents="box-none"
-      >
+      {Platform.OS !== "web" && stripWidth > 0 ? (
+        <Text
+          key={label}
+          style={[typographyRect15, styles.pillLabelMeasure]}
+          numberOfLines={1}
+          onTextLayout={onNativeLabelTextLayout}
+        >
+          {label}
+        </Text>
+      ) : null}
+
+      <View onLayout={onStripLayout} style={styles.strip} pointerEvents="box-none">
         <View style={styles.blockUndercover} pointerEvents="none">
           <StripBackgroundGradient
             width={stripWidth}
@@ -139,28 +179,35 @@ export function TelegramConnectFooterStrip({
             </LiquidGlassShaderUndercover>
           </Pressable>
 
-          <Pressable accessibilityRole="button" onPress={onConnectPress} style={styles.pillPressable}>
-            <LiquidGlassShaderUndercover
-              shape="pill"
-              width={PILL_WIDTH_PX}
-              height={PILL_HEIGHT_PX}
-              contentInsetPx={0}
-              phaseOffset={0.22}
-              isLightTheme={isLightTheme}
+          {pillWidth > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onConnectPress}
+              style={[styles.pillPressable, { width: pillWidth, maxWidth: maxPillWidthPx }]}
             >
-              <View style={styles.pillContent}>
-                <View style={styles.pillLogo}>
-                  <TelegramLogoIcon size={LOGO_SIZE_PX} />
+              <LiquidGlassShaderUndercover
+                key={`${label}-${pillWidth}`}
+                shape="pill"
+                width={pillWidth}
+                height={PILL_HEIGHT_PX}
+                contentInsetPx={0}
+                phaseOffset={0.22}
+                isLightTheme={isLightTheme}
+              >
+                <View style={[styles.pillContent, { width: pillWidth }]}>
+                  <View style={styles.pillLogo}>
+                    <TelegramLogoIcon size={TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX} />
+                  </View>
+                  <Text
+                    style={[typographyRect15, styles.pillLabel, { color: colors.primary }]}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
                 </View>
-                <Text
-                  style={[typographyRect15, styles.pillLabel, { color: colors.primary }]}
-                  numberOfLines={1}
-                >
-                  {label}
-                </Text>
-              </View>
-            </LiquidGlassShaderUndercover>
-          </Pressable>
+              </LiquidGlassShaderUndercover>
+            </Pressable>
+          ) : null}
 
           <Pressable accessibilityRole="button" onPress={onSettingsPress} style={styles.chipPressable}>
             <LiquidGlassShaderUndercover size={CHIP_SIZE_PX} phaseOffset={0.08} isLightTheme={isLightTheme}>
@@ -213,33 +260,34 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   pillPressable: {
-    width: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
-    minWidth: PILL_WIDTH_PX,
     minHeight: PILL_HEIGHT_PX,
     flexShrink: 0,
   },
   pillContent: {
     flexDirection: "row",
     alignItems: "center",
-    width: PILL_WIDTH_PX,
-    minWidth: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     minHeight: PILL_HEIGHT_PX,
-    paddingLeft: PILL_LOGO_LEFT_PX,
-    paddingRight: PILL_TEXT_RIGHT_PX,
-    gap: PILL_LOGO_TO_TEXT_GAP_PX,
+    paddingLeft: TELEGRAM_CONNECT_PILL_LOGO_LEFT_PX,
+    paddingRight: TELEGRAM_CONNECT_PILL_TEXT_RIGHT_PX,
+    gap: TELEGRAM_CONNECT_PILL_LOGO_TO_TEXT_GAP_PX,
   },
   pillLogo: {
-    width: LOGO_SIZE_PX,
-    height: LOGO_SIZE_PX,
+    width: TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX,
+    height: TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX,
     flexShrink: 0,
   },
   pillLabel: {
     flexShrink: 1,
     minWidth: 0,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "400",
+  },
+  pillLabelMeasure: {
+    position: "absolute",
+    opacity: 0,
+    top: -10_000,
+    left: 0,
+    pointerEvents: "none",
+    flexShrink: 0,
   },
 });
