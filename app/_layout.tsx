@@ -22,7 +22,6 @@ import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFal
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { HspScrollColumn } from "../ui/components/HspScrollColumn";
 import {
-  MainColumnInactiveFooter,
   SendColumnInactiveFooter,
   SwapColumnInactiveFooter,
 } from "../ui/components/InactiveWelcomeColumnFooter";
@@ -139,7 +138,7 @@ function RootScreenFooter({
     if (pathname === "/smart") return <SmartColumnFooter />;
     if (pathname === "/trade" || pathname === "/get") return null;
     if (pathname === "/" || pathname === "" || pathname == null) {
-      return <MainColumnInactiveFooter />;
+      return <GlobalBottomBar />;
     }
     return <GlobalBottomBar />;
   }

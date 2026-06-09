@@ -13,7 +13,7 @@ const en = {
   "ai.noPrompt": "No prompt",
   "ai.promptPrefix": "Prompt:",
   "ai.title": "AI",
-  "ai.search.emptyTitle": "Do smarter",
+  "ai.search.emptyTitle": "Make things done",
   "ai.search.emptyIntro": "AI and search will help you in everything you do in the program.",
   "ai.search.emptyList":
     "1. Analise messages and social messages\n2. Conduct smart decisions while trading or swaping\n3.Automize actions in program",
@@ -96,7 +96,7 @@ const en = {
   "home.menu.swap": "Swap",
   "home.menu.trade": "Trade",
 
-  "smart.deployTitle": "Create Smart in 1 min",
+  "smart.deployTitle": "Create smart in 1 min",
   "smart.intro":
     "Blockchain secure deals provide for the real protection of its terms. Counterparties now really have no chance to break the agreement.",
   "smart.purposeSubtitle": "Smart Contract Purpose",
