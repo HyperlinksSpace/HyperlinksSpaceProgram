@@ -103,16 +103,10 @@ export function TelegramConnectFooterStrip({
   const iconColor = colors.primary;
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
   const [stripWidth, setStripWidth] = useState(0);
-  const [pillWidth, setPillWidth] = useState(PILL_WIDTH_PX);
 
   const onStripLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.ceil(event.nativeEvent.layout.width);
     setStripWidth((current) => (current === next ? current : next));
-  }, []);
-
-  const onPillLayout = useCallback((event: LayoutChangeEvent) => {
-    const next = Math.ceil(event.nativeEvent.layout.width);
-    setPillWidth((current) => (current === next ? current : next));
   }, []);
 
   if (!isNarrowHome || isTelegramMessagesConnected || !footerDockedToScreenEdge) {
@@ -145,15 +139,10 @@ export function TelegramConnectFooterStrip({
             </LiquidGlassShaderUndercover>
           </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            onPress={onConnectPress}
-            onLayout={onPillLayout}
-            style={styles.pillPressable}
-          >
+          <Pressable accessibilityRole="button" onPress={onConnectPress} style={styles.pillPressable}>
             <LiquidGlassShaderUndercover
               shape="pill"
-              width={pillWidth}
+              width={PILL_WIDTH_PX}
               height={PILL_HEIGHT_PX}
               contentInsetPx={0}
               phaseOffset={0.22}
@@ -211,6 +200,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     width: "100%",
     height: PILL_HEIGHT_PX,
     zIndex: 1,
@@ -221,15 +211,17 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   pillPressable: {
-    flex: 1,
+    width: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     minWidth: PILL_WIDTH_PX,
     minHeight: PILL_HEIGHT_PX,
+    flexShrink: 0,
   },
   pillContent: {
     flexDirection: "row",
     alignItems: "center",
-    width: "100%",
+    width: PILL_WIDTH_PX,
+    minWidth: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     minHeight: PILL_HEIGHT_PX,
     paddingLeft: PILL_LOGO_LEFT_PX,
