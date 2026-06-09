@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -113,6 +114,7 @@ export function GlobalBottomBar() {
   const placeholderNative = t("global.bottomBar.placeholderNative");
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge, draftText, setDraftText } = useBottomBarLayout();
+  const { width: windowWidth } = useWindowDimensions();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   const launchPrimary =
     Platform.OS === "web" && typeof window !== "undefined" ? getPrimaryTextColorFromLaunch() : null;
@@ -122,8 +124,11 @@ export function GlobalBottomBar() {
   /** TMA phone: omit bottom hairline. Wide authenticated home: bar sits in a split column past `firstBreakpoint`, not the screen footer — no bottom rule. */
   const hideBottomBorder =
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
-  /** Full-bleed chrome at the screen edge; inner field row caps at {@link layout.maxContentWidth}. */
-  const contentMaxWidth = footerDockedToScreenEdge ? layout.maxContentWidth : undefined;
+  /** Below {@link layout.authenticatedHome.firstBreakpoint}, screen footer is full width with side insets only. */
+  const contentMaxWidth =
+    footerDockedToScreenEdge && windowWidth > layout.authenticatedHome.firstBreakpoint
+      ? layout.maxContentWidth
+      : undefined;
 
   if (Platform.OS === "web") {
     return (

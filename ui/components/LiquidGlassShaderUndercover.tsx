@@ -1,48 +1,121 @@
 import { GLView, type ExpoWebGLRenderingContext } from "expo-gl";
-import { type ReactNode, useCallback, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import { Platform, StyleSheet, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Rect } from "react-native-svg";
 import {
   liquidGlassContentInsetPx,
   liquidGlassDebugLogging,
   liquidGlassRayMarginPx,
   startLiquidGlassGl,
   type LiquidGlassGlOptions,
+  type LiquidGlassShape,
 } from "../glass/liquidGlassThreeSession";
 import { logPageDisplay } from "../pageDisplayLog";
 
 type Props = {
-  size: number;
+  /** Square chip side (px). Default when `width` / `height` omitted. */
+  size?: number;
+  width?: number;
+  height?: number;
+  /** `auto` picks pill when width ≠ height. */
+  shape?: LiquidGlassShape | "auto";
   phaseOffset?: number;
   isLightTheme: boolean;
   /** `center` = single icon (settings). `top` = icon + label column like original FloatingShield circle. */
   contentAlign?: "center" | "top";
+  /** Override automatic inner inset (px); use `0` for pill layouts with explicit padding. */
+  contentInsetPx?: number;
   children: ReactNode;
 };
 
+function resolveShape(
+  shape: LiquidGlassShape | "auto",
+  chipWidth: number,
+  chipHeight: number,
+): LiquidGlassShape {
+  if (shape !== "auto") return shape;
+  return chipWidth === chipHeight ? "circle" : "pill";
+}
+
+function buildGlOptions(
+  resolvedShape: LiquidGlassShape,
+  chipWidth: number,
+  chipHeight: number,
+  viewWidth: number,
+  viewHeight: number,
+  borderRadius: number,
+  phaseOffset: number,
+  isLightTheme: boolean,
+): LiquidGlassGlOptions {
+  return {
+    shape: resolvedShape,
+    chipWidthPx: chipWidth,
+    chipHeightPx: chipHeight,
+    viewWidthPx: viewWidth,
+    viewHeightPx: viewHeight,
+    cornerRadiusPx: borderRadius,
+    phaseOffset,
+    isLightTheme,
+  };
+}
+
 /**
  * Liquid-glass chip: Three.js GLSL inside `expo-gl` (same path for web, iOS, Android, Electron webview).
+ * Pill chips reuse the 40px circle glass/lightning pattern, clipped to a rounded rectangle.
  */
 export function LiquidGlassShaderUndercover({
-  size,
+  size = 40,
+  width,
+  height,
+  shape = "auto",
   phaseOffset = 0,
   isLightTheme,
   contentAlign = "center",
+  contentInsetPx,
   children,
 }: Props) {
-  const optsRef = useRef<LiquidGlassGlOptions>({ size, phaseOffset, isLightTheme });
-  optsRef.current = { size, phaseOffset, isLightTheme };
+  const chipWidth = width ?? size;
+  const chipHeight = height ?? size;
+  const resolvedShape = resolveShape(shape, chipWidth, chipHeight);
+  const isCircle = resolvedShape === "circle";
+  const borderRadius = isCircle ? chipWidth / 2 : chipHeight / 2;
+  const rayRefPx = chipHeight;
+  const rayPad = liquidGlassRayMarginPx(rayRefPx);
+  const viewWidth = chipWidth + 2 * rayPad;
+  const viewHeight = chipHeight + 2 * rayPad;
+
+  const glOptions = useMemo(
+    () =>
+      buildGlOptions(
+        resolvedShape,
+        chipWidth,
+        chipHeight,
+        viewWidth,
+        viewHeight,
+        borderRadius,
+        phaseOffset,
+        isLightTheme,
+      ),
+    [resolvedShape, chipWidth, chipHeight, viewWidth, viewHeight, borderRadius, phaseOffset, isLightTheme],
+  );
+
+  const optsRef = useRef(glOptions);
+  optsRef.current = glOptions;
 
   const disposeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     logPageDisplay("liquid_glass_chip_mount", {
       platform: Platform.OS,
-      size,
+      shape: resolvedShape,
+      chipWidth,
+      chipHeight,
+      viewWidth,
+      viewHeight,
       phaseOffset,
       isLightTheme,
     });
-  }, [size, phaseOffset, isLightTheme]);
+  }, [resolvedShape, chipWidth, chipHeight, viewWidth, viewHeight, phaseOffset, isLightTheme]);
 
   useEffect(
     () => () => {
@@ -58,28 +131,23 @@ export function LiquidGlassShaderUndercover({
       console.log(
         "[LiquidGlassGL] onContextCreate",
         JSON.stringify({
-          size: optsRef.current.size,
-          phaseOffset: optsRef.current.phaseOffset,
-          isLightTheme: optsRef.current.isLightTheme,
+          ...optsRef.current,
           note: "If you never see this, GLView did not create a context (web/TMA block or zero-size view).",
         }),
       );
     }
     disposeRef.current = startLiquidGlassGl(gl, () => optsRef.current);
-    const w = gl.drawingBufferWidth;
-    const h = gl.drawingBufferHeight;
     logPageDisplay("liquid_glass_context_created", {
       phaseOffset: optsRef.current.phaseOffset,
-      chipPx: optsRef.current.size,
-      drawingBuffer: { w, h },
+      shape: optsRef.current.shape,
+      chipPx: optsRef.current.chipHeightPx,
+      drawingBuffer: { w: gl.drawingBufferWidth, h: gl.drawingBufferHeight },
       note: "If w/h are 0 on web, the next onLayout should resize the canvas; see liquid_glass_draw_ready.",
     });
   }, []);
 
-  // Shadow on outer wrapper only — `overflow: hidden` on the same view clips iOS shadows.
   const outerLift = isLightTheme
     ? {
-        // No lift on white — any shadow reads as a dirty gray ring around the glass
         shadowColor: "#000000",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0,
@@ -90,46 +158,42 @@ export function LiquidGlassShaderUndercover({
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.22,
-        shadowRadius: Math.max(4, size * 0.1),
+        shadowRadius: Math.max(4, rayRefPx * 0.1),
         elevation: 4,
       };
-  const rayPad = liquidGlassRayMarginPx(size);
-  const viewSize = size + 2 * rayPad;
+
   const outerWrap = {
-    width: size,
-    height: size,
-    overflow: "visible" as const,
-    borderRadius: size / 2,
+    width: chipWidth,
+    height: chipHeight,
+    overflow: "hidden" as const,
+    borderRadius,
     ...outerLift,
   };
   const clip = {
-    width: size,
-    height: size,
-    borderRadius: size / 2,
+    width: chipWidth,
+    height: chipHeight,
+    borderRadius,
     overflow: "hidden" as const,
   };
-  const inset = liquidGlassContentInsetPx(size);
-  // Top-aligned shield: preserve original 6px icon offset from circle top — inset sides + bottom only.
+  const inset = contentInsetPx ?? liquidGlassContentInsetPx(rayRefPx);
   const safePad =
     contentAlign === "top"
       ? { paddingHorizontal: inset, paddingBottom: inset }
       : { paddingHorizontal: inset, paddingVertical: inset };
 
   const glLayerStyle =
-    Platform.OS === "web"
-      ? [StyleSheet.absoluteFill, styles.glLayerWeb]
-      : StyleSheet.absoluteFill;
+    Platform.OS === "web" ? [StyleSheet.absoluteFill, styles.glLayerWeb] : StyleSheet.absoluteFill;
 
   const glExpand = {
     position: "absolute" as const,
     left: -rayPad,
     top: -rayPad,
-    width: viewSize,
-    height: viewSize,
+    width: viewWidth,
+    height: viewHeight,
     zIndex: 0,
   };
 
-  const hitR = size / 2;
+  const hitR = chipHeight / 2;
 
   return (
     <View style={outerWrap} pointerEvents="box-none" collapsable={false}>
@@ -137,24 +201,26 @@ export function LiquidGlassShaderUndercover({
         <GLView pointerEvents="none" style={glLayerStyle} onContextCreate={onContextCreate} />
       </View>
       <View style={clip} pointerEvents="box-none" collapsable={false}>
-        {/*
-          Lightning is drawn on an oversized GL canvas; only the circular drop should steal touches.
-          Svg Circle matches the clip circle; corners of the size×square and rays outside the drop
-          fall through to underlying content (FloatingShield host uses pointerEvents box-none).
-        */}
         <Svg
-          width={size}
-          height={size}
+          width={chipWidth}
+          height={chipHeight}
           style={StyleSheet.absoluteFill}
           pointerEvents="box-none"
         >
-          <Circle
-            cx={hitR}
-            cy={hitR}
-            r={hitR}
-            fill="transparent"
-            pointerEvents="auto"
-          />
+          {isCircle ? (
+            <Circle cx={chipWidth / 2} cy={chipHeight / 2} r={hitR} fill="transparent" pointerEvents="auto" />
+          ) : (
+            <Rect
+              x={0}
+              y={0}
+              width={chipWidth}
+              height={chipHeight}
+              rx={borderRadius}
+              ry={borderRadius}
+              fill="transparent"
+              pointerEvents="auto"
+            />
+          )}
         </Svg>
         <View
           style={[
@@ -177,7 +243,6 @@ const styles = StyleSheet.create({
     zIndex: 0,
     backgroundColor: "transparent",
   },
-  /** RN-web: promote canvas compositing above default stacking quirks in overflow clips. */
   glLayerWeb: {
     zIndex: 0,
     opacity: 1,

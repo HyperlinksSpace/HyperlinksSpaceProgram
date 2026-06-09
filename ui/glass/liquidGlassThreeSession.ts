@@ -2,8 +2,20 @@ import type { ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
 import { logPageDisplay } from "../pageDisplayLog";
 
+export type LiquidGlassShape = "circle" | "pill";
+
 export type LiquidGlassGlOptions = {
-  size: number;
+  shape: LiquidGlassShape;
+  /** Chip width (px). Circle: diameter. */
+  chipWidthPx: number;
+  /** Chip height (px). Circle: diameter. */
+  chipHeightPx: number;
+  /** GL view width including ray margin (px). */
+  viewWidthPx: number;
+  /** GL view height including ray margin (px). */
+  viewHeightPx: number;
+  /** Fully-rounded end radius (px). Circle: diameter / 2. */
+  cornerRadiusPx: number;
   phaseOffset: number;
   isLightTheme: boolean;
 };
@@ -62,7 +74,27 @@ uniform float uAspect;
 uniform float uChipPx;
 uniform float uViewPx;
 uniform float uBoltWidthTune;
+uniform float uShape;
+uniform vec2 uChipSizePx;
+uniform vec2 uViewSizePx;
+uniform vec2 uHalfSize;
+uniform float uCornerR;
 varying vec2 vUv;
+
+float sdRoundRect(vec2 p, vec2 halfSize, float cornerR) {
+  vec2 q = abs(p) - halfSize + vec2(cornerR);
+  return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - cornerR;
+}
+
+/* Map pill coords to the same 40px circle space as side chips (capsule centerline). */
+vec2 pillToCircleGlass(vec2 pu, vec2 halfSize, float cornerR) {
+  float flatX = max(halfSize.x - cornerR, 0.0);
+  float ax = abs(pu.x);
+  if (ax <= flatX) {
+    return vec2(0.0, pu.y);
+  }
+  return pu - vec2(sign(pu.x) * flatX, 0.0);
+}
 
 float ltHash3(vec3 p) {
   p = fract(p * 0.1031);
@@ -128,17 +160,27 @@ void addChaosBolt(vec2 p, float ang, float ltTime, float k, float maxLen01, floa
 
 void main() {
   vec2 puFull = vUv - 0.5;
-  puFull.x *= uAspect;
-  float viewScale = uViewPx / uChipPx;
+  float viewScale;
+  if (uShape < 0.5) {
+    puFull.x *= uAspect;
+    viewScale = uViewPx / uChipPx;
+  } else {
+    puFull.x *= uViewSizePx.x / max(uViewSizePx.y, 1.0);
+    viewScale = uViewSizePx.y / max(uChipSizePx.y, 1.0);
+  }
   vec2 pu = puFull * viewScale;
+
+  /* Pill silhouette mask only — glass/lightning use the same 40px circle math as side chips. */
+  float pillSdf = uShape < 0.5 ? 0.0 : sdRoundRect(pu, uHalfSize, uCornerR);
+  float pillMask = uShape < 0.5 ? 1.0 : (1.0 - smoothstep(-0.006, 0.010, pillSdf));
+  vec2 puGlass = uShape < 0.5 ? pu : pillToCircleGlass(pu, uHalfSize, uCornerR);
+
   float studioHlGate = step(43.0, uChipPx);
-  /* Chips <43px (settings): key light + fresnel read as one bright patch on dark theme — tame using studioHlGate. */
-  float r0 = length(pu);
-  float theta = atan(pu.y, pu.x);
+  float r0 = length(puGlass);
+  float theta = atan(puGlass.y, puGlass.x);
   float t = uTime + uPhase * 6.2831853;
   float slow = t * 0.52 + uPhase * 1.15;
 
-  // Smooth liquid boundary: 2–6 lobes only, slow drift + shared swell (no fine θ ripples)
   float w = sin(2.0 * theta + slow * 0.82 + uPhase * 1.35) * 0.58
           + sin(4.0 * theta - slow * 0.62 + uPhase * 0.75) * 0.30
           + sin(6.0 * theta + slow * 0.38 + uPhase * 2.1) * 0.12;
@@ -148,16 +190,15 @@ void main() {
   float rEdge = 0.5 + EDGE_AMP * clamp(w, -1.15, 1.15);
 
   vec2 flow = vec2(
-    sin(pu.y * 5.5 + t * 0.38) * 0.028 + cos(pu.x * 4.8 - t * 0.26) * 0.016,
-    cos(pu.x * 5.2 - t * 0.32) * 0.028 + sin(pu.y * 5.0 + t * 0.22) * 0.016
+    sin(puGlass.y * 5.5 + t * 0.38) * 0.028 + cos(puGlass.x * 4.8 - t * 0.26) * 0.016,
+    cos(puGlass.x * 5.2 - t * 0.32) * 0.028 + sin(puGlass.y * 5.0 + t * 0.22) * 0.016
   );
   float flowMask = (1.0 - smoothstep(0.05, 0.42, r0)) * (1.0 - smoothstep(rEdge - 0.08, rEdge + 0.02, r0));
-  vec2 pw = pu + flow * flowMask;
+  vec2 pw = puGlass + flow * flowMask;
   float rw = length(pw);
 
   float edgeMask = 1.0 - smoothstep(rEdge - 0.030, rEdge + 0.006, r0);
 
-  // Taller, curvier dome → more voluminous liquid bead
   float cap = 0.565;
   float h2 = cap * cap - dot(pw, pw);
   float hz = h2 > 0.0 ? sqrt(h2) : 0.0;
@@ -170,13 +211,12 @@ void main() {
   float F0 = mix(F0d, F0l, uIsLight);
   float fresnel = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);
 
-  vec2 refr = normalize(pu + vec2(1e-5));
+  vec2 refr = normalize(puGlass + vec2(1e-5));
   float px = (1.0 - ndv) * mix(0.145, 0.125, uIsLight);
   float rR = length(pw + refr * px * 0.11 + vec2(0.006 * (1.0 - ndv), 0.0));
   float rG = length(pw + refr * px * 0.11);
   float rB = length(pw + refr * px * 0.11 - vec2(0.006 * (1.0 - ndv), 0.0));
 
-  // Light: push toward white — mid-gray envOutL read “muddy” on white marketing backgrounds
   vec3 envInL = vec3(0.992, 0.996, 1.0);
   vec3 envOutL = vec3(0.948, 0.968, 0.992);
   vec3 envInD = vec3(0.148, 0.15, 0.155);
@@ -196,7 +236,6 @@ void main() {
   vec3 envFlat = mix(envIn, envOut, sUni);
   vec3 env = mix(envChr, envFlat, uIsLight);
 
-  // Almost no “frost” on light — that milky gray reads cartoon, not clear glass
   vec3 frostC = mix(vec3(0.18, 0.19, 0.22), vec3(0.998, 0.999, 1.0), uIsLight);
   float frostAmt = (1.0 - ndv) * mix(0.44, 0.018, uIsLight);
   frostAmt *= mix(0.38, 1.0, studioHlGate);
@@ -224,12 +263,10 @@ void main() {
   vec3 col = mix(body, refl, fresnel * fresMix * mix(0.40, 1.0, studioHlGate));
   col += vec3((specT + specB) * specAmt) * mix(0.14, 1.0, studioHlGate);
 
-  // Azimuth toward top-left (screen)
-  float rPu = length(pu);
-  vec2 puN = rPu > 1e-4 ? pu / rPu : vec2(0.0);
+  float rPu = length(puGlass);
+  vec2 puN = rPu > 1e-4 ? puGlass / rPu : vec2(0.0);
   float rimAz = dot(puN, normalize(vec2(-0.72, -0.69)));
 
-  // Sharp optical highlights (reference): small, bright, not broad gray blooms
   vec2 hlUv = vUv - vec2(0.26, 0.19);
   float hl = exp(-dot(hlUv, hlUv) * mix(11.5, 22.0, uIsLight)) * mix(0.11, 0.06, uIsLight) * studioHlGate;
   col += vec3(hl);
@@ -239,13 +276,11 @@ void main() {
   float grazingSpec = pow(1.0 - ndv, mix(5.0, 12.0, uIsLight)) * (1.0 - uIsLight) * 0.26;
   col += vec3(grazingSpec) * (0.55 + 0.45 * smoothstep(-0.15, 0.88, rimAz)) * mix(0.18, 1.0, studioHlGate);
 
-  // Very subtle thickness on light (reference inner shadow)
   vec2 brLit = normalize(vec2(0.58, -0.46));
   float innerSh = smoothstep(0.12, 0.5, rw) * max(0.0, dot(puN, brLit));
   col *= 1.0 - innerSh * mix(0.12, 0.018, uIsLight);
 
   float dEdge = rEdge - r0;
-  // Thin silhouette specular — not a thick cartoon stroke
   float bead = smoothstep(0.0, 0.014, dEdge) * (1.0 - smoothstep(0.014, 0.045, dEdge));
   float beadAsym = mix(0.88, 1.0, uIsLight * smoothstep(-0.35, 0.92, rimAz));
   col += vec3(1.0) * bead * beadAsym * mix(0.38, 0.14, uIsLight) * mix(0.1, 1.0, studioHlGate);
@@ -264,23 +299,19 @@ void main() {
   float iris = smoothstep(rEdge - 0.16, rEdge - 0.02, r0) * smoothstep(0.2, 0.85, sin(theta * 0.5 + 0.8));
   col += vec3(1.0, 0.85, 0.95) * iris * 0.045 * sin(t * 1.2 + theta * 2.5) * (1.0 - uIsLight);
 
-  float sh = smoothstep(-0.15, 0.35, pu.y) * (1.0 - ndv) * mix(0.075, 0.010, uIsLight);
+  float sh = smoothstep(-0.15, 0.35, puGlass.y) * (1.0 - ndv) * mix(0.075, 0.010, uIsLight);
   col *= (1.0 - sh);
 
-  /* Slightly dim the glass shell so bolts read through the “drop” all the way to the chip rim. */
   float ltShell = smoothstep(0.15, 0.41, r0) * (1.0 - smoothstep(0.44, 0.53, r0));
   col *= 1.0 - ltShell * mix(0.32, 0.07, uIsLight);
 
   vec3 glassCol = col;
 
-  /* pe = perp * ltBeamThin. Larger beamThin => faster falloff => thinner line in px.
-   * wTargetPx scaled by uBoltWidthTune (see LIQUID_GLASS_BOLT_WIDTH_TUNE in TS). Core: exp(-pe*pe*52000). */
   float wTargetPx = clamp(clamp(uChipPx * 0.011, 0.34, 0.58) * uBoltWidthTune, 0.18, 2.0);
   float ltBeamThin = (1.0 / sqrt(52000.0)) * uChipPx / max(wTargetPx, 0.22);
   ltBeamThin = clamp(ltBeamThin, 0.22, 0.95);
   float ltSmallChip = clamp((46.0 - uChipPx) / 22.0, 0.0, 1.0);
 
-  // Few chaotic bolts from a wandering micro-origin — no full-disc fan, no big central glow sphere.
   float ltSeed = ltHash3(vec3(uPhase * 6.18, 2.71, 0.42));
   float ltTime = t * 5.2 + uPhase * 9.0;
   float ltBreathe = mix(
@@ -297,7 +328,7 @@ void main() {
     sin(ltTime * 0.41 + ltSeed * 5.7) * 0.021 + sin(ltTime * 0.11 + uPhase * 3.1) * 0.011,
     cos(ltTime * 0.35 + ltSeed * 4.2) * 0.019 + cos(ltTime * 0.095 + uPhase * 2.7) * 0.010
   );
-  vec2 pLt = pu - ltOrig;
+  vec2 pLt = puGlass - ltOrig;
   float rLt = length(pLt);
   float flickRaw = 0.42 + 0.58 * pow(0.5 + 0.5 * sin(ltTime * 22.0 + ltSeed * 73.0), 2.4);
   float flick = mix(flickRaw, 0.86 + 0.14 * (flickRaw - 0.42) / 0.58, uIsLight);
@@ -369,7 +400,6 @@ void main() {
   float rayStretch = 1.0 + 0.88 * smoothstep(0.17, 0.48, r0) + 0.95 * smoothstep(R_DROP + 0.04, R_VIEW - 0.08, r0);
   float sharpVis = accSharp * pierce * flick * outsideBoost * rayStretch * (1.0 + 0.15 * ltSmallChip);
   float glowVis = accGlow * pierce * flick * outsideBoost * rayStretch * (1.0 + 0.15 * ltSmallChip);
-  /* Outside the liquid rim: strip diffuse glow (veil) but keep sharp bolts + full reach. */
   float pastDrop = max(0.0, r0 - rEdge);
   float killBroad = exp(-pastDrop * 30.0);
   vec3 ltRgb = ltCol * (sharpVis * 2.45 + pin * 1.22);
@@ -388,18 +418,17 @@ void main() {
   float rimAtBoost = smoothstep(R_DROP - 0.14, R_DROP - 0.03, r0) * boltSpill * flick * mix(0.20, 0.20, uIsLight) * killBroad * (1.0 - uIsLight);
   float At = clamp(ltAlpha + rimAtBoost, 0.0, 0.84);
 
-  // Light: mostly edge alpha + low bulk tint — reads clear on white like reference glass
   float fill = mix(0.5, 0.40, uIsLight);
   fill += clamp((46.0 - uChipPx) / 46.0, 0.0, 1.0) * mix(0.085, 0.045, uIsLight);
   float aFres = fresnel * mix(0.19, 0.23, uIsLight);
   float aBody = (1.0 - ndv) * mix(0.058, 0.036, uIsLight);
   float Ag = clamp((fill + aFres + aBody) * edgeMask, 0.0, mix(0.88, 0.78, uIsLight));
-  /* Non-premul blend does out = src.rgb * src.a + dst * (1-src.a). Summing glassA + ltAlpha into one a
-   * while src.rgb = glass + lightning under-scales bolts when edgeMask → 0. Composite lightning over glass. */
   vec3 premulOut = ltRgb * At + glassCol * Ag * (1.0 - At);
   float alpha = At + Ag * (1.0 - At);
   alpha = clamp(alpha, 0.0, mix(0.88, 0.78, uIsLight));
   col = premulOut / max(alpha, 0.00035);
+  alpha *= pillMask;
+  col *= pillMask;
   gl_FragColor = vec4(col, alpha);
 }
 `;
@@ -476,6 +505,11 @@ export function startLiquidGlassGl(
       uChipPx: { value: 50 },
       uViewPx: { value: 50 },
       uBoltWidthTune: { value: 1 },
+      uShape: { value: 0 },
+      uChipSizePx: { value: new THREE.Vector2(50, 50) },
+      uViewSizePx: { value: new THREE.Vector2(60, 60) },
+      uHalfSize: { value: new THREE.Vector2(0.5, 0.5) },
+      uCornerR: { value: 0.5 },
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
@@ -511,9 +545,19 @@ export function startLiquidGlassGl(
     raf = requestAnimationFrame(frame);
     frameIdx += 1;
     const wallMs = liquidGlNowMs();
-    const { size, phaseOffset, isLightTheme } = getOpts();
-    const rayPad = liquidGlassRayMarginPx(size);
-    const viewPx = size + 2 * rayPad;
+    const opts = getOpts();
+    const {
+      shape,
+      chipWidthPx,
+      chipHeightPx,
+      viewWidthPx,
+      viewHeightPx,
+      cornerRadiusPx,
+      phaseOffset,
+      isLightTheme,
+    } = opts;
+    const chipRefPx = shape === "pill" ? chipHeightPx : chipWidthPx;
+    const viewRefPx = shape === "pill" ? viewHeightPx : viewWidthPx;
     const w = gl.drawingBufferWidth;
     const h = gl.drawingBufferHeight;
 
@@ -522,7 +566,7 @@ export function startLiquidGlassGl(
         loggedBufferZero = true;
         logPageDisplay("liquid_glass_buffer_zero", {
           phaseOffset,
-          chipPx: size,
+          chipPx: chipRefPx,
           drawingBuffer: { w, h },
           note: "expo-gl web often gets size after onLayout; loop continues until non-zero.",
         });
@@ -539,7 +583,7 @@ export function startLiquidGlassGl(
         loggedDrawReady = true;
         logPageDisplay("liquid_glass_draw_ready", {
           phaseOffset,
-          chipPx: size,
+          chipPx: chipRefPx,
           drawingBuffer: { w, h },
           note: "Three.js drawing buffer synced; glass + lightning should render.",
         });
@@ -547,6 +591,10 @@ export function startLiquidGlassGl(
     }
 
     const aspect = w > 0 && h > 0 ? w / h : 1;
+    const chipHeightNorm = Math.max(chipHeightPx, 1);
+    const halfW = (chipWidthPx / chipHeightNorm) * 0.5;
+    const halfH = 0.5;
+    const cornerR = cornerRadiusPx / chipHeightNorm;
 
     const mat = material.uniforms;
     const uTimeSec = (wallMs - start) * 0.001;
@@ -554,9 +602,14 @@ export function startLiquidGlassGl(
     mat.uPhase.value = phaseOffset;
     mat.uIsLight.value = isLightTheme ? 1 : 0;
     mat.uAspect.value = aspect;
-    mat.uChipPx.value = size;
-    mat.uViewPx.value = viewPx;
+    mat.uChipPx.value = chipRefPx;
+    mat.uViewPx.value = viewRefPx;
     mat.uBoltWidthTune.value = LIQUID_GLASS_BOLT_WIDTH_TUNE;
+    mat.uShape.value = shape === "pill" ? 1 : 0;
+    mat.uChipSizePx.value.set(chipWidthPx, chipHeightPx);
+    mat.uViewSizePx.value.set(viewWidthPx, viewHeightPx);
+    mat.uHalfSize.value.set(halfW, halfH);
+    mat.uCornerR.value = cornerR;
 
     if (logEveryMs > 0 && wallMs - lastLogWallMs >= logEveryMs) {
       const duTime = uTimeSec - uTimeAtLastLog;
@@ -570,7 +623,8 @@ export function startLiquidGlassGl(
           uTimeSec: Math.round(uTimeSec * 1000) / 1000,
           duTimePerLogInterval: Math.round(duTime * 1000) / 1000,
           drawingBuffer: { w, h },
-          chipPx: size,
+          chipPx: chipRefPx,
+          shape,
           isLightTheme,
           hint:
             "uTimeSec must grow each frame; duTimePerLogInterval should be ~2.0 when logging every 2s. Lightning uses uniform float uTime in FRAG (ltTime, ltBreathe).",

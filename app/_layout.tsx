@@ -28,6 +28,8 @@ import {
 import { SmartColumnFooter } from "../ui/components/smart/SmartColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
+import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
+import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
@@ -75,7 +77,8 @@ export default function RootLayout() {
     <TelegramProvider>
       <AppStringsProvider>
         <AuthProvider>
-          <BottomBarLayoutProvider>
+          <TelegramMessagesConnectionProvider>
+            <BottomBarLayoutProvider>
             {Platform.OS === "ios" ? (
               <KeyboardAvoidingView
                 style={styles.keyboardAvoid}
@@ -87,7 +90,8 @@ export default function RootLayout() {
             ) : (
               <RootContent />
             )}
-          </BottomBarLayoutProvider>
+            </BottomBarLayoutProvider>
+          </TelegramMessagesConnectionProvider>
         </AuthProvider>
       </AppStringsProvider>
     </TelegramProvider>
@@ -137,9 +141,6 @@ function RootScreenFooter({
     if (pathname === "/send") return <SendColumnInactiveFooter />;
     if (pathname === "/smart") return <SmartColumnFooter />;
     if (pathname === "/trade" || pathname === "/get") return null;
-    if (pathname === "/" || pathname === "" || pathname == null) {
-      return <GlobalBottomBar />;
-    }
     return <GlobalBottomBar />;
   }
 
@@ -353,7 +354,10 @@ function RootContent() {
         ) : null
       }
       {authHydrated && authReady && (isAuthenticated || isWelcomeLayoutRoute(pathname, auth)) ? (
-        <FloatingShield />
+        <>
+          <TelegramConnectFooterStrip />
+          <FloatingShield />
+        </>
       ) : null}
     </View>
   );

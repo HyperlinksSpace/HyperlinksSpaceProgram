@@ -300,6 +300,10 @@ export const layout = {
     textToSendIconGapPx: 15,
     /** Custom 1px scroll-thumb in the AI bar; main column uses {@link layout.scrollIndicatorRightInsetPx}. */
     scrollbarRightInsetPx: 5,
+    /** 1px highlight rule above the bar (`GlobalBottomBar` / column footers). */
+    topRuleHeightPx: 1,
+    /** 1px highlight rule at the screen edge when the footer is full-bleed. */
+    bottomRuleHeightPx: 1,
   },
 };
 
