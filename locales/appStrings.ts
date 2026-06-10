@@ -67,6 +67,8 @@ const en = {
   "home.mainColumnFooter.telegramMessages": "Connect Telegram",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
+  "swap.chooseCurrency.title": "Choose currency",
+  "swap.chooseCurrency.filterA11y": "Filter currencies",
 
   "send.footer.submit": "N / A",
 
@@ -260,6 +262,8 @@ const ru = {
   "home.mainColumnFooter.telegramMessages": "Подключить Telegram",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
+  "swap.chooseCurrency.title": "Выберите валюту",
+  "swap.chooseCurrency.filterA11y": "Фильтр валют",
 
   "send.footer.submit": "N / A",
 

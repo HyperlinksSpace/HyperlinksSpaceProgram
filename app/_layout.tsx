@@ -285,7 +285,7 @@ function RootContent() {
       // This avoids startup mount/unmount flashes while TMA fullscreen signals settle.
       return true;
     }
-    if (pathname === "/swap" || pathname === "/key" || pathname === "/trade" || pathname === "/send" || pathname === "/get" || pathname === "/smart") {
+    if (pathname === "/swap" || pathname === "/swap/currency" || pathname === "/key" || pathname === "/trade" || pathname === "/send" || pathname === "/get" || pathname === "/smart") {
       // In-screen {@link CenteredLogoOnlyHeader} on narrow swap, smart, trade, send, get, and key routes.
       return false;
     }

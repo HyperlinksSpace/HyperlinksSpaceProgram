@@ -1,5 +1,8 @@
 Automation
 "Connect Telegram" issues before the firstBreakpoint
+Deviders duplicating in browser
+Move shield to header befor 1st breakpoint
+Redirect
 Users
 Check translations
 AI responce

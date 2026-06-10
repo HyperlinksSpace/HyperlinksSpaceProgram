@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
@@ -44,13 +44,18 @@ function useLogoGlyphTopOffset(
 type Props = {
   /** Narrow browser `/swap`: Back control outside Telegram (hidden in TMA and on `/key`). */
   showBrowserBackButton?: boolean;
+  /** Optional trailing control in the logo header row (e.g. filter on choose-currency). */
+  rightAccessory?: ReactNode;
 };
 
 /**
  * Single centered N-mark header (no wordmark, no side actions). Same vertical rhythm as
  * {@link GlobalLogoBar} logo-only mode; optional tap returns home.
  */
-export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props) {
+export function CenteredLogoOnlyHeader({
+  showBrowserBackButton = false,
+  rightAccessory,
+}: Props) {
   const { t } = useAppStrings();
   const router = useRouter();
   const colors = useColors();
@@ -86,9 +91,12 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
   /** Browser / outside TMA: symmetric vertical padding so the glyph centers in the header strip. */
   const outsideTma = !isInTelegram;
   const showBack = outsideTma && showBrowserBackButton;
+  const showRightAccessory = rightAccessory != null;
   const containerPadding = outsideTma
     ? { paddingVertical: WELCOME_VERTICAL_INDENT }
     : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
+  const horizontalInset =
+    showBack || showRightAccessory ? 0 : layout.contentSideInsetPx;
 
   const hapticIfNeeded = () => {
     if (Platform.OS !== "web") {
@@ -114,7 +122,7 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
           backgroundColor: colors.background,
           borderBottomColor: colors.highlight,
           ...containerPadding,
-          paddingHorizontal: showBack ? 0 : layout.contentSideInsetPx,
+          paddingHorizontal: horizontalInset,
         },
       ]}
     >
@@ -147,6 +155,11 @@ export function CenteredLogoOnlyHeader({ showBrowserBackButton = false }: Props)
               {t("common.back")}
             </Text>
           </Pressable>
+        </View>
+      ) : null}
+      {showRightAccessory ? (
+        <View pointerEvents="box-none" style={styles.rightSlot}>
+          {rightAccessory}
         </View>
       ) : null}
       <Pressable
@@ -187,6 +200,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     alignSelf: "flex-start",
+  },
+  rightSlot: {
+    position: "absolute",
+    right: BROWSER_BACK_BUTTON_LEFT_OFFSET_PX,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+    zIndex: 1,
   },
   logoWrap: {
     alignItems: "center",

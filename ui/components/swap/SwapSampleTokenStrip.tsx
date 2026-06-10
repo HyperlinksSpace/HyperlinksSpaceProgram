@@ -1,15 +1,20 @@
 import { Image } from "expo-image";
-import { ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { swapSampleTokenImages } from "./swapFormAssets";
 
+type Props = {
+  onPress?: () => void;
+};
+
 /** Horizontal row of five sample token icons (20×20, 5px gap). */
-export function SwapSampleTokenStrip() {
-  return (
+export function SwapSampleTokenStrip({ onPress }: Props) {
+  const strip = (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       style={{ height: 20, flexGrow: 0 }}
       contentContainerStyle={{ flexDirection: "row", alignItems: "center" }}
+      scrollEnabled={onPress == null}
     >
       {swapSampleTokenImages.map((src, index) => (
         <View key={index} style={{ flexDirection: "row", alignItems: "center" }}>
@@ -18,5 +23,15 @@ export function SwapSampleTokenStrip() {
         </View>
       ))}
     </ScrollView>
+  );
+
+  if (onPress == null) {
+    return strip;
+  }
+
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} hitSlop={8}>
+      {strip}
+    </Pressable>
   );
 }

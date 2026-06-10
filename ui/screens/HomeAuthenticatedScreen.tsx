@@ -38,6 +38,7 @@ import {
 import { buildWalletRegisterEnvelope } from "../../services/wallet/walletEnvelopeClient";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { SwapPanelContent } from "../components/SwapPanelContent";
+import { ChooseCurrencyPanelContent } from "../components/swap/ChooseCurrencyPanelContent";
 import { SmartColumnFooter } from "../components/smart/SmartColumnFooter";
 import { SmartPanelContent } from "../components/smart/SmartPanelContent";
 import { TradePanelContent } from "../components/trade/TradePanelContent";
@@ -47,6 +48,7 @@ import {
   useAuthenticatedHomeRightPanel,
 } from "../authenticatedHomeRightPanel";
 import { useRouter } from "expo-router";
+import { useSwapCurrencyPicker } from "../swap/swapCurrencyPicker";
 
 /**
  * Survives React Strict Mode / remount: component `useRef` resets, but two parallel
@@ -542,6 +544,7 @@ export function HomeAuthenticatedScreen() {
   const { t, tf, translateFlowError } = useAppStrings();
   const [homeNavIndex, setHomeNavIndex] = useState(0);
   const rightPanel = useAuthenticatedHomeRightPanel();
+  const swapCurrencySide = useSwapCurrencyPicker();
   const {
     status,
     telegramUsername,
@@ -1513,7 +1516,11 @@ export function HomeAuthenticatedScreen() {
                 minHeight: 0,
               }}
             >
-              <SwapPanelContent />
+              {swapCurrencySide != null ? (
+                <ChooseCurrencyPanelContent />
+              ) : (
+                <SwapPanelContent />
+              )}
             </View>
           ) : rightPanel === "trade" ? (
             <View

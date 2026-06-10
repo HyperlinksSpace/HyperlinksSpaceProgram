@@ -319,7 +319,7 @@ function usesAuthenticatedSplitChrome(
   isAuthenticated: boolean,
 ): boolean {
   if (!isAuthenticated) return false;
-  if (pathname === "/swap") return true;
+  if (pathname === "/swap" || pathname === "/swap/currency") return true;
   return pathname === "/" || pathname === "" || pathname == null;
 }
 
