@@ -35,8 +35,8 @@ export const CHOOSE_CURRENCY_COLUMN_ORDER: readonly ChooseCurrencyColumnKey[] = 
   "currency",
   "balance",
   "rate",
-  "networks",
   "marketCap",
+  "networks",
   "volume",
   "lastYear",
 ] as const;
@@ -47,8 +47,8 @@ export const CHOOSE_CURRENCY_COLUMN_PRIORITY: Record<ChooseCurrencyColumnKey, Ch
     currency: 2,
     balance: 3,
     rate: 4,
-    networks: 5,
-    marketCap: 6,
+    marketCap: 5,
+    networks: 6,
     volume: 7,
     lastYear: 8,
   };
