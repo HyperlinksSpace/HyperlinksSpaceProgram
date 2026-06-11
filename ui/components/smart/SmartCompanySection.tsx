@@ -126,7 +126,11 @@ export function SmartCompanySection() {
 
       <View style={{ height: FOUNDERS_COUNT_LABEL_TO_STEPPER_GAP_PX }} />
 
-      <SmartFounderCountStepper value={founderCount} onChange={handleFounderCountChange} />
+      <SmartFounderCountStepper
+        value={founderCount}
+        onChange={handleFounderCountChange}
+        accessibilityLabel={t("smart.company.foundersCountLabel")}
+      />
 
       <View style={{ height: STEPPER_TO_FOUNDER_BLOCKS_GAP_PX }} />
 
