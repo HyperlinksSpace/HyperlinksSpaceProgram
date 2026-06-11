@@ -1,5 +1,6 @@
 import { Platform, StyleSheet, TextInput, View, type TextInputProps } from "react-native";
 
+import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
 import { typographyRect15, uiTextVerticalCompensationTransform, useColors } from "../../theme";
 
 /** Matches welcome email field row height (`WelcomeAuthButtons`). */
@@ -26,6 +27,7 @@ export function SmartUndercoverTextField({
   autoCorrect = false,
 }: Props) {
   const colors = useColors();
+  const borderWidth = hairlineBorderWidthPx();
 
   return (
     <View
@@ -34,6 +36,7 @@ export function SmartUndercoverTextField({
         {
           backgroundColor: colors.undercover,
           borderColor: colors.accent,
+          borderWidth,
           ...(Platform.OS === "web"
             ? ({
                 "--smart-field-autofill-bg": colors.undercover,
@@ -63,7 +66,6 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
     height: SMART_UNDERCOVER_FIELD_HEIGHT_PX,
-    borderWidth: 1,
     borderStyle: "solid",
     overflow: "hidden",
     ...Platform.select({

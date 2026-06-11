@@ -19,7 +19,7 @@ export const dark = {
 } as const;
 
 export const light = {
-  background: "#FFFFFF",
+  background: "#FAFAFA",
   primary: "#000000",
   secondary: "#717171",
   /** Borders + divider strokes (chrome). */

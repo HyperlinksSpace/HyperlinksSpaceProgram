@@ -16,7 +16,7 @@ const en = {
   "ai.search.emptyTitle": "Make things done",
   "ai.search.emptyIntro": "AI and search will help you in everything you do in the program.",
   "ai.search.emptyList":
-    "1. Analise messages and social messages\n2. Conduct smart decisions while trading or swaping\n3.Automize actions in program",
+    "1. Analise messages and social messages\n2. Conduct smart decisions while trading or swaping\n3.Delegate actions to the program",
   "ai.search.emptyTryPrompts": "Try this prompts:",
 
   "common.back": "Back",

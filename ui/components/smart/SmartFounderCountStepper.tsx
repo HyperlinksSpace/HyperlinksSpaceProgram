@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Platform, StyleSheet, Text, View } from "react-native";
 
+import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
 import { typographyRect15, useColors } from "../../theme";
 
 const CIRCLE_SIZE_PX = 30;
@@ -43,6 +44,7 @@ function CircleStepButton({
 /** [ − ] [ count ] [ + ] founder count control. */
 export function SmartFounderCountStepper({ value, onChange }: Props) {
   const colors = useColors();
+  const borderWidth = hairlineBorderWidthPx();
 
   return (
     <View style={styles.row}>
@@ -51,7 +53,16 @@ export function SmartFounderCountStepper({ value, onChange }: Props) {
         accessibilityLabel="Decrease founder count"
         onPress={() => onChange(Math.max(MIN_FOUNDERS, value - 1))}
       />
-      <View style={[styles.pill, { backgroundColor: colors.undercover, borderColor: colors.highlight }]}>
+      <View
+        style={[
+          styles.pill,
+          {
+            backgroundColor: colors.undercover,
+            borderColor: colors.accent,
+            borderWidth,
+          },
+        ]}
+      >
         <Text style={[typographyRect15, styles.pillValue, { color: colors.primary }]}>{String(value)}</Text>
       </View>
       <CircleStepButton
@@ -90,10 +101,15 @@ const styles = StyleSheet.create({
     width: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     borderRadius: PILL_RADIUS_PX,
-    borderWidth: 1,
     borderStyle: "solid",
     alignItems: "center",
     justifyContent: "center",
+    ...Platform.select({
+      web: {
+        boxSizing: "border-box",
+      },
+      default: {},
+    }),
   },
   pillValue: {
     fontSize: 15,

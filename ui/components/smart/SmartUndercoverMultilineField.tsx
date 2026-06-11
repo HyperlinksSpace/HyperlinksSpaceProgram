@@ -21,6 +21,7 @@ import {
 
 import {
   SCROLL_INDICATOR_SCROLL_EPS,
+  hairlineBorderWidthPx,
   scrollIndicatorHairlineBorderWidthPx,
   scrollIndicatorThumbSpanAndOffset,
   snapScrollIndicatorCoordPx,
@@ -95,6 +96,7 @@ export function SmartUndercoverMultilineField({
   autoCorrect = true,
 }: Props) {
   const colors = useColors();
+  const borderWidth = hairlineBorderWidthPx();
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const mirrorRef = useRef<HTMLDivElement | null>(null);
   const [scroll, setScroll] = useState({ layoutH: SMART_UNDERCOVER_MULTILINE_HEIGHT_PX, contentH: 0, scrollY: 0 });
@@ -306,6 +308,7 @@ export function SmartUndercoverMultilineField({
         {
           backgroundColor: colors.undercover,
           borderColor: colors.accent,
+          borderWidth,
           ...(Platform.OS === "web"
             ? ({
                 "--smart-field-autofill-bg": colors.undercover,
@@ -381,7 +384,6 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
     height: SMART_UNDERCOVER_MULTILINE_HEIGHT_PX,
-    borderWidth: 1,
     borderStyle: "solid",
     overflow: "hidden",
     position: "relative",

@@ -98,3 +98,8 @@ export function scrollIndicatorHairlineBorderWidthPx(): number {
   }
   return PixelRatio.roundToNearestPixel(1 / PixelRatio.get());
 }
+
+/** One device-pixel border width for fields, pills, and scroll thumbs (alias of {@link scrollIndicatorHairlineBorderWidthPx}). */
+export function hairlineBorderWidthPx(): number {
+  return scrollIndicatorHairlineBorderWidthPx();
+}
