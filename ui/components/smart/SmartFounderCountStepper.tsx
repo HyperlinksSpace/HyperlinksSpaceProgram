@@ -1,6 +1,7 @@
 import { Pressable, Platform, StyleSheet, Text, View } from "react-native";
 
 import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
+import { undercoverHairlineRingStyle } from "../../undercoverHairlineRing";
 import { typographyRect15, useColors } from "../../theme";
 
 const CIRCLE_SIZE_PX = 30;
@@ -58,8 +59,7 @@ export function SmartFounderCountStepper({ value, onChange }: Props) {
           styles.pill,
           {
             backgroundColor: colors.undercover,
-            borderColor: colors.accent,
-            borderWidth,
+            ...undercoverHairlineRingStyle(colors.accent, borderWidth),
           },
         ]}
       >
@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     width: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     borderRadius: PILL_RADIUS_PX,
-    borderStyle: "solid",
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({

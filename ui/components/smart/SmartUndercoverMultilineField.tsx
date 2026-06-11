@@ -26,6 +26,7 @@ import {
   scrollIndicatorThumbSpanAndOffset,
   snapScrollIndicatorCoordPx,
 } from "../../scrollIndicatorPx";
+import { undercoverHairlineRingStyle } from "../../undercoverHairlineRing";
 import { layout, typographyRect15, useColors } from "../../theme";
 import { ScrollIndicatorDragHandle } from "../ScrollIndicatorDragHandle";
 
@@ -307,8 +308,7 @@ export function SmartUndercoverMultilineField({
         styles.shell,
         {
           backgroundColor: colors.undercover,
-          borderColor: colors.accent,
-          borderWidth,
+          ...undercoverHairlineRingStyle(colors.accent, borderWidth),
           ...(Platform.OS === "web"
             ? ({
                 "--smart-field-autofill-bg": colors.undercover,
@@ -384,7 +384,6 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "stretch",
     height: SMART_UNDERCOVER_MULTILINE_HEIGHT_PX,
-    borderStyle: "solid",
     overflow: "hidden",
     position: "relative",
     ...Platform.select({

@@ -214,15 +214,22 @@ textarea[data-ai-input="true"] {
   transition: background-color 99999s ease-out;
 }
 
-#smart-company-title-input {
+#smart-company-title-input,
+.smart-undercover-text-input {
   border: none !important;
   box-shadow: none !important;
   outline: none !important;
+  border-radius: 0 !important;
+  background-color: transparent !important;
 }
 #smart-company-title-input:-webkit-autofill,
 #smart-company-title-input:-webkit-autofill:hover,
 #smart-company-title-input:-webkit-autofill:focus,
-#smart-company-title-input:-webkit-autofill:active {
+#smart-company-title-input:-webkit-autofill:active,
+.smart-undercover-text-input:-webkit-autofill,
+.smart-undercover-text-input:-webkit-autofill:hover,
+.smart-undercover-text-input:-webkit-autofill:focus,
+.smart-undercover-text-input:-webkit-autofill:active {
   -webkit-box-shadow: 0 0 0 1000px var(--smart-field-autofill-bg, #272727) inset !important;
   -webkit-text-fill-color: var(--smart-field-autofill-fg, #fafafa) !important;
   caret-color: var(--smart-field-autofill-fg, #fafafa);
