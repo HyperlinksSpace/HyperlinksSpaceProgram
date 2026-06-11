@@ -8,7 +8,7 @@ import {
 
 export const dark = {
   background: "#111111",
-  primary: "#FFFFFF",
+  primary: "#FAFAFA",
   /** Muted text + icons (content, not chrome). */
   secondary: "#A1A1A1",
   /** Borders + divider strokes (chrome). */
@@ -20,7 +20,7 @@ export const dark = {
 
 export const light = {
   background: "#FAFAFA",
-  primary: "#000000",
+  primary: "#111111",
   secondary: "#717171",
   /** Borders + divider strokes (chrome). */
   highlight: "#5A5A5A",
