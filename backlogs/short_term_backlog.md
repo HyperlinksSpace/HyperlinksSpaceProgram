@@ -1,4 +1,5 @@
 Automation
+Authorization
 "Connect Telegram" issues before the firstBreakpoint
 Deviders duplicating in browser
 Move shield to header befor 1st breakpoint

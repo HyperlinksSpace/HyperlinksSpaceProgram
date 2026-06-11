@@ -7,15 +7,15 @@ import {
 } from "./components/telegramWebApp";
 
 export const dark = {
-  background: "#000000",
+  background: "#111111",
   primary: "#FFFFFF",
   /** Muted text + icons (content, not chrome). */
   secondary: "#A1A1A1",
   /** Borders + divider strokes (chrome). */
-  highlight: "#1F1F1F",
+  highlight: "#5A5A5A",
   undercover: "#272727",
   /** Scroll thumbs, email field stroke, and other accent chrome. */
-  accent: "#515151",
+  accent: "#818181",
 } as const;
 
 export const light = {
@@ -23,10 +23,10 @@ export const light = {
   primary: "#000000",
   secondary: "#717171",
   /** Borders + divider strokes (chrome). */
-  highlight: "#E1E1E1",
+  highlight: "#5A5A5A",
   undercover: "#F1F1F1",
   /** Scroll thumbs, email field stroke, and other accent chrome. */
-  accent: "#AAAAAA",
+  accent: "#818181",
 } as const;
 
 export type ThemeName = "dark" | "light";

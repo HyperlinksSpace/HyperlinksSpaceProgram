@@ -51,7 +51,7 @@ export function SmartFounderCountStepper({ value, onChange }: Props) {
         accessibilityLabel="Decrease founder count"
         onPress={() => onChange(Math.max(MIN_FOUNDERS, value - 1))}
       />
-      <View style={[styles.pill, { backgroundColor: colors.undercover }]}>
+      <View style={[styles.pill, { backgroundColor: colors.undercover, borderColor: colors.highlight }]}>
         <Text style={[typographyRect15, styles.pillValue, { color: colors.primary }]}>{String(value)}</Text>
       </View>
       <CircleStepButton
@@ -90,6 +90,8 @@ const styles = StyleSheet.create({
     width: PILL_WIDTH_PX,
     height: PILL_HEIGHT_PX,
     borderRadius: PILL_RADIUS_PX,
+    borderWidth: 1,
+    borderStyle: "solid",
     alignItems: "center",
     justifyContent: "center",
   },
