@@ -69,6 +69,14 @@ const en = {
   "swap.footer.insufficientAmount": "Insufficient amount",
   "swap.chooseCurrency.title": "Choose currency",
   "swap.chooseCurrency.filterA11y": "Filter currencies",
+  "swap.chooseCurrency.col.rank": "#",
+  "swap.chooseCurrency.col.currency": "Currency",
+  "swap.chooseCurrency.col.balance": "Balance",
+  "swap.chooseCurrency.col.rate": "Rate",
+  "swap.chooseCurrency.col.networks": "Networks",
+  "swap.chooseCurrency.col.marketCap": "Market Cap",
+  "swap.chooseCurrency.col.volume": "Volume",
+  "swap.chooseCurrency.col.lastYear": "Last Year",
 
   "send.footer.submit": "N / A",
 
@@ -264,6 +272,14 @@ const ru = {
   "swap.footer.insufficientAmount": "Недостаточная сумма",
   "swap.chooseCurrency.title": "Выберите валюту",
   "swap.chooseCurrency.filterA11y": "Фильтр валют",
+  "swap.chooseCurrency.col.rank": "#",
+  "swap.chooseCurrency.col.currency": "Валюта",
+  "swap.chooseCurrency.col.balance": "Баланс",
+  "swap.chooseCurrency.col.rate": "Курс",
+  "swap.chooseCurrency.col.networks": "Сети",
+  "swap.chooseCurrency.col.marketCap": "Капитализация",
+  "swap.chooseCurrency.col.volume": "Объём",
+  "swap.chooseCurrency.col.lastYear": "Год",
 
   "send.footer.submit": "N / A",
 

@@ -4,6 +4,7 @@ import { closeSwapCurrencyPicker } from "../../swap/swapCurrencyPicker";
 import { layout } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { ChooseCurrencySubheader } from "./ChooseCurrencySubheader";
+import { ChooseCurrencyTable } from "./ChooseCurrencyTable";
 
 type Props = {
   onFilterPress?: () => void;
@@ -31,7 +32,9 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress }: Props
           titleAlign={isInTelegram ? "left" : "center"}
         />
       </View>
-      <View style={{ flex: 1, width: "100%", paddingHorizontal: contentInset }} />
+      <View style={{ flex: 1, width: "100%", paddingHorizontal: contentInset, minHeight: 0 }}>
+        <ChooseCurrencyTable />
+      </View>
     </View>
   );
 }
