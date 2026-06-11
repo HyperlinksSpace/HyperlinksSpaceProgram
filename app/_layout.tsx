@@ -330,6 +330,7 @@ function RootContent() {
           indicatorColor={colors.accent}
           style={styles.mainShell}
           contentContainerStyle={styles.mainScrollContent}
+          containOverscroll={false}
         >
           <Stack screenOptions={{ headerShown: false }} />
         </HspScrollColumn>

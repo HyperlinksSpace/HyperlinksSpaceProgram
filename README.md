@@ -23,6 +23,7 @@ All core materials are available publicly for currently active https://www.hyper
 - [`ai`](./ai) - AI assistant service logic and model integration points.
 - [`api`](./api) - backend API handlers and server-side endpoints.
 - [`blockchain`](./blockchain) - TON/blockchain interaction logic and related helpers.
+- [`first_counter`](./first_counter) - Acton/Tolk counter smart contract, Tolk tests, and Vite React dApp scaffold.
 - [`telegram`](./telegram) - Telegram-specific integration utilities and adapters.
 - [`windows`](./windows) - Electron desktop shell, NSIS installer config, and auto-update flow. Troubleshooting in-app updates: [texts/windows-in-app-updater-debug.md](./texts/windows-in-app-updater-debug.md).
 - [`scripts`](./scripts) - developer/ops scripts (local run, migration, release helpers).
@@ -73,6 +74,27 @@ git switch -c new-branch-for-next-update # Create and switch to a new feature br
 ```
 
 **Move in loops starting from the step 3.**
+
+## Smart contracts
+
+The [`first_counter`](./first_counter) project is a TON counter contract with Tolk tests and a React dApp. It uses [Acton](https://ton-blockchain.github.io/acton/) — a unified toolchain for Tolk smart contracts, tests, wrappers, deployment, and dApp integration.
+
+Install Acton in WSL (once):
+
+```bash
+curl -LsSf https://github.com/ton-blockchain/acton/releases/latest/download/acton-installer.sh | sh
+```
+
+Run the contract and dApp dev server from WSL (Node.js 20+ recommended). Use WSL rather than Git Bash on the Windows filesystem — `npm run dev` can fail with `vite: Permission denied` outside WSL:
+
+```bash
+cd first_counter
+npm ci
+acton build
+npm run dev
+```
+
+`acton build` compiles the Tolk contract; `npm run dev` starts the Vite app at `http://localhost:5173/`. See [`first_counter/README.md`](./first_counter/README.md) for tests, deployment scripts, and env setup.
 
 ## Local deploy
 

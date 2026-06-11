@@ -27,6 +27,7 @@ export function AuthenticatedAppShell({
     <View
       style={{
         flex: 1,
+        minHeight: 0,
         width: "100%",
         alignSelf: "stretch",
         backgroundColor: colors.background,
@@ -40,6 +41,7 @@ export function AuthenticatedAppShell({
       <View
         style={{
           flex: 1,
+          minHeight: 0,
           width: "100%",
           paddingHorizontal: layout.contentSideInsetPx,
         }}

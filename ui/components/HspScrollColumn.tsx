@@ -45,6 +45,11 @@ type Props = {
   onMetricsChange?: (metrics: HspScrollMetrics) => void;
   /** Inset (px) of the thumb from the right edge of the scroll shell; default {@link layout.scrollIndicatorRightInsetPx}. */
   scrollbarRightInsetPx?: number;
+  /**
+   * When true (default), wheel/touch scroll does not chain to parent scrollers once this column hits an edge.
+   * Root layout passes false so zoomed document scroll still works when the main shell is exhausted.
+   */
+  containOverscroll?: boolean;
 };
 
 /**
@@ -57,6 +62,7 @@ export function HspScrollColumn({
   contentContainerStyle,
   onMetricsChange,
   scrollbarRightInsetPx = DEFAULT_SCROLLBAR_RIGHT_INSET,
+  containOverscroll = true,
 }: Props) {
   const colors = useColors();
   const thumbColor = indicatorColor ?? colors.accent;
@@ -117,15 +123,66 @@ export function HspScrollColumn({
       const el = instance?.getScrollableNode?.();
       if (!el?.style) return;
       el.classList.add("hsp-main-scroll-hide-native-scrollbar");
+      if (containOverscroll) {
+        el.classList.add("hsp-scroll-column-overscroll-contain");
+      } else {
+        el.classList.remove("hsp-scroll-column-overscroll-contain");
+      }
       el.style.setProperty("scrollbar-width", "none");
       el.style.setProperty("-ms-overflow-style", "none");
+      el.style.setProperty("overscroll-behavior", containOverscroll ? "contain" : "auto");
     };
     const id = requestAnimationFrame(() => {
       run();
       requestAnimationFrame(run);
     });
     return () => cancelAnimationFrame(id);
-  }, [children]);
+  }, [children, containOverscroll]);
+
+  /** Fallback when CSS overscroll-behavior is ignored (some RN-web / browser combos). */
+  useEffect(() => {
+    if (Platform.OS !== "web" || !containOverscroll) return;
+
+    let scrollEl: HTMLElement | null = null;
+    let onWheel: ((e: WheelEvent) => void) | null = null;
+
+    const bind = () => {
+      const instance = scrollRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (!el || el === scrollEl) return;
+
+      if (scrollEl && onWheel) {
+        scrollEl.removeEventListener("wheel", onWheel);
+      }
+
+      scrollEl = el;
+      onWheel = (e: WheelEvent) => {
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        if (scrollHeight <= clientHeight + 0.5) return;
+        const atTop = scrollTop <= SCROLL_INDICATOR_SCROLL_EPS;
+        const atBottom = scrollTop + clientHeight >= scrollHeight - SCROLL_INDICATOR_SCROLL_EPS;
+        if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+          e.preventDefault();
+        }
+      };
+      el.addEventListener("wheel", onWheel, { passive: false });
+    };
+
+    bind();
+    const id = requestAnimationFrame(() => {
+      bind();
+      requestAnimationFrame(bind);
+    });
+
+    return () => {
+      cancelAnimationFrame(id);
+      if (scrollEl && onWheel) {
+        scrollEl.removeEventListener("wheel", onWheel);
+      }
+    };
+  }, [containOverscroll, children]);
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   useEffect(() => {

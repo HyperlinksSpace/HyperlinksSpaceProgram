@@ -62,6 +62,14 @@
 }
 
 /*
+ * Nested panel scroll columns (trade, swap, send, etc.): stop wheel/touch scroll from chaining to the
+ * root shell or document once the panel hits top/bottom. Root layout sets overscroll-behavior inline.
+ */
+.hsp-scroll-column-overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+/*
  * Custom scrollbar thumb: `width:0` + left border (width from JS: 1/dpr for device-pixel hairline).
  * Do not set border-left-width here — it would override the hairline and match thick 1 CSS px lines.
  */

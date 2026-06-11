@@ -13,7 +13,7 @@ export const dark = {
   secondary: "#A1A1A1",
   /** Borders + divider strokes (chrome). */
   highlight: "#5A5A5A",
-  undercover: "#272727",
+  undercover: "#323232",
   /** Scroll thumbs, email field stroke, and other accent chrome. */
   accent: "#818181",
 } as const;
@@ -24,7 +24,7 @@ export const light = {
   secondary: "#717171",
   /** Borders + divider strokes (chrome). */
   highlight: "#5A5A5A",
-  undercover: "#F1F1F1",
+  undercover: "#dadada",
   /** Scroll thumbs, email field stroke, and other accent chrome. */
   accent: "#818181",
 } as const;
