@@ -1,5 +1,9 @@
+Github login
+Telegram Messages
 Automation
 Authorization
+Test sign in with Apple
+Shield and setting icons placement after the first breakpoint
 "Connect Telegram" issues before the firstBreakpoint
 Deviders duplicating in browser
 Move shield to header befor 1st breakpoint

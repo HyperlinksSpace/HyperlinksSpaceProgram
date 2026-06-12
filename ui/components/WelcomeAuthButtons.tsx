@@ -66,21 +66,38 @@ const ROWS: { id: keyof typeof ICONS; labelKey: AppStringKey }[] = [
   { id: "telegram", labelKey: "welcome.auth.signInTelegram" },
 ];
 
-type BrowserOAuthProvider = "telegram" | "google";
+type BrowserOAuthProvider = "telegram" | "google" | "github";
 
 const BROWSER_OAUTH: Record<
   BrowserOAuthProvider,
-  { startPath: string; callbackPath: string; logPrefix: string }
+  {
+    startPath: string;
+    callbackPath: string;
+    logPrefix: string;
+    alertTitleKey: AppStringKey;
+    startErrorKey: AppStringKey;
+  }
 > = {
   telegram: {
     startPath: "/api/auth/telegram/start",
     callbackPath: "/api/auth/telegram/callback",
     logPrefix: "welcome_telegram_oidc",
+    alertTitleKey: "welcome.auth.telegramBrowserAlertTitle",
+    startErrorKey: "welcome.auth.telegramStartError",
   },
   google: {
     startPath: "/api/auth/google/start",
     callbackPath: "/api/auth/google/callback",
     logPrefix: "welcome_google_oidc",
+    alertTitleKey: "welcome.auth.googleBrowserAlertTitle",
+    startErrorKey: "welcome.auth.googleStartError",
+  },
+  github: {
+    startPath: "/api/auth/github/start",
+    callbackPath: "/api/auth/github/callback",
+    logPrefix: "welcome_github_oauth",
+    alertTitleKey: "welcome.auth.githubBrowserAlertTitle",
+    startErrorKey: "welcome.auth.githubStartError",
   },
 };
 
@@ -104,8 +121,7 @@ export function WelcomeAuthButtons() {
   const colors = useColors();
   const { t } = useAppStrings();
   const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
-  const [telegramBrowserPending, setTelegramBrowserPending] = useState(false);
-  const [googleBrowserPending, setGoogleBrowserPending] = useState(false);
+  const [browserOAuthPending, setBrowserOAuthPending] = useState<BrowserOAuthProvider | null>(null);
   const [email, setEmail] = useState("");
   const [emailInvalid, setEmailInvalid] = useState(false);
   /** Web hover: RN `Pressable` style state has no `hovered` in typings; use hover events (see theme hover helpers). */
@@ -116,8 +132,7 @@ export function WelcomeAuthButtons() {
   useEffect(() => {
     if (!isDesktopAppShell() || typeof document === "undefined") return;
     const onOAuthComplete = () => {
-      setTelegramBrowserPending(false);
-      setGoogleBrowserPending(false);
+      setBrowserOAuthPending(null);
     };
     document.addEventListener("hsp-oauth-complete", onOAuthComplete);
     return () => document.removeEventListener("hsp-oauth-complete", onOAuthComplete);
@@ -146,16 +161,11 @@ export function WelcomeAuthButtons() {
     const redirectUri = buildApiUrl(cfg.callbackPath);
     const startedAt = Date.now();
     let navigated = false;
-    const setPending = provider === "telegram" ? setTelegramBrowserPending : setGoogleBrowserPending;
-    const alertTitle =
-      provider === "telegram"
-        ? t("welcome.auth.telegramBrowserAlertTitle")
-        : t("welcome.auth.googleBrowserAlertTitle");
-    const startError =
-      provider === "telegram" ? t("welcome.auth.telegramStartError") : t("welcome.auth.googleStartError");
+    const alertTitle = t(cfg.alertTitleKey);
+    const startError = t(cfg.startErrorKey);
 
     try {
-      setPending(true);
+      setBrowserOAuthPending(provider);
       logPageDisplay(`${cfg.logPrefix}_start`, {
         apiBase: getApiBaseUrl(),
         startUrl,
@@ -211,15 +221,15 @@ export function WelcomeAuthButtons() {
       Alert.alert(alertTitle, startError);
     } finally {
       if (!navigated) {
-        setPending(false);
+        setBrowserOAuthPending(null);
       }
     }
   };
 
   const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
-    if (id === "google") {
+    if (id === "google" || id === "github") {
       if (!useBrowserOAuth) return;
-      await startBrowserOAuth("google");
+      await startBrowserOAuth(id);
       return;
     }
 
@@ -301,8 +311,7 @@ export function WelcomeAuthButtons() {
                   backgroundColor,
                   marginTop: index === 0 ? 0 : BUTTON_GAP,
                   opacity:
-                    (row.id === "telegram" && telegramBrowserPending) ||
-                    (row.id === "google" && googleBrowserPending)
+                    row.id === browserOAuthPending
                       ? 0.6
                       : pressed
                         ? 0.92

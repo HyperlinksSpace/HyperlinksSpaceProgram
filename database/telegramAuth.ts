@@ -1,6 +1,6 @@
 import { sql } from "./start.js";
 
-export type AuthProvider = "telegram" | "google";
+export type AuthProvider = "telegram" | "google" | "github";
 
 export type LoginAttemptStatus = "created" | "consumed" | "expired" | "failed";
 
@@ -190,6 +190,55 @@ export async function upsertGoogleIdentity(input: {
       ${input.telegramUsername},
       NULL,
       ${input.email},
+      ${input.displayName},
+      ${input.pictureUrl},
+      NULL,
+      ${input.claimsVersion},
+      NOW(),
+      NOW(),
+      NOW()
+    )
+    ON CONFLICT (provider, provider_subject) DO UPDATE
+      SET telegram_username = EXCLUDED.telegram_username,
+          username = EXCLUDED.username,
+          display_name = EXCLUDED.display_name,
+          picture_url = EXCLUDED.picture_url,
+          claims_version = EXCLUDED.claims_version,
+          updated_at = NOW(),
+          last_login_at = NOW();
+  `;
+}
+
+export async function upsertGithubIdentity(input: {
+  providerSubject: string;
+  telegramUsername: string;
+  login: string;
+  email: string | null;
+  displayName: string | null;
+  pictureUrl: string | null;
+  claimsVersion: string | null;
+}): Promise<void> {
+  await sql`
+    INSERT INTO auth_identities (
+      provider,
+      provider_subject,
+      telegram_username,
+      telegram_id,
+      username,
+      display_name,
+      picture_url,
+      phone_number,
+      claims_version,
+      created_at,
+      updated_at,
+      last_login_at
+    )
+    VALUES (
+      'github',
+      ${input.providerSubject},
+      ${input.telegramUsername},
+      NULL,
+      ${input.email ?? input.login},
       ${input.displayName},
       ${input.pictureUrl},
       NULL,

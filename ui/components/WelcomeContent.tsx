@@ -77,6 +77,23 @@ export function WelcomeContent() {
       const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
       window.history.replaceState(null, "", nextUrl);
     }
+
+    const githubAuthError = params.get("githubAuthError");
+    if (githubAuthError) {
+      logPageDisplay("welcome_github_oauth_callback_error", {
+        reason: githubAuthError,
+        href: window.location.href,
+      });
+      const githubMessage =
+        githubAuthError === "access_denied"
+          ? t("welcome.auth.githubAccessDenied")
+          : tf("welcome.auth.githubCallbackError", { reason: githubAuthError });
+      Alert.alert(t("welcome.auth.githubBrowserAlertTitle"), githubMessage);
+      params.delete("githubAuthError");
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
   }, [t, tf]);
 
   const probeBrowserSession = useCallback(
