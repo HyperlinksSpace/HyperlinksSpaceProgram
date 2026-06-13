@@ -9,6 +9,7 @@
  */
 
 import { transmit, type AiRequest } from "../../ai/transmitter.js";
+import { getTinyModelStatus } from "../../ai/tinymodel.js";
 
 type NodeRes = {
   setHeader(name: string, value: string): void;
@@ -30,7 +31,8 @@ async function handler(
   const method = (request as any)?.method ?? "GET";
 
   if (method === "GET") {
-    const body = { ok: true, ai: true };
+    const tinymodel = await getTinyModelStatus();
+    const body = { ok: true, ai: true, tinymodel };
 
     if (res) {
       res.setHeader("Content-Type", "application/json");

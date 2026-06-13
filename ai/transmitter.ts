@@ -1,5 +1,6 @@
 import type { AiMode, AiRequestBase, AiResponseBase, ThreadContext } from "./openai.js";
 import { callOpenAiChat, callOpenAiChatStream } from "./openai.js";
+import { enrichWithTinyModel, type TinyModelEnrichmentMeta } from "./tinymodel.js";
 import {
   getTokenBySymbol,
   normalizeSymbol,
@@ -200,6 +201,23 @@ async function handleTokenInfo(
   };
 }
 
+async function applyTinyModelContext(
+  request: AiRequest,
+  inputWithHistory: string,
+): Promise<{ input: string; tinymodel?: TinyModelEnrichmentMeta }> {
+  if ((request.mode ?? "chat") !== "chat") {
+    return { input: inputWithHistory };
+  }
+  const enriched = await enrichWithTinyModel(request.input, request.context);
+  if (!enriched.contextBlock) {
+    return { input: inputWithHistory, tinymodel: enriched.meta };
+  }
+  return {
+    input: `${enriched.contextBlock}\n\n${inputWithHistory}`,
+    tinymodel: enriched.meta,
+  };
+}
+
 export async function transmit(request: AiRequest): Promise<AiResponse> {
   const mode: AiMode = request.mode ?? "chat";
   const thread = request.threadContext;
@@ -228,8 +246,13 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
     input = formatHistoryForInput(history) + "Current message:\nuser: " + request.input;
   }
 
-  const result = await callOpenAiChat(mode, {
+  const { input: enrichedInput, tinymodel } = await applyTinyModelContext(
+    request,
     input,
+  );
+
+  const result = await callOpenAiChat(mode, {
+    input: enrichedInput,
     userId: request.userId,
     context: request.context,
     instructions: request.instructions,
@@ -238,7 +261,13 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
   if (result.ok && result.output_text && thread) {
     await persistAssistantMessage(thread, result.output_text);
   }
-  return result;
+  return {
+    ...result,
+    meta: {
+      ...(result.meta ?? {}),
+      ...(tinymodel ? { tinymodel } : {}),
+    },
+  };
 }
 
 /** Stream AI response; onDelta(accumulatedText) is called for each chunk. Only the final OpenAI call is streamed. */
@@ -348,10 +377,15 @@ export async function transmitStream(
     input = formatHistoryForInput(history) + "Current message:\nuser: " + request.input;
   }
 
+  const { input: enrichedInput, tinymodel } = await applyTinyModelContext(
+    request,
+    input,
+  );
+
   const result = await callOpenAiChatStream(
     mode,
     {
-      input,
+      input: enrichedInput,
       userId: request.userId,
       context: request.context,
       instructions: request.instructions,
@@ -363,5 +397,11 @@ export async function transmitStream(
   if (result.ok && result.output_text && thread) {
     await persistAssistantMessage(thread, result.output_text);
   }
-  return result;
+  return {
+    ...result,
+    meta: {
+      ...(result.meta ?? {}),
+      ...(tinymodel ? { tinymodel } : {}),
+    },
+  };
 }
