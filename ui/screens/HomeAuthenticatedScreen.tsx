@@ -1590,7 +1590,9 @@ export function HomeAuthenticatedScreen() {
                 ? swapColumnFooter
                 : embeddedAiBar
               : smartActiveOnWide
-                ? smartColumnFooter
+                ? isTripleColumn
+                  ? smartColumnFooter
+                  : embeddedAiBar
                 : aiBarDock === "splitColumn2"
                   ? embeddedAiBar
                   : null

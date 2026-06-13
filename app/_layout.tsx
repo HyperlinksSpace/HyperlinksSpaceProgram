@@ -21,7 +21,6 @@ import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext"
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { HspScrollColumn } from "../ui/components/HspScrollColumn";
-import { SmartColumnFooter } from "../ui/components/smart/SmartColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
@@ -136,7 +135,7 @@ function RootScreenFooter({
     if (pathname === "/swap") return <GlobalBottomBar />;
     if (pathname === "/send") return <GlobalBottomBar />;
     if (pathname === "/trade") return <GlobalBottomBar />;
-    if (pathname === "/smart") return <SmartColumnFooter />;
+    if (pathname === "/smart") return <GlobalBottomBar />;
     if (pathname === "/get") return null;
     return <GlobalBottomBar />;
   }

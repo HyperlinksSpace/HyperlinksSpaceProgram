@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWindowDimensions, View, type LayoutChangeEvent } from "react-native";
 import { SWAP_CHART_BLOCK_MIN_HEIGHT_PX } from "../swap/swapChartConstants";
 import { swapChartLog } from "../swap/swapChartDebug";
@@ -12,8 +12,8 @@ import { layout } from "../theme";
 
 const SCROLL_OVERFLOW_EPSILON_PX = 0.5;
 
-function swapPanelContentOverflows(layoutH: number, contentH: number): boolean {
-  return layoutH > 0 && contentH > layoutH + SCROLL_OVERFLOW_EPSILON_PX;
+function swapPanelNeedsScroll(fixedMinContentH: number, viewportH: number): boolean {
+  return fixedMinContentH > viewportH + SCROLL_OVERFLOW_EPSILON_PX;
 }
 
 /** Swap panel body: rate row, stats, chart (min 55px line area), and buy/sell form. Scrolls when content exceeds viewport (footer bar excluded). */
@@ -34,10 +34,11 @@ export function SwapPanelContent() {
   const { width: windowWidth } = useWindowDimensions();
   const showSwapActionBlock = windowWidth <= layout.authenticatedHome.secondBreakpoint;
   const [viewportH, setViewportH] = useState(0);
-  /** `null` = first intrinsic measure pass; then fixed scroll vs flex-fill layout. */
+  /** `null` = one-time intrinsic measure; `false` = flex-fill chart; `true` = panel scroll. */
   const [needsScroll, setNeedsScroll] = useState<boolean | null>(null);
-  const scrollLayoutReady = needsScroll !== null;
-  const intrinsicMinContentHRef = useRef(0);
+  const fixedMinContentHRef = useRef(0);
+  const measureMetricsRef = useRef<HspScrollMetrics>({ layoutH: 0, contentH: 0 });
+  const flexFillMode = needsScroll === false;
 
   useEffect(() => {
     swapChartLog("panel_mount", {
@@ -48,47 +49,112 @@ export function SwapPanelContent() {
   }, []);
 
   useEffect(() => {
-    intrinsicMinContentHRef.current = 0;
+    fixedMinContentHRef.current = 0;
+    measureMetricsRef.current = { layoutH: 0, contentH: 0 };
     setNeedsScroll(null);
   }, [showSwapActionBlock]);
 
   useEffect(() => {
-    if (viewportH <= 0 || intrinsicMinContentHRef.current <= 0) return;
-    const overflow = swapPanelContentOverflows(viewportH, intrinsicMinContentHRef.current);
-    setNeedsScroll(overflow);
+    if (viewportH <= 0 || fixedMinContentHRef.current <= 0 || needsScroll === null) return;
+    const next = swapPanelNeedsScroll(fixedMinContentHRef.current, viewportH);
+    setNeedsScroll(next);
     swapChartLog("panel_scroll_state", {
       viewportH,
       layoutH: viewportH,
-      contentH: intrinsicMinContentHRef.current,
-      needsScroll: overflow,
+      contentH: fixedMinContentHRef.current,
+      needsScroll: next,
       reason: "viewport_resize",
     });
-  }, [viewportH]);
+  }, [viewportH, needsScroll]);
 
   const onViewportLayout = useCallback((e: LayoutChangeEvent) => {
     setViewportH(e.nativeEvent.layout.height);
   }, []);
 
-  const onScrollMetrics = useCallback(
-    (metrics: HspScrollMetrics) => {
-      if (metrics.contentH <= 0) return;
-      if (intrinsicMinContentHRef.current <= 0) {
-        intrinsicMinContentHRef.current = metrics.contentH;
-      }
-      if (needsScroll !== null) return;
-      if (viewportH <= 0) return;
-      const overflow = swapPanelContentOverflows(metrics.layoutH, metrics.contentH);
-      setNeedsScroll(overflow);
+  const commitScrollMode = useCallback(
+    (next: boolean, reason: string) => {
+      setNeedsScroll(next);
       swapChartLog("panel_scroll_state", {
         viewportH,
-        layoutH: metrics.layoutH,
-        contentH: metrics.contentH,
-        needsScroll: overflow,
-        reason: "intrinsic_measure",
+        layoutH: measureMetricsRef.current.layoutH || viewportH,
+        contentH: fixedMinContentHRef.current,
+        needsScroll: next,
+        reason,
       });
     },
-    [needsScroll, viewportH],
+    [viewportH],
   );
+
+  const onScrollMetrics = useCallback((metrics: HspScrollMetrics) => {
+    measureMetricsRef.current = metrics;
+    if (needsScroll !== null) return;
+    if (metrics.layoutH <= 0 || metrics.contentH <= 0) return;
+
+    fixedMinContentHRef.current =
+      fixedMinContentHRef.current <= 0
+        ? metrics.contentH
+        : Math.min(fixedMinContentHRef.current, metrics.contentH);
+  }, [needsScroll]);
+
+  useLayoutEffect(() => {
+    if (needsScroll !== null || viewportH <= 0) return;
+
+    let cancelled = false;
+    let frame = 0;
+    let lastContentH = 0;
+    let stableStreak = 0;
+
+    const finish = () => {
+      if (cancelled || fixedMinContentHRef.current <= 0) return;
+      commitScrollMode(
+        swapPanelNeedsScroll(fixedMinContentHRef.current, viewportH),
+        "intrinsic_measure",
+      );
+    };
+
+    const tick = () => {
+      if (cancelled || needsScroll !== null) return;
+      frame += 1;
+      const contentH = fixedMinContentHRef.current;
+      if (contentH <= 0) {
+        if (frame < 12) requestAnimationFrame(tick);
+        return;
+      }
+
+      if (contentH <= viewportH + SCROLL_OVERFLOW_EPSILON_PX) {
+        finish();
+        return;
+      }
+
+      if (contentH < lastContentH - SCROLL_OVERFLOW_EPSILON_PX) {
+        lastContentH = contentH;
+        stableStreak = 0;
+        if (frame < 12) requestAnimationFrame(tick);
+        return;
+      }
+
+      if (lastContentH > 0 && Math.abs(contentH - lastContentH) <= SCROLL_OVERFLOW_EPSILON_PX) {
+        stableStreak += 1;
+      } else {
+        lastContentH = contentH;
+        stableStreak = 0;
+      }
+
+      if (stableStreak >= 1 || frame >= 12) {
+        finish();
+        return;
+      }
+
+      requestAnimationFrame(tick);
+    };
+
+    lastContentH = fixedMinContentHRef.current;
+    const id = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [needsScroll, viewportH, commitScrollMode]);
 
   const ah = layout.authenticatedHome;
   const contentInset = layout.contentSideInsetPx;
@@ -121,7 +187,7 @@ export function SwapPanelContent() {
         style={{ flex: 1, ...scrollShellBleed }}
         onMetricsChange={onScrollMetrics}
         contentContainerStyle={
-          scrollLayoutReady && !needsScroll
+          flexFillMode
             ? {
                 ...scrollContentPadding,
                 flexGrow: 1,
@@ -142,7 +208,7 @@ export function SwapPanelContent() {
           style={{
             marginTop: layout.authenticatedHome.swapChartTopGapPx,
             minHeight: SWAP_CHART_BLOCK_MIN_HEIGHT_PX,
-            ...(scrollLayoutReady && !needsScroll ? { flex: 1 } : null),
+            ...(flexFillMode ? { flex: 1 } : null),
           }}
         >
           <SwapChartView
@@ -154,7 +220,7 @@ export function SwapPanelContent() {
             error={chartError}
             selectedPointIndex={selectedPointIndex}
             onSelectedPointIndexChange={setSelectedPointIndex}
-            expandToFill={scrollLayoutReady && !needsScroll}
+            expandToFill={flexFillMode}
           />
         </View>
         <SwapFormBelowChart effectiveTonPriceUsd={displayTonPriceUsd} />

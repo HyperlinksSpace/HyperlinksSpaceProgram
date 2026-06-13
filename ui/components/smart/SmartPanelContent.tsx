@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Text, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
@@ -14,11 +14,14 @@ import {
 } from "../../smart/smartAssets";
 import { layout, typographyAeroport20, typographyRect15, useColors } from "../../theme";
 import { HspScrollColumn } from "../HspScrollColumn";
+import { SmartActionRow } from "./SmartActionRow";
+import { SmartGradientDivider } from "./SmartGradientDivider";
 import { SmartLeadImage } from "./SmartLeadImage";
 import { SmartPurposeSection } from "./SmartPurposeSection";
 
 const TOP_INSET_PX = 30;
 const BOTTOM_INSET_PX = 30;
+const SECTION_GAP_PX = 15;
 const LEAD_TO_TITLE_GAP_PX = 30;
 const TITLE_FONT_SIZE_PX = 40;
 const TITLE_LINE_HEIGHT_PX = 55;
@@ -31,6 +34,8 @@ const INTRO_TO_PURPOSE_GAP_PX = 20;
 export function SmartPanelContent() {
   const colors = useColors();
   const { t, locale } = useAppStrings();
+  const { width: windowWidth } = useWindowDimensions();
+  const showSmartActionBlock = windowWidth <= layout.authenticatedHome.secondBreakpoint;
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const leadSource = locale === "ru" ? smartLeadRuImage : smartLeadEnImage;
   const contentInset = layout.contentSideInsetPx;
@@ -141,6 +146,15 @@ export function SmartPanelContent() {
 
         <View style={{ height: INTRO_TO_PURPOSE_GAP_PX }} />
         <SmartPurposeSection purposeSubtitle={t("smart.purposeSubtitle")} />
+
+        {showSmartActionBlock ? (
+          <>
+            <View style={{ height: SECTION_GAP_PX }} />
+            <SmartGradientDivider />
+            <View style={{ height: SECTION_GAP_PX }} />
+            <SmartActionRow />
+          </>
+        ) : null}
       </HspScrollColumn>
     </View>
   );

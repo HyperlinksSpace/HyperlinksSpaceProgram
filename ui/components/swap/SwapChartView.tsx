@@ -77,9 +77,10 @@ export function SwapChartView({
 
   const chartSpaceHeight = useMemo(() => {
     const overhead = SWAP_CHART_TIMESTAMP_GAP_PX + SWAP_CHART_TIMESTAMP_ROW_HEIGHT_PX;
+    if (!expandToFill) return SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX;
     if (outerSize.height <= 0) return SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX;
     return Math.max(SWAP_CHART_LINE_AREA_MIN_HEIGHT_PX, outerSize.height - overhead);
-  }, [outerSize.height]);
+  }, [expandToFill, outerSize.height]);
 
   const derivedChartWidth = useMemo(() => {
     if (outerSize.width <= 0) return 0;
