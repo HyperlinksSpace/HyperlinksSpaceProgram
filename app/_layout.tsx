@@ -21,10 +21,6 @@ import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext"
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { HspScrollColumn } from "../ui/components/HspScrollColumn";
-import {
-  SendColumnInactiveFooter,
-  SwapColumnInactiveFooter,
-} from "../ui/components/InactiveWelcomeColumnFooter";
 import { SmartColumnFooter } from "../ui/components/smart/SmartColumnFooter";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
@@ -137,10 +133,11 @@ function RootScreenFooter({
 
   if (isAuthenticated) {
     if (bottomBarDock !== "screenFooter") return null;
-    if (pathname === "/swap") return <SwapColumnInactiveFooter />;
-    if (pathname === "/send") return <SendColumnInactiveFooter />;
+    if (pathname === "/swap") return <GlobalBottomBar />;
+    if (pathname === "/send") return <GlobalBottomBar />;
+    if (pathname === "/trade") return <GlobalBottomBar />;
     if (pathname === "/smart") return <SmartColumnFooter />;
-    if (pathname === "/trade" || pathname === "/get") return null;
+    if (pathname === "/get") return null;
     return <GlobalBottomBar />;
   }
 

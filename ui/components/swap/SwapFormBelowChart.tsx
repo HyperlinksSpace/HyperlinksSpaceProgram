@@ -4,14 +4,17 @@ import { useRouter } from "expo-router";
 import { SWAP_BUY_AMOUNT_TON } from "../../swap/fetchSwapAmount";
 import { formatSwapPrice, formatSwapTokenAmount } from "../../swap/swapChartFormat";
 import { useSwapAmount } from "../../swap/useSwapAmount";
-import { typographyAeroport15, typographyAeroport20, useColors } from "../../theme";
+import { layout, typographyAeroport15, typographyAeroport20, useColors } from "../../theme";
 import { navigateToSwapCurrencyPicker } from "../../swap/navigateToSwapCurrencyPicker";
 import { useResolvedPathname } from "../../useResolvedPathname";
+import { SmartGradientDivider } from "../smart/SmartGradientDivider";
+import { SwapActionRow } from "./SwapActionRow";
 import { SwapRotateIcon, SwapSelectChevron } from "./SwapFormIcons";
 import { SwapSampleTokenStrip } from "./SwapSampleTokenStrip";
 import { swapDllrTokenImage, swapTonTokenImage } from "./swapFormAssets";
 
 const SWAP_MUTED = "#818181";
+const SECTION_GAP_PX = 15;
 
 const amountTextStyle = [typographyAeroport20, { fontWeight: "500" as const }];
 const muted15 = [typographyAeroport15, { color: SWAP_MUTED }];
@@ -28,6 +31,7 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
   const router = useRouter();
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
+  const showSwapActionBlock = windowWidth <= layout.authenticatedHome.secondBreakpoint;
   const { sellAmount, isLoading, error } = useSwapAmount();
 
   const openBuyCurrency = () => navigateToSwapCurrencyPicker(router, "buy", windowWidth, pathname);
@@ -164,6 +168,16 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
           <Text style={muted15}>TON</Text>
         </View>
       </View>
+
+      {showSwapActionBlock ? (
+        <>
+          <View style={{ height: SECTION_GAP_PX }} />
+          <SmartGradientDivider />
+          <View style={{ height: SECTION_GAP_PX }} />
+          <SwapActionRow dllrAmount={!isLoading && !error ? sellAmount : null} />
+          <View style={{ height: SECTION_GAP_PX }} />
+        </>
+      ) : null}
     </View>
   );
 }

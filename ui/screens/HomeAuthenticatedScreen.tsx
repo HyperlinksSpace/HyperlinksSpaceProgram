@@ -1578,9 +1578,17 @@ export function HomeAuthenticatedScreen() {
         }
         middleColumnFooter={
           sendActiveOnWide
-            ? sendColumnFooter
+            ? isTripleColumn
+              ? sendColumnFooter
+              : embeddedAiBar
+            : tradeActiveOnWide
+              ? isTripleColumn
+                ? null
+                : embeddedAiBar
             : swapActiveOnWide
-              ? swapColumnFooter
+              ? isTripleColumn
+                ? swapColumnFooter
+                : embeddedAiBar
               : smartActiveOnWide
                 ? smartColumnFooter
                 : aiBarDock === "splitColumn2"

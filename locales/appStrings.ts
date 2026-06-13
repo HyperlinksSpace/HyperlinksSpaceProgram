@@ -95,6 +95,9 @@ const en = {
   "messages.loadError": "Could not load chats.",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
+  "swap.action.summary": "Buy 1 ton",
+  "swap.action.summaryWithAmount": "Buy 1 ton for {{amount}} dllr",
+  "swap.action.button": "Swap",
   "swap.chooseCurrency.title": "Choose currency",
   "swap.chooseCurrency.filterA11y": "Filter currencies",
   "swap.chooseCurrency.col.rank": "#",
@@ -107,6 +110,9 @@ const en = {
   "swap.chooseCurrency.col.lastYear": "Last Year",
 
   "send.footer.submit": "N / A",
+  "send.action.summary": "Send 1 dollar",
+  "send.action.summaryWithAddress": "Send 1 dollar to {{address}}",
+  "send.action.button": "Send",
 
   "global.logoBar.about": "About",
   "global.logoBar.aboutHint": "Opens the Hyperlinks Space Program landing page in the browser",
@@ -330,6 +336,9 @@ const ru = {
   "messages.loadError": "Не удалось загрузить чаты.",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
+  "swap.action.summary": "Купить 1 ton",
+  "swap.action.summaryWithAmount": "Купить 1 ton за {{amount}} dllr",
+  "swap.action.button": "Обмен",
   "swap.chooseCurrency.title": "Выберите валюту",
   "swap.chooseCurrency.filterA11y": "Фильтр валют",
   "swap.chooseCurrency.col.rank": "#",
@@ -342,6 +351,9 @@ const ru = {
   "swap.chooseCurrency.col.lastYear": "Год",
 
   "send.footer.submit": "N / A",
+  "send.action.summary": "Отправить 1 доллар",
+  "send.action.summaryWithAddress": "Отправить 1 доллар на {{address}}",
+  "send.action.button": "Отправить",
 
   "global.logoBar.about": "О программе",
   "global.logoBar.aboutHint": "Откроет сайт программы Hyperlinks Space в браузере",
