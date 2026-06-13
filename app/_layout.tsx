@@ -28,7 +28,7 @@ import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFoot
 import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
-import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
+import { authenticatedHomeBottomBarDock, layout, rootUsesDocumentScroll, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
   useEffect,
@@ -208,6 +208,7 @@ function RootContent() {
   const { width: windowWidth } = useWindowDimensions();
   const { setFooterDockedToScreenEdge } = useBottomBarLayout();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
+  const rootScroll = rootUsesDocumentScroll(pathname, windowWidth, isAuthenticated, auth);
 
   useEffect(() => {
     setFooterDockedToScreenEdge(bottomBarDock === "screenFooter");
@@ -234,6 +235,19 @@ function RootContent() {
       document.documentElement.style.removeProperty("scrollbar-color");
     };
   }, [backgroundColor, colors.accent, shellPaintReady]);
+
+  /** Panel routes + wide home: clip document scroll so only column scrollers show indicators. */
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
+    const overflow = rootScroll ? "auto" : "hidden";
+    document.documentElement.style.overflow = overflow;
+    document.body.style.overflow = overflow;
+    const expoRoot =
+      document.getElementById("root") ?? document.querySelector("[data-expo-root]");
+    if (expoRoot instanceof HTMLElement) {
+      expoRoot.style.overflow = overflow;
+    }
+  }, [rootScroll, shellPaintReady]);
 
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");
@@ -310,7 +324,11 @@ function RootContent() {
       {...(Platform.OS === "web" ? { suppressHydrationWarning: true } : {})}
       style={[
         styles.root,
-        Platform.OS === "web" ? styles.rootWeb : styles.rootOverflowHidden,
+        Platform.OS === "web"
+          ? rootScroll
+            ? styles.rootWeb
+            : styles.rootWebClipped
+          : styles.rootOverflowHidden,
         {
           backgroundColor,
           opacity: shellPaintReady ? 1 : 0,
@@ -323,17 +341,23 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <HspScrollColumn
-          indicatorColor={colors.accent}
-          style={styles.mainShell}
-          contentContainerStyle={styles.mainScrollContent}
-          containOverscroll={false}
-        >
-          <Stack screenOptions={{ headerShown: false }} />
-        </HspScrollColumn>
+        rootScroll ? (
+          <HspScrollColumn
+            indicatorColor={colors.accent}
+            style={styles.mainShell}
+            contentContainerStyle={styles.mainScrollContent}
+            containOverscroll={false}
+          >
+            <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
+          </HspScrollColumn>
+        ) : (
+          <View style={styles.mainShell}>
+            <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
+          </View>
+        )
       ) : (
         <View style={styles.main}>
-          <Stack screenOptions={{ headerShown: false }} />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
         </View>
       )}
       {
@@ -377,6 +401,11 @@ const styles = StyleSheet.create({
   rootWeb: {
     minWidth: "100%",
     overflow: "auto",
+  } as unknown as ViewStyle,
+  /** Web panel routes + wide home: clip root; each column owns vertical scroll. */
+  rootWebClipped: {
+    minWidth: "100%",
+    overflow: "hidden",
   } as unknown as ViewStyle,
   main: {
     flex: 1,

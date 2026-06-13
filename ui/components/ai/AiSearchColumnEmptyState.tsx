@@ -56,7 +56,6 @@ export function AiSearchColumnEmptyState() {
       <HspScrollColumn
         style={{ flex: 1 }}
         indicatorColor={colors.accent}
-        contentContainerStyle={{ flexGrow: 1 }}
       >
         <View style={{ height: TOP_GAP_PX }} />
 

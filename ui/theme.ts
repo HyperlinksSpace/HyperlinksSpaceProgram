@@ -5,6 +5,7 @@ import {
   getThemeColorsFromTelegramCssVars,
   getThemeColorsFromWebAppThemeParams,
 } from "./components/telegramWebApp";
+import { isWelcomeLayoutRoute } from "./isWelcomeLayoutRoute";
 
 export const dark = {
   background: "#111111",
@@ -333,6 +334,24 @@ export function authenticatedHomeBottomBarDock(
   if (windowWidth <= ah.firstBreakpoint) return "screenFooter";
   if (windowWidth <= ah.secondBreakpoint) return "splitColumn2";
   return "splitColumn3";
+}
+
+/**
+ * Web root {@link HspScrollColumn}: welcome and narrow authenticated home feed only.
+ * Panel routes (`/swap`, `/send`, …) and wide home use fixed-height flex shells; each column scrolls internally.
+ */
+export function rootUsesDocumentScroll(
+  pathname: string | null | undefined,
+  windowWidth: number,
+  isAuthenticated: boolean,
+  auth: { authHydrated: boolean; authReady: boolean; isAuthenticated: boolean },
+): boolean {
+  if (isWelcomeLayoutRoute(pathname, auth)) return true;
+  return (
+    isAuthenticated &&
+    (pathname === "/" || pathname === "" || pathname == null) &&
+    windowWidth <= layout.authenticatedHome.firstBreakpoint
+  );
 }
 
 /**

@@ -54,22 +54,24 @@ export function getBottomBarMetrics({
   innerPadding,
   maxLinesBeforeScroll,
   maxBarHeight,
-  minBarHeight = 60,
+  minBarHeight = 59,
   scrollRangeOverride,
 }: BottomBarMetricParams): BottomBarMetrics {
   const effectiveTextHeight = Math.max(0, baseHeight - innerPadding * 2);
   const rawLines = Math.max(1, Math.floor((effectiveTextHeight + lineHeight * 0.2) / lineHeight));
   const visibleLines = Math.min(rawLines, maxLinesBeforeScroll);
-  const barHeight = Math.max(
-    minBarHeight,
-    Math.min(maxBarHeight, innerPadding * 2 + visibleLines * lineHeight),
-  );
+  const expandedHeight = innerPadding * 2 + visibleLines * lineHeight;
+  /** One-line bar matches {@link layout.bottomBar.barMinHeight} and column inactive footers (59px). */
+  const barHeight =
+    visibleLines <= 1
+      ? minBarHeight
+      : Math.max(minBarHeight, Math.min(maxBarHeight, expandedHeight));
   const viewportHeight = barHeight;
   const contentHeightWithGaps = baseHeight;
   const scrollRange = Math.max(contentHeightWithGaps - viewportHeight, 0);
   const effectiveScrollRange =
     scrollRangeOverride != null && scrollRangeOverride > 0 ? scrollRangeOverride : scrollRange;
-  const showScrollbar = contentHeightWithGaps > viewportHeight && effectiveScrollRange > 0;
+  const showScrollbar = visibleLines > 1 && effectiveScrollRange > 0.5;
 
   return {
     rawLines,
