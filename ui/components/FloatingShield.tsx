@@ -6,7 +6,6 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 import { SettingsIcon } from "./icons/SettingsIcon";
 import { ShieldIcon } from "./icons/ShieldIcon";
-import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { useAuth } from "../../auth/AuthContext";
 import { useResolvedPathname } from "../useResolvedPathname";
 
@@ -67,7 +66,6 @@ export function FloatingShield() {
   const { width: windowWidth } = useWindowDimensions();
   const pathname = useResolvedPathname();
   const { isAuthenticated } = useAuth();
-  const { isTelegramMessagesConnected } = useTelegramMessagesConnection();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
   /** Match authenticated home: narrow / welcome-style width keeps the stack on the right; wide moves it to the left. */
   const shieldOnRight = windowWidth <= AH.firstBreakpoint;
@@ -78,10 +76,7 @@ export function FloatingShield() {
   const isAuthenticatedHome =
     isAuthenticated && (pathname === "/" || pathname === "" || pathname == null);
   const showTelegramConnectStrip =
-    isAuthenticatedHome &&
-    bottomBarDock === "screenFooter" &&
-    shieldOnRight &&
-    !isTelegramMessagesConnected;
+    isAuthenticatedHome && bottomBarDock === "screenFooter" && shieldOnRight;
 
   if (showTelegramConnectStrip) {
     return null;

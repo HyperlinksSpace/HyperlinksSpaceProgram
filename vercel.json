@@ -6,6 +6,34 @@
   "installCommand": "npm install",
   "rewrites": [
     {
+      "source": "/api/telegram/messages/status",
+      "destination": "/api/telegram-messages-status"
+    },
+    {
+      "source": "/api/telegram/messages/connect",
+      "destination": "/api/telegram-messages-connect"
+    },
+    {
+      "source": "/api/telegram/messages/disconnect",
+      "destination": "/api/telegram-messages-disconnect"
+    },
+    {
+      "source": "/api/telegram/messages/chats",
+      "destination": "/api/telegram-messages-chats"
+    },
+    {
+      "source": "/api/telegram/mtproto/connect/start",
+      "destination": "/api/telegram-mtproto-connect-start"
+    },
+    {
+      "source": "/api/telegram/mtproto/connect/status",
+      "destination": "/api/telegram-mtproto-connect-status"
+    },
+    {
+      "source": "/api/telegram/mtproto/connect/password",
+      "destination": "/api/telegram-mtproto-connect-password"
+    },
+    {
       "source": "/api/kms/ping",
       "destination": "/api/wallet-envelope-ping"
     },

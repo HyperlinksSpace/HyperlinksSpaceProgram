@@ -1,8 +1,9 @@
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
 import { useTelegram } from "./Telegram";
 import { layout, typographyRect15, useColors } from "../theme";
+import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 
 const { barMinHeight: BAR_HEIGHT, horizontalPadding: HORIZONTAL_PADDING } = layout.bottomBar;
 const { maxContentWidth } = layout;
@@ -15,13 +16,14 @@ type Props = {
   label: string;
   /** Active footer actions use primary label color; inactive use secondary. */
   active?: boolean;
+  onPress?: () => void;
 };
 
 /**
  * Column / screen footer chrome matching {@link GlobalBottomBar} (top rule, min height, insets),
  * with a single centered inactive welcome-style button.
  */
-export function InactiveWelcomeColumnFooter({ label, active = false }: Props) {
+export function InactiveWelcomeColumnFooter({ label, active = false, onPress }: Props) {
   const colors = useColors();
   const labelColor = active ? colors.primary : colors.secondary;
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
@@ -30,6 +32,12 @@ export function InactiveWelcomeColumnFooter({ label, active = false }: Props) {
   const topBorderColor = colors.highlight;
   const hideBottomBorder =
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
+
+  const buttonInner = (
+    <Text style={[typographyRect15, { color: labelColor, textAlign: "center" }]} numberOfLines={1}>
+      {label}
+    </Text>
+  );
 
   return (
     <View
@@ -47,15 +55,23 @@ export function InactiveWelcomeColumnFooter({ label, active = false }: Props) {
       <BottomBarHeightReporter height={BAR_HEIGHT} />
       <View style={[styles.container, { height: BAR_HEIGHT, backgroundColor }]}>
         <View style={[styles.row, { height: BAR_HEIGHT }]}>
-          <View
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !active }}
-            style={[styles.footerButton, { backgroundColor: colors.undercover }]}
-          >
-            <Text style={[typographyRect15, { color: labelColor, textAlign: "center" }]} numberOfLines={1}>
-              {label}
-            </Text>
-          </View>
+          {onPress ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onPress}
+              style={[styles.footerButton, { backgroundColor: colors.undercover }]}
+            >
+              {buttonInner}
+            </Pressable>
+          ) : (
+            <View
+              accessibilityRole="button"
+              accessibilityState={{ disabled: !active }}
+              style={[styles.footerButton, { backgroundColor: colors.undercover }]}
+            >
+              {buttonInner}
+            </View>
+          )}
         </View>
       </View>
       {!hideBottomBorder ? (
@@ -67,11 +83,23 @@ export function InactiveWelcomeColumnFooter({ label, active = false }: Props) {
 
 export function MainColumnInactiveFooter() {
   const { t } = useAppStrings();
-  return (
-    <InactiveWelcomeColumnFooter active label={t("home.mainColumnFooter.telegramMessages")} />
-  );
-}
+  const { isTelegramMessagesConnected, openConnectSheet, disconnectTelegramMessages } =
+    useTelegramMessagesConnection();
 
+  const label = isTelegramMessagesConnected
+    ? t("home.mainColumnFooter.telegramMessagesDisconnect")
+    : t("home.mainColumnFooter.telegramMessages");
+
+  const onPress = () => {
+    if (isTelegramMessagesConnected) {
+      void disconnectTelegramMessages();
+    } else {
+      openConnectSheet();
+    }
+  };
+
+  return <InactiveWelcomeColumnFooter active label={label} onPress={onPress} />;
+}
 export function SwapColumnInactiveFooter() {
   const { t } = useAppStrings();
   return <InactiveWelcomeColumnFooter label={t("swap.footer.insufficientAmount")} />;

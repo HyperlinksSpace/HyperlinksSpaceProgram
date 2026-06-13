@@ -1,0 +1,314 @@
+import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
+import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
+import {
+  gatewayConnectPassword,
+  gatewayConnectStart,
+  gatewayConnectStatus,
+  gatewayHealthCheckDetailed,
+  gatewayNotConfiguredResponse,
+} from "../_lib/tdlib-gateway-client.js";
+import {
+  gatewayEnvDiagnostics,
+  logTdlibGatewayApi,
+} from "../_lib/tdlib-gateway-debug.js";
+import { getTelegramApiCredentials } from "../../telegram/tdlib/env.js";
+
+type NodeRes = {
+  status: (code: number) => void;
+  setHeader: (name: string, value: string) => void;
+  end: (body?: string) => void;
+};
+
+type AnyRequest = Request | { method?: string; headers?: Record<string, string | string[] | undefined>; url?: string };
+
+const JSON_HEADERS = { "Content-Type": "application/json" };
+
+function requestMethod(request: AnyRequest): string {
+  return ((request as { method?: string }).method ?? (request as Request).method ?? "GET").toUpperCase();
+}
+
+function sendJson(body: object, status = 200, request?: AnyRequest): Response {
+  const headers = new Headers(JSON_HEADERS);
+  if (request) applyAuthApiCors(request, headers);
+  return new Response(JSON.stringify(body), { status, headers });
+}
+
+function sendJsonViaRes(res: NodeRes, body: object, status = 200, request?: AnyRequest): void {
+  res.status(status);
+  res.setHeader("Content-Type", "application/json");
+  if (request) {
+    const headers = new Headers();
+    applyAuthApiCors(request, headers);
+    headers.forEach((v, k) => res.setHeader(k, v));
+  }
+  res.end(JSON.stringify(body));
+}
+
+function finishPreflight(request: AnyRequest, res: NodeRes | undefined, preflight: Response): Response | void {
+  if (res) {
+    res.status(preflight.status);
+    preflight.headers.forEach((v, k) => res.setHeader(k, v));
+    res.end();
+    return;
+  }
+  return preflight;
+}
+
+function finishJson(
+  request: AnyRequest,
+  res: NodeRes | undefined,
+  body: object,
+  status = 200,
+): Response | void {
+  if (res) {
+    sendJsonViaRes(res, body, status, request);
+    return;
+  }
+  return sendJson(body, status, request);
+}
+
+async function requireUser(request: AnyRequest): Promise<string | Response> {
+  const username = await telegramUsernameFromSessionCookie(request);
+  if (!username) {
+    return sendJson({ ok: false, error: "unauthorized" }, 401, request);
+  }
+  return username;
+}
+
+async function ensureGatewayAvailable(): Promise<{
+  error: string | null;
+  debug: Record<string, unknown>;
+}> {
+  const envDiag = gatewayEnvDiagnostics();
+  logTdlibGatewayApi("ensure_gateway_env", envDiag);
+
+  if (!getTelegramApiCredentials()) {
+    logTdlibGatewayApi("ensure_gateway_fail", {
+      reason: "telegram_api_credentials_missing",
+      env: envDiag,
+    });
+    return { error: "telegram_api_credentials_missing", debug: { env: envDiag } };
+  }
+
+  const health = await gatewayHealthCheckDetailed();
+  logTdlibGatewayApi("ensure_gateway_health", {
+    ok: health.ok,
+    healthUrlHost: health.healthUrlHost,
+    httpStatus: health.httpStatus,
+    elapsedMs: health.elapsedMs,
+    fetchError: health.fetchError,
+    responseBodyPreview: health.responseBodyPreview,
+    env: envDiag,
+  });
+
+  if (!health.ok) {
+    const urlMissingOnVercel =
+      envDiag.vercel === true && envDiag.gatewayUrlConfigured === false;
+    return {
+      error: urlMissingOnVercel ? "tdlib_gateway_url_missing" : "tdlib_gateway_unreachable",
+      debug: {
+        env: envDiag,
+        health: {
+          healthUrlHost: health.healthUrlHost,
+          httpStatus: health.httpStatus,
+          elapsedMs: health.elapsedMs,
+          fetchError: health.fetchError,
+          responseBodyPreview: health.responseBodyPreview,
+        },
+      },
+    };
+  }
+
+  return { error: null, debug: { env: envDiag, health: { ok: true, healthUrlHost: health.healthUrlHost } } };
+}
+
+export async function telegramMtprotoConnectStartHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const gatewayError = await ensureGatewayAvailable();
+  if (gatewayError.error) {
+    logTdlibGatewayApi("connect_start_rejected", {
+      error: gatewayError.error,
+      telegramUsername: userOrRes,
+      debug: gatewayError.debug,
+    });
+    const body = {
+      ok: false,
+      ...gatewayNotConfiguredResponse(),
+      error: gatewayError.error,
+      debug: gatewayError.debug,
+    };
+    return finishJson(request, res, body, 503);
+  }
+
+  logTdlibGatewayApi("connect_start_proceed", { telegramUsername: userOrRes });
+
+  let resume = false;
+  try {
+    const raw = await (request as Request).json();
+    resume = Boolean((raw as { resume?: boolean })?.resume);
+  } catch {
+    resume = false;
+  }
+
+  try {
+    const snap = await gatewayConnectStart(userOrRes, resume);
+    const ok = snap.authState !== "failed" || Boolean(snap.attemptId);
+    logTdlibGatewayApi("connect_start_gateway_result", {
+      telegramUsername: userOrRes,
+      ok,
+      httpStatus: snap.httpStatus,
+      authState: snap.authState ?? null,
+      error: snap.error ?? null,
+      hasAttemptId: Boolean(snap.attemptId),
+      hasQrLink: Boolean(snap.qrLink),
+    });
+    return finishJson(
+      request,
+      res,
+      {
+        ok,
+        attemptId: snap.attemptId ?? null,
+        authState: snap.authState ?? "failed",
+        qrLink: snap.qrLink ?? null,
+        error: snap.error ?? null,
+        chatCount: snap.chatCount ?? null,
+      },
+      snap.httpStatus >= 400 ? snap.httpStatus : 200,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "gateway_error";
+    logTdlibGatewayApi("connect_start_exception", {
+      telegramUsername: userOrRes,
+      message,
+      stack: err instanceof Error ? err.stack?.slice(0, 500) : null,
+    });
+    return finishJson(request, res, { ok: false, error: message, authState: "failed" }, 503);
+  }
+}
+
+export async function telegramMtprotoConnectStatusHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  let attemptId = "";
+  try {
+    const rawUrl = (request as { url?: string }).url ?? "";
+    attemptId = new URL(rawUrl, "http://localhost").searchParams.get("attemptId")?.trim() ?? "";
+  } catch {
+    attemptId = "";
+  }
+  if (!attemptId) {
+    return finishJson(request, res, { ok: false, error: "attempt_id_required" }, 400);
+  }
+
+  try {
+    const snap = await gatewayConnectStatus(attemptId);
+    return finishJson(
+      request,
+      res,
+      {
+        ok: snap.httpStatus < 400,
+        attemptId,
+        authState: snap.authState ?? "failed",
+        qrLink: snap.qrLink ?? null,
+        error: snap.error ?? null,
+        chatCount: snap.chatCount ?? null,
+      },
+      snap.httpStatus,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "gateway_error";
+    return finishJson(request, res, { ok: false, error: message, authState: "failed" }, 503);
+  }
+}
+
+export async function telegramMtprotoConnectPasswordHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  let attemptId = "";
+  let password = "";
+  try {
+    const body = (await (request as Request).json()) as { attemptId?: string; password?: string };
+    attemptId = (body.attemptId || "").trim();
+    password = body.password || "";
+  } catch {
+    /* ignore */
+  }
+  if (!attemptId || !password) {
+    return finishJson(request, res, { ok: false, error: "attempt_id_and_password_required" }, 400);
+  }
+
+  try {
+    const snap = await gatewayConnectPassword(attemptId, password);
+    return finishJson(
+      request,
+      res,
+      {
+        ok: snap.httpStatus < 400 && snap.authState !== "failed",
+        attemptId,
+        authState: snap.authState ?? "failed",
+        qrLink: snap.qrLink ?? null,
+        error: snap.error ?? null,
+        chatCount: snap.chatCount ?? null,
+      },
+      snap.httpStatus,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "gateway_error";
+    return finishJson(request, res, { ok: false, error: message, authState: "failed" }, 503);
+  }
+}

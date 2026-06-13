@@ -85,7 +85,8 @@ export function TelegramConnectFooterStrip({
   const pathname = useResolvedPathname();
   const { isAuthenticated } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
-  const { isTelegramMessagesConnected } = useTelegramMessagesConnection();
+  const { isTelegramMessagesConnected, openConnectSheet, disconnectTelegramMessages } =
+    useTelegramMessagesConnection();
   const { barHeight: bottomBarHeight, footerDockedToScreenEdge } = useBottomBarLayout();
   const { isInTelegram, layoutStartup } = useTelegram();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
@@ -103,7 +104,9 @@ export function TelegramConnectFooterStrip({
   const isNarrowHome =
     isAuthenticatedHome && bottomBarDock === "screenFooter" && windowWidth <= layout.authenticatedHome.firstBreakpoint;
 
-  const label = t("home.mainColumnFooter.telegramMessages");
+  const label = isTelegramMessagesConnected
+    ? t("home.mainColumnFooter.telegramMessagesDisconnect")
+    : t("home.mainColumnFooter.telegramMessages");
   const isLightTheme = colors.primary === "#000000";
   const iconColor = colors.primary;
   const powerColor = isLightTheme ? "#000000" : "#FFFFFF";
@@ -142,9 +145,21 @@ export function TelegramConnectFooterStrip({
     return telegramConnectPillWidthFromLabelLinePx(labelLineWidth, maxPillWidthPx);
   }, [label, stripWidth, labelLineWidth, maxPillWidthPx]);
 
-  if (!isNarrowHome || isTelegramMessagesConnected || !footerDockedToScreenEdge) {
+  if (!isNarrowHome || !footerDockedToScreenEdge) {
     return null;
   }
+
+  const handleConnectPress = () => {
+    if (isTelegramMessagesConnected) {
+      void disconnectTelegramMessages();
+      return;
+    }
+    if (onConnectPress) {
+      onConnectPress();
+    } else {
+      openConnectSheet();
+    }
+  };
 
   return (
     <View pointerEvents="box-none" style={[styles.overlayHost, { bottom: stripBottomOffsetPx }]}>
@@ -182,7 +197,7 @@ export function TelegramConnectFooterStrip({
           {pillWidth > 0 ? (
             <Pressable
               accessibilityRole="button"
-              onPress={onConnectPress}
+              onPress={handleConnectPress}
               style={[styles.pillPressable, { width: pillWidth, maxWidth: maxPillWidthPx }]}
             >
               <LiquidGlassShaderUndercover

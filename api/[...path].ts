@@ -20,6 +20,17 @@ import telegramHandler from './_handlers/telegram.js';
 import walletEnvelopePingHandler from './_handlers/wallet-envelope-ping.js';
 import walletEnvelopeProbeHandler from './_handlers/wallet-envelope-probe.js';
 import walletEnvelopeRoundtripHandler from './_handlers/wallet-envelope-roundtrip.js';
+import {
+  telegramMessagesChatsHandler,
+  telegramMessagesConnectHandler,
+  telegramMessagesDisconnectHandler,
+  telegramMessagesStatusHandler,
+} from './_handlers/telegram-messages.js';
+import {
+  telegramMtprotoConnectPasswordHandler,
+  telegramMtprotoConnectStartHandler,
+  telegramMtprotoConnectStatusHandler,
+} from './_handlers/telegram-mtproto.js';
 
 type NodeRes = {
   setHeader(name: string, value: string): void;
@@ -49,6 +60,15 @@ const ROUTES: Record<string, ApiHandler> = {
   'kms-roundtrip': walletEnvelopeRoundtripHandler as ApiHandler,
   'kms/ping': walletEnvelopePingHandler as ApiHandler,
   'kms-ping': walletEnvelopePingHandler as ApiHandler,
+  /** Telegram message sync (single-segment; see vercel.json rewrites from /api/telegram/messages/*). */
+  'telegram-messages-status': telegramMessagesStatusHandler as ApiHandler,
+  'telegram-messages-connect': telegramMessagesConnectHandler as ApiHandler,
+  'telegram-messages-disconnect': telegramMessagesDisconnectHandler as ApiHandler,
+  'telegram-messages-chats': telegramMessagesChatsHandler as ApiHandler,
+  /** TDLib QR connect (proxies to local/remote gateway). */
+  'telegram-mtproto-connect-start': telegramMtprotoConnectStartHandler as ApiHandler,
+  'telegram-mtproto-connect-status': telegramMtprotoConnectStatusHandler as ApiHandler,
+  'telegram-mtproto-connect-password': telegramMtprotoConnectPasswordHandler as ApiHandler,
 };
 
 function routeKeyFromUrl(request: Request): string {

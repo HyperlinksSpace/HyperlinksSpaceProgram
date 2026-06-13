@@ -1,8 +1,10 @@
+Disconnect telegram button
 Github login
 Telegram Messages
+Switch local TDLib Gateway for VM (vpn, card, railway or oracle)
 Automation
 Authorization
-Test sign in with Apple
+Sign in with Apple
 Shield and setting icons placement after the first breakpoint
 "Connect Telegram" issues before the firstBreakpoint
 Deviders duplicating in browser

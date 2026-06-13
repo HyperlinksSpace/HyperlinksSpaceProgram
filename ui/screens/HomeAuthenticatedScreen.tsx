@@ -20,6 +20,7 @@ import {
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
+import { AuthenticatedHomeMessagesPanel } from "../components/AuthenticatedHomeMessagesPanel";
 import { GetPanelContent } from "../components/get/GetPanelContent";
 import { SendPanelContent } from "../components/send/SendPanelContent";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
@@ -1372,6 +1373,7 @@ export function HomeAuthenticatedScreen() {
   const homeMainColumnBlocks = (
     <>
       {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} /> : null}
+      {homeNavIndex === 1 ? <AuthenticatedHomeMessagesPanel colors={colors} scrollable={false} /> : null}
       {telegramUsername ? (
         <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
           <Text

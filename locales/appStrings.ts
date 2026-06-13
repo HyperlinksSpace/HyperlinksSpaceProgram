@@ -65,6 +65,34 @@ const en = {
   "global.bottomBar.premade3": "Buy eth for my 10 ton at the current rate",
 
   "home.mainColumnFooter.telegramMessages": "Connect Telegram",
+  "home.mainColumnFooter.telegramMessagesDisconnect": "Disconnect Telegram",
+
+  "messages.connectConfirm": "Connect",
+  "messages.connectError": "Could not connect Telegram messages.",
+  "messages.connectErrorGatewayLocal":
+    "TDLib gateway is not running on your machine. In a separate terminal run: npm run tdlib:gateway (with TELEGRAM_API_ID and TELEGRAM_API_HASH in .env). Use npm run web so the API is localhost, not hsbexpo.vercel.app.",
+  "messages.connectErrorGatewayUrlMissing":
+    "TDLIB_GATEWAY_URL is not reaching the Vercel API (server tried 127.0.0.1). Add or link the shared variable TDLIB_GATEWAY_URL to hsbexpo for Production, set it to your tunnel URL (https://….trycloudflare.com), then redeploy.",
+  "messages.connectErrorGatewayProduction":
+    "Vercel cannot reach your TDLib gateway. Keep npm run tdlib:gateway and the tunnel running; update TDLIB_GATEWAY_URL if the tunnel URL changed, then redeploy.",
+  "messages.connectErrorNotConfigured":
+    "Telegram API credentials or TDLib gateway are not configured on the server.",
+  "messages.connectErrorTelegramNetwork":
+    "TDLib cannot reach Telegram servers from your gateway (stuck connecting). Turn off VPN or use a network where Telegram works, restart npm run tdlib:gateway, then try again.",
+  "messages.connectPrompt": "Connect Telegram to see your chats here.",
+  "messages.connectRetry": "Try again",
+  "messages.connectSheetBody":
+    "Link your Telegram account to sync your real chats into Messages.",
+  "messages.connectSheetLoading": "Preparing QR code…",
+  "messages.connectSheetPasswordBody": "Enter your Telegram two-step verification password.",
+  "messages.connectSheetPasswordPlaceholder": "Password",
+  "messages.connectSheetPasswordSubmit": "Continue",
+  "messages.connectSheetQrAlt": "Telegram login QR code",
+  "messages.connectSheetQrBody":
+    "Open Telegram on your phone → Settings → Devices → Link Desktop Device → scan this QR code.",
+  "messages.connectSheetTitle": "Connect Telegram messages",
+  "messages.empty": "No chats yet.",
+  "messages.loadError": "Could not load chats.",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
   "swap.chooseCurrency.title": "Choose currency",
@@ -272,6 +300,34 @@ const ru = {
   "global.bottomBar.premade3": "Купи eth на мои 10 ton по текущему курсу",
 
   "home.mainColumnFooter.telegramMessages": "Подключить Telegram",
+  "home.mainColumnFooter.telegramMessagesDisconnect": "Отключить Telegram",
+
+  "messages.connectConfirm": "Подключить",
+  "messages.connectError": "Не удалось подключить сообщения Telegram.",
+  "messages.connectErrorGatewayLocal":
+    "TDLib gateway не запущен на вашем компьютере. В отдельном терминале: npm run tdlib:gateway (нужны TELEGRAM_API_ID и TELEGRAM_API_HASH в .env). API должен быть локальным — npm run web, не задеплоенный сайт.",
+  "messages.connectErrorGatewayUrlMissing":
+    "TDLIB_GATEWAY_URL не доходит до API на Vercel (сервер пробовал 127.0.0.1). Добавьте или привяжите shared variable TDLIB_GATEWAY_URL к hsbexpo для Production, укажите URL туннеля (https://….trycloudflare.com), затем redeploy.",
+  "messages.connectErrorGatewayProduction":
+    "Vercel не может достучаться до TDLib gateway. Держите npm run tdlib:gateway и туннель запущенными; обновите TDLIB_GATEWAY_URL при смене URL туннеля и redeploy.",
+  "messages.connectErrorNotConfigured":
+    "На сервере не настроены Telegram API или TDLib gateway.",
+  "messages.connectErrorTelegramNetwork":
+    "TDLib не может достучаться до серверов Telegram с вашего gateway (зависает на подключении). Отключите VPN или используйте сеть, где Telegram доступен, перезапустите npm run tdlib:gateway и попробуйте снова.",
+  "messages.connectPrompt": "Подключите Telegram, чтобы видеть чаты здесь.",
+  "messages.connectRetry": "Повторить",
+  "messages.connectSheetBody":
+    "Привяжите аккаунт Telegram, чтобы синхронизировать реальные чаты в «Сообщения».",
+  "messages.connectSheetLoading": "Готовим QR-код…",
+  "messages.connectSheetPasswordBody": "Введите пароль двухэтапной проверки Telegram.",
+  "messages.connectSheetPasswordPlaceholder": "Пароль",
+  "messages.connectSheetPasswordSubmit": "Продолжить",
+  "messages.connectSheetQrAlt": "QR-код входа в Telegram",
+  "messages.connectSheetQrBody":
+    "Telegram на телефоне → Настройки → Устройства → Подключить устройство → отсканируйте QR.",
+  "messages.connectSheetTitle": "Подключить сообщения Telegram",
+  "messages.empty": "Чатов пока нет.",
+  "messages.loadError": "Не удалось загрузить чаты.",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
   "swap.chooseCurrency.title": "Выберите валюту",

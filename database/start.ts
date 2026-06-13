@@ -339,6 +339,51 @@ async function runSchemaMigrations() {
       ON feed_item_interactions(telegram_username, created_at);
 
   `;
+
+  // Telegram client message sync (TDLib gateway); connection flag + chat list cache.
+  await sql`
+    CREATE TABLE IF NOT EXISTS telegram_messages_connections (
+      telegram_username   TEXT PRIMARY KEY REFERENCES users(telegram_username),
+      status              TEXT NOT NULL DEFAULT 'active'
+                            CHECK (status IN ('active', 'revoked')),
+      connected_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at          TIMESTAMPTZ
+    );
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS telegram_threads (
+      id                  BIGSERIAL PRIMARY KEY,
+      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
+      telegram_chat_id    BIGINT NOT NULL,
+      title               TEXT NOT NULL,
+      subtitle            TEXT,
+      avatar_url          TEXT,
+      last_message_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      unread_count        INT NOT NULL DEFAULT 0,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (telegram_username, telegram_chat_id)
+    );
+  `;
+
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_telegram_threads_user_activity
+      ON telegram_threads(telegram_username, last_message_at DESC);
+  `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS telegram_mtproto_sessions (
+      telegram_username     TEXT PRIMARY KEY REFERENCES users(telegram_username),
+      telegram_user_id      BIGINT,
+      status                TEXT NOT NULL DEFAULT 'active'
+                              CHECK (status IN ('active', 'revoked', 'pending')),
+      tdlib_db_path         TEXT NOT NULL,
+      connected_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      revoked_at            TIMESTAMPTZ,
+      last_sync_at          TIMESTAMPTZ
+    );
+  `;
 }
 
 let schemaInitPromise: Promise<void> | null = null;
