@@ -1480,6 +1480,7 @@ export function HomeAuthenticatedScreen() {
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
       displayName={headerDisplayName}
+      layoutIsWide={isWideHome}
         activeHeaderMenuKey={
           swapActiveOnWide
             ? "swap"

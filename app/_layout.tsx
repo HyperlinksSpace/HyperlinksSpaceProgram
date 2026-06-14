@@ -20,7 +20,6 @@ import { TelegramProvider, useTelegram } from "../ui/components/Telegram";
 import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext";
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
-import { HspScrollColumn } from "../ui/components/HspScrollColumn";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
@@ -340,23 +339,17 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        rootScroll ? (
-          <HspScrollColumn
-            indicatorColor={colors.accent}
-            style={styles.mainShell}
-            contentContainerStyle={styles.mainScrollContent}
-            containOverscroll={false}
-          >
-            <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
-          </HspScrollColumn>
-        ) : (
-          <View style={styles.mainShell}>
-            <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
-          </View>
-        )
+        <View style={[styles.mainShell, rootScroll ? styles.mainShellDocumentScroll : null]}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { flex: 1, minHeight: 0 },
+            }}
+          />
+        </View>
       ) : (
         <View style={styles.main}>
-          <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1 } }} />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { flex: 1, minHeight: 0 } }} />
         </View>
       )}
       {
@@ -414,9 +407,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     position: "relative",
+    alignSelf: "stretch",
+    width: "100%",
   },
-  /** Lets `flex: 1` screens fill at least the column height so centered content is not clipped (RN-web). */
-  mainScrollContent: {
+  /** Narrow authenticated home at `/`: page grows with feed; root `rootWeb` overflow scrolls. */
+  mainShellDocumentScroll: {
     flexGrow: 1,
-  },
+    flexShrink: 0,
+  } as ViewStyle,
 });

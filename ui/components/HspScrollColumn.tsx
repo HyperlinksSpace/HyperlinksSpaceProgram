@@ -50,6 +50,8 @@ type Props = {
    * Root layout passes false so zoomed document scroll still works when the main shell is exhausted.
    */
   containOverscroll?: boolean;
+  /** When false, content is flex-filled without scrolling (root layout on panel routes). */
+  scrollEnabled?: boolean;
 };
 
 /**
@@ -63,6 +65,7 @@ export function HspScrollColumn({
   onMetricsChange,
   scrollbarRightInsetPx = DEFAULT_SCROLLBAR_RIGHT_INSET,
   containOverscroll = true,
+  scrollEnabled = true,
 }: Props) {
   const colors = useColors();
   const thumbColor = indicatorColor ?? colors.accent;
@@ -300,6 +303,7 @@ export function HspScrollColumn({
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
+        scrollEnabled={scrollEnabled}
         showsVerticalScrollIndicator={false}
         onScroll={onScroll}
         onLayout={onLayout}

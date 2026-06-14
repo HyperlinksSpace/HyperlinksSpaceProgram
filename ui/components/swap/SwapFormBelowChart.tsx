@@ -24,7 +24,7 @@ type Props = {
 };
 
 /**
- * Buy / max·rotate·wallet / Sell / insufficient-amount blocks below the chart (prev-main).
+ * Sell / max·rotate·wallet / Buy / insufficient-amount blocks below the chart (prev-main).
  */
 export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
   const colors = useColors();
@@ -54,77 +54,6 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>
       <View style={{ paddingTop: 20 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text style={[typographyAeroport20, { color: colors.primary }]}>Buy</Text>
-          <SwapSampleTokenStrip onPress={openBuyCurrency} />
-        </View>
-        <View style={{ height: 15 }} />
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text style={[amountTextStyle, { color: colors.primary }]}>{buyAmountText}</Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={openBuyCurrency}
-            style={{ flexDirection: "row", alignItems: "center" }}
-          >
-            <Image source={swapTonTokenImage} style={{ width: 20, height: 20 }} contentFit="contain" />
-            <View style={{ width: 8 }} />
-            <Text style={[amountTextStyle, { color: colors.primary }]}>ton</Text>
-            <View style={{ width: 8 }} />
-            <SwapSelectChevron />
-          </Pressable>
-        </View>
-        <View style={{ height: 15 }} />
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text style={muted15}>{buyPriceText}</Text>
-          <Text style={muted15}>TON</Text>
-        </View>
-      </View>
-
-      <View style={{ height: 10 }} />
-
-      <View style={{ paddingVertical: 10 }}>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text style={muted15}>max.</Text>
-          <SwapRotateIcon />
-          <Pressable
-            accessibilityRole="button"
-            hitSlop={8}
-            style={{ flexDirection: "row", alignItems: "center" }}
-          >
-            <Text style={muted15}>Sendal Rodriges</Text>
-            <View style={{ width: 5 }} />
-            <Text style={muted15}>1$</Text>
-            <View style={{ width: 5 }} />
-            <SwapSelectChevron />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={{ paddingTop: 15, paddingBottom: 15 }}>
         <View
           style={{
             flexDirection: "row",
@@ -165,6 +94,77 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
           }}
         >
           <Text style={muted15}>{sellPriceText}</Text>
+          <Text style={muted15}>TON</Text>
+        </View>
+      </View>
+
+      <View style={{ height: 10 }} />
+
+      <View style={{ paddingVertical: 10 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={muted15}>max.</Text>
+          <SwapRotateIcon />
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={8}
+            style={{ flexDirection: "row", alignItems: "center" }}
+          >
+            <Text style={muted15}>Sendal Rodriges</Text>
+            <View style={{ width: 5 }} />
+            <Text style={muted15}>1$</Text>
+            <View style={{ width: 5 }} />
+            <SwapSelectChevron />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={{ paddingTop: 15, paddingBottom: 15 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={[typographyAeroport20, { color: colors.primary }]}>Buy</Text>
+          <SwapSampleTokenStrip onPress={openBuyCurrency} />
+        </View>
+        <View style={{ height: 15 }} />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={[amountTextStyle, { color: colors.primary }]}>{buyAmountText}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={openBuyCurrency}
+            style={{ flexDirection: "row", alignItems: "center" }}
+          >
+            <Image source={swapTonTokenImage} style={{ width: 20, height: 20 }} contentFit="contain" />
+            <View style={{ width: 8 }} />
+            <Text style={[amountTextStyle, { color: colors.primary }]}>ton</Text>
+            <View style={{ width: 8 }} />
+            <SwapSelectChevron />
+          </Pressable>
+        </View>
+        <View style={{ height: 15 }} />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Text style={muted15}>{buyPriceText}</Text>
           <Text style={muted15}>TON</Text>
         </View>
       </View>

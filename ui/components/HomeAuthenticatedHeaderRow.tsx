@@ -161,6 +161,8 @@ type Props = {
   displayName: string;
   /** Wide layout: highlight this header menu item; others use secondary (inactive) styling. */
   activeHeaderMenuKey?: HeaderMenuKey | null;
+  /** When set, overrides width breakpoint inference (split-pane column count is authoritative). */
+  layoutIsWide?: boolean;
 };
 
 /**
@@ -168,7 +170,12 @@ type Props = {
  * Breakpoint uses the header shell width from `onLayout` (not only `useWindowDimensions`) so web layout matches the real column width.
  * At `firstBreakpoint` and above: centered Get/Swap/… strip overlay (painted after side columns so it is not covered on web); below: same strip under balance + profile.
  */
-export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeHeaderMenuKey }: Props) {
+export function HomeAuthenticatedHeaderRow({
+  walletAddress,
+  displayName,
+  activeHeaderMenuKey,
+  layoutIsWide,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const { signOut } = useAuth();
@@ -179,7 +186,8 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
   const widthForLayout = measuredWidth ?? readAuthenticatedHomeLayoutWidthPx(windowWidth);
-  const atOrAboveFirstBreakpoint = widthForLayout > AH.firstBreakpoint;
+  const atOrAboveFirstBreakpoint =
+    layoutIsWide ?? widthForLayout > AH.firstBreakpoint;
   const headerMenuActiveKey =
     atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;
   const trimmed = trimWalletAddress(walletAddress);
@@ -192,9 +200,9 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
 
   const handleMenuKeyPress = useCallback(
     (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
-      openAuthenticatedHomeRightPanel(key);
       const route = `/${key}`;
       if (atOrAboveFirstBreakpoint) {
+        openAuthenticatedHomeRightPanel(key);
         if (pathname === route) {
           router.replace("/");
         }

@@ -54,7 +54,7 @@ export default function Index() {
 
   if (isAuthenticated) {
     return (
-      <ShellView suppressHydrationWarning style={{ flex: 1 }}>
+      <ShellView suppressHydrationWarning style={{ flex: 1, minHeight: 0 }}>
         <HomeAuthenticatedScreen />
       </ShellView>
     );
