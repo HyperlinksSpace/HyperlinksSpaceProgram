@@ -5,6 +5,8 @@ import { layout, useColors } from "../theme";
 
 type Props = {
   children: ReactNode;
+  /** When false, only body (+ optional belowHeader) — no centered logo strip. */
+  showLogoHeader?: boolean;
   showBrowserBackButton?: boolean;
   headerRightAccessory?: ReactNode;
   /** Full-bleed row under the logo header (e.g. choose-currency subheader on narrow routes). */
@@ -17,6 +19,7 @@ type Props = {
  */
 export function AuthenticatedAppShell({
   children,
+  showLogoHeader = true,
   showBrowserBackButton = true,
   headerRightAccessory,
   belowHeader,
@@ -33,10 +36,12 @@ export function AuthenticatedAppShell({
         backgroundColor: colors.background,
       }}
     >
-      <CenteredLogoOnlyHeader
-        showBrowserBackButton={showBrowserBackButton}
-        rightAccessory={headerRightAccessory}
-      />
+      {showLogoHeader ? (
+        <CenteredLogoOnlyHeader
+          showBrowserBackButton={showBrowserBackButton}
+          rightAccessory={headerRightAccessory}
+        />
+      ) : null}
       {belowHeader}
       <View
         style={{

@@ -10,7 +10,7 @@ import {
   welcomeAuthButtonHoverBackground,
 } from "../../theme";
 import { useTelegram } from "../Telegram";
-import { SwapFilterIcon } from "../icons/SwapFilterIcon";
+import { SwapFilterButton } from "../icons/SwapFilterButton";
 
 /** Matches {@link AuthenticatedHomeLeftNavStrip} total strip height. */
 export const CHOOSE_CURRENCY_SUBHEADER_HEIGHT_PX = 55;
@@ -189,15 +189,7 @@ export function ChooseCurrencySubheader({
 
         {showFilter ? (
           <View style={styles.rightSlot}>
-            <Pressable
-              onPress={onFilterPress}
-              accessibilityRole="button"
-              accessibilityLabel={t("swap.chooseCurrency.filterA11y")}
-              hitSlop={8}
-              style={styles.filterPressable}
-            >
-              <SwapFilterIcon color={colors.primary} />
-            </Pressable>
+            <SwapFilterButton onPress={onFilterPress} />
           </View>
         ) : (
           <View style={styles.sideSlotSpacer} />
@@ -247,12 +239,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     alignSelf: "flex-start",
-  },
-  filterPressable: {
-    minWidth: 20,
-    minHeight: INNER_ROW_HEIGHT_PX,
-    justifyContent: "center",
-    alignItems: "center",
   },
   titleWrap: {
     ...StyleSheet.absoluteFillObject,

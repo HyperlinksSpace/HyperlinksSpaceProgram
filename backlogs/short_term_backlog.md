@@ -1,3 +1,5 @@
+Choose currency plots
+Back to Swap (< Buy & Sell)
 Disconnect telegram button
 Github login
 Telegram Messages

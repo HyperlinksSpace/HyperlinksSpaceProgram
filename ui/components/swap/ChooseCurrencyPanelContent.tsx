@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { View } from "react-native";
 import { closeSwapCurrencyPicker } from "../../swap/swapCurrencyPicker";
+import { useChooseCurrencyChrome } from "../../swap/chooseCurrencyChrome";
 import { useChooseCurrencyRows } from "../../swap/useChooseCurrencyRows";
+import { useTelegramWebAppBackButton } from "../../telegram/useTelegramWebAppBackButton";
 import { layout } from "../../theme";
-import { useTelegram } from "../Telegram";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
 import { ChooseCurrencySubheader } from "./ChooseCurrencySubheader";
 import { ChooseCurrencyTable } from "./ChooseCurrencyTable";
@@ -16,16 +17,18 @@ type Props = {
 
 /** Wide split-column picker body (subheader + list area). */
 export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletAddress }: Props) {
-  const { isInTelegram } = useTelegram();
   const { rows, isLoading, isFetchingMore, error, loadMore } = useChooseCurrencyRows(walletAddress);
   const contentInset = layout.contentSideInsetPx;
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const scrollShellBleed = { marginHorizontal: -contentInset };
+  const { showSubheaderBack, useTelegramNativeBack, titleAlign } = useChooseCurrencyChrome();
 
   const handleBack = useCallback(() => {
     closeSwapCurrencyPicker();
     onBackPress?.();
   }, [onBackPress]);
+
+  useTelegramWebAppBackButton(handleBack, useTelegramNativeBack);
 
   return (
     <View style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}>
@@ -33,9 +36,9 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletA
         <ChooseCurrencySubheader
           onBackPress={handleBack}
           onFilterPress={onFilterPress}
-          showBack={!isInTelegram}
+          showBack={showSubheaderBack}
           showFilter
-          titleAlign={isInTelegram ? "left" : "center"}
+          titleAlign={titleAlign}
         />
       </View>
       <View style={{ flex: 1, minHeight: 0, ...scrollShellBleed }}>
