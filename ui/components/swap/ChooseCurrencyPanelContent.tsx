@@ -1,9 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { closeSwapCurrencyPicker } from "../../swap/swapCurrencyPicker";
 import { useChooseCurrencyRows } from "../../swap/useChooseCurrencyRows";
 import { layout } from "../../theme";
 import { useTelegram } from "../Telegram";
+import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
 import { ChooseCurrencySubheader } from "./ChooseCurrencySubheader";
 import { ChooseCurrencyTable } from "./ChooseCurrencyTable";
 
@@ -18,6 +19,8 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletA
   const { isInTelegram } = useTelegram();
   const { rows, isLoading, isFetchingMore, error, loadMore } = useChooseCurrencyRows(walletAddress);
   const contentInset = layout.contentSideInsetPx;
+  const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
+  const scrollShellBleed = { marginHorizontal: -contentInset };
 
   const handleBack = useCallback(() => {
     closeSwapCurrencyPicker();
@@ -26,7 +29,7 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletA
 
   return (
     <View style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}>
-      <View style={{ marginHorizontal: -contentInset }}>
+      <View style={scrollShellBleed}>
         <ChooseCurrencySubheader
           onBackPress={handleBack}
           onFilterPress={onFilterPress}
@@ -35,13 +38,14 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletA
           titleAlign={isInTelegram ? "left" : "center"}
         />
       </View>
-      <View style={{ flex: 1, width: "100%", minHeight: 0 }}>
+      <View style={{ flex: 1, minHeight: 0, ...scrollShellBleed }}>
         <ChooseCurrencyTable
           rows={rows}
           isLoading={isLoading}
           isFetchingMore={isFetchingMore}
           loadError={error}
           onLoadMore={loadMore}
+          columnShellWidthPx={splitMetrics?.middleColumnWidthPx ?? 0}
         />
       </View>
     </View>

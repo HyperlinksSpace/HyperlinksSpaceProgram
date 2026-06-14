@@ -24,6 +24,13 @@ import { AuthenticatedHomeMessagesPanel } from "../components/AuthenticatedHomeM
 import { GetPanelContent } from "../components/get/GetPanelContent";
 import { SendPanelContent } from "../components/send/SendPanelContent";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
+import type { AuthenticatedHomeSplitLayoutMetrics } from "../components/AuthenticatedHomeSplitLayoutMetricsContext";
+import {
+  isAuthenticatedHomeTripleColumnLayoutWidthPx,
+  isAuthenticatedHomeWideLayoutWidthPx,
+  readAuthenticatedHomeLayoutWidthPx,
+} from "../authenticatedHomeLayoutWidth";
+import { AuthenticatedHomePersistedPanelSlot } from "../components/AuthenticatedHomePersistedPanelSlot";
 import { HspScrollColumn } from "../components/HspScrollColumn";
 import { Address } from "@ton/core";
 import { type TelegramWalletRow, useTelegram } from "../components/Telegram";
@@ -560,8 +567,24 @@ export function HomeAuthenticatedScreen() {
   } = useTelegram();
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
-  const isWideHome = windowWidth > layout.authenticatedHome.firstBreakpoint;
-  const isTripleColumn = windowWidth > layout.authenticatedHome.secondBreakpoint;
+  const [splitLayoutMetrics, setSplitLayoutMetrics] =
+    useState<AuthenticatedHomeSplitLayoutMetrics | null>(null);
+  const onSplitLayoutMetricsChange = useCallback((metrics: AuthenticatedHomeSplitLayoutMetrics) => {
+    setSplitLayoutMetrics((current) =>
+      current?.splitRowWidthPx === metrics.splitRowWidthPx &&
+      current.columnCount === metrics.columnCount &&
+      current.middleColumnWidthPx === metrics.middleColumnWidthPx
+        ? current
+        : metrics,
+    );
+  }, []);
+  const fallbackLayoutWidthPx = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+  const isWideHome = splitLayoutMetrics
+    ? splitLayoutMetrics.columnCount >= 2
+    : isAuthenticatedHomeWideLayoutWidthPx(fallbackLayoutWidthPx);
+  const isTripleColumn = splitLayoutMetrics
+    ? splitLayoutMetrics.columnCount === 3
+    : isAuthenticatedHomeTripleColumnLayoutWidthPx(fallbackLayoutWidthPx);
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
   const tradeActiveOnWide = isWideHome && rightPanel === "trade";
@@ -1372,8 +1395,12 @@ export function HomeAuthenticatedScreen() {
 
   const homeMainColumnBlocks = (
     <>
-      {homeNavIndex === 0 ? <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} /> : null}
-      {homeNavIndex === 1 ? <AuthenticatedHomeMessagesPanel colors={colors} scrollable={false} /> : null}
+      <AuthenticatedHomePersistedPanelSlot active={homeNavIndex === 0}>
+        <AuthenticatedHomeFeedPanel colors={colors} scrollable={false} />
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={homeNavIndex === 1}>
+        <AuthenticatedHomeMessagesPanel colors={colors} scrollable={false} />
+      </AuthenticatedHomePersistedPanelSlot>
       {telegramUsername ? (
         <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
           <Text
@@ -1499,83 +1526,98 @@ export function HomeAuthenticatedScreen() {
     </HspScrollColumn>
   );
 
+  const homeWideRightColumn = (
+    <View
+      style={{
+        flex: 1,
+        width: "100%",
+        alignSelf: "stretch",
+        minHeight: 0,
+      }}
+    >
+      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "swap"}>
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            alignSelf: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <AuthenticatedHomePersistedPanelSlot active={swapCurrencySide == null}>
+            <SwapPanelContent />
+          </AuthenticatedHomePersistedPanelSlot>
+          <AuthenticatedHomePersistedPanelSlot active={swapCurrencySide != null}>
+            <ChooseCurrencyPanelContent walletAddress={effectiveWalletAddress ?? null} />
+          </AuthenticatedHomePersistedPanelSlot>
+        </View>
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "trade"}>
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            alignSelf: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <TradePanelContent />
+        </View>
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "smart"}>
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            alignSelf: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <SmartPanelContent />
+        </View>
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "send"}>
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            alignSelf: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <SendPanelContent />
+        </View>
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "get"}>
+        <View
+          style={{
+            flex: 1,
+            width: "100%",
+            alignSelf: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <GetPanelContent
+            showTitleRow={!isWideHome}
+            walletAddress={effectiveWalletAddress ?? ""}
+            displayName={headerDisplayName}
+          />
+        </View>
+      </AuthenticatedHomePersistedPanelSlot>
+    </View>
+  );
+
   return (
     <AuthenticatedHomeChrome
       compactScroll={!isWideHome && Platform.OS === "web"}
       header={isWideHome ? homeHeaderRow : null}
     >
       <AuthenticatedHomeSplitBody
+        onSplitLayoutMetricsChange={onSplitLayoutMetricsChange}
         leftColumnFooter={isWideHome ? mainColumnFooter : null}
         farRight={aiSearchColumnContent}
         left={homeLeftColumn}
-        right={
-          rightPanel === "swap" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                minHeight: 0,
-              }}
-            >
-              {swapCurrencySide != null ? (
-                <ChooseCurrencyPanelContent walletAddress={effectiveWalletAddress ?? null} />
-              ) : (
-                <SwapPanelContent />
-              )}
-            </View>
-          ) : rightPanel === "trade" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                minHeight: 0,
-              }}
-            >
-              <TradePanelContent />
-            </View>
-          ) : rightPanel === "smart" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                minHeight: 0,
-              }}
-            >
-              <SmartPanelContent />
-            </View>
-          ) : rightPanel === "send" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                minHeight: 0,
-              }}
-            >
-              <SendPanelContent />
-            </View>
-          ) : rightPanel === "get" ? (
-            <View
-              style={{
-                flex: 1,
-                width: "100%",
-                alignSelf: "stretch",
-                minHeight: 0,
-              }}
-            >
-              <GetPanelContent
-                showTitleRow={!isWideHome}
-                walletAddress={effectiveWalletAddress ?? ""}
-                displayName={headerDisplayName}
-              />
-            </View>
-          ) : (
-            <View style={{ flex: 1 }} />
-          )
-        }
+        right={homeWideRightColumn}
         middleColumnFooter={
           sendActiveOnWide
             ? isTripleColumn

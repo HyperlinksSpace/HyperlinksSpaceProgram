@@ -83,6 +83,8 @@ type Props = {
    * Wide three-column layout: footer pinned under `farRight` (typically {@link GlobalBottomBar}).
    */
   thirdColumnFooter?: ReactNode;
+  /** Notifies parent when measured split layout changes (wide vs compact). */
+  onSplitLayoutMetricsChange?: (metrics: AuthenticatedHomeSplitLayoutMetrics) => void;
 };
 
 /**
@@ -97,6 +99,7 @@ export function AuthenticatedHomeSplitBody({
   leftColumnFooter,
   middleColumnFooter,
   thirdColumnFooter,
+  onSplitLayoutMetricsChange,
 }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
@@ -166,6 +169,10 @@ export function AuthenticatedHomeSplitBody({
       columnCount,
     };
   }, [effectiveWidth, isWide, isTriple, rowWidth, leftPanePx, thirdPanePx]);
+
+  useEffect(() => {
+    onSplitLayoutMetricsChange?.(splitLayoutMetrics);
+  }, [onSplitLayoutMetricsChange, splitLayoutMetrics]);
 
   useEffect(() => {
     if (isWide) return;

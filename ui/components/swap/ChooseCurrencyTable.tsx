@@ -52,8 +52,7 @@ import { resolveChooseCurrencyColumnLayout } from "./chooseCurrencyTableLayout";
 import type { ChooseCurrencyVisibleColumn } from "./chooseCurrencyTableLayout";
 import { buildChooseCurrencyColumnMetrics } from "./chooseCurrencyTableMeasure";
 import {
-  CHOOSE_CURRENCY_DLLR_ROW,
-  CHOOSE_CURRENCY_SAMPLE_ROWS,
+  buildChooseCurrencyDllrRow,
   type ChooseCurrencyColumnKey,
   type ChooseCurrencyRow,
 } from "./chooseCurrencyTableTypes";
@@ -106,6 +105,8 @@ function CurrencyIcon({ row }: { row: ChooseCurrencyRow }) {
       <View style={styles.currencyIconSlot}>
         <Image
           source={icon}
+          recyclingKey={row.rowKey}
+          cachePolicy="memory-disk"
           style={{
             width: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
             height: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
@@ -308,20 +309,26 @@ type Props = {
   isFetchingMore?: boolean;
   loadError?: string | null;
   onLoadMore?: () => void;
+  /** Measured middle split-column width (px); authoritative on wide home. */
+  columnShellWidthPx?: number;
 };
 
 export function ChooseCurrencyTable({
-  rows = CHOOSE_CURRENCY_SAMPLE_ROWS,
+  rows: rowsProp,
   isLoading = false,
   isFetchingMore = false,
   loadError = null,
   onLoadMore,
+  columnShellWidthPx = 0,
 }: Props) {
-  const { t, tf } = useAppStrings();
+  const { t, tf, locale } = useAppStrings();
+  const defaultRows = useMemo(() => [buildChooseCurrencyDllrRow(locale)] as const, [locale]);
+  const rows = rowsProp ?? defaultRows;
   const colors = useColors();
   const { widthPx, onLayout, onRef } = useObservedWidth("choose_currency_table");
   const flatListRef = useRef<FlatList<ChooseCurrencyRow>>(null);
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
+  const [shellLayoutH, setShellLayoutH] = useState(0);
 
   const headers = useMemo(
     () =>
@@ -338,17 +345,31 @@ export function ChooseCurrencyTable({
     [t],
   );
 
-  const layoutReferenceRows = useMemo(() => [CHOOSE_CURRENCY_DLLR_ROW] as const, []);
+  const layoutReferenceRows = useMemo(() => [buildChooseCurrencyDllrRow(locale)] as const, [locale]);
 
   const visibleColumns = useMemo(() => {
     const metrics = buildChooseCurrencyColumnMetrics(headers, layoutReferenceRows);
-    const shellWidthPx = widthPx > 0 ? widthPx : Number.POSITIVE_INFINITY;
+    const shellWidthPx =
+      columnShellWidthPx > 0
+        ? columnShellWidthPx
+        : widthPx > 0
+          ? widthPx
+          : Number.POSITIVE_INFINITY;
     const contentWidthPx =
       shellWidthPx === Number.POSITIVE_INFINITY
         ? shellWidthPx
         : Math.max(0, shellWidthPx - CONTENT_INSET_PX * 2);
     return resolveChooseCurrencyColumnLayout(contentWidthPx, metrics);
-  }, [headers, layoutReferenceRows, widthPx]);
+  }, [columnShellWidthPx, headers, layoutReferenceRows, widthPx]);
+
+  const onShellLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      onLayout(e);
+      const lh = e.nativeEvent.layout.height;
+      setShellLayoutH((current) => (current === lh ? current : lh));
+    },
+    [onLayout],
+  );
 
   const syncScrollMetricsFromDom = useCallback(() => {
     if (Platform.OS !== "web") return;
@@ -464,15 +485,16 @@ export function ChooseCurrencyTable({
   }, []);
 
   const indicator = useMemo(() => {
+    const trackH = shellLayoutH > 0 ? shellLayoutH : scroll.layoutH;
     const viewH = scroll.layoutH;
     const contentH = scroll.contentH;
     const y = scroll.scrollY;
-    if (viewH <= 0 || contentH <= 0 || contentH <= viewH + 0.5) {
-      return { show: false as const, thumbH: 0, thumbTop: 0 };
+    if (trackH <= 0 || viewH <= 0 || contentH <= 0 || contentH <= viewH + 0.5) {
+      return { show: false as const, thumbH: 0, thumbTop: 0, trackH: 0 };
     }
     const maxScroll = Math.max(1e-6, contentH - viewH);
-    const { thumbSpan, thumbOffset } = scrollIndicatorThumbSpanAndOffset(
-      viewH,
+    const { thumbSpan } = scrollIndicatorThumbSpanAndOffset(
+      trackH,
       viewH,
       contentH,
       y,
@@ -484,14 +506,14 @@ export function ChooseCurrencyTable({
       CHOOSE_CURRENCY_TABLE_SCROLL_INDICATOR_THUMB_MIN_PX,
       thumbSpan,
     );
-    const maxTravel = Math.max(0, viewH - thumbH);
-    let thumbTop = y <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : thumbOffset;
-    if (y >= maxScroll - SCROLL_INDICATOR_SCROLL_EPS) {
-      thumbTop = maxTravel;
-    }
+    const maxTravel = Math.max(0, trackH - thumbH);
+    const scrollClamped = Math.max(0, Math.min(y, maxScroll));
+    let thumbTop = (scrollClamped / maxScroll) * maxTravel;
+    if (scrollClamped <= SCROLL_INDICATOR_SCROLL_EPS) thumbTop = 0;
+    if (scrollClamped >= maxScroll - SCROLL_INDICATOR_SCROLL_EPS) thumbTop = maxTravel;
     thumbTop = Math.max(0, Math.min(thumbTop, maxTravel));
-    return { show: true as const, thumbH, thumbTop, maxScroll };
-  }, [scroll]);
+    return { show: true as const, thumbH, thumbTop, maxScroll, trackH };
+  }, [scroll, shellLayoutH]);
 
   const listHeader = useMemo(
     () => (
@@ -549,11 +571,7 @@ export function ChooseCurrencyTable({
   }, [colors.accent, colors.secondary, isFetchingMore, isLoading, loadError, rows.length, t]);
 
   return (
-    <View
-      style={[styles.shell, { marginHorizontal: -CONTENT_INSET_PX }]}
-      onLayout={onLayout}
-      ref={onRef as never}
-    >
+    <View style={styles.shell} onLayout={onShellLayout} ref={onRef as never}>
       <FlatList
         ref={flatListRef}
         data={rows as ChooseCurrencyRow[]}
@@ -588,7 +606,7 @@ export function ChooseCurrencyTable({
         >
           <ScrollIndicatorDragHandle
             axis="vertical"
-            trackSpan={scroll.layoutH}
+            trackSpan={indicator.trackH}
             thumbSpan={indicator.thumbH}
             thumbOffset={indicator.thumbTop}
             scrollRange={indicator.maxScroll}
@@ -621,11 +639,9 @@ export function ChooseCurrencyTable({
 const styles = StyleSheet.create({
   shell: {
     flex: 1,
-    width: "100%",
-    alignSelf: "stretch",
     minHeight: 0,
-    overflow: "hidden",
     position: "relative",
+    alignSelf: "stretch",
   },
   list: {
     flex: 1,

@@ -28,8 +28,24 @@ export const CHOOSE_CURRENCY_TABLE_CURRENCY_COLUMN_FLOOR_PX = 88;
 export const CHOOSE_CURRENCY_TABLE_BALANCE_COLUMN_FLOOR_PX = 52;
 export const CHOOSE_CURRENCY_TABLE_RATE_COLUMN_FLOOR_PX = 76;
 export const CHOOSE_CURRENCY_TABLE_NETWORKS_COLUMN_FLOOR_PX = 56;
-export const CHOOSE_CURRENCY_TABLE_MARKET_CAP_COLUMN_FLOOR_PX = 56;
-export const CHOOSE_CURRENCY_TABLE_VOLUME_COLUMN_FLOOR_PX = 52;
+export const CHOOSE_CURRENCY_TABLE_MARKET_CAP_COLUMN_FLOOR_PX = 88;
+export const CHOOSE_CURRENCY_TABLE_VOLUME_COLUMN_FLOOR_PX = 80;
+
+/** Representative market-cap strings for column width measurement. */
+export const CHOOSE_CURRENCY_TABLE_MARKET_CAP_LAYOUT_SAMPLES = [
+  "16b$+",
+  "999b$+",
+  "16 млрд. $ +",
+  "999 млрд. $ +",
+] as const;
+
+/** Representative volume strings for column width measurement. */
+export const CHOOSE_CURRENCY_TABLE_VOLUME_LAYOUT_SAMPLES = [
+  "123m$",
+  "999m$",
+  "123 млн. $ +",
+  "999 млн. $ +",
+] as const;
 export const CHOOSE_CURRENCY_TABLE_LAST_YEAR_COLUMN_FLOOR_PX = 44;
 
 /** Representative rate strings for column width measurement (micro-cap tokens). */

@@ -1,15 +1,13 @@
 import { Redirect } from "expo-router";
 import { useLayoutEffect } from "react";
-import { useWindowDimensions } from "react-native";
 import { useAuth } from "../../auth/AuthContext";
+import { useAuthenticatedHomeRouteWideLayout } from "../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
 import { SmartScreen } from "../../ui/screens/SmartScreen";
-import { layout } from "../../ui/theme";
 
 export default function SmartRoute() {
   const { isAuthenticated, authReady } = useAuth();
-  const { width: windowWidth } = useWindowDimensions();
-  const isWide = windowWidth > layout.authenticatedHome.firstBreakpoint;
+  const isWide = useAuthenticatedHomeRouteWideLayout();
 
   useLayoutEffect(() => {
     if (isWide) {

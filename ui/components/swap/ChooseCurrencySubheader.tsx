@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Platform, PixelRatio, Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -19,9 +19,59 @@ const INNER_ROW_HEIGHT_PX = CHOOSE_CURRENCY_SUBHEADER_HEIGHT_PX - STRIP_PADDING_
 
 const TITLE_FONT_SIZE_PX = 20;
 const TITLE_LINE_HEIGHT_PX = 25;
+const TITLE_MIN_FONT_SIZE_PX = 12;
+/** Reserve space for back / filter controls overlapping the centered title. */
+const TITLE_SIDE_RESERVE_PX = 72;
 
 const BACK_BUTTON_HEIGHT_PX = 30;
 const BACK_BUTTON_HORIZONTAL_PADDING_PX = 15;
+
+function titleLineHeightPx(fontSizePx: number): number {
+  return Math.round(fontSizePx * (TITLE_LINE_HEIGHT_PX / TITLE_FONT_SIZE_PX));
+}
+
+function measureTitleTextWidthPx(text: string, fontSizePx: number): number {
+  if (!text) return 0;
+
+  const lineHeightPx = titleLineHeightPx(fontSizePx);
+
+  if (Platform.OS === "web" && typeof document !== "undefined") {
+    const probe = document.createElement("span");
+    probe.style.position = "fixed";
+    probe.style.left = "-9999px";
+    probe.style.top = "0";
+    probe.style.visibility = "hidden";
+    probe.style.pointerEvents = "none";
+    probe.style.whiteSpace = "nowrap";
+    probe.style.fontFamily = WEB_UI_SANS_STACK;
+    probe.style.fontSize = `${fontSizePx}px`;
+    probe.style.fontWeight = "400";
+    probe.style.lineHeight = `${lineHeightPx}px`;
+    probe.textContent = text;
+    document.body.appendChild(probe);
+    const width = Math.ceil(probe.getBoundingClientRect().width);
+    document.body.removeChild(probe);
+    return width;
+  }
+
+  return Math.ceil(text.length * fontSizePx * 0.56);
+}
+
+function resolveTitleFontSizePx(text: string, availableWidthPx: number): number {
+  if (availableWidthPx <= 0 || !text) return TITLE_FONT_SIZE_PX;
+
+  const widthAtMax = measureTitleTextWidthPx(text, TITLE_FONT_SIZE_PX);
+  if (widthAtMax <= availableWidthPx) return TITLE_FONT_SIZE_PX;
+
+  const scaled = TITLE_FONT_SIZE_PX * (availableWidthPx / widthAtMax);
+  return Math.max(TITLE_MIN_FONT_SIZE_PX, Math.floor(scaled * 10) / 10);
+}
+
+function titleWrapContentWidthPx(wrapWidthPx: number, titleAlign: "left" | "center"): number {
+  const paddingLeft = titleAlign === "left" ? STRIP_PADDING_PX : TITLE_SIDE_RESERVE_PX;
+  const paddingRight = TITLE_SIDE_RESERVE_PX;
+  return Math.max(0, wrapWidthPx - paddingLeft - paddingRight);
+}
 
 function menuStripRuleThickness(): number {
   if (Platform.OS === "web") {
@@ -52,7 +102,22 @@ export function ChooseCurrencySubheader({
   const colors = useColors();
   const { colorScheme } = useTelegram();
   const [hoverBack, setHoverBack] = useState(false);
+  const [titleWrapWidthPx, setTitleWrapWidthPx] = useState(0);
   const lineT = menuStripRuleThickness();
+  const title = t("swap.chooseCurrency.title");
+
+  const onTitleWrapLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number } } }) => {
+      const nextWidth = Math.round(event.nativeEvent.layout.width);
+      setTitleWrapWidthPx((current) => (current === nextWidth ? current : nextWidth));
+    },
+    [],
+  );
+
+  const titleFontSizePx = useMemo(() => {
+    const availableWidthPx = titleWrapContentWidthPx(titleWrapWidthPx, titleAlign);
+    return resolveTitleFontSizePx(title, availableWidthPx);
+  }, [title, titleAlign, titleWrapWidthPx]);
 
   const borderLineStyle = useMemo((): ViewStyle => {
     return {
@@ -71,6 +136,8 @@ export function ChooseCurrencySubheader({
     {
       color: colors.primary,
       textAlign: titleAlign,
+      fontSize: titleFontSizePx,
+      lineHeight: titleLineHeightPx(titleFontSizePx),
     },
   ];
 
@@ -111,9 +178,12 @@ export function ChooseCurrencySubheader({
           <View style={styles.sideSlotSpacer} />
         )}
 
-        <View style={[styles.titleWrap, titleAlign === "left" ? styles.titleWrapLeft : null]}>
-          <Text style={titleStyle} numberOfLines={1}>
-            {t("swap.chooseCurrency.title")}
+        <View
+          style={[styles.titleWrap, titleAlign === "left" ? styles.titleWrapLeft : null]}
+          onLayout={onTitleWrapLayout}
+        >
+          <Text style={titleStyle} numberOfLines={1} ellipsizeMode="tail">
+            {title}
           </Text>
         </View>
 
@@ -187,18 +257,16 @@ const styles = StyleSheet.create({
   titleWrap: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
-    paddingHorizontal: 72,
+    paddingHorizontal: TITLE_SIDE_RESERVE_PX,
     pointerEvents: "none",
   },
   titleWrapLeft: {
     alignItems: "flex-start",
     paddingLeft: STRIP_PADDING_PX,
-    paddingRight: 72,
+    paddingRight: TITLE_SIDE_RESERVE_PX,
   },
   title: {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
-    fontSize: TITLE_FONT_SIZE_PX,
-    lineHeight: TITLE_LINE_HEIGHT_PX,
     fontWeight: "400",
     width: "100%",
     includeFontPadding: false,

@@ -1,7 +1,7 @@
 import type { Router } from "expo-router";
 
 import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
-import { layout } from "../theme";
+import { readAuthenticatedHomeLayoutWidthPx, isAuthenticatedHomeWideLayoutWidthPx } from "../authenticatedHomeLayoutWidth";
 import { openSwapCurrencyPicker, type SwapCurrencySide } from "./swapCurrencyPicker";
 
 function isAuthenticatedHomePath(pathname: string | null | undefined): boolean {
@@ -14,7 +14,7 @@ export function navigateToSwapCurrencyPicker(
   windowWidth: number,
   pathname?: string | null,
 ): void {
-  if (windowWidth > layout.authenticatedHome.firstBreakpoint) {
+  if (isAuthenticatedHomeWideLayoutWidthPx(readAuthenticatedHomeLayoutWidthPx(windowWidth))) {
     openSwapCurrencyPicker(side);
     openAuthenticatedHomeRightPanel("swap");
     if (!isAuthenticatedHomePath(pathname)) {

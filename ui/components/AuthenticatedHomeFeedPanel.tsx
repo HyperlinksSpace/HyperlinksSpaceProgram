@@ -239,6 +239,8 @@ function FeedFeedRow({
         {iconUrl ? (
           <Image
             source={{ uri: iconUrl }}
+            recyclingKey={`feed-${item.id}`}
+            cachePolicy="memory-disk"
             accessibilityIgnoresInvertColors
             style={{ width: ICON_PX, height: ICON_PX }}
             contentFit="contain"

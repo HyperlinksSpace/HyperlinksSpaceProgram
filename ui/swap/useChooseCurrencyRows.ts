@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { useAppStrings } from "../../locales/AppStringsContext";
 import {
-  CHOOSE_CURRENCY_DLLR_ROW,
+  buildChooseCurrencyDllrRow,
   type ChooseCurrencyRow,
 } from "../components/swap/chooseCurrencyTableTypes";
 import { fetchAccountSwapJettons } from "./fetchSwapJettons";
@@ -46,6 +47,7 @@ export function useChooseCurrencyRows(
   walletAddress: string | null | undefined,
   enabled = true,
 ): ChooseCurrencyRowsState {
+  const { locale } = useAppStrings();
   const catalog = useSyncExternalStore(
     subscribeSwapJettonsCatalog,
     getSwapJettonsCatalogSnapshot,
@@ -95,15 +97,17 @@ export function useChooseCurrencyRows(
     [catalog.jettons, accountItems],
   );
 
+  const dllrRow = useMemo(() => buildChooseCurrencyDllrRow(locale), [locale]);
+
   const rows = useMemo(() => {
     const apiRows: ChooseCurrencyRow[] = [];
     for (const jetton of jettons) {
-      const row = mapJettonToChooseCurrencyRow(jetton, balanceByAddress);
+      const row = mapJettonToChooseCurrencyRow(jetton, balanceByAddress, locale);
       if (!row) continue;
       apiRows.push(row);
     }
-    return [CHOOSE_CURRENCY_DLLR_ROW, ...apiRows];
-  }, [jettons, balanceByAddress]);
+    return [dllrRow, ...apiRows];
+  }, [balanceByAddress, dllrRow, jettons, locale]);
 
   const loadMore = useCallback(() => {
     requestSwapJettonsNextPage();

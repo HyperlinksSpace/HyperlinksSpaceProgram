@@ -12,6 +12,8 @@ type Props = {
   layoutWidthPx?: number;
 };
 
+const svgTextByUri = new Map<string, string>();
+
 function patchSmartLeadSvgMarkup(svgText: string, heightPx: number): string {
   return svgText.replace(/<svg\b([^>]*)>/i, (_match, attrs: string) => {
     const cleaned = attrs
@@ -28,15 +30,23 @@ function patchSmartLeadSvgMarkup(svgText: string, heightPx: number): string {
  */
 export function SmartLeadImage({ source, style, layoutWidthPx = 0 }: Props) {
   const uri = Asset.fromModule(source).uri;
-  const [rawSvg, setRawSvg] = useState<string | null>(null);
+  const [rawSvg, setRawSvg] = useState<string | null>(() => svgTextByUri.get(uri) ?? null);
   const { height, onProbeRef } = useSmartLeadLayout({ layoutWidthPx });
 
   useEffect(() => {
+    const cached = svgTextByUri.get(uri);
+    if (cached) {
+      setRawSvg(cached);
+      return;
+    }
+
     let cancelled = false;
     void fetch(uri)
       .then((response) => response.text())
       .then((text) => {
-        if (!cancelled) setRawSvg(text);
+        if (cancelled) return;
+        svgTextByUri.set(uri, text);
+        setRawSvg(text);
       })
       .catch(() => {
         if (!cancelled) setRawSvg(null);

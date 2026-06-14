@@ -149,10 +149,23 @@ export function resolveChooseCurrencyColumnLayout(
   assigned = columns.reduce((sum, column) => sum + column.widthPx, 0);
   absorbRemainingGap(columns, effectiveShell - assigned);
 
-  return columns.map((column) => ({
+  const rounded = columns.map((column) => ({
     key: column.key,
     widthPx: Math.max(1, Math.round(column.widthPx)),
   }));
+
+  const roundedSum = rounded.reduce((sum, column) => sum + column.widthPx, 0);
+  const roundingGap = effectiveShell - roundedSum;
+  if (Math.abs(roundingGap) >= 1 && rounded.length > 0) {
+    const currencyIndex = rounded.findIndex((column) => column.key === "currency");
+    const adjustIndex = currencyIndex >= 0 ? currencyIndex : rounded.length - 1;
+    rounded[adjustIndex] = {
+      ...rounded[adjustIndex]!,
+      widthPx: Math.max(1, rounded[adjustIndex]!.widthPx + roundingGap),
+    };
+  }
+
+  return rounded;
 }
 
 /** @deprecated Use resolveChooseCurrencyColumnLayout. */

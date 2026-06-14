@@ -1,3 +1,4 @@
+import type { AppLocale } from "../../locales/appStrings";
 import type { ChooseCurrencyRow } from "../components/swap/chooseCurrencyTableTypes";
 import { swapTonTokenImage } from "../components/swap/swapFormAssets";
 import {
@@ -29,6 +30,7 @@ function jettonIcon(jetton: SwapJetton) {
 export function mapJettonToChooseCurrencyRow(
   jetton: SwapJetton,
   balanceByAddress: Map<string, string>,
+  locale: AppLocale = "en",
 ): ChooseCurrencyRow | null {
   const symbol = jetton.symbol?.trim() ?? "";
   const address = jetton.address?.toLowerCase();
@@ -50,8 +52,8 @@ export function mapJettonToChooseCurrencyRow(
         : "—",
     rate: formatSwapTokenPriceUsd(stats?.price_usd),
     networks: "TON",
-    marketCap: formatSwapUsdCompact(stats?.mcap ?? stats?.fdmc),
-    volume: formatSwapUsdCompact(stats?.volume_usd_24h),
+    marketCap: formatSwapUsdCompact(stats?.mcap ?? stats?.fdmc, locale),
+    volume: formatSwapUsdCompact(stats?.volume_usd_24h, locale),
     lastYearKind: "stable",
   };
 }

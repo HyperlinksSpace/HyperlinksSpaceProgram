@@ -1,5 +1,7 @@
 import type { ImageSource } from "expo-image";
 
+import type { AppLocale } from "../../../locales/appStrings";
+import { formatSwapUsdCompact } from "../../swap/formatSwapTokenMarketValue";
 import { swapDllrTokenImage } from "./swapFormAssets";
 
 export type ChooseCurrencyIconSource = ImageSource | { uri: string };
@@ -56,21 +58,26 @@ export const CHOOSE_CURRENCY_COLUMN_PRIORITY: Record<ChooseCurrencyColumnKey, Ch
     lastYear: 8,
   };
 
-/** Hardcoded first row — always pinned at top of the choose-currency list. */
-export const CHOOSE_CURRENCY_DLLR_ROW: ChooseCurrencyRow = {
-  rowKey: "jetton:dllr",
-  currency: {
-    name: "Dollar",
-    ticker: "DLLR",
-    icon: swapDllrTokenImage,
-  },
-  balance: "1",
-  rate: "$1",
-  networks: "TON, ETH...",
-  marketCap: "16b$+",
-  volume: "123m$",
-  lastYearKind: "stable",
-};
+/** Locale-aware DLLR placeholder stats for the pinned first row. */
+export function buildChooseCurrencyDllrRow(locale: AppLocale): ChooseCurrencyRow {
+  return {
+    rowKey: "jetton:dllr",
+    currency: {
+      name: "Dollar",
+      ticker: "DLLR",
+      icon: swapDllrTokenImage,
+    },
+    balance: "1",
+    rate: "$1",
+    networks: "TON, ETH...",
+    marketCap: formatSwapUsdCompact(16_000_000_000, locale),
+    volume: formatSwapUsdCompact(123_000_000, locale),
+    lastYearKind: "stable",
+  };
+}
+
+/** Hardcoded first row — always pinned at top of the choose-currency list (English defaults). */
+export const CHOOSE_CURRENCY_DLLR_ROW: ChooseCurrencyRow = buildChooseCurrencyDllrRow("en");
 
 /** Fallback when live API rows are unavailable. */
 export const CHOOSE_CURRENCY_SAMPLE_ROWS: readonly ChooseCurrencyRow[] = [CHOOSE_CURRENCY_DLLR_ROW];

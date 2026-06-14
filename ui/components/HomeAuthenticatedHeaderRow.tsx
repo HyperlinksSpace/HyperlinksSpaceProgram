@@ -15,6 +15,7 @@ import {
   type ThemeColors,
   useColors,
 } from "../theme";
+import { readAuthenticatedHomeLayoutWidthPx } from "../authenticatedHomeLayoutWidth";
 import {
   MenuSmartIcon,
   MenuGetIcon,
@@ -177,7 +178,7 @@ export function HomeAuthenticatedHeaderRow({ walletAddress, displayName, activeH
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
-  const widthForLayout = measuredWidth ?? windowWidth;
+  const widthForLayout = measuredWidth ?? readAuthenticatedHomeLayoutWidthPx(windowWidth);
   const atOrAboveFirstBreakpoint = widthForLayout > AH.firstBreakpoint;
   const headerMenuActiveKey =
     atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;

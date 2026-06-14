@@ -1,6 +1,24 @@
-export function formatSwapUsdCompact(value: number | null | undefined): string {
+import type { AppLocale } from "../../locales/appStrings";
+
+export function formatSwapUsdCompact(
+  value: number | null | undefined,
+  locale: AppLocale = "en",
+): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
   const abs = Math.abs(value);
+
+  if (locale === "ru") {
+    if (abs >= 1e12) {
+      const scaled = value / 1e12;
+      const label = Number.isInteger(scaled) ? String(Math.round(scaled)) : scaled.toFixed(1).replace(/\.0$/, "");
+      return `${label} трлн. $ +`;
+    }
+    if (abs >= 1e9) return `${Math.round(value / 1e9)} млрд. $ +`;
+    if (abs >= 1e6) return `${Math.round(value / 1e6)} млн. $ +`;
+    if (abs >= 1e3) return `${Math.round(value / 1e3)} тыс. $ +`;
+    return `${value.toFixed(2)} $`;
+  }
+
   if (abs >= 1e12) return `${(value / 1e12).toFixed(1)}t$`;
   if (abs >= 1e9) return `${Math.round(value / 1e9)}b$+`;
   if (abs >= 1e6) return `${Math.round(value / 1e6)}m$`;

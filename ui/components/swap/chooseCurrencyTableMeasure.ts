@@ -9,6 +9,7 @@ import {
   CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_TEXT_GAP_PX,
   CHOOSE_CURRENCY_TABLE_LAST_YEAR_COLUMN_FLOOR_PX,
   CHOOSE_CURRENCY_TABLE_MARKET_CAP_COLUMN_FLOOR_PX,
+  CHOOSE_CURRENCY_TABLE_MARKET_CAP_LAYOUT_SAMPLES,
   CHOOSE_CURRENCY_TABLE_MINI_CHART_MIN_WIDTH_PX,
   CHOOSE_CURRENCY_TABLE_NETWORKS_COLUMN_FLOOR_PX,
   CHOOSE_CURRENCY_TABLE_RANK_CELL_PADDING_RIGHT_PX,
@@ -17,6 +18,7 @@ import {
   CHOOSE_CURRENCY_TABLE_RATE_COLUMN_FLOOR_PX,
   CHOOSE_CURRENCY_TABLE_RATE_LAYOUT_SAMPLES,
   CHOOSE_CURRENCY_TABLE_VOLUME_COLUMN_FLOOR_PX,
+  CHOOSE_CURRENCY_TABLE_VOLUME_LAYOUT_SAMPLES,
 } from "./chooseCurrencyTableConstants";
 import type { ChooseCurrencyColumnKey, ChooseCurrencyRow } from "./chooseCurrencyTableTypes";
 
@@ -176,6 +178,14 @@ function rateContentWidthPx(header: string, rowRates: readonly string[]): number
   );
 }
 
+function compactUsdContentWidthPx(header: string, rowValues: readonly string[], layoutSamples: readonly string[]): number {
+  return Math.max(
+    measureTextWidthPx(header, headerTextStyle),
+    ...rowValues.map((value) => measureTextWidthPx(value, cellTextStyle)),
+    ...layoutSamples.map((value) => measureTextWidthPx(value, cellTextStyle)),
+  );
+}
+
 function currencyContentWidthPx(header: string, rows: readonly ChooseCurrencyRow[]): number {
   const headerWidth = measureTextWidthPx(header, headerTextStyle);
   const rowWidths = rows.map((row) => {
@@ -258,8 +268,16 @@ export function buildChooseCurrencyColumnMetrics(
     ),
     buildColumnMetrics(
       "marketCap",
-      textContentWidthPx(headers.marketCap, stableRows.map((row) => row.marketCap)),
-      textContentWidthPx(headers.marketCap, idealRows.map((row) => row.marketCap)),
+      compactUsdContentWidthPx(
+        headers.marketCap,
+        stableRows.map((row) => row.marketCap),
+        CHOOSE_CURRENCY_TABLE_MARKET_CAP_LAYOUT_SAMPLES,
+      ),
+      compactUsdContentWidthPx(
+        headers.marketCap,
+        idealRows.map((row) => row.marketCap),
+        CHOOSE_CURRENCY_TABLE_MARKET_CAP_LAYOUT_SAMPLES,
+      ),
     ),
     buildColumnMetrics(
       "networks",
@@ -268,8 +286,16 @@ export function buildChooseCurrencyColumnMetrics(
     ),
     buildColumnMetrics(
       "volume",
-      textContentWidthPx(headers.volume, stableRows.map((row) => row.volume)),
-      textContentWidthPx(headers.volume, idealRows.map((row) => row.volume)),
+      compactUsdContentWidthPx(
+        headers.volume,
+        stableRows.map((row) => row.volume),
+        CHOOSE_CURRENCY_TABLE_VOLUME_LAYOUT_SAMPLES,
+      ),
+      compactUsdContentWidthPx(
+        headers.volume,
+        idealRows.map((row) => row.volume),
+        CHOOSE_CURRENCY_TABLE_VOLUME_LAYOUT_SAMPLES,
+      ),
     ),
     buildColumnMetrics(
       "lastYear",
