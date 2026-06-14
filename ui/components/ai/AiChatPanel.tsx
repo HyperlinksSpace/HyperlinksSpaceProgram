@@ -7,9 +7,9 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { applyFirstNavigateAction, postAiChat } from "../../api/aiClient";
-import { useAppStrings } from "../../locales/AppStringsContext";
-import { typographySansSemibold, useColors } from "../theme";
+import { applyFirstNavigateAction, postAiChat } from "../../../api/aiClient";
+import { useAppStrings } from "../../../locales/AppStringsContext";
+import { typographySansSemibold, useColors } from "../../theme";
 
 type ChatMessage = {
   role: "user" | "assistant";

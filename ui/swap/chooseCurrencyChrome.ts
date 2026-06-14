@@ -36,7 +36,6 @@ export function useChooseCurrencyChrome() {
     isTmaMobile,
     hideLogoHeader,
     showSubheaderBack,
-    useTelegramNativeBack: isTmaMobile,
     titleAlign:
       isTmaMobile || (isTmaDesktop && isWide) ? ("left" as const) : ("center" as const),
   };

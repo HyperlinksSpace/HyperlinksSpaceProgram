@@ -3,7 +3,6 @@ import { View } from "react-native";
 import { closeSwapCurrencyPicker } from "../../swap/swapCurrencyPicker";
 import { useChooseCurrencyChrome } from "../../swap/chooseCurrencyChrome";
 import { useChooseCurrencyRows } from "../../swap/useChooseCurrencyRows";
-import { useTelegramWebAppBackButton } from "../../telegram/useTelegramWebAppBackButton";
 import { layout } from "../../theme";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
 import { ChooseCurrencySubheader } from "./ChooseCurrencySubheader";
@@ -21,14 +20,12 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletA
   const contentInset = layout.contentSideInsetPx;
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const scrollShellBleed = { marginHorizontal: -contentInset };
-  const { showSubheaderBack, useTelegramNativeBack, titleAlign } = useChooseCurrencyChrome();
+  const { showSubheaderBack, titleAlign } = useChooseCurrencyChrome();
 
   const handleBack = useCallback(() => {
     closeSwapCurrencyPicker();
     onBackPress?.();
   }, [onBackPress]);
-
-  useTelegramWebAppBackButton(handleBack, useTelegramNativeBack);
 
   return (
     <View style={{ flex: 1, width: "100%", alignSelf: "stretch", minHeight: 0 }}>

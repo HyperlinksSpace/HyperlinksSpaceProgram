@@ -24,6 +24,7 @@ import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/Bo
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
 import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
+import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import { authenticatedHomeBottomBarDock, layout, rootUsesDocumentScroll, useColors } from "../ui/theme";
@@ -210,6 +211,7 @@ function RootContent() {
   const pathname = useResolvedPathname();
   const auth = useAuth();
   const { authHydrated, authReady, isAuthenticated } = auth;
+  useTmaMobileNativeBackNavigation(pathname, isAuthenticated);
   const { width: windowWidth } = useWindowDimensions();
   const { setFooterDockedToScreenEdge } = useBottomBarLayout();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);

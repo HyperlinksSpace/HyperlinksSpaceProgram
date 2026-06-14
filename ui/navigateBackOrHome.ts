@@ -3,6 +3,11 @@ import type { Router } from "expo-router";
 
 type RouterBack = Pick<Router, "back" | "replace" | "canGoBack">;
 
+/** Authenticated home routes (`/`, legacy `/home`, bootstrap empty). */
+export function isAppHomePathname(pathname: string | null | undefined): boolean {
+  return pathname == null || pathname === "" || pathname === "/" || pathname === "/home";
+}
+
 function webHistoryIndex(): number | null {
   if (Platform.OS !== "web" || typeof window === "undefined") {
     return null;
