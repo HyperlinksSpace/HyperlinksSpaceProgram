@@ -36,6 +36,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 applyPlatformTextDefaults();
 
@@ -144,6 +145,12 @@ function RootScreenFooter({
   }
 
   return null;
+}
+
+/** Web-only Vercel Analytics; passes route so SPA navigations are tracked. */
+function WebVercelAnalytics({ pathname }: { pathname: string | null | undefined }) {
+  if (Platform.OS !== "web" || pathname == null) return null;
+  return <Analytics route={pathname} path={pathname} />;
 }
 
 function RootContent() {
@@ -373,6 +380,7 @@ function RootContent() {
           <FloatingShield />
         </>
       ) : null}
+      <WebVercelAnalytics pathname={pathname} />
     </View>
   );
 }

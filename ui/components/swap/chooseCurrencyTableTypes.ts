@@ -49,10 +49,10 @@ export const CHOOSE_CURRENCY_COLUMN_ORDER: readonly ChooseCurrencyColumnKey[] = 
 export const CHOOSE_CURRENCY_COLUMN_PRIORITY: Record<ChooseCurrencyColumnKey, ChooseCurrencyColumnPriority> =
   {
     rank: 5,
-    currency: 2,
-    balance: 3,
-    rate: 4,
-    marketCap: 1,
+    currency: 1,
+    balance: 4,
+    rate: 2,
+    marketCap: 3,
     networks: 6,
     volume: 7,
     lastYear: 8,
