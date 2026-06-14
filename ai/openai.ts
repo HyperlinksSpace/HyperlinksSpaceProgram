@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { HspAiAction } from "./intentActions.js";
 
 export type AiMode = "chat" | "token_info";
 
@@ -29,6 +30,8 @@ export type AiResponseBase = {
   mode: AiMode;
   /** True when claim insert failed (another instance or duplicate); caller should not send. */
   skipped?: boolean;
+  /** Optional shell actions (navigate, feature focus) derived from intent routing. */
+  actions?: HspAiAction[];
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;

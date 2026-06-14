@@ -1,6 +1,7 @@
 import type { AiMode, AiRequestBase, AiResponseBase, ThreadContext } from "./openai.js";
 import { callOpenAiChat, callOpenAiChatStream } from "./openai.js";
 import { enrichWithTinyModel, type TinyModelEnrichmentMeta } from "./tinymodel.js";
+import { actionsFromRouteHint } from "./intentActions.js";
 import {
   getTokenBySymbol,
   normalizeSymbol,
@@ -261,8 +262,10 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
   if (result.ok && result.output_text && thread) {
     await persistAssistantMessage(thread, result.output_text);
   }
+  const actions = actionsFromRouteHint(tinymodel?.route);
   return {
     ...result,
+    ...(actions.length > 0 ? { actions } : {}),
     meta: {
       ...(result.meta ?? {}),
       ...(tinymodel ? { tinymodel } : {}),
@@ -397,8 +400,10 @@ export async function transmitStream(
   if (result.ok && result.output_text && thread) {
     await persistAssistantMessage(thread, result.output_text);
   }
+  const actions = actionsFromRouteHint(tinymodel?.route);
   return {
     ...result,
+    ...(actions.length > 0 ? { actions } : {}),
     meta: {
       ...(result.meta ?? {}),
       ...(tinymodel ? { tinymodel } : {}),

@@ -13,6 +13,10 @@ const en = {
   "ai.noPrompt": "No prompt",
   "ai.promptPrefix": "Prompt:",
   "ai.title": "AI",
+  "ai.thinking": "Thinking…",
+  "ai.errorGeneric": "Something went wrong. Try again.",
+  "ai.you": "You",
+  "ai.assistant": "Assistant",
   "ai.search.emptyTitle": "Make things done",
   "ai.search.emptyIntro": "AI and search will help you in everything you do in the program.",
   "ai.search.emptyList":
@@ -255,6 +259,10 @@ const ru = {
   "ai.noPrompt": "Нет запроса",
   "ai.promptPrefix": "Запрос:",
   "ai.title": "ИИ",
+  "ai.thinking": "Думаю…",
+  "ai.errorGeneric": "Что-то пошло не так. Попробуйте снова.",
+  "ai.you": "Вы",
+  "ai.assistant": "Ассистент",
   "ai.search.emptyTitle": "Сделай умнее",
   "ai.search.emptyIntro": "ИИ и поиск охватывают весь функционал программы и станут вашими верными спутниками во всех делах.",
   "ai.search.emptyList":

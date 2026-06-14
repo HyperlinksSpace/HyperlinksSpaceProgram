@@ -9,5 +9,7 @@ Quick summary:
 - **HSP** = product shell (wallet, swap, GlobalBottomBar, OpenAI today).
 - **TinyModel** = routing, RAG, NL controls, encoder; optional full Universal Brain service.
 - **First code step:** `TINYMODEL_API_URL` sidecar + extend `ai/transmitter.ts`; replace stub `/ai` with streaming chat.
+- **Phase 0/1 done:** corpus, `ai/tinymodel.ts`, hybrid RAG in transmitter, `GET /api/ai` tinymodel status.
+- **Phase 2 (partial):** live `/ai` chat via `POST /api/ai`, screen `route` context, `actions[]` navigate intents.
 
 Golden-prompt regression (TinyModel repo): `python scripts/ub_eval_runner.py --verify`

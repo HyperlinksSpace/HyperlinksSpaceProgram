@@ -13,7 +13,7 @@ import {
   type TextInputContentSizeChangeEventData,
   type TextInputSubmitEditingEventData,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { WEB_UI_SANS_STACK } from "../fonts";
 import { layout, uiTextVerticalCompensationY, useColors } from "../theme";
 import { scrollIndicatorHairlineBorderWidthPx, snapScrollIndicatorCoordPx } from "../scrollIndicatorPx";
@@ -266,6 +266,7 @@ function WebBottomBar({
   placeholderText: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isFocused, setIsFocused] = useState(false);
   const [scrollY, setScrollY] = useState(0);
   const [domScrollRange, setDomScrollRange] = useState(0);
@@ -434,8 +435,11 @@ function WebBottomBar({
     }
     if (!text) return;
     setValue("");
-    router.push({ pathname: "/ai" as any, params: { prompt: text } });
-  }, [router, value, setValue, premadePrompts]);
+    router.push({
+      pathname: "/ai" as any,
+      params: { prompt: text, route: pathname ?? "/" },
+    });
+  }, [router, pathname, value, setValue, premadePrompts]);
 
   return (
     <View
@@ -557,6 +561,7 @@ function NativeBottomBar({
   placeholderText: string;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { triggerHaptic } = useTelegram();
   const [isFocused, setIsFocused] = useState(false);
   const [contentHeight, setContentHeight] = useState<number>(LINE_HEIGHT);
@@ -580,8 +585,11 @@ function NativeBottomBar({
     if (!text) return;
     Keyboard.dismiss();
     setValue("");
-    router.push({ pathname: "/ai" as any, params: { prompt: text } });
-  }, [router, triggerHaptic, value, setValue, premadePrompts]);
+    router.push({
+      pathname: "/ai" as any,
+      params: { prompt: text, route: pathname ?? "/" },
+    });
+  }, [router, pathname, triggerHaptic, value, setValue, premadePrompts]);
 
   const onContentSizeChange = useCallback(
     (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
