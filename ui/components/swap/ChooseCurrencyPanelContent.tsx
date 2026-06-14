@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { View } from "react-native";
 import { closeSwapCurrencyPicker } from "../../swap/swapCurrencyPicker";
+import { useChooseCurrencyRows } from "../../swap/useChooseCurrencyRows";
 import { layout } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { ChooseCurrencySubheader } from "./ChooseCurrencySubheader";
@@ -9,11 +10,13 @@ import { ChooseCurrencyTable } from "./ChooseCurrencyTable";
 type Props = {
   onFilterPress?: () => void;
   onBackPress?: () => void;
+  walletAddress?: string | null;
 };
 
 /** Wide split-column picker body (subheader + list area). */
-export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress }: Props) {
+export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress, walletAddress }: Props) {
   const { isInTelegram } = useTelegram();
+  const { rows, isLoading, isFetchingMore, error, loadMore } = useChooseCurrencyRows(walletAddress);
   const contentInset = layout.contentSideInsetPx;
 
   const handleBack = useCallback(() => {
@@ -32,8 +35,14 @@ export function ChooseCurrencyPanelContent({ onFilterPress, onBackPress }: Props
           titleAlign={isInTelegram ? "left" : "center"}
         />
       </View>
-      <View style={{ flex: 1, width: "100%", paddingHorizontal: contentInset, minHeight: 0 }}>
-        <ChooseCurrencyTable />
+      <View style={{ flex: 1, width: "100%", minHeight: 0 }}>
+        <ChooseCurrencyTable
+          rows={rows}
+          isLoading={isLoading}
+          isFetchingMore={isFetchingMore}
+          loadError={error}
+          onLoadMore={loadMore}
+        />
       </View>
     </View>
   );

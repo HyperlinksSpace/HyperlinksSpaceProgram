@@ -108,6 +108,8 @@ const en = {
   "swap.chooseCurrency.col.marketCap": "Market Cap",
   "swap.chooseCurrency.col.volume": "Volume",
   "swap.chooseCurrency.col.lastYear": "Last Year",
+  "swap.chooseCurrency.loading": "Loading tokens…",
+  "swap.chooseCurrency.loadingMore": "{count} tokens loaded",
 
   "send.footer.submit": "N / A",
   "send.action.summary": "Send 1 dollar",
@@ -349,6 +351,8 @@ const ru = {
   "swap.chooseCurrency.col.marketCap": "Капитализация",
   "swap.chooseCurrency.col.volume": "Объём",
   "swap.chooseCurrency.col.lastYear": "Год",
+  "swap.chooseCurrency.loading": "Загрузка токенов…",
+  "swap.chooseCurrency.loadingMore": "Загружено {count} токенов",
 
   "send.footer.submit": "N / A",
   "send.action.summary": "Отправить 1 доллар",

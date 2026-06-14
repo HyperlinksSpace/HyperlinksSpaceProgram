@@ -1,0 +1,57 @@
+import type { ChooseCurrencyRow } from "../components/swap/chooseCurrencyTableTypes";
+import { swapTonTokenImage } from "../components/swap/swapFormAssets";
+import {
+  formatSwapJettonBalance,
+  formatSwapTokenPriceUsd,
+  formatSwapUsdCompact,
+} from "./formatSwapTokenMarketValue";
+import type { SwapAccountJettonBalance, SwapJetton } from "./swapJettonsTypes";
+
+const DLLR_SYMBOL = "DLLR";
+
+export function buildBalanceByJettonAddress(
+  items: readonly SwapAccountJettonBalance[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const item of items) {
+    const key = item.jetton_address?.toLowerCase();
+    if (key) map.set(key, item.balance);
+  }
+  return map;
+}
+
+function jettonIcon(jetton: SwapJetton) {
+  if (jetton.image_url) return { uri: jetton.image_url } as const;
+  if (jetton.symbol?.trim().toUpperCase() === "TON") return swapTonTokenImage;
+  return null;
+}
+
+export function mapJettonToChooseCurrencyRow(
+  jetton: SwapJetton,
+  balanceByAddress: Map<string, string>,
+): ChooseCurrencyRow | null {
+  const symbol = jetton.symbol?.trim() ?? "";
+  const address = jetton.address?.toLowerCase();
+  if (!symbol || !address || symbol.toUpperCase() === DLLR_SYMBOL) return null;
+
+  const stats = jetton.market_stats;
+  const balanceRaw = balanceByAddress.get(address);
+
+  return {
+    rowKey: address,
+    currency: {
+      name: jetton.name?.trim() || symbol,
+      ticker: symbol,
+      icon: jettonIcon(jetton),
+    },
+    balance:
+      balanceRaw != null
+        ? formatSwapJettonBalance(balanceRaw, jetton.decimals ?? 9)
+        : "—",
+    rate: formatSwapTokenPriceUsd(stats?.price_usd),
+    networks: "TON",
+    marketCap: formatSwapUsdCompact(stats?.mcap ?? stats?.fdmc),
+    volume: formatSwapUsdCompact(stats?.volume_usd_24h),
+    lastYearKind: "stable",
+  };
+}

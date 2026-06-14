@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Platform, PixelRatio, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
+import { Platform, PixelRatio, Pressable, StyleSheet, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import {
@@ -66,13 +66,13 @@ export function ChooseCurrencySubheader({
     };
   }, [colors.highlight, lineT]);
 
-  const titleStyle = [
+  const titleStyle: TextStyle[] = [
     styles.title,
     {
       color: colors.primary,
       textAlign: titleAlign,
     },
-  ] as const;
+  ];
 
   return (
     <View style={styles.strip}>

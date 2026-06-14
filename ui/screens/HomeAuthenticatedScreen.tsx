@@ -1519,7 +1519,7 @@ export function HomeAuthenticatedScreen() {
               }}
             >
               {swapCurrencySide != null ? (
-                <ChooseCurrencyPanelContent />
+                <ChooseCurrencyPanelContent walletAddress={effectiveWalletAddress ?? null} />
               ) : (
                 <SwapPanelContent />
               )}

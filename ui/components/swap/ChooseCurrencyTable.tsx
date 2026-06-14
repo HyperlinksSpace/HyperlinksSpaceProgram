@@ -1,14 +1,43 @@
 import { Image } from "expo-image";
-import { useMemo } from "react";
-import { PixelRatio, Platform, StyleSheet, Text, View } from "react-native";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  PixelRatio,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+} from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useObservedWidth } from "../../smart/useObservedWidth";
 import {
+  SCROLL_INDICATOR_SCROLL_EPS,
+  scrollIndicatorHairlineBorderWidthPx,
+  scrollIndicatorThumbSpanAndOffset,
+  snapScrollIndicatorCoordPx,
+} from "../../scrollIndicatorPx";
+import {
+  layout,
   typographyAeroport15,
   typographySansSemibold,
   useColors,
 } from "../../theme";
+import { ScrollIndicatorDragHandle } from "../ScrollIndicatorDragHandle";
+import { SmartGradientDivider } from "../smart/SmartGradientDivider";
 import {
   CHOOSE_CURRENCY_TABLE_CELL_PADDING_HORIZONTAL_PX,
   CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
@@ -17,14 +46,22 @@ import {
   CHOOSE_CURRENCY_TABLE_RANK_CELL_PADDING_RIGHT_PX,
   CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX,
   CHOOSE_CURRENCY_TABLE_ROW_PADDING_VERTICAL_PX,
+  CHOOSE_CURRENCY_TABLE_SCROLL_INDICATOR_THUMB_MIN_PX,
 } from "./chooseCurrencyTableConstants";
-import { resolveChooseCurrencyVisibleColumns } from "./chooseCurrencyTableLayout";
-import { buildChooseCurrencyColumnMinWidthsPx } from "./chooseCurrencyTableMeasure";
+import { resolveChooseCurrencyColumnLayout } from "./chooseCurrencyTableLayout";
+import type { ChooseCurrencyVisibleColumn } from "./chooseCurrencyTableLayout";
+import { buildChooseCurrencyColumnMetrics } from "./chooseCurrencyTableMeasure";
 import {
+  CHOOSE_CURRENCY_DLLR_ROW,
   CHOOSE_CURRENCY_SAMPLE_ROWS,
   type ChooseCurrencyColumnKey,
   type ChooseCurrencyRow,
 } from "./chooseCurrencyTableTypes";
+
+const CONTENT_INSET_PX = layout.contentSideInsetPx;
+const SCROLLBAR_RIGHT_INSET_PX = layout.scrollIndicatorRightInsetPx;
+const HEADER_DIVIDER_HEIGHT_PX = scrollIndicatorHairlineBorderWidthPx();
+const HEADER_BLOCK_HEIGHT_PX = CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX + HEADER_DIVIDER_HEIGHT_PX;
 
 function miniChartLineThicknessPx(): number {
   if (Platform.OS === "web") {
@@ -60,28 +97,66 @@ function StablecoinMiniChart() {
   );
 }
 
+function CurrencyIcon({ row }: { row: ChooseCurrencyRow }) {
+  const colors = useColors();
+  const icon = row.currency.icon;
+
+  if (icon) {
+    return (
+      <View style={styles.currencyIconSlot}>
+        <Image
+          source={icon}
+          style={{
+            width: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
+            height: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
+          }}
+          contentFit="contain"
+        />
+      </View>
+    );
+  }
+
+  const initials = row.currency.ticker.slice(0, 2).toUpperCase();
+  return (
+    <View style={styles.currencyIconSlot}>
+      <View
+        style={{
+          width: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
+          height: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
+          borderRadius: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX / 2,
+          backgroundColor: colors.secondary,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={[typographyAeroport15, typographySansSemibold, { color: colors.primary, fontSize: 9 }]}>
+          {initials}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function CurrencyCell({ row }: { row: ChooseCurrencyRow }) {
   const colors = useColors();
 
   return (
     <View style={styles.currencyCell}>
-      <Image
-        source={row.currency.icon}
-        style={{
-          width: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
-          height: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_SIZE_PX,
-        }}
-        contentFit="contain"
-      />
+      <CurrencyIcon row={row} />
       <View style={{ width: CHOOSE_CURRENCY_TABLE_CURRENCY_ICON_TEXT_GAP_PX }} />
       <View style={styles.currencyTextStack}>
         <Text
-          style={[typographyAeroport15, typographySansSemibold, { color: colors.primary }]}
+          style={[typographyAeroport15, typographySansSemibold, styles.truncatedText, { color: colors.primary }]}
           numberOfLines={1}
+          ellipsizeMode="tail"
         >
           {row.currency.name}
         </Text>
-        <Text style={[typographyAeroport15, { color: colors.secondary }]} numberOfLines={1}>
+        <Text
+          style={[typographyAeroport15, styles.truncatedText, { color: colors.secondary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
           {row.currency.ticker}
         </Text>
       </View>
@@ -89,14 +164,26 @@ function CurrencyCell({ row }: { row: ChooseCurrencyRow }) {
   );
 }
 
-function CellContent({ columnKey, row }: { columnKey: ChooseCurrencyColumnKey; row: ChooseCurrencyRow }) {
+function CellContent({
+  columnKey,
+  row,
+  rank,
+}: {
+  columnKey: ChooseCurrencyColumnKey;
+  row: ChooseCurrencyRow;
+  rank: string;
+}) {
   const colors = useColors();
 
   switch (columnKey) {
     case "rank":
       return (
-        <Text style={[typographyAeroport15, styles.rankCellText, { color: colors.primary }]} numberOfLines={1}>
-          {row.rank}
+        <Text
+          style={[typographyAeroport15, styles.rankCellText, styles.truncatedText, { color: colors.primary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {rank}
         </Text>
       );
     case "currency":
@@ -107,7 +194,11 @@ function CellContent({ columnKey, row }: { columnKey: ChooseCurrencyColumnKey; r
     case "marketCap":
     case "volume":
       return (
-        <Text style={[typographyAeroport15, styles.centeredCellText, { color: colors.primary }]} numberOfLines={1}>
+        <Text
+          style={[typographyAeroport15, styles.centeredCellText, styles.truncatedText, { color: colors.primary }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
           {row[columnKey]}
         </Text>
       );
@@ -123,26 +214,114 @@ function HeaderLabel({ columnKey, label }: { columnKey: ChooseCurrencyColumnKey;
 
   if (columnKey === "rank") {
     return (
-      <Text style={[typographyAeroport15, styles.rankCellText, { color: colors.primary }]} numberOfLines={1}>
+      <Text
+        style={[typographyAeroport15, styles.rankCellText, styles.truncatedText, { color: colors.primary }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
         {label}
       </Text>
     );
   }
 
   return (
-    <Text style={[typographyAeroport15, styles.centeredCellText, { color: colors.primary }]} numberOfLines={1}>
+    <Text
+      style={[typographyAeroport15, styles.centeredCellText, styles.truncatedText, { color: colors.primary }]}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
       {label}
     </Text>
   );
 }
 
+function columnVariantStyle(columnKey: ChooseCurrencyColumnKey) {
+  if (columnKey === "rank") return styles.rankColumn;
+  if (columnKey === "currency") return styles.currencyColumn;
+  return styles.centeredColumn;
+}
+
+function ColumnShell({
+  column,
+  children,
+}: {
+  column: ChooseCurrencyVisibleColumn;
+  children: ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        styles.column,
+        columnVariantStyle(column.key),
+        {
+          width: column.widthPx,
+          maxWidth: column.widthPx,
+          flexShrink: 0,
+          flexGrow: 0,
+        },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function DataRow({
+  row,
+  rank,
+  visibleColumns,
+}: {
+  row: ChooseCurrencyRow;
+  rank: string;
+  visibleColumns: readonly ChooseCurrencyVisibleColumn[];
+}) {
+  return (
+    <View
+      style={{
+        paddingTop: CHOOSE_CURRENCY_TABLE_ROW_PADDING_VERTICAL_PX,
+        paddingBottom: CHOOSE_CURRENCY_TABLE_ROW_PADDING_VERTICAL_PX,
+        paddingHorizontal: CONTENT_INSET_PX,
+      }}
+    >
+      <View style={styles.bodyRow}>
+        {visibleColumns.map((column) => (
+          <ColumnShell key={column.key} column={column}>
+            <CellContent columnKey={column.key} row={row} rank={rank} />
+          </ColumnShell>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+const MemoDataRow = memo(
+  DataRow,
+  (prev, next) =>
+    prev.row.rowKey === next.row.rowKey &&
+    prev.rank === next.rank &&
+    prev.visibleColumns === next.visibleColumns,
+);
+
 type Props = {
   rows?: readonly ChooseCurrencyRow[];
+  isLoading?: boolean;
+  isFetchingMore?: boolean;
+  loadError?: string | null;
+  onLoadMore?: () => void;
 };
 
-export function ChooseCurrencyTable({ rows = CHOOSE_CURRENCY_SAMPLE_ROWS }: Props) {
-  const { t } = useAppStrings();
+export function ChooseCurrencyTable({
+  rows = CHOOSE_CURRENCY_SAMPLE_ROWS,
+  isLoading = false,
+  isFetchingMore = false,
+  loadError = null,
+  onLoadMore,
+}: Props) {
+  const { t, tf } = useAppStrings();
+  const colors = useColors();
   const { widthPx, onLayout, onRef } = useObservedWidth("choose_currency_table");
+  const flatListRef = useRef<FlatList<ChooseCurrencyRow>>(null);
+  const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
 
   const headers = useMemo(
     () =>
@@ -159,81 +338,345 @@ export function ChooseCurrencyTable({ rows = CHOOSE_CURRENCY_SAMPLE_ROWS }: Prop
     [t],
   );
 
+  const layoutReferenceRows = useMemo(() => [CHOOSE_CURRENCY_DLLR_ROW] as const, []);
+
   const visibleColumns = useMemo(() => {
-    const minWidthsPx = buildChooseCurrencyColumnMinWidthsPx(headers, rows);
-    const availableWidthPx = widthPx > 0 ? widthPx : Number.POSITIVE_INFINITY;
-    return resolveChooseCurrencyVisibleColumns(availableWidthPx, minWidthsPx);
-  }, [headers, rows, widthPx]);
+    const metrics = buildChooseCurrencyColumnMetrics(headers, layoutReferenceRows);
+    const shellWidthPx = widthPx > 0 ? widthPx : Number.POSITIVE_INFINITY;
+    const contentWidthPx =
+      shellWidthPx === Number.POSITIVE_INFINITY
+        ? shellWidthPx
+        : Math.max(0, shellWidthPx - CONTENT_INSET_PX * 2);
+    return resolveChooseCurrencyColumnLayout(contentWidthPx, metrics);
+  }, [headers, layoutReferenceRows, widthPx]);
+
+  const syncScrollMetricsFromDom = useCallback(() => {
+    if (Platform.OS !== "web") return;
+    const instance = flatListRef.current as unknown as {
+      getScrollableNode?: () => HTMLElement | null | undefined;
+    } | null;
+    const el = instance?.getScrollableNode?.();
+    if (!el) return;
+    const layoutH = el.clientHeight;
+    const contentH = el.scrollHeight;
+    const scrollYRaw = el.scrollTop;
+    const scrollY = scrollYRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : scrollYRaw;
+    if (layoutH <= 0) return;
+    setScroll((prev) => ({
+      ...prev,
+      layoutH,
+      scrollY,
+      ...(contentH > 0 ? { contentH } : {}),
+    }));
+  }, []);
+
+  useLayoutEffect(() => {
+    if (Platform.OS !== "web") return;
+    const run = () => {
+      const instance = flatListRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (!el?.style) return;
+      el.classList.add("hsp-main-scroll-hide-native-scrollbar");
+      el.classList.add("hsp-scroll-column-overscroll-contain");
+      el.style.setProperty("scrollbar-width", "none");
+      el.style.setProperty("-ms-overflow-style", "none");
+      el.style.setProperty("overscroll-behavior", "contain");
+    };
+    const id = requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [rows.length, visibleColumns]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof ResizeObserver === "undefined") return;
+    let ro: ResizeObserver | null = null;
+    const id = requestAnimationFrame(() => {
+      const instance = flatListRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const scrollEl = instance?.getScrollableNode?.();
+      if (!scrollEl) return;
+      ro = new ResizeObserver(() => syncScrollMetricsFromDom());
+      ro.observe(scrollEl);
+      const inner = scrollEl.firstElementChild;
+      if (inner) ro.observe(inner);
+    });
+    return () => {
+      cancelAnimationFrame(id);
+      ro?.disconnect();
+    };
+  }, [syncScrollMetricsFromDom, rows.length, visibleColumns]);
+
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const ne = e.nativeEvent;
+      const ch = ne.contentSize?.height ?? 0;
+      const yRaw = ne.contentOffset.y;
+      const y = yRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : yRaw;
+      setScroll((prev) => ({
+        ...prev,
+        scrollY: y,
+        ...(ch > 0 ? { contentH: ch } : {}),
+      }));
+      if (Platform.OS === "web") {
+        syncScrollMetricsFromDom();
+      }
+    },
+    [syncScrollMetricsFromDom],
+  );
+
+  const onListLayout = useCallback(
+    (e: LayoutChangeEvent) => {
+      const lh = e.nativeEvent.layout.height;
+      setScroll((prev) => ({ ...prev, layoutH: lh }));
+      if (Platform.OS === "web") {
+        requestAnimationFrame(syncScrollMetricsFromDom);
+      }
+    },
+    [syncScrollMetricsFromDom],
+  );
+
+  const onContentSizeChange = useCallback(
+    (_w: number, h: number) => {
+      setScroll((prev) => ({ ...prev, contentH: h }));
+      if (Platform.OS === "web") {
+        requestAnimationFrame(syncScrollMetricsFromDom);
+      }
+    },
+    [syncScrollMetricsFromDom],
+  );
+
+  const scrollToY = useCallback((y: number) => {
+    const clamped = Math.max(0, y);
+    if (Platform.OS === "web") {
+      const instance = flatListRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (el) el.scrollTop = clamped;
+    }
+    flatListRef.current?.scrollToOffset({ offset: clamped, animated: false });
+    setScroll((prev) => ({ ...prev, scrollY: clamped }));
+  }, []);
+
+  const indicator = useMemo(() => {
+    const viewH = scroll.layoutH;
+    const contentH = scroll.contentH;
+    const y = scroll.scrollY;
+    if (viewH <= 0 || contentH <= 0 || contentH <= viewH + 0.5) {
+      return { show: false as const, thumbH: 0, thumbTop: 0 };
+    }
+    const maxScroll = Math.max(1e-6, contentH - viewH);
+    const { thumbSpan, thumbOffset } = scrollIndicatorThumbSpanAndOffset(
+      viewH,
+      viewH,
+      contentH,
+      y,
+      maxScroll,
+    );
+    const hairline = scrollIndicatorHairlineBorderWidthPx();
+    const thumbH = Math.max(
+      hairline,
+      CHOOSE_CURRENCY_TABLE_SCROLL_INDICATOR_THUMB_MIN_PX,
+      thumbSpan,
+    );
+    const maxTravel = Math.max(0, viewH - thumbH);
+    let thumbTop = y <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : thumbOffset;
+    if (y >= maxScroll - SCROLL_INDICATOR_SCROLL_EPS) {
+      thumbTop = maxTravel;
+    }
+    thumbTop = Math.max(0, Math.min(thumbTop, maxTravel));
+    return { show: true as const, thumbH, thumbTop, maxScroll };
+  }, [scroll]);
+
+  const listHeader = useMemo(
+    () => (
+      <View style={[styles.headerBlock, { backgroundColor: colors.background }]}>
+        <View style={[styles.headerRow, { paddingHorizontal: CONTENT_INSET_PX }]}>
+          {visibleColumns.map((column) => (
+            <ColumnShell key={column.key} column={column}>
+              <HeaderLabel columnKey={column.key} label={headers[column.key]} />
+            </ColumnShell>
+          ))}
+        </View>
+        <SmartGradientDivider />
+      </View>
+    ),
+    [colors.background, headers, visibleColumns],
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: ChooseCurrencyRow; index: number }) => (
+      <MemoDataRow row={item} rank={String(index + 1)} visibleColumns={visibleColumns} />
+    ),
+    [visibleColumns],
+  );
+
+  const keyExtractor = useCallback((item: ChooseCurrencyRow) => item.rowKey, []);
+
+  const handleEndReached = useCallback(() => {
+    onLoadMore?.();
+  }, [onLoadMore]);
+
+  const listFooter = useMemo(() => {
+    if (isLoading || isFetchingMore) {
+      return (
+        <View style={styles.footerState}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <View style={{ width: 8 }} />
+          <Text style={[typographyAeroport15, { color: colors.secondary }]}>
+            {isLoading
+              ? t("swap.chooseCurrency.loading")
+              : tf("swap.chooseCurrency.loadingMore", { count: rows.length })}
+          </Text>
+        </View>
+      );
+    }
+
+    if (loadError && rows.length <= 1) {
+      return (
+        <View style={styles.footerState}>
+          <Text style={[typographyAeroport15, { color: colors.secondary }]}>{loadError}</Text>
+        </View>
+      );
+    }
+
+    return null;
+  }, [colors.accent, colors.secondary, isFetchingMore, isLoading, loadError, rows.length, t]);
 
   return (
-    <View style={styles.root} onLayout={onLayout} ref={onRef as never}>
-      <View style={styles.headerRow}>
-        {visibleColumns.map((column) => (
-          <View
-            key={column.key}
-            style={[
-              styles.column,
-              column.key === "rank" ? styles.rankColumn : styles.centeredColumn,
-              { minWidth: column.minWidthPx, flexGrow: 1, flexShrink: 0, flexBasis: column.minWidthPx },
-            ]}
-          >
-            <HeaderLabel columnKey={column.key} label={headers[column.key]} />
-          </View>
-        ))}
+    <View
+      style={[styles.shell, { marginHorizontal: -CONTENT_INSET_PX }]}
+      onLayout={onLayout}
+      ref={onRef as never}
+    >
+      <FlatList
+        ref={flatListRef}
+        data={rows as ChooseCurrencyRow[]}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        extraData={visibleColumns}
+        style={styles.list}
+        contentContainerStyle={[styles.listContent, { paddingTop: HEADER_BLOCK_HEIGHT_PX }]}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={14}
+        maxToRenderPerBatch={12}
+        updateCellsBatchingPeriod={50}
+        windowSize={9}
+        removeClippedSubviews={Platform.OS !== "web"}
+        onScroll={onScroll}
+        onLayout={onListLayout}
+        onContentSizeChange={onContentSizeChange}
+        scrollEventThrottle={16}
+        onEndReached={handleEndReached}
+        onEndReachedThreshold={0.35}
+        ListFooterComponent={listFooter}
+      />
+      <View style={styles.headerOverlay} pointerEvents="box-none">
+        {listHeader}
       </View>
-
-      {rows.map((row, rowIndex) => (
+      {indicator.show ? (
         <View
-          key={`${row.currency.ticker}-${rowIndex}`}
-          style={{
-            paddingTop: CHOOSE_CURRENCY_TABLE_ROW_PADDING_VERTICAL_PX,
-            paddingBottom: CHOOSE_CURRENCY_TABLE_ROW_PADDING_VERTICAL_PX,
-          }}
+          style={[
+            styles.scrollIndicatorWrap,
+            { right: snapScrollIndicatorCoordPx(SCROLLBAR_RIGHT_INSET_PX) },
+          ]}
         >
-          <View style={styles.bodyRow}>
-            {visibleColumns.map((column) => (
-              <View
-                key={column.key}
-                style={[
-                  styles.column,
-                  column.key === "rank" ? styles.rankColumn : styles.centeredColumn,
-                  { minWidth: column.minWidthPx, flexGrow: 1, flexShrink: 0, flexBasis: column.minWidthPx },
-                ]}
-              >
-                <CellContent columnKey={column.key} row={row} />
-              </View>
-            ))}
-          </View>
+          <ScrollIndicatorDragHandle
+            axis="vertical"
+            trackSpan={scroll.layoutH}
+            thumbSpan={indicator.thumbH}
+            thumbOffset={indicator.thumbTop}
+            scrollRange={indicator.maxScroll}
+            onScrollTo={scrollToY}
+            crossAxisVisualSpan={scrollIndicatorHairlineBorderWidthPx()}
+          >
+            <View
+              {...(Platform.OS === "web"
+                ? ({ className: "hsp-scroll-indicator-thumb" } as Record<string, string>)
+                : {})}
+              style={[
+                styles.scrollIndicatorThumb,
+                {
+                  top: 0,
+                  height: indicator.thumbH,
+                  width: 0,
+                  borderLeftWidth: scrollIndicatorHairlineBorderWidthPx(),
+                  borderLeftColor: colors.accent,
+                  borderStyle: "solid",
+                },
+              ]}
+            />
+          </ScrollIndicatorDragHandle>
         </View>
-      ))}
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  shell: {
+    flex: 1,
     width: "100%",
     alignSelf: "stretch",
+    minHeight: 0,
+    overflow: "hidden",
+    position: "relative",
+  },
+  list: {
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
+  },
+  listContent: {
+    flexGrow: 0,
+    width: "100%",
+    maxWidth: "100%",
+    paddingBottom: 8,
+  },
+  headerBlock: {
+    width: "100%",
+    maxWidth: "100%",
+  },
+  headerOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1,
   },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     height: CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX,
     width: "100%",
+    maxWidth: "100%",
+    overflow: "hidden",
   },
   bodyRow: {
     flexDirection: "row",
     alignItems: "center",
     height: CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX,
     width: "100%",
+    maxWidth: "100%",
+    overflow: "hidden",
   },
   column: {
     justifyContent: "center",
     minHeight: CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX,
+    overflow: "hidden",
   },
   rankColumn: {
     alignItems: "flex-start",
     paddingRight: CHOOSE_CURRENCY_TABLE_RANK_CELL_PADDING_RIGHT_PX,
+  },
+  currencyColumn: {
+    alignItems: "flex-start",
+    paddingHorizontal: CHOOSE_CURRENCY_TABLE_CELL_PADDING_HORIZONTAL_PX,
   },
   centeredColumn: {
     alignItems: "center",
@@ -246,15 +689,46 @@ const styles = StyleSheet.create({
     textAlign: "center",
     width: "100%",
   },
+  truncatedText: {
+    minWidth: 0,
+    ...(Platform.OS === "web" ? ({ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as object) : null),
+  },
   currencyCell: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    width: "100%",
     maxWidth: "100%",
+    overflow: "hidden",
+  },
+  currencyIconSlot: {
+    flexShrink: 0,
   },
   currencyTextStack: {
     justifyContent: "center",
     minWidth: 0,
     flexShrink: 1,
+    flex: 1,
+  },
+  footerState: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    width: "100%",
+  },
+  scrollIndicatorWrap: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 0,
+    overflow: "visible",
+    zIndex: layout.authenticatedHome.scrollIndicatorOverlayZIndex,
+    pointerEvents: "box-none",
+  },
+  scrollIndicatorThumb: {
+    position: "absolute",
+    right: 0,
+    top: 0,
   },
 });

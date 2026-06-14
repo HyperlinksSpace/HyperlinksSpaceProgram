@@ -2,6 +2,8 @@ import type { ImageSource } from "expo-image";
 
 import { swapDllrTokenImage } from "./swapFormAssets";
 
+export type ChooseCurrencyIconSource = ImageSource | { uri: string };
+
 export type ChooseCurrencyColumnKey =
   | "rank"
   | "currency"
@@ -15,11 +17,12 @@ export type ChooseCurrencyColumnKey =
 export type ChooseCurrencyColumnPriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 export type ChooseCurrencyRow = {
-  rank: string;
+  /** Stable list key (jetton address). */
+  rowKey: string;
   currency: {
     name: string;
     ticker: string;
-    icon: ImageSource;
+    icon: ChooseCurrencyIconSource | null;
   };
   balance: string;
   rate: string;
@@ -53,20 +56,21 @@ export const CHOOSE_CURRENCY_COLUMN_PRIORITY: Record<ChooseCurrencyColumnKey, Ch
     lastYear: 8,
   };
 
-/** Placeholder list — first row matches the choose-currency mock. */
-export const CHOOSE_CURRENCY_SAMPLE_ROWS: readonly ChooseCurrencyRow[] = [
-  {
-    rank: "1",
-    currency: {
-      name: "Dollar",
-      ticker: "DLLR",
-      icon: swapDllrTokenImage,
-    },
-    balance: "1",
-    rate: "$1",
-    networks: "TON, ETH...",
-    marketCap: "16b$+",
-    volume: "123m$",
-    lastYearKind: "stable",
+/** Hardcoded first row — always pinned at top of the choose-currency list. */
+export const CHOOSE_CURRENCY_DLLR_ROW: ChooseCurrencyRow = {
+  rowKey: "jetton:dllr",
+  currency: {
+    name: "Dollar",
+    ticker: "DLLR",
+    icon: swapDllrTokenImage,
   },
-] as const;
+  balance: "1",
+  rate: "$1",
+  networks: "TON, ETH...",
+  marketCap: "16b$+",
+  volume: "123m$",
+  lastYearKind: "stable",
+};
+
+/** Fallback when live API rows are unavailable. */
+export const CHOOSE_CURRENCY_SAMPLE_ROWS: readonly ChooseCurrencyRow[] = [CHOOSE_CURRENCY_DLLR_ROW];
