@@ -59,14 +59,19 @@ const ICONS = {
   },
 } as const;
 
-const ROWS: { id: keyof typeof ICONS; labelKey: AppStringKey }[] = [
+const OTHER_PROVIDER_ROWS: { id: "google" | "github" | "telegram"; labelKey: AppStringKey }[] = [
   { id: "google", labelKey: "welcome.auth.signInGoogle" },
   { id: "github", labelKey: "welcome.auth.signInGithub" },
-  { id: "apple", labelKey: "welcome.auth.signInApple" },
   { id: "telegram", labelKey: "welcome.auth.signInTelegram" },
 ];
 
-type BrowserOAuthProvider = "telegram" | "google" | "github";
+/** Apple HIG: black button on light backgrounds, white button on dark backgrounds. */
+const APPLE_SIGN_IN_COLORS = {
+  light: { background: "#000000", foreground: "#FFFFFF" },
+  dark: { background: "#FFFFFF", foreground: "#000000" },
+} as const;
+
+type BrowserOAuthProvider = "telegram" | "google" | "github" | "apple";
 
 const BROWSER_OAUTH: Record<
   BrowserOAuthProvider,
@@ -99,6 +104,13 @@ const BROWSER_OAUTH: Record<
     alertTitleKey: "welcome.auth.githubBrowserAlertTitle",
     startErrorKey: "welcome.auth.githubStartError",
   },
+  apple: {
+    startPath: "/api/auth/apple/start",
+    callbackPath: "/api/auth/apple/callback",
+    logPrefix: "welcome_apple_oidc",
+    alertTitleKey: "welcome.auth.appleBrowserAlertTitle",
+    startErrorKey: "welcome.auth.appleStartError",
+  },
 };
 
 /**
@@ -125,7 +137,7 @@ export function WelcomeAuthButtons() {
   const [email, setEmail] = useState("");
   const [emailInvalid, setEmailInvalid] = useState(false);
   /** Web hover: RN `Pressable` style state has no `hovered` in typings; use hover events (see theme hover helpers). */
-  const [hoverOAuthId, setHoverOAuthId] = useState<(typeof ROWS)[number]["id"] | null>(null);
+  const [hoverOAuthId, setHoverOAuthId] = useState<(typeof OTHER_PROVIDER_ROWS)[number]["id"] | "apple" | null>(null);
   const [hoverEmailSignIn, setHoverEmailSignIn] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
@@ -226,8 +238,8 @@ export function WelcomeAuthButtons() {
     }
   };
 
-  const onProviderPress = async (id: (typeof ROWS)[number]["id"]) => {
-    if (id === "google" || id === "github") {
+  const onProviderPress = async (id: (typeof OTHER_PROVIDER_ROWS)[number]["id"] | "apple") => {
+    if (id === "google" || id === "github" || id === "apple") {
       if (!useBrowserOAuth) return;
       await startBrowserOAuth(id);
       return;
@@ -269,12 +281,68 @@ export function WelcomeAuthButtons() {
       router.replace("/");
       return;
     }
-    /* wired when auth flows land */
   };
+
+  const applePalette = APPLE_SIGN_IN_COLORS[colorScheme === "light" ? "light" : "dark"];
+  const appleLabel = t("welcome.auth.signInApple");
+  const appleIcon = colorScheme === "light" ? ICONS.apple.white : ICONS.apple.black;
 
   return (
     <View style={styles.column}>
-      {ROWS.map((row, index) => {
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={appleLabel}
+        onPress={() => onProviderPress("apple")}
+        onHoverIn={
+          Platform.OS === "web"
+            ? () => {
+                setHoverOAuthId("apple");
+              }
+            : undefined
+        }
+        onHoverOut={
+          Platform.OS === "web"
+            ? () => {
+                setHoverOAuthId((cur) => (cur === "apple" ? null : cur));
+              }
+            : undefined
+        }
+        style={({ pressed }) => {
+          const webHover = Platform.OS === "web" && hoverOAuthId === "apple";
+          let backgroundColor = applePalette.background;
+          if (webHover) {
+            backgroundColor =
+              colorScheme === "light" ? "rgba(0, 0, 0, 0.88)" : "rgba(255, 255, 255, 0.92)";
+          }
+          return [
+            styles.button,
+            {
+              backgroundColor,
+              opacity: browserOAuthPending === "apple" ? 0.6 : pressed ? 0.92 : 1,
+            },
+          ];
+        }}
+      >
+        <Image
+          source={appleIcon}
+          style={[
+            styles.iconDims,
+            {
+              transform: [
+                {
+                  translateY:
+                    uiIconButtonVerticalCompensationY - uiWelcomeAppleOAuthIconExtraCompensationPx,
+                },
+              ],
+            },
+          ]}
+          contentFit="contain"
+        />
+        <Text style={[styles.label, { color: applePalette.foreground }]} numberOfLines={1}>
+          {appleLabel}
+        </Text>
+      </Pressable>
+      {OTHER_PROVIDER_ROWS.map((row, index) => {
         const src = useBlackIcons ? ICONS[row.id].black : ICONS[row.id].white;
         const label = t(row.labelKey);
         return (
@@ -309,7 +377,7 @@ export function WelcomeAuthButtons() {
                 styles.button,
                 {
                   backgroundColor,
-                  marginTop: index === 0 ? 0 : BUTTON_GAP,
+                  marginTop: BUTTON_GAP,
                   opacity:
                     row.id === browserOAuthPending
                       ? 0.6
@@ -328,13 +396,7 @@ export function WelcomeAuthButtons() {
               style={[
                 styles.iconDims,
                 {
-                  transform: [
-                    {
-                      translateY:
-                        uiIconButtonVerticalCompensationY -
-                        (row.id === "apple" ? uiWelcomeAppleOAuthIconExtraCompensationPx : 0),
-                    },
-                  ],
+                  transform: [{ translateY: uiIconButtonVerticalCompensationY }],
                 },
               ]}
               contentFit="contain"

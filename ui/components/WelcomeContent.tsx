@@ -94,6 +94,23 @@ export function WelcomeContent() {
       const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
       window.history.replaceState(null, "", nextUrl);
     }
+
+    const appleAuthError = params.get("appleAuthError");
+    if (appleAuthError) {
+      logPageDisplay("welcome_apple_oidc_callback_error", {
+        reason: appleAuthError,
+        href: window.location.href,
+      });
+      const appleMessage =
+        appleAuthError === "access_denied"
+          ? t("welcome.auth.appleAccessDenied")
+          : tf("welcome.auth.appleCallbackError", { reason: appleAuthError });
+      Alert.alert(t("welcome.auth.appleBrowserAlertTitle"), appleMessage);
+      params.delete("appleAuthError");
+      const nextSearch = params.toString();
+      const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
   }, [t, tf]);
 
   const probeBrowserSession = useCallback(

@@ -1,16 +1,16 @@
 Choose currency plots
-Back to Swap (< Buy & Sell)
-Disconnect telegram button
-Github login
+Shield and setting icons placement after the first breakpoint, move shield to header befor 1st breakpoint
+Login methods on desktop (Make them work)
+Test sign in with Apple.
+Deviders duplicating in browser
+Railway
 Telegram Messages
+Disconnect telegram button
+Crypto Messages (higlight or mark to ditinguish)
 Switch local TDLib Gateway for VM (vpn, card, railway or oracle)
 Automation
 Authorization
-Sign in with Apple
-Shield and setting icons placement after the first breakpoint
 "Connect Telegram" issues before the firstBreakpoint
-Deviders duplicating in browser
-Move shield to header befor 1st breakpoint
 Redirect
 Users
 Check translations

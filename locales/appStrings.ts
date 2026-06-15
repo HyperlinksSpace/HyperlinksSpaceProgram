@@ -245,6 +245,10 @@ const en = {
   "welcome.auth.githubCallbackError": "GitHub sign-in failed ({{reason}}). Try again.",
   "welcome.auth.githubAccessDenied": "GitHub sign-in was cancelled.",
   "welcome.auth.githubBrowserAlertTitle": "Sign in with GitHub",
+  "welcome.auth.appleStartError": "Could not start Apple sign-in. Try again.",
+  "welcome.auth.appleCallbackError": "Apple sign-in failed ({{reason}}). Try again.",
+  "welcome.auth.appleBrowserAlertTitle": "Sign in with Apple",
+  "welcome.auth.appleAccessDenied": "Apple sign-in was cancelled.",
   "welcome.auth.telegramBrowserAlertMessage":
     "Open this page inside the Telegram app to continue, or use a normal web browser (not an in-app preview that mimics Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Sign in with Telegram",
@@ -492,6 +496,10 @@ const ru = {
   "welcome.auth.githubCallbackError": "Вход через GitHub не удался ({{reason}}). Попробуйте снова.",
   "welcome.auth.githubAccessDenied": "Вход через GitHub отменён.",
   "welcome.auth.githubBrowserAlertTitle": "Вход через GitHub",
+  "welcome.auth.appleStartError": "Не удалось начать вход через Apple. Попробуйте снова.",
+  "welcome.auth.appleCallbackError": "Вход через Apple не удался ({{reason}}). Попробуйте снова.",
+  "welcome.auth.appleBrowserAlertTitle": "Вход через Apple",
+  "welcome.auth.appleAccessDenied": "Вход через Apple отменён.",
   "welcome.auth.telegramBrowserAlertMessage":
     "Откройте эту страницу в приложении Telegram или в обычном браузере (не во встроенном предпросмотре, который имитирует Telegram).",
   "welcome.auth.telegramBrowserAlertTitle": "Вход через Telegram",
