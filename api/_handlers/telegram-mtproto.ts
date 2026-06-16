@@ -54,6 +54,42 @@ function finishPreflight(request: AnyRequest, res: NodeRes | undefined, prefligh
   return preflight;
 }
 
+async function parseRequestBody<T extends Record<string, unknown> = Record<string, unknown>>(
+  request: AnyRequest,
+): Promise<T> {
+  const raw = request as { body?: unknown; json?: () => Promise<unknown>; text?: () => Promise<string> };
+  if (raw.body !== undefined && raw.body !== null) {
+    if (typeof raw.body === "object" && !Buffer.isBuffer(raw.body)) {
+      return raw.body as T;
+    }
+    if (typeof raw.body === "string" && raw.body.trim()) {
+      try {
+        return JSON.parse(raw.body) as T;
+      } catch {
+        return {} as T;
+      }
+    }
+  }
+  const webReq = request as Request;
+  if (typeof raw.json === "function") {
+    try {
+      const parsed = await raw.json();
+      return (parsed && typeof parsed === "object" ? parsed : {}) as T;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof webReq.text === "function") {
+    try {
+      const text = await webReq.text();
+      return (text ? JSON.parse(text) : {}) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+  return {} as T;
+}
+
 function finishJson(
   request: AnyRequest,
   res: NodeRes | undefined,
@@ -161,13 +197,8 @@ export async function telegramMtprotoConnectStartHandler(
 
   logTdlibGatewayApi("connect_start_proceed", { telegramUsername: userOrRes });
 
-  let resume = false;
-  try {
-    const raw = await (request as Request).json();
-    resume = Boolean((raw as { resume?: boolean })?.resume);
-  } catch {
-    resume = false;
-  }
+  const startBody = await parseRequestBody<{ resume?: boolean }>(request);
+  const resume = Boolean(startBody.resume);
 
   try {
     const snap = await gatewayConnectStart(userOrRes, resume);
@@ -279,36 +310,52 @@ export async function telegramMtprotoConnectPasswordHandler(
     return userOrRes;
   }
 
-  let attemptId = "";
-  let password = "";
-  try {
-    const body = (await (request as Request).json()) as { attemptId?: string; password?: string };
-    attemptId = (body.attemptId || "").trim();
-    password = body.password || "";
-  } catch {
-    /* ignore */
-  }
+  const body = await parseRequestBody<{ attemptId?: string; password?: string }>(request);
+  const attemptId = (body.attemptId || "").trim();
+  const password = body.password || "";
+  logTdlibGatewayApi("connect_password_request", {
+    hasAttemptId: Boolean(attemptId),
+    passwordLength: password.length,
+  });
   if (!attemptId || !password) {
-    return finishJson(request, res, { ok: false, error: "attempt_id_and_password_required" }, 400);
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: "attempt_id_and_password_required", authState: "wait_password" },
+      400,
+    );
   }
 
   try {
     const snap = await gatewayConnectPassword(attemptId, password);
+    const authState = snap.authState ?? "wait_password";
+    logTdlibGatewayApi("connect_password_gateway_result", {
+      attemptId,
+      httpStatus: snap.httpStatus,
+      authState,
+      error: snap.error ?? null,
+    });
     return finishJson(
       request,
       res,
       {
-        ok: snap.httpStatus < 400 && snap.authState !== "failed",
+        ok: authState === "ready" || authState === "wait_password",
         attemptId,
-        authState: snap.authState ?? "failed",
+        authState,
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
       },
-      snap.httpStatus,
+      snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "gateway_error";
-    return finishJson(request, res, { ok: false, error: message, authState: "failed" }, 503);
+    logTdlibGatewayApi("connect_password_exception", { attemptId, message });
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: message, authState: "wait_password" },
+      503,
+    );
   }
 }

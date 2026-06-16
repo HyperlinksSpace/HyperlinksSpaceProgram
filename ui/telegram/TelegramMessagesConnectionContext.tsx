@@ -69,9 +69,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       attemptId?: string | null;
       chatCount?: number | null;
     }) => {
-      const state = (json.authState || "failed") as MtprotoAuthState;
       if (json.attemptId) attemptIdRef.current = json.attemptId;
-      setConnectAuthState(state);
+      const state = json.authState ? (json.authState as MtprotoAuthState) : null;
+      if (state) setConnectAuthState(state);
       setConnectQrLink(json.qrLink ?? null);
       setConnectError(json.error ?? (json.ok === false ? "connect_failed" : null));
 
@@ -81,8 +81,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         stopPolling();
         logTelegramConnect("connect_success", { chatCount: json.chatCount ?? null });
         logPageDisplay("telegram_messages_connected");
-      }
-      if (state === "failed") {
+      } else if (state === "failed") {
         stopPolling();
       }
     },
@@ -215,6 +214,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       const attemptId = attemptIdRef.current;
       if (!attemptId || !password.trim()) return;
       setConnectPending(true);
+      setConnectError(null);
       try {
         const response = await fetch(buildApiUrl("/api/telegram-mtproto-connect-password"), {
           method: "POST",
@@ -228,10 +228,26 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           error?: string | null;
           chatCount?: number | null;
         };
+        logTelegramConnect("connect_password_response", {
+          status: response.status,
+          authState: json.authState ?? null,
+          error: json.error ?? null,
+          ok: json.ok ?? null,
+        });
+        if (!json.authState) {
+          setConnectError(json.error || `HTTP_${response.status}`);
+          startPolling();
+          return;
+        }
         applyConnectSnapshot({ ...json, attemptId });
         if (json.authState !== "ready" && json.authState !== "failed") {
           startPolling();
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setConnectError(message.includes("Failed to fetch") ? "network_error" : message);
+        logTelegramConnect("connect_password_error", { message });
+        startPolling();
       } finally {
         setConnectPending(false);
       }

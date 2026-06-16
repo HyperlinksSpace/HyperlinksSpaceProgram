@@ -83,6 +83,12 @@ const en = {
     "Telegram API credentials or TDLib gateway are not configured on the server.",
   "messages.connectErrorTelegramNetwork":
     "TDLib cannot reach Telegram servers from your gateway (stuck connecting). Turn off VPN or use a network where Telegram works, restart npm run tdlib:gateway, then try again.",
+  "messages.connectErrorPasswordRejected":
+    "Incorrect cloud password. Use the password from Telegram → Settings → Privacy → Two-Step Verification, then try again.",
+  "messages.connectErrorPasswordRequest":
+    "Could not send your password to the server. Close the sheet, open Connect again, and retry.",
+  "messages.connectErrorNetwork":
+    "Network error while submitting your password. Check your connection and try again.",
   "messages.connectPrompt": "Connect Telegram to see your chats here.",
   "messages.connectRetry": "Try again",
   "messages.connectSheetBody":
@@ -336,6 +342,12 @@ const ru = {
     "На сервере не настроены Telegram API или TDLib gateway.",
   "messages.connectErrorTelegramNetwork":
     "TDLib не может достучаться до серверов Telegram с вашего gateway (зависает на подключении). Отключите VPN или используйте сеть, где Telegram доступен, перезапустите npm run tdlib:gateway и попробуйте снова.",
+  "messages.connectErrorPasswordRejected":
+    "Неверный облачный пароль. Введите пароль из Telegram → Настройки → Конфиденциальность → Двухэтапная аутентификация и попробуйте снова.",
+  "messages.connectErrorPasswordRequest":
+    "Не удалось отправить пароль на сервер. Закройте окно, снова нажмите «Подключить Telegram» и повторите.",
+  "messages.connectErrorNetwork":
+    "Ошибка сети при отправке пароля. Проверьте подключение и попробуйте снова.",
   "messages.connectPrompt": "Подключите Telegram, чтобы видеть чаты здесь.",
   "messages.connectRetry": "Повторить",
   "messages.connectSheetBody":

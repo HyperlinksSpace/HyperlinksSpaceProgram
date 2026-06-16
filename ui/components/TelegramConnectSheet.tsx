@@ -67,6 +67,15 @@ function connectErrorMessage(error: string | null, t: (key: string) => string): 
   if (error === "telegram_network_unreachable") {
     return t("messages.connectErrorTelegramNetwork");
   }
+  if (error === "password_rejected" || /PASSWORD_HASH_INVALID|password/i.test(error)) {
+    return t("messages.connectErrorPasswordRejected");
+  }
+  if (error === "network_error" || error === "Failed to fetch") {
+    return t("messages.connectErrorNetwork");
+  }
+  if (error === "attempt_id_and_password_required") {
+    return t("messages.connectErrorPasswordRequest");
+  }
   return error;
 }
 
