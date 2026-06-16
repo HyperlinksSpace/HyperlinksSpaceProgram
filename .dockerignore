@@ -1,0 +1,10 @@
+# Minimal context for TDLib gateway Docker builds (Railway + GCP).
+*
+!deploy/railway/package.json
+!deploy/railway/package-lock.json
+!scripts/load-env.ts
+!scripts/run-tdlib-gateway.ts
+!telegram/tdlib/**
+!database/start.ts
+!database/telegramMessages.ts
+!database/telegramMtproto.ts

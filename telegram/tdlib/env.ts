@@ -15,7 +15,8 @@ export function getGatewayBindHost(): string {
 }
 
 export function getGatewayPort(): number {
-  const raw = process.env.TDLIB_GATEWAY_PORT || "8787";
+  // Railway (and similar) inject PORT; local dev uses TDLIB_GATEWAY_PORT or 8787.
+  const raw = process.env.TDLIB_GATEWAY_PORT || process.env.PORT || "8787";
   const n = Number.parseInt(raw, 10);
   return Number.isFinite(n) && n > 0 ? n : 8787;
 }
