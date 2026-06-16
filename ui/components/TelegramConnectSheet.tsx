@@ -163,6 +163,9 @@ export function TelegramConnectSheet() {
 
           {showPassword ? (
             <View style={styles.passwordBlock}>
+              <Text style={[typographyRect15, styles.title, { color: colors.primary, marginBottom: 8 }]}>
+                {t("messages.connectSheetPasswordTitle")}
+              </Text>
               <Text style={[typographyRect15, styles.body, { color: colors.secondary }]}>
                 {t("messages.connectSheetPasswordBody")}
               </Text>
@@ -197,7 +200,13 @@ export function TelegramConnectSheet() {
             </View>
           ) : null}
 
-          {connectAuthState === "failed" || connectError ? (
+          {showPassword && connectError ? (
+            <Text style={[typographyRect15, styles.error, { color: "#b00020" }]}>
+              {connectErrorMessage(connectError, t)}
+            </Text>
+          ) : null}
+
+          {connectAuthState === "failed" || (connectError && !showPassword) ? (
             <Text style={[typographyRect15, styles.error, { color: "#b00020" }]}>
               {connectErrorMessage(connectError, t)}
             </Text>

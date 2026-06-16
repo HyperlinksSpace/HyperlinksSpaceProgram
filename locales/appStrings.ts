@@ -88,7 +88,9 @@ const en = {
   "messages.connectSheetBody":
     "Link your Telegram account to sync your real chats into Messages.",
   "messages.connectSheetLoading": "Preparing QR code…",
-  "messages.connectSheetPasswordBody": "Enter your Telegram two-step verification password.",
+  "messages.connectSheetPasswordTitle": "Two-step verification password",
+  "messages.connectSheetPasswordBody":
+    "QR scan succeeded. Telegram does not send a second code for two-step verification — enter the cloud password you set under Settings → Privacy → Two-Step Verification, then tap Continue.",
   "messages.connectSheetPasswordPlaceholder": "Password",
   "messages.connectSheetPasswordSubmit": "Continue",
   "messages.connectSheetQrAlt": "Telegram login QR code",
@@ -339,7 +341,9 @@ const ru = {
   "messages.connectSheetBody":
     "Привяжите аккаунт Telegram, чтобы синхронизировать реальные чаты в «Сообщения».",
   "messages.connectSheetLoading": "Готовим QR-код…",
-  "messages.connectSheetPasswordBody": "Введите пароль двухэтапной проверки Telegram.",
+  "messages.connectSheetPasswordTitle": "Пароль двухэтапной проверки",
+  "messages.connectSheetPasswordBody":
+    "QR-код принят. Telegram не присылает второй код для двухэтапной проверки — введите облачный пароль из Настройки → Конфиденциальность → Двухэтапная аутентификация и нажмите «Продолжить».",
   "messages.connectSheetPasswordPlaceholder": "Пароль",
   "messages.connectSheetPasswordSubmit": "Продолжить",
   "messages.connectSheetQrAlt": "QR-код входа в Telegram",

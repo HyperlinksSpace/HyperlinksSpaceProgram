@@ -308,8 +308,9 @@ export async function submitConnectPassword(
     await record.client.invoke({ _: "checkAuthenticationPassword", password });
     await waitForAuthState(record, ["ready", "failed"], 30_000);
   } catch (err) {
-    record.authState = "failed";
+    record.authState = "wait_password";
     record.error = err instanceof Error ? err.message : "password_rejected";
+    logConnectEvent(record, "connect_password_rejected");
   }
   return snapshot(record);
 }
