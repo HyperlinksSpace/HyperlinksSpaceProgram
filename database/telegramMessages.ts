@@ -99,7 +99,7 @@ export async function upsertTelegramThread(input: {
     )
     ON CONFLICT (telegram_username, telegram_chat_id) DO UPDATE
       SET title = EXCLUDED.title,
-          subtitle = EXCLUDED.subtitle,
+          subtitle = COALESCE(EXCLUDED.subtitle, telegram_threads.subtitle),
           avatar_url = COALESCE(EXCLUDED.avatar_url, telegram_threads.avatar_url),
           last_message_at = EXCLUDED.last_message_at,
           unread_count = EXCLUDED.unread_count,

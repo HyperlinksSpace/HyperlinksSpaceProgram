@@ -17,20 +17,24 @@ type TdFile = {
   };
 };
 
+type TdMessage = {
+  id?: number;
+  date?: number;
+  content?: Record<string, unknown>;
+};
+
 type TdChat = {
   id: number;
   title?: string;
   type?: { _?: string; title?: string; first_name?: string; last_name?: string; username?: string };
-  last_message?: {
-    date?: number;
-    content?: { _?: string; text?: { text?: string } };
-  };
+  last_message?: TdMessage;
   unread_count?: number;
   photo?: { small?: TdFile; big?: TdFile };
 };
 
-const AVATAR_DOWNLOAD_TIMEOUT_MS = 8_000;
-const AVATAR_SYNC_CONCURRENCY = 4;
+const AVATAR_DOWNLOAD_TIMEOUT_MS = 15_000;
+const AVATAR_SYNC_CONCURRENCY = 3;
+const PREVIEW_SYNC_CONCURRENCY = 6;
 
 function chatTitle(chat: TdChat): string {
   if (chat.title?.trim()) return chat.title.trim();
@@ -46,23 +50,64 @@ function chatTitle(chat: TdChat): string {
   return `Chat ${chat.id}`;
 }
 
-function lastMessageSubtitle(chat: TdChat): string | null {
-  const msg = chat.last_message;
-  if (!msg?.content) return null;
-  const c = msg.content;
-  if (c._ === "messageText" && c.text?.text) return c.text.text.slice(0, 240);
-  if (c._ === "messagePhoto") return "Photo";
-  if (c._ === "messageVideo") return "Video";
-  if (c._ === "messageDocument") return "Document";
-  if (c._ === "messageSticker") return "Sticker";
-  if (c._ === "messageAnimation") return "GIF";
-  if (c._ === "messageVoiceNote") return "Voice message";
-  if (c._ === "messageVideoNote") return "Video message";
-  if (c._ === "messageAudio") return "Audio";
-  if (c._ === "messagePoll") return "Poll";
-  if (c._ === "messageLocation") return "Location";
-  if (c._ === "messageContact") return "Contact";
+function formattedTextPlain(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const text = (value as { text?: string }).text;
+  return typeof text === "string" && text.trim() ? text.trim() : null;
+}
+
+function previewFromMessage(msg: TdMessage | undefined | null): string | null {
+  const c = msg?.content;
+  if (!c || typeof c !== "object") return null;
+  const type = c._;
+  if (typeof type !== "string") return null;
+
+  if (type === "messageText") {
+    const text = formattedTextPlain(c.text);
+    return text ? text.slice(0, 240) : null;
+  }
+  if (type === "messagePhoto" || type === "messageVideo" || type === "messageDocument") {
+    const caption = formattedTextPlain(c.caption);
+    if (caption) return caption.slice(0, 240);
+  }
+  if (type === "messagePhoto") return "Photo";
+  if (type === "messageVideo") return "Video";
+  if (type === "messageDocument") return "Document";
+  if (type === "messageSticker") return "Sticker";
+  if (type === "messageAnimation") return "GIF";
+  if (type === "messageVoiceNote") return "Voice message";
+  if (type === "messageVideoNote") return "Video message";
+  if (type === "messageAudio") return "Audio";
+  if (type === "messagePoll") return "Poll";
+  if (type === "messageLocation") return "Location";
+  if (type === "messageContact") return "Contact";
+  if (type === "messageDice") return "Dice";
+  if (type === "messageGame") return "Game";
+  if (type === "messageInvoice") return "Invoice";
+  if (type === "messageCall") return "Call";
+  if (type === "messagePinnedMessage") return "Pinned message";
+  if (type.startsWith("message")) return "Message";
   return null;
+}
+
+
+async function resolveLastMessagePreview(client: Client, chat: TdChat): Promise<string | null> {
+  const direct = previewFromMessage(chat.last_message);
+  if (direct) return direct;
+
+  const messageId = chat.last_message?.id;
+  if (typeof messageId !== "number") return null;
+
+  try {
+    const full = (await client.invoke({
+      _: "getMessage",
+      chat_id: chat.id,
+      message_id: messageId,
+    })) as TdMessage;
+    return previewFromMessage(full);
+  } catch {
+    return null;
+  }
 }
 
 function lastMessageAtIso(chat: TdChat): string {
@@ -155,27 +200,30 @@ async function resolveChatAvatarUrl(client: Client, chat: TdChat): Promise<strin
   const fileId = chat.photo?.small?.id;
   if (typeof fileId !== "number") return null;
 
-  try {
-    let file = chat.photo?.small;
-    if (!file?.local?.is_downloading_completed || !file.local.path) {
-      await client.invoke({
-        _: "downloadFile",
-        file_id: fileId,
-        priority: 16,
-        offset: 0,
-        limit: 0,
-        synchronous: false,
-      });
-      file = (await waitForLocalFile(client, fileId)) ?? undefined;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      let file = chat.photo?.small;
+      if (!file?.local?.is_downloading_completed || !file.local.path) {
+        await client.invoke({
+          _: "downloadFile",
+          file_id: fileId,
+          priority: 16,
+          offset: 0,
+          limit: 0,
+          synchronous: false,
+        });
+        file = (await waitForLocalFile(client, fileId)) ?? undefined;
+      }
+      const path = file?.local?.path;
+      if (!path) continue;
+      const buf = await fs.promises.readFile(path);
+      if (buf.length === 0) continue;
+      return `data:${mimeFromPath(path)};base64,${buf.toString("base64")}`;
+    } catch {
+      /* retry once */
     }
-    const path = file?.local?.path;
-    if (!path) return null;
-    const buf = await fs.promises.readFile(path);
-    if (buf.length === 0) return null;
-    return `data:${mimeFromPath(path)};base64,${buf.toString("base64")}`;
-  } catch {
-    return null;
   }
+  return null;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -225,12 +273,16 @@ export async function refreshChatThreadFromTdlib(
   chatId: number,
 ): Promise<void> {
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const [subtitle, avatarUrl] = await Promise.all([
+    resolveLastMessagePreview(client, chat),
+    resolveChatAvatarUrl(client, chat),
+  ]);
   await upsertTelegramThread({
     telegramUsername,
     telegramChatId: chat.id,
     title: chatTitle(chat),
-    subtitle: lastMessageSubtitle(chat),
-    avatarUrl: null,
+    subtitle,
+    avatarUrl,
     lastMessageAt: lastMessageAtIso(chat),
     unreadCount: Number(chat.unread_count) || 0,
   });
@@ -240,9 +292,14 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   const chats = await loadAllChats(client);
   await clearDemoThreads(telegramUsername);
 
-  const avatarUrls = await mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
-    resolveChatAvatarUrl(client, chat),
-  );
+  const [subtitles, avatarUrls] = await Promise.all([
+    mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
+      resolveLastMessagePreview(client, chat),
+    ),
+    mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
+      resolveChatAvatarUrl(client, chat),
+    ),
+  ]);
 
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
@@ -250,7 +307,7 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       telegramUsername,
       telegramChatId: chat.id,
       title: chatTitle(chat),
-      subtitle: lastMessageSubtitle(chat),
+      subtitle: subtitles[i] ?? null,
       avatarUrl: avatarUrls[i] ?? null,
       lastMessageAt: lastMessageAtIso(chat),
       unreadCount: Number(chat.unread_count) || 0,

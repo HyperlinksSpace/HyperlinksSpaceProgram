@@ -1,6 +1,7 @@
 On page reload make the item of the main tab remain
 Chat intefrace design and implementation.
 Instant messages update
+Telegram connect vs. Telegram login (preferable)
 Apple styled button, revert to how it has been
 Connect Telegram on mobile.
 Layout broken on mobile on the vertical scroll.

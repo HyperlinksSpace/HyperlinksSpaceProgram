@@ -155,14 +155,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         logPageDisplay("messages_chats_loaded", { count: rows.length });
       }
 
-      const needsAvatars =
+      const needsBackfill =
         options?.allowAvatarResync !== false &&
         rows.length > 0 &&
-        rows.every((row) => !row.avatar_url);
-      if (needsAvatars && !avatarResyncAttemptedRef.current) {
+        rows.some((row) => !row.avatar_url || !row.subtitle.trim());
+      if (needsBackfill && !avatarResyncAttemptedRef.current) {
         avatarResyncAttemptedRef.current = true;
-        logPageDisplay("messages_avatars_resync_start", { count: rows.length });
-        const ok = await triggerGatewayResync("avatars_missing");
+        logPageDisplay("messages_threads_backfill_start", {
+          count: rows.length,
+          missingAvatars: rows.filter((row) => !row.avatar_url).length,
+          missingSubtitles: rows.filter((row) => !row.subtitle.trim()).length,
+        });
+        const ok = await triggerGatewayResync("threads_incomplete");
         if (ok) {
           await loadChats({ allowAvatarResync: false, silent: options?.silent });
         }
