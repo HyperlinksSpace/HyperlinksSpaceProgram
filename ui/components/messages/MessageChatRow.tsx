@@ -47,6 +47,7 @@ function formatWallClock(raw: unknown): string {
 
 function resolveAvatarUrl(avatarUrl: string | null): string | null {
   if (!avatarUrl) return null;
+  if (avatarUrl.startsWith("data:")) return avatarUrl;
   if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) return avatarUrl;
   return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
 }
@@ -104,8 +105,12 @@ export function MessageChatRow({
           <Image
             source={{ uri: iconUrl }}
             accessibilityIgnoresInvertColors
-            style={{ width: MESSAGE_AVATAR_PX, height: MESSAGE_AVATAR_PX }}
-            contentFit="contain"
+            style={{
+              width: MESSAGE_AVATAR_PX,
+              height: MESSAGE_AVATAR_PX,
+              borderRadius: MESSAGE_AVATAR_PX / 2,
+            }}
+            contentFit="cover"
           />
         ) : (
           <View

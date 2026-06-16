@@ -401,6 +401,33 @@ export async function resumeExistingSession(telegramUsername: string): Promise<C
   return startConnectAttempt(telegramUsername);
 }
 
+/** Re-sync chat list + avatars for an already-authorized user (no QR). */
+export async function resyncUserChats(
+  telegramUsername: string,
+): Promise<{ chatCount: number; error: string | null }> {
+  const existingId = activeByUser.get(telegramUsername);
+  const existing = existingId ? attempts.get(existingId) : null;
+
+  if (existing?.client && existing.authState === "ready") {
+    try {
+      const count = await syncChatThreads(existing.client, telegramUsername);
+      existing.chatCount = count;
+      logConnectEvent(existing, "connect_resync_ok", { chatCount: count });
+      return { chatCount: count, error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "sync_failed";
+      logConnectEvent(existing, "connect_resync_failed", { message });
+      return { chatCount: 0, error: message };
+    }
+  }
+
+  const snap = await resumeExistingSession(telegramUsername);
+  if (snap.authState === "ready") {
+    return { chatCount: snap.chatCount ?? 0, error: null };
+  }
+  return { chatCount: 0, error: snap.error ?? "session_not_ready" };
+}
+
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {
   return {
     ok: true,

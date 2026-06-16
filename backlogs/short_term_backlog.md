@@ -1,3 +1,4 @@
+On page reload make the item of the main tab remain
 Success notation in-app on successful Telegram login
 Choose currency plots
 Shield and setting icons placement after the first breakpoint, move shield to header befor 1st breakpoint

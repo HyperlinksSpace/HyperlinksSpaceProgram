@@ -102,6 +102,21 @@ export async function gatewayConnectPassword(
   return { ...json, httpStatus: response.status };
 }
 
+export async function gatewayResyncChats(
+  telegramUsername: string,
+): Promise<{ ok: boolean; chatCount?: number; error?: string; httpStatus: number }> {
+  const { response, json } = await gatewayFetch("/v1/connect/resync", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername }),
+  });
+  return {
+    ok: response.ok && json.ok !== false,
+    chatCount: typeof json.chatCount === "number" ? json.chatCount : undefined,
+    error: typeof json.error === "string" ? json.error : undefined,
+    httpStatus: response.status,
+  };
+}
+
 export async function gatewayDisconnect(telegramUsername: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const { response, json } = await gatewayFetch("/v1/disconnect", {

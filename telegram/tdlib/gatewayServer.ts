@@ -5,6 +5,7 @@ import {
   disconnectUserSession,
   gatewayHealth,
   getConnectAttempt,
+  resyncUserChats,
   resumeExistingSession,
   startConnectAttempt,
   submitConnectPassword,
@@ -112,6 +113,22 @@ export function startTdlibGatewayServer(): http.Server {
             })}`,
           );
           sendJson(res, 200, { ok: snap.authState !== "failed" || Boolean(snap.attemptId), ...snap });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/connect/resync") {
+          const body = (await readJson(req)) as { telegramUsername?: string };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          const result = await resyncUserChats(telegramUsername);
+          sendJson(res, 200, {
+            ok: !result.error,
+            chatCount: result.chatCount,
+            error: result.error,
+          });
           return;
         }
 

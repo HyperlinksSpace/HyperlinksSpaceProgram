@@ -7,7 +7,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayResyncChats } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -179,4 +179,43 @@ export async function telegramMessagesChatsHandler(
 
   const chats = await listTelegramThreads(userOrRes);
   return finishJson(request, res, { ok: true, connected: true, chats }, 200);
+}
+
+export async function telegramMessagesResyncHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const result = await gatewayResyncChats(userOrRes);
+  return finishJson(
+    request,
+    res,
+    {
+      ok: result.ok,
+      chatCount: result.chatCount ?? 0,
+      error: result.error ?? null,
+    },
+    result.httpStatus >= 400 ? result.httpStatus : 200,
+  );
 }

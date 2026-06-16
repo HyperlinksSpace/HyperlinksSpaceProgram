@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
@@ -43,8 +43,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const avatarResyncAttemptedRef = useRef(false);
 
-  const loadChats = useCallback(async () => {
+  const loadChats = useCallback(async (options?: { allowAvatarResync?: boolean }) => {
     if (!isAuthenticated || !isTelegramMessagesConnected) {
       setChats([]);
       setError(null);
@@ -73,6 +74,39 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }
       setChats(rows);
       logPageDisplay("messages_chats_loaded", { count: rows.length });
+
+      const needsAvatars =
+        options?.allowAvatarResync !== false &&
+        rows.length > 0 &&
+        rows.every((row) => !row.avatar_url);
+      if (needsAvatars && !avatarResyncAttemptedRef.current) {
+        avatarResyncAttemptedRef.current = true;
+        logPageDisplay("messages_avatars_resync_start", { count: rows.length });
+        try {
+          const resyncResponse = await fetch(buildApiUrl("/api/telegram-messages-resync"), {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          const resyncJson = (await resyncResponse.json().catch(() => ({}))) as {
+            ok?: boolean;
+            chatCount?: number;
+            error?: string;
+          };
+          logPageDisplay("messages_avatars_resync_done", {
+            ok: resyncJson.ok ?? false,
+            chatCount: resyncJson.chatCount ?? null,
+            error: resyncJson.error ?? null,
+          });
+          if (resyncResponse.ok && resyncJson.ok) {
+            await loadChats({ allowAvatarResync: false });
+          }
+        } catch (resyncErr) {
+          const message = resyncErr instanceof Error ? resyncErr.message : String(resyncErr);
+          logPageDisplay("messages_avatars_resync_error", { message });
+        }
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       logPageDisplay("messages_chats_error", { message });
@@ -85,6 +119,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (!authReady) return;
+    avatarResyncAttemptedRef.current = false;
     void loadChats();
   }, [authReady, isTelegramMessagesConnected, loadChats]);
 
