@@ -33,7 +33,7 @@ type TelegramMessagesConnectionCtx = {
   openConnectSheet: () => void;
   closeConnectSheet: () => void;
   refreshStatus: () => Promise<void>;
-  beginMtprotoConnect: () => Promise<void>;
+  beginMtprotoConnect: (options?: { fresh?: boolean }) => Promise<void>;
   submitMtprotoPassword: (password: string) => Promise<void>;
   disconnectTelegramMessages: () => Promise<void>;
 };
@@ -157,9 +157,14 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const beginMtprotoConnect = useCallback(async () => {
+  const beginMtprotoConnect = useCallback(async (options?: { fresh?: boolean }) => {
     const startUrl = buildApiUrl("/api/telegram-mtproto-connect-start");
-    logTelegramConnect("connect_start", { url: startUrl, isAuthenticated });
+    logTelegramConnect("connect_start", {
+      url: startUrl,
+      isAuthenticated,
+      fresh: Boolean(options?.fresh),
+      resume: !options?.fresh,
+    });
     setConnectPending(true);
     setConnectError(null);
     setConnectAuthState("initializing");
@@ -170,7 +175,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fresh: true }),
+        body: JSON.stringify(options?.fresh ? { fresh: true } : { resume: true }),
       });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -189,6 +194,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       });
       applyConnectSnapshot(json);
       if (
+        json.attemptId ||
         json.authState === "wait_qr" ||
         json.authState === "initializing" ||
         json.authState === "wait_password"
@@ -197,7 +203,10 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       }
       if (!response.ok && json.authState !== "wait_qr") {
         setConnectAuthState("failed");
-        setConnectError(json.error || `HTTP_${response.status}`);
+        setConnectError(
+          json.error ||
+            (response.status === 504 ? "gateway_timeout_retry" : `HTTP_${response.status}`),
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

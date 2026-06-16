@@ -1,5 +1,12 @@
 On page reload make the item of the main tab remain
+Chat intefrace design and implementation.
+Instant messages update
+Apple styled button, revert to how it has been
+Connect Telegram on mobile.
+Layout broken on mobile on the vertical scroll.
+Login connection and Telegram connection (check for conflicts).
 Success notation in-app on successful Telegram login
+Make the program work from the landing
 Choose currency plots
 Shield and setting icons placement after the first breakpoint, move shield to header befor 1st breakpoint
 Login methods on desktop (Make them work)

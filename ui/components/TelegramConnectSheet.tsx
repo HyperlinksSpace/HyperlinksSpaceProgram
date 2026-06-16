@@ -70,6 +70,9 @@ function connectErrorMessage(error: string | null, t: (key: string) => string): 
   if (error === "password_rejected" || /PASSWORD_HASH_INVALID|password/i.test(error)) {
     return t("messages.connectErrorPasswordRejected");
   }
+  if (error === "gateway_timeout_retry" || error === "HTTP_504") {
+    return t("messages.connectErrorGatewayTimeout");
+  }
   if (error === "network_error" || error === "Failed to fetch") {
     return t("messages.connectErrorNetwork");
   }
@@ -118,7 +121,7 @@ export function TelegramConnectSheet() {
 
   const onRetry = useCallback(() => {
     setPassword("");
-    void beginMtprotoConnect();
+    void beginMtprotoConnect({ fresh: true });
   }, [beginMtprotoConnect]);
 
   const onSubmitPassword = useCallback(() => {

@@ -4,8 +4,9 @@ import { randomUUID } from "crypto";
 import type { Client } from "tdl";
 import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
-import { getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
+import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
 import { persistMtprotoConnection, syncChatThreads } from "./syncChats.js";
+import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 
 export type ConnectAuthState =
   | "initializing"
@@ -226,6 +227,7 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   record.authState = "ready";
   record.qrLink = null;
   record.error = null;
+  attachLiveChatSync(record);
   logConnectEvent(record, "connect_ready", { chatCount: record.chatCount ?? 0 });
 }
 
@@ -244,6 +246,7 @@ async function waitForAuthState(
 }
 
 export function purgeTdlibUserData(telegramUsername: string): void {
+  detachLiveChatSync(telegramUsername);
   const existingId = activeByUser.get(telegramUsername);
   if (existingId) disposeAttempt(existingId);
   const base = getTdlibUserDir(telegramUsername);
@@ -269,6 +272,7 @@ export async function startConnectAttempt(
     if (existingId) {
       const existing = attempts.get(existingId);
       if (existing && existing.authState !== "failed" && Date.now() - existing.createdAt < 15 * 60_000) {
+        if (existing.authState === "ready") attachLiveChatSync(existing);
         return snapshot(existing);
       }
       disposeAttempt(existingId);
@@ -312,14 +316,7 @@ export async function startConnectAttempt(
     });
     record.client = client;
     startConnectWatchdog(record);
-    // TDLib starts automatically; wait for auth state updates.
-    const state = await waitForAuthState(record, ["wait_qr", "wait_password", "ready", "failed"], 12_000);
-    if (state === "ready") {
-      return snapshot(record);
-    }
-    if (state === "failed") {
-      return snapshot(record);
-    }
+    // Return immediately; auth listener + client poll pick up QR / password / ready.
     return snapshot(record);
   } catch (err) {
     record.authState = "failed";
@@ -361,6 +358,7 @@ export async function submitConnectPassword(
 export function disposeAttempt(attemptId: string): void {
   const record = attempts.get(attemptId);
   if (!record) return;
+  detachLiveChatSync(record.telegramUsername);
   clearConnectWatchdog(record);
   if (record.client) {
     try {
@@ -385,7 +383,27 @@ export async function disconnectUserSession(telegramUsername: string): Promise<v
   }
 }
 
-/** Resume an existing on-disk TDLib session and sync chats (no QR). */
+function getActiveRecord(telegramUsername: string): AttemptRecord | null {
+  const attemptId = activeByUser.get(telegramUsername);
+  if (!attemptId) return null;
+  return attempts.get(attemptId) ?? null;
+}
+
+async function waitForUserSessionReady(
+  telegramUsername: string,
+  timeoutMs: number,
+): Promise<AttemptRecord | null> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const record = getActiveRecord(telegramUsername);
+    if (record?.client && record.authState === "ready") return record;
+    if (record?.authState === "failed") return record;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return getActiveRecord(telegramUsername);
+}
+
+/** Resume an existing on-disk TDLib session (fast — client polls for QR/ready). */
 export async function resumeExistingSession(telegramUsername: string): Promise<ConnectAttemptSnapshot> {
   const base = getTdlibUserDir(telegramUsername);
   if (!fs.existsSync(path.join(base, "db"))) {
@@ -405,27 +423,101 @@ export async function resumeExistingSession(telegramUsername: string): Promise<C
 export async function resyncUserChats(
   telegramUsername: string,
 ): Promise<{ chatCount: number; error: string | null }> {
-  const existingId = activeByUser.get(telegramUsername);
-  const existing = existingId ? attempts.get(existingId) : null;
+  console.log(
+    `[tdlib-gateway] ${JSON.stringify({
+      event: "connect_resync_start",
+      telegramUsername,
+      hasActiveRecord: Boolean(getActiveRecord(telegramUsername)),
+    })}`,
+  );
 
-  if (existing?.client && existing.authState === "ready") {
-    try {
-      const count = await syncChatThreads(existing.client, telegramUsername);
-      existing.chatCount = count;
-      logConnectEvent(existing, "connect_resync_ok", { chatCount: count });
-      return { chatCount: count, error: null };
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "sync_failed";
-      logConnectEvent(existing, "connect_resync_failed", { message });
-      return { chatCount: 0, error: message };
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    const base = getTdlibUserDir(telegramUsername);
+    if (!fs.existsSync(path.join(base, "db"))) {
+      console.log(
+        `[tdlib-gateway] ${JSON.stringify({
+          event: "connect_resync_no_session",
+          telegramUsername,
+        })}`,
+      );
+      return { chatCount: 0, error: "no_session" };
     }
+    await startConnectAttempt(telegramUsername);
+    record = await waitForUserSessionReady(telegramUsername, 60_000);
   }
 
-  const snap = await resumeExistingSession(telegramUsername);
-  if (snap.authState === "ready") {
-    return { chatCount: snap.chatCount ?? 0, error: null };
+  if (!record?.client || record.authState !== "ready") {
+    const error = record?.error ?? "session_not_ready";
+    console.log(
+      `[tdlib-gateway] ${JSON.stringify({
+        event: "connect_resync_not_ready",
+        telegramUsername,
+        authState: record?.authState ?? null,
+        error,
+      })}`,
+    );
+    return { chatCount: 0, error };
   }
-  return { chatCount: 0, error: snap.error ?? "session_not_ready" };
+
+  attachLiveChatSync(record);
+  try {
+    const count = await syncChatThreads(record.client, telegramUsername);
+    record.chatCount = count;
+    logConnectEvent(record, "connect_resync_ok", { chatCount: count });
+    return { chatCount: count, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "sync_failed";
+    logConnectEvent(record, "connect_resync_failed", { message });
+    return { chatCount: 0, error: message };
+  }
+}
+
+/** After gateway restart, reload TDLib sessions from disk so live updates resume. */
+export function restorePersistedGatewaySessions(): void {
+  const root = getTdlibDbRoot();
+  if (!fs.existsSync(root)) return;
+
+  const usernames: string[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dbPath = path.join(root, entry.name, "db");
+    if (fs.existsSync(dbPath)) usernames.push(entry.name);
+  }
+
+  if (usernames.length === 0) return;
+
+  console.log(
+    `[tdlib-gateway] ${JSON.stringify({
+      event: "connect_restore_sessions_start",
+      count: usernames.length,
+    })}`,
+  );
+
+  for (const telegramUsername of usernames) {
+    void (async () => {
+      try {
+        const result = await resyncUserChats(telegramUsername);
+        console.log(
+          `[tdlib-gateway] ${JSON.stringify({
+            event: "connect_restore_session_done",
+            telegramUsername,
+            chatCount: result.chatCount,
+            error: result.error,
+          })}`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.log(
+          `[tdlib-gateway] ${JSON.stringify({
+            event: "connect_restore_session_error",
+            telegramUsername,
+            message,
+          })}`,
+        );
+      }
+    })();
+  }
 }
 
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {

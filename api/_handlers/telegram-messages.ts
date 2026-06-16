@@ -208,11 +208,25 @@ export async function telegramMessagesResyncHandler(
   }
 
   const result = await gatewayResyncChats(userOrRes);
+  const staleSession =
+    result.error === "no_session" || result.error === "session_not_ready";
+  if (staleSession) {
+    await revokeMtprotoSession(userOrRes);
+    await disconnectTelegramMessages(userOrRes);
+    return finishJson(request, res, {
+      ok: false,
+      connected: false,
+      needsReconnect: true,
+      chatCount: 0,
+      error: result.error ?? "no_session",
+    });
+  }
   return finishJson(
     request,
     res,
     {
       ok: result.ok,
+      connected: true,
       chatCount: result.chatCount ?? 0,
       error: result.error ?? null,
     },

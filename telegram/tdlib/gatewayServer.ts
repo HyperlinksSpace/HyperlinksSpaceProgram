@@ -6,6 +6,7 @@ import {
   gatewayHealth,
   getConnectAttempt,
   resyncUserChats,
+  restorePersistedGatewaySessions,
   resumeExistingSession,
   startConnectAttempt,
   submitConnectPassword,
@@ -100,9 +101,18 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "username_required" });
             return;
           }
-          const snap = body.resume
+          let snap = body.resume
             ? await resumeExistingSession(telegramUsername)
             : await startConnectAttempt(telegramUsername, { fresh: Boolean(body.fresh) });
+          if (body.resume && snap.authState === "failed" && snap.error === "no_session") {
+            console.log(
+              `[tdlib-gateway] ${JSON.stringify({
+                event: "connect_start_no_session_fallback",
+                telegramUsername,
+              })}`,
+            );
+            snap = await startConnectAttempt(telegramUsername);
+          }
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "connect_start_result",
@@ -188,6 +198,7 @@ export function startTdlibGatewayServer(): http.Server {
   const host = getGatewayBindHost();
   server.listen(port, host, () => {
     console.log(`[tdlib-gateway] listening on http://${host}:${port}`);
+    restorePersistedGatewaySessions();
   });
 
   return server;

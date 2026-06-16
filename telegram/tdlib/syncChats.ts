@@ -55,6 +55,13 @@ function lastMessageSubtitle(chat: TdChat): string | null {
   if (c._ === "messageVideo") return "Video";
   if (c._ === "messageDocument") return "Document";
   if (c._ === "messageSticker") return "Sticker";
+  if (c._ === "messageAnimation") return "GIF";
+  if (c._ === "messageVoiceNote") return "Voice message";
+  if (c._ === "messageVideoNote") return "Video message";
+  if (c._ === "messageAudio") return "Audio";
+  if (c._ === "messagePoll") return "Poll";
+  if (c._ === "messageLocation") return "Location";
+  if (c._ === "messageContact") return "Contact";
   return null;
 }
 
@@ -210,6 +217,23 @@ export async function persistMtprotoConnection(
     status: "active",
   });
   await markTelegramMessagesConnected(telegramUsername);
+}
+
+export async function refreshChatThreadFromTdlib(
+  client: Client,
+  telegramUsername: string,
+  chatId: number,
+): Promise<void> {
+  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  await upsertTelegramThread({
+    telegramUsername,
+    telegramChatId: chat.id,
+    title: chatTitle(chat),
+    subtitle: lastMessageSubtitle(chat),
+    avatarUrl: null,
+    lastMessageAt: lastMessageAtIso(chat),
+    unreadCount: Number(chat.unread_count) || 0,
+  });
 }
 
 export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {

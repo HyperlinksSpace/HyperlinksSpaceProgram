@@ -36,24 +36,89 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
   };
 }
 
+function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): boolean {
+  if (prev.length !== next.length) return true;
+  for (let i = 0; i < prev.length; i++) {
+    const a = prev[i];
+    const b = next[i];
+    if (
+      a.id !== b.id ||
+      a.title !== b.title ||
+      a.subtitle !== b.subtitle ||
+      a.last_message_at !== b.last_message_at ||
+      a.unread_count !== b.unread_count ||
+      a.avatar_url !== b.avatar_url
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const MESSAGES_POLL_MS = 4_000;
+const MESSAGES_RESYNC_MS = 12_000;
+
 export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Props) {
   const { t } = useAppStrings();
   const { authReady, isAuthenticated } = useAuth();
-  const { isTelegramMessagesConnected } = useTelegramMessagesConnection();
+  const { isTelegramMessagesConnected, refreshStatus } = useTelegramMessagesConnection();
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const avatarResyncAttemptedRef = useRef(false);
+  const lastGatewayResyncRef = useRef(0);
+  const pollCountRef = useRef(0);
 
-  const loadChats = useCallback(async (options?: { allowAvatarResync?: boolean }) => {
+  const triggerGatewayResync = useCallback(async (reason: string) => {
+    const url = buildApiUrl("/api/telegram-messages-resync");
+    const started = Date.now();
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        chatCount?: number;
+        error?: string;
+        needsReconnect?: boolean;
+        connected?: boolean;
+      };
+      logPageDisplay("messages_gateway_resync", {
+        reason,
+        ok: json.ok ?? false,
+        chatCount: json.chatCount ?? null,
+        error: json.error ?? null,
+        needsReconnect: json.needsReconnect ?? false,
+        elapsedMs: Date.now() - started,
+        status: response.status,
+      });
+      lastGatewayResyncRef.current = Date.now();
+      if (json.needsReconnect || json.connected === false) {
+        await refreshStatus();
+        return false;
+      }
+      return response.ok && json.ok !== false;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      logPageDisplay("messages_gateway_resync_error", { reason, message });
+      return false;
+    }
+  }, [refreshStatus]);
+
+  const loadChats = useCallback(async (options?: { allowAvatarResync?: boolean; silent?: boolean }) => {
     if (!isAuthenticated || !isTelegramMessagesConnected) {
       setChats([]);
       setError(null);
       setLoading(false);
       return;
     }
-    setLoading(true);
-    setError(null);
+    if (!options?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     const url = buildApiUrl("/api/telegram-messages-chats");
     try {
       const response = await fetch(url, { method: "GET", credentials: "include" });
@@ -72,8 +137,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (row) rows.push(row);
         }
       }
-      setChats(rows);
-      logPageDisplay("messages_chats_loaded", { count: rows.length });
+      setChats((prev) => {
+        const changed = chatsChanged(prev, rows);
+        if (options?.silent) {
+          if (changed) {
+            logPageDisplay("messages_chats_poll_updated", {
+              count: rows.length,
+              firstId: rows[0]?.id ?? null,
+              poll: pollCountRef.current,
+            });
+          }
+          return changed ? rows : prev;
+        }
+        return rows;
+      });
+      if (!options?.silent) {
+        logPageDisplay("messages_chats_loaded", { count: rows.length });
+      }
 
       const needsAvatars =
         options?.allowAvatarResync !== false &&
@@ -82,46 +162,50 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (needsAvatars && !avatarResyncAttemptedRef.current) {
         avatarResyncAttemptedRef.current = true;
         logPageDisplay("messages_avatars_resync_start", { count: rows.length });
-        try {
-          const resyncResponse = await fetch(buildApiUrl("/api/telegram-messages-resync"), {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: "{}",
-          });
-          const resyncJson = (await resyncResponse.json().catch(() => ({}))) as {
-            ok?: boolean;
-            chatCount?: number;
-            error?: string;
-          };
-          logPageDisplay("messages_avatars_resync_done", {
-            ok: resyncJson.ok ?? false,
-            chatCount: resyncJson.chatCount ?? null,
-            error: resyncJson.error ?? null,
-          });
-          if (resyncResponse.ok && resyncJson.ok) {
-            await loadChats({ allowAvatarResync: false });
-          }
-        } catch (resyncErr) {
-          const message = resyncErr instanceof Error ? resyncErr.message : String(resyncErr);
-          logPageDisplay("messages_avatars_resync_error", { message });
+        const ok = await triggerGatewayResync("avatars_missing");
+        if (ok) {
+          await loadChats({ allowAvatarResync: false, silent: options?.silent });
         }
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      logPageDisplay("messages_chats_error", { message });
-      setError(message);
-      setChats([]);
+      if (!options?.silent) {
+        logPageDisplay("messages_chats_error", { message });
+        setError(message);
+        setChats([]);
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
-  }, [isAuthenticated, isTelegramMessagesConnected]);
+  }, [isAuthenticated, isTelegramMessagesConnected, triggerGatewayResync]);
 
   useEffect(() => {
     if (!authReady) return;
     avatarResyncAttemptedRef.current = false;
-    void loadChats();
-  }, [authReady, isTelegramMessagesConnected, loadChats]);
+    lastGatewayResyncRef.current = 0;
+    pollCountRef.current = 0;
+    void (async () => {
+      await triggerGatewayResync("initial_mount");
+      await loadChats();
+    })();
+  }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
+
+  useEffect(() => {
+    if (!authReady || !isTelegramMessagesConnected) return;
+    const poll = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      pollCountRef.current += 1;
+      const dueResync = Date.now() - lastGatewayResyncRef.current >= MESSAGES_RESYNC_MS;
+      void (async () => {
+        if (dueResync) {
+          await triggerGatewayResync("poll_interval");
+        }
+        await loadChats({ silent: true, allowAvatarResync: false });
+      })();
+    };
+    const timer = setInterval(poll, MESSAGES_POLL_MS);
+    return () => clearInterval(timer);
+  }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
   if (!isTelegramMessagesConnected) {
     return (
