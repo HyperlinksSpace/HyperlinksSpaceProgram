@@ -169,7 +169,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ fresh: true }),
       });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;

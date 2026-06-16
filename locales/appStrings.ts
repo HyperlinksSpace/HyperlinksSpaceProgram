@@ -89,6 +89,8 @@ const en = {
     "Could not send your password to the server. Close the sheet, open Connect again, and retry.",
   "messages.connectErrorNetwork":
     "Network error while submitting your password. Check your connection and try again.",
+  "messages.connectErrorSessionExpired":
+    "Login session expired or conflicted with another attempt. Tap Try again to scan a fresh QR code.",
   "messages.connectPrompt": "Connect Telegram to see your chats here.",
   "messages.connectRetry": "Try again",
   "messages.connectSheetBody":
@@ -348,6 +350,8 @@ const ru = {
     "Не удалось отправить пароль на сервер. Закройте окно, снова нажмите «Подключить Telegram» и повторите.",
   "messages.connectErrorNetwork":
     "Ошибка сети при отправке пароля. Проверьте подключение и попробуйте снова.",
+  "messages.connectErrorSessionExpired":
+    "Сессия входа истекла или конфликтует с другой попыткой. Нажмите «Повторить», чтобы отсканировать новый QR-код.",
   "messages.connectPrompt": "Подключите Telegram, чтобы видеть чаты здесь.",
   "messages.connectRetry": "Повторить",
   "messages.connectSheetBody":

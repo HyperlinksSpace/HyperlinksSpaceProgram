@@ -68,11 +68,15 @@ function safeHost(url: string): string | null {
 
 export async function gatewayConnectStart(
   telegramUsername: string,
-  resume = false,
+  options?: { resume?: boolean; fresh?: boolean },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/start", {
     method: "POST",
-    body: JSON.stringify({ telegramUsername, resume }),
+    body: JSON.stringify({
+      telegramUsername,
+      resume: Boolean(options?.resume),
+      fresh: Boolean(options?.fresh),
+    }),
   });
   return { ...json, httpStatus: response.status };
 }

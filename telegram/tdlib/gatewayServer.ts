@@ -81,13 +81,18 @@ export function startTdlibGatewayServer(): http.Server {
         }
 
         if (req.method === "POST" && pathname === "/v1/connect/start") {
-          const body = (await readJson(req)) as { telegramUsername?: string; resume?: boolean };
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            resume?: boolean;
+            fresh?: boolean;
+          };
           const telegramUsername = (body.telegramUsername || "").trim();
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "connect_start",
               telegramUsername: telegramUsername || null,
               resume: Boolean(body.resume),
+              fresh: Boolean(body.fresh),
             })}`,
           );
           if (!telegramUsername) {
@@ -96,7 +101,7 @@ export function startTdlibGatewayServer(): http.Server {
           }
           const snap = body.resume
             ? await resumeExistingSession(telegramUsername)
-            : await startConnectAttempt(telegramUsername);
+            : await startConnectAttempt(telegramUsername, { fresh: Boolean(body.fresh) });
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "connect_start_result",

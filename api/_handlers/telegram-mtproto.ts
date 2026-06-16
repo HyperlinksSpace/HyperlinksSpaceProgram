@@ -197,11 +197,12 @@ export async function telegramMtprotoConnectStartHandler(
 
   logTdlibGatewayApi("connect_start_proceed", { telegramUsername: userOrRes });
 
-  const startBody = await parseRequestBody<{ resume?: boolean }>(request);
+  const startBody = await parseRequestBody<{ resume?: boolean; fresh?: boolean }>(request);
   const resume = Boolean(startBody.resume);
+  const fresh = Boolean(startBody.fresh);
 
   try {
-    const snap = await gatewayConnectStart(userOrRes, resume);
+    const snap = await gatewayConnectStart(userOrRes, { resume, fresh });
     const ok = snap.authState !== "failed" || Boolean(snap.attemptId);
     logTdlibGatewayApi("connect_start_gateway_result", {
       telegramUsername: userOrRes,

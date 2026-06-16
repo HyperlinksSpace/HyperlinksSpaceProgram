@@ -1,3 +1,4 @@
+Success notation in-app on successful Telegram login
 Choose currency plots
 Shield and setting icons placement after the first breakpoint, move shield to header befor 1st breakpoint
 Login methods on desktop (Make them work)

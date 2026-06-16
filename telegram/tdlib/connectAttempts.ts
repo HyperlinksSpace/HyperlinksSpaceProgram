@@ -206,13 +206,15 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   try {
     const count = await syncChatsFromTdlib(client, record.telegramUsername);
     record.chatCount = count;
-    record.authState = "ready";
-    record.qrLink = null;
-    record.error = null;
   } catch (err) {
-    record.authState = "failed";
-    record.error = err instanceof Error ? err.message : "sync_failed";
+    const message = err instanceof Error ? err.message : "sync_failed";
+    logConnectEvent(record, "connect_sync_warning", { message });
+    record.chatCount = 0;
   }
+  record.authState = "ready";
+  record.qrLink = null;
+  record.error = null;
+  logConnectEvent(record, "connect_ready");
 }
 
 async function waitForAuthState(
@@ -229,14 +231,36 @@ async function waitForAuthState(
   return record.authState;
 }
 
-export async function startConnectAttempt(telegramUsername: string): Promise<ConnectAttemptSnapshot> {
+export function purgeTdlibUserData(telegramUsername: string): void {
   const existingId = activeByUser.get(telegramUsername);
-  if (existingId) {
-    const existing = attempts.get(existingId);
-    if (existing && existing.authState !== "failed" && Date.now() - existing.createdAt < 15 * 60_000) {
-      return snapshot(existing);
+  if (existingId) disposeAttempt(existingId);
+  const base = getTdlibUserDir(telegramUsername);
+  if (fs.existsSync(base)) {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+  console.log(
+    `[tdlib-gateway] ${JSON.stringify({
+      event: "connect_purge_user_data",
+      telegramUsername,
+    })}`,
+  );
+}
+
+export async function startConnectAttempt(
+  telegramUsername: string,
+  options?: { fresh?: boolean },
+): Promise<ConnectAttemptSnapshot> {
+  if (options?.fresh) {
+    purgeTdlibUserData(telegramUsername);
+  } else {
+    const existingId = activeByUser.get(telegramUsername);
+    if (existingId) {
+      const existing = attempts.get(existingId);
+      if (existing && existing.authState !== "failed" && Date.now() - existing.createdAt < 15 * 60_000) {
+        return snapshot(existing);
+      }
+      disposeAttempt(existingId);
     }
-    disposeAttempt(existingId);
   }
 
   if (!getTelegramApiCredentials()) {
@@ -303,14 +327,21 @@ export async function submitConnectPassword(
 ): Promise<ConnectAttemptSnapshot | null> {
   const record = attempts.get(attemptId);
   if (!record?.client) return record ? snapshot(record) : null;
+  if (record.authState === "ready") return snapshot(record);
 
   try {
     await record.client.invoke({ _: "checkAuthenticationPassword", password });
     await waitForAuthState(record, ["ready", "failed"], 30_000);
   } catch (err) {
-    record.authState = "wait_password";
-    record.error = err instanceof Error ? err.message : "password_rejected";
-    logConnectEvent(record, "connect_password_rejected");
+    const message = err instanceof Error ? err.message : "password_rejected";
+    if (/not found|authorization_closed|session/i.test(message)) {
+      record.authState = "failed";
+      record.error = "session_expired_restart";
+    } else {
+      record.authState = "wait_password";
+      record.error = message;
+    }
+    logConnectEvent(record, "connect_password_rejected", { message });
   }
   return snapshot(record);
 }

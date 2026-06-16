@@ -58,11 +58,16 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
   const collected = new Map<number, TdChat>();
 
   for (let round = 0; round < 40; round++) {
-    const list = (await client.invoke({
-      _: "getChats",
-      chat_list: chatList,
-      limit: 100,
-    })) as { chat_ids?: number[] };
+    let list: { chat_ids?: number[] };
+    try {
+      list = (await client.invoke({
+        _: "getChats",
+        chat_list: chatList,
+        limit: 100,
+      })) as { chat_ids?: number[] };
+    } catch {
+      break;
+    }
 
     const ids = list.chat_ids ?? [];
     if (ids.length === 0) {

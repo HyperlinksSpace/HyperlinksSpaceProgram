@@ -73,6 +73,13 @@ function connectErrorMessage(error: string | null, t: (key: string) => string): 
   if (error === "network_error" || error === "Failed to fetch") {
     return t("messages.connectErrorNetwork");
   }
+  if (
+    error === "session_expired_restart" ||
+    error === "authorization_closed" ||
+    error === "Not Found"
+  ) {
+    return t("messages.connectErrorSessionExpired");
+  }
   if (error === "attempt_id_and_password_required") {
     return t("messages.connectErrorPasswordRequest");
   }
