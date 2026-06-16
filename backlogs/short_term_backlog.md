@@ -1,7 +1,11 @@
 On page reload make the item of the main tab remain
 Chat intefrace design and implementation.
+Switch sigle chat interface to other modes on multicolumn mechanics.
+Not all avatars are displayed and messages, instant update, instant chat loads on page load
 Instant messages update
 Telegram connect vs. Telegram login (preferable)
+Connect telegram seccion store
+Real time sync with TDLib without DB.
 Apple styled button, revert to how it has been
 Connect Telegram on mobile.
 Layout broken on mobile on the vertical scroll.

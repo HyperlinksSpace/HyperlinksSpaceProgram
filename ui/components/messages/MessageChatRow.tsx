@@ -1,6 +1,7 @@
 import { Platform, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../../api/_base";
+import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import type { ThemeColors } from "../../theme";
 import {
@@ -15,6 +16,7 @@ import {
 
 export type MessageChatRowData = {
   id: number;
+  telegram_chat_id: number;
   title: string;
   subtitle: string;
   avatar_url: string | null;
@@ -45,8 +47,12 @@ function formatWallClock(raw: unknown): string {
   return "";
 }
 
-function resolveAvatarUrl(avatarUrl: string | null): string | null {
-  if (!avatarUrl) return null;
+function resolveAvatarUrl(item: MessageChatRowData): string | null {
+  const avatarUrl = item.avatar_url;
+  if (avatarUrl === TELEGRAM_THREAD_NO_AVATAR) return null;
+  if (!avatarUrl) {
+    return buildApiUrl(`/api/telegram-messages-avatar?chat_id=${item.telegram_chat_id}`);
+  }
   if (avatarUrl.startsWith("data:")) return avatarUrl;
   if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) return avatarUrl;
   return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
@@ -67,7 +73,7 @@ export function MessageChatRow({
   const subtitle = item.subtitle.trim();
   const trailing =
     item.unread_count > 0 ? String(item.unread_count) : "";
-  const iconUrl = resolveAvatarUrl(item.avatar_url);
+  const iconUrl = resolveAvatarUrl(item);
   const parsedClock = formatWallClock(item.last_message_at);
   const timeLabel = parsedClock || timePendingLabel;
   const timeIsProvisional = !parsedClock;

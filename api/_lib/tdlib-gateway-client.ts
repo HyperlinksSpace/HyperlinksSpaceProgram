@@ -68,7 +68,7 @@ function safeHost(url: string): string | null {
 
 export async function gatewayConnectStart(
   telegramUsername: string,
-  options?: { resume?: boolean; fresh?: boolean },
+  options?: { resume?: boolean; fresh?: boolean; resumeOnly?: boolean },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/start", {
     method: "POST",
@@ -76,6 +76,7 @@ export async function gatewayConnectStart(
       telegramUsername,
       resume: Boolean(options?.resume),
       fresh: Boolean(options?.fresh),
+      resumeOnly: Boolean(options?.resumeOnly),
     }),
   });
   return { ...json, httpStatus: response.status };
@@ -104,17 +105,117 @@ export async function gatewayConnectPassword(
 
 export async function gatewayResyncChats(
   telegramUsername: string,
-): Promise<{ ok: boolean; chatCount?: number; error?: string; httpStatus: number }> {
+  options?: { chatIds?: number[] },
+): Promise<{
+  ok: boolean;
+  chatCount?: number;
+  backfillCount?: number;
+  error?: string;
+  httpStatus: number;
+}> {
   const { response, json } = await gatewayFetch("/v1/connect/resync", {
     method: "POST",
-    body: JSON.stringify({ telegramUsername }),
+    body: JSON.stringify({
+      telegramUsername,
+      ...(options?.chatIds?.length ? { chatIds: options.chatIds } : {}),
+    }),
   });
   return {
     ok: response.ok && json.ok !== false,
     chatCount: typeof json.chatCount === "number" ? json.chatCount : undefined,
+    backfillCount: typeof json.backfillCount === "number" ? json.backfillCount : undefined,
     error: typeof json.error === "string" ? json.error : undefined,
     httpStatus: response.status,
   };
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Resume TDLib from on-disk session on the gateway (no QR). Polls until ready or timeout. */
+export async function gatewayWarmupSession(
+  telegramUsername: string,
+  options?: { maxPollMs?: number; pollMs?: number },
+): Promise<{ ok: boolean; authState: string; error?: string }> {
+  const maxPollMs = options?.maxPollMs ?? 45_000;
+  const pollMs = options?.pollMs ?? 2_000;
+
+  const start = await gatewayConnectStart(telegramUsername, { resume: true, resumeOnly: true });
+  if (start.authState === "ready") {
+    return { ok: true, authState: "ready" };
+  }
+  if (start.error === "no_session" || (start.authState === "failed" && !start.attemptId)) {
+    return { ok: false, authState: "failed", error: start.error ?? "no_session" };
+  }
+
+  const attemptId = start.attemptId;
+  if (!attemptId) {
+    return {
+      ok: false,
+      authState: start.authState ?? "failed",
+      error: start.error ?? "warmup_no_attempt",
+    };
+  }
+
+  const deadline = Date.now() + maxPollMs;
+  while (Date.now() < deadline) {
+    await sleepMs(pollMs);
+    const snap = await gatewayConnectStatus(attemptId);
+    if (snap.authState === "ready") {
+      return { ok: true, authState: "ready" };
+    }
+    if (snap.authState === "failed") {
+      return { ok: false, authState: "failed", error: snap.error ?? "warmup_failed" };
+    }
+  }
+
+  return { ok: false, authState: "session_not_ready", error: "warmup_timeout" };
+}
+
+export async function gatewayFetchChatAvatar(
+  telegramUsername: string,
+  chatId: number,
+): Promise<{ data: ArrayBuffer; mime: string } | "no_avatar" | null> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const params = new URLSearchParams({
+    telegramUsername,
+    chatId: String(chatId),
+  });
+  const url = `${base}/v1/chat/avatar?${params.toString()}`;
+  const started = Date.now();
+  logTdlibGatewayApi("gateway_fetch_start", {
+    method: "GET",
+    path: "/v1/chat/avatar",
+    gatewayHost: safeHost(url),
+    chatId,
+  });
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    logTdlibGatewayApi("gateway_fetch_done", {
+      path: "/v1/chat/avatar",
+      status: response.status,
+      ok: response.ok,
+      elapsedMs: Date.now() - started,
+      chatId,
+    });
+    if (response.status === 404) return "no_avatar";
+    if (!response.ok) return null;
+    const mime = response.headers.get("content-type") ?? "image/jpeg";
+    return { data: await response.arrayBuffer(), mime };
+  } catch (err) {
+    logTdlibGatewayApi("gateway_fetch_error", {
+      path: "/v1/chat/avatar",
+      elapsedMs: Date.now() - started,
+      fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      chatId,
+    });
+    return null;
+  }
 }
 
 export async function gatewayDisconnect(telegramUsername: string): Promise<{ ok: boolean; error?: string }> {

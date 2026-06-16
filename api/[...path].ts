@@ -24,8 +24,10 @@ import {
   telegramMessagesChatsHandler,
   telegramMessagesConnectHandler,
   telegramMessagesDisconnectHandler,
+  telegramMessagesAvatarHandler,
   telegramMessagesResyncHandler,
   telegramMessagesStatusHandler,
+  telegramMessagesWarmupHandler,
 } from './_handlers/telegram-messages.js';
 import {
   telegramMtprotoConnectPasswordHandler,
@@ -66,7 +68,9 @@ const ROUTES: Record<string, ApiHandler> = {
   'telegram-messages-connect': telegramMessagesConnectHandler as ApiHandler,
   'telegram-messages-disconnect': telegramMessagesDisconnectHandler as ApiHandler,
   'telegram-messages-chats': telegramMessagesChatsHandler as ApiHandler,
+  'telegram-messages-avatar': telegramMessagesAvatarHandler as ApiHandler,
   'telegram-messages-resync': telegramMessagesResyncHandler as ApiHandler,
+  'telegram-messages-warmup': telegramMessagesWarmupHandler as ApiHandler,
   /** TDLib QR connect (proxies to local/remote gateway). */
   'telegram-mtproto-connect-start': telegramMtprotoConnectStartHandler as ApiHandler,
   'telegram-mtproto-connect-status': telegramMtprotoConnectStatusHandler as ApiHandler,

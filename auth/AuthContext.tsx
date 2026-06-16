@@ -9,6 +9,8 @@ export type AuthContextValue = {
   authHydrated: boolean;
   /** Feed rows from `GET /api/auth/session` (same shape as `/api/feed` → `items`). */
   sessionFeedItems: unknown[] | null;
+  /** Telegram MTProto messages link persisted for this account (survives app logout/login). */
+  sessionTelegramMessagesConnected: boolean | null;
   signIn: () => void;
   signOut: () => void;
 };
@@ -38,6 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [sessionFeedItems, setSessionFeedItems] = useState<unknown[] | null>(null);
+  const [sessionTelegramMessagesConnected, setSessionTelegramMessagesConnected] = useState<boolean | null>(
+    null,
+  );
 
   useLayoutEffect(() => {
     setAuthHydrated(true);
@@ -62,15 +67,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const json = (await response.json().catch(() => ({}))) as {
           authenticated?: boolean;
           feed_items?: unknown;
+          telegram_messages_connected?: boolean;
         };
         const authenticated = response.ok && json?.authenticated === true;
         writeAuthHint(authenticated ? "in" : "out");
         const feedRaw = json.feed_items;
         const feedItems = Array.isArray(feedRaw) ? feedRaw : null;
+        const telegramMessagesConnected =
+          authenticated && json.telegram_messages_connected === true ? true : authenticated ? false : null;
         logPageDisplay("auth_bootstrap_response", {
           ok: response.ok,
           status: response.status,
           authenticated,
+          telegramMessagesConnected,
           elapsedMs: Date.now() - startedAt,
           feedItemCount: feedItems?.length ?? null,
           telegramAuthError:
@@ -81,10 +90,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!cancelled) {
           setAuthenticated(authenticated);
           setSessionFeedItems(authenticated && feedItems && feedItems.length > 0 ? feedItems : null);
+          setSessionTelegramMessagesConnected(telegramMessagesConnected);
           if (authenticated) {
             logPageDisplay("auth_bootstrap_signed_in", {
               elapsedMs: Date.now() - startedAt,
               feedItemCount: feedItems?.length ?? 0,
+              telegramMessagesConnected,
             });
           }
         }
@@ -120,6 +131,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthenticated(false);
     setAuthReady(true);
     setSessionFeedItems(null);
+    setSessionTelegramMessagesConnected(null);
+    // App logout clears the OAuth cookie only; Telegram MTProto link stays in DB for relogin.
     void fetch(buildApiUrl("/api/auth/session"), {
       method: "DELETE",
       credentials: "include",
@@ -129,8 +142,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isAuthenticated, authReady, authHydrated, sessionFeedItems, signIn, signOut }),
-    [isAuthenticated, authReady, authHydrated, sessionFeedItems, signIn, signOut],
+    () => ({
+      isAuthenticated,
+      authReady,
+      authHydrated,
+      sessionFeedItems,
+      sessionTelegramMessagesConnected,
+      signIn,
+      signOut,
+    }),
+    [
+      isAuthenticated,
+      authReady,
+      authHydrated,
+      sessionFeedItems,
+      sessionTelegramMessagesConnected,
+      signIn,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

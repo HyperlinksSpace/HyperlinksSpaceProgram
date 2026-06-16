@@ -3,6 +3,8 @@ import type { Client } from "tdl";
 import {
   clearDemoThreads,
   markTelegramMessagesConnected,
+  pruneTelegramThreadsBefore,
+  TELEGRAM_THREAD_NO_AVATAR,
   upsertTelegramThread,
 } from "../../database/telegramMessages.js";
 import { touchMtprotoSync, upsertMtprotoSession } from "../../database/telegramMtproto.js";
@@ -90,24 +92,48 @@ function previewFromMessage(msg: TdMessage | undefined | null): string | null {
   return null;
 }
 
+async function fetchLatestMessagePreview(client: Client, chatId: number): Promise<string | null> {
+  try {
+    try {
+      await client.invoke({ _: "openChat", chat_id: chatId });
+      await sleep(120);
+    } catch {
+      /* chat may already be open */
+    }
+    const history = (await client.invoke({
+      _: "getChatHistory",
+      chat_id: chatId,
+      from_message_id: 0,
+      offset: 0,
+      limit: 1,
+      only_local: false,
+    })) as { messages?: TdMessage[] };
+    return previewFromMessage(history.messages?.[0]);
+  } catch {
+    return null;
+  }
+}
 
 async function resolveLastMessagePreview(client: Client, chat: TdChat): Promise<string | null> {
   const direct = previewFromMessage(chat.last_message);
   if (direct) return direct;
 
   const messageId = chat.last_message?.id;
-  if (typeof messageId !== "number") return null;
-
-  try {
-    const full = (await client.invoke({
-      _: "getMessage",
-      chat_id: chat.id,
-      message_id: messageId,
-    })) as TdMessage;
-    return previewFromMessage(full);
-  } catch {
-    return null;
+  if (typeof messageId === "number") {
+    try {
+      const full = (await client.invoke({
+        _: "getMessage",
+        chat_id: chat.id,
+        message_id: messageId,
+      })) as TdMessage;
+      const fromMessage = previewFromMessage(full);
+      if (fromMessage) return fromMessage;
+    } catch {
+      /* fall through */
+    }
   }
+
+  return fetchLatestMessagePreview(client, chat.id);
 }
 
 function lastMessageAtIso(chat: TdChat): string {
@@ -196,13 +222,27 @@ async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile 
   return null;
 }
 
-async function resolveChatAvatarUrl(client: Client, chat: TdChat): Promise<string | null> {
-  const fileId = chat.photo?.small?.id;
-  if (typeof fileId !== "number") return null;
+async function downloadChatAvatarBytes(
+  client: Client,
+  chat: TdChat,
+): Promise<{ data: Buffer; mime: string } | typeof TELEGRAM_THREAD_NO_AVATAR | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let current = chat;
+    if (attempt > 0) {
+      try {
+        current = (await client.invoke({ _: "getChat", chat_id: chat.id })) as TdChat;
+        await sleep(250 * attempt);
+      } catch {
+        continue;
+      }
+    }
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+    const fileId = current.photo?.small?.id;
+    if (typeof fileId !== "number") return TELEGRAM_THREAD_NO_AVATAR;
+
     try {
-      let file = chat.photo?.small;
+      let file = current.photo?.small;
+      const useSync = attempt >= 1;
       if (!file?.local?.is_downloading_completed || !file.local.path) {
         await client.invoke({
           _: "downloadFile",
@@ -210,20 +250,43 @@ async function resolveChatAvatarUrl(client: Client, chat: TdChat): Promise<strin
           priority: 16,
           offset: 0,
           limit: 0,
-          synchronous: false,
+          synchronous: useSync,
         });
-        file = (await waitForLocalFile(client, fileId)) ?? undefined;
+        if (!useSync) {
+          file = (await waitForLocalFile(client, fileId)) ?? undefined;
+        } else {
+          file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        }
       }
-      const path = file?.local?.path;
-      if (!path) continue;
-      const buf = await fs.promises.readFile(path);
+      const filePath = file?.local?.path;
+      if (!filePath) continue;
+      const buf = await fs.promises.readFile(filePath);
       if (buf.length === 0) continue;
-      return `data:${mimeFromPath(path)};base64,${buf.toString("base64")}`;
+      return { data: buf, mime: mimeFromPath(filePath) };
     } catch {
-      /* retry once */
+      /* retry */
     }
   }
   return null;
+}
+
+async function resolveChatAvatarUrl(client: Client, chat: TdChat): Promise<string | null> {
+  const result = await downloadChatAvatarBytes(client, chat);
+  if (result === TELEGRAM_THREAD_NO_AVATAR) return TELEGRAM_THREAD_NO_AVATAR;
+  if (!result) return null;
+  return `data:${result.mime};base64,${result.data.toString("base64")}`;
+}
+
+export async function readChatAvatarBytes(
+  client: Client,
+  chatId: number,
+): Promise<{ data: Buffer; mime: string } | typeof TELEGRAM_THREAD_NO_AVATAR | null> {
+  try {
+    const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+    return downloadChatAvatarBytes(client, chat);
+  } catch {
+    return null;
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -273,10 +336,8 @@ export async function refreshChatThreadFromTdlib(
   chatId: number,
 ): Promise<void> {
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  const [subtitle, avatarUrl] = await Promise.all([
-    resolveLastMessagePreview(client, chat),
-    resolveChatAvatarUrl(client, chat),
-  ]);
+  const subtitle = await resolveLastMessagePreview(client, chat);
+  const avatarUrl = await resolveChatAvatarUrl(client, chat);
   await upsertTelegramThread({
     telegramUsername,
     telegramChatId: chat.id,
@@ -288,18 +349,61 @@ export async function refreshChatThreadFromTdlib(
   });
 }
 
+export async function backfillChatThreads(
+  client: Client,
+  telegramUsername: string,
+  chatIds: number[],
+): Promise<number> {
+  let refreshed = 0;
+  for (const chatId of chatIds) {
+    try {
+      await refreshChatThreadFromTdlib(client, telegramUsername, chatId);
+      refreshed += 1;
+    } catch {
+      /* skip unreadable chat */
+    }
+  }
+  if (refreshed > 0) await touchMtprotoSync(telegramUsername);
+  return refreshed;
+}
+
+async function enrichChatRow(
+  client: Client,
+  chat: TdChat,
+  subtitle: string | null,
+  avatarUrl: string | null,
+): Promise<{ subtitle: string | null; avatarUrl: string | null }> {
+  let nextSubtitle = subtitle;
+  let nextAvatar = avatarUrl;
+  if (!nextSubtitle) {
+    nextSubtitle = await resolveLastMessagePreview(client, chat);
+  }
+  if (!nextAvatar) {
+    nextAvatar = await resolveChatAvatarUrl(client, chat);
+  }
+  return { subtitle: nextSubtitle, avatarUrl: nextAvatar };
+}
+
 export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {
+  const syncStartedAt = new Date().toISOString();
   const chats = await loadAllChats(client);
   await clearDemoThreads(telegramUsername);
 
-  const [subtitles, avatarUrls] = await Promise.all([
-    mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
-      resolveLastMessagePreview(client, chat),
-    ),
-    mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
-      resolveChatAvatarUrl(client, chat),
-    ),
-  ]);
+  let subtitles = await mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
+    resolveLastMessagePreview(client, chat),
+  );
+  let avatarUrls = await mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
+    resolveChatAvatarUrl(client, chat),
+  );
+
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < chats.length; i++) {
+      if (subtitles[i] && avatarUrls[i]) continue;
+      const enriched = await enrichChatRow(client, chats[i], subtitles[i] ?? null, avatarUrls[i] ?? null);
+      subtitles[i] = enriched.subtitle;
+      avatarUrls[i] = enriched.avatarUrl;
+    }
+  }
 
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
@@ -314,6 +418,7 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
     });
   }
 
+  await pruneTelegramThreadsBefore(telegramUsername, syncStartedAt);
   await touchMtprotoSync(telegramUsername);
   return chats.length;
 }

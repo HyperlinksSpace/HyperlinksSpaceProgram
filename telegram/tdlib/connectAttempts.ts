@@ -5,7 +5,8 @@ import type { Client } from "tdl";
 import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
-import { persistMtprotoConnection, syncChatThreads } from "./syncChats.js";
+import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
+import { backfillChatThreads, persistMtprotoConnection, readChatAvatarBytes, syncChatThreads } from "./syncChats.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 
 export type ConnectAuthState =
@@ -422,12 +423,15 @@ export async function resumeExistingSession(telegramUsername: string): Promise<C
 /** Re-sync chat list + avatars for an already-authorized user (no QR). */
 export async function resyncUserChats(
   telegramUsername: string,
-): Promise<{ chatCount: number; error: string | null }> {
+  options?: { chatIds?: number[] },
+): Promise<{ chatCount: number; backfillCount: number; error: string | null }> {
   console.log(
     `[tdlib-gateway] ${JSON.stringify({
       event: "connect_resync_start",
       telegramUsername,
       hasActiveRecord: Boolean(getActiveRecord(telegramUsername)),
+      backfillOnly: Boolean(options?.chatIds?.length),
+      backfillTargets: options?.chatIds?.length ?? 0,
     })}`,
   );
 
@@ -441,7 +445,7 @@ export async function resyncUserChats(
           telegramUsername,
         })}`,
       );
-      return { chatCount: 0, error: "no_session" };
+      return { chatCount: 0, backfillCount: 0, error: "no_session" };
     }
     await startConnectAttempt(telegramUsername);
     record = await waitForUserSessionReady(telegramUsername, 60_000);
@@ -457,19 +461,25 @@ export async function resyncUserChats(
         error,
       })}`,
     );
-    return { chatCount: 0, error };
+    return { chatCount: 0, backfillCount: 0, error };
   }
 
   attachLiveChatSync(record);
   try {
+    if (options?.chatIds?.length) {
+      const backfillCount = await backfillChatThreads(record.client, telegramUsername, options.chatIds);
+      logConnectEvent(record, "connect_backfill_ok", { backfillCount });
+      return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
+    }
+
     const count = await syncChatThreads(record.client, telegramUsername);
     record.chatCount = count;
     logConnectEvent(record, "connect_resync_ok", { chatCount: count });
-    return { chatCount: count, error: null };
+    return { chatCount: count, backfillCount: 0, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_resync_failed", { message });
-    return { chatCount: 0, error: message };
+    return { chatCount: 0, backfillCount: 0, error: message };
   }
 }
 
@@ -518,6 +528,22 @@ export function restorePersistedGatewaySessions(): void {
       }
     })();
   }
+}
+
+export async function getChatAvatarImageForUser(
+  telegramUsername: string,
+  chatId: number,
+): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 15_000);
+  }
+  if (!record?.client || record.authState !== "ready") {
+    return null;
+  }
+  const result = await readChatAvatarBytes(record.client, chatId);
+  if (result === TELEGRAM_THREAD_NO_AVATAR) return "no_avatar";
+  return result;
 }
 
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {

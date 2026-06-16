@@ -1,4 +1,5 @@
 import { bootstrapAuthenticatedFeedItems } from "../../database/feed.js";
+import { getConnection, isTelegramMessagesConnected } from "../../database/telegramMessages.js";
 import { getDisplayNameForUsername } from "../../database/users.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { deleteSession, getSessionByHash, touchSession } from "../../database/telegramAuth.js";
@@ -162,6 +163,10 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   await touchSession(sha256Hex(token));
   const displayName = await getDisplayNameForUsername(row.telegram_username);
   const wallet = await getDefaultWalletByUsername(row.telegram_username);
+  const telegramMessagesConnected = await isTelegramMessagesConnected(row.telegram_username);
+  const telegramMessagesConn = telegramMessagesConnected
+    ? await getConnection(row.telegram_username)
+    : null;
   const catalogLocale = catalogLocaleFromRequest(request);
   let feed_items: Awaited<ReturnType<typeof bootstrapAuthenticatedFeedItems>> = [];
   try {
@@ -173,6 +178,10 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     feed_items = [];
   }
   const feedFields = { feed_items };
+  const telegramMessagesFields = {
+    telegram_messages_connected: telegramMessagesConnected,
+    telegram_messages_connected_at: telegramMessagesConn?.connected_at ?? null,
+  };
   const body = wallet
     ? {
         ok: true,
@@ -190,6 +199,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
           is_default: wallet.is_default,
           source: wallet.source,
         },
+        ...telegramMessagesFields,
         ...feedFields,
       }
     : {
@@ -199,6 +209,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         display_name: displayName,
         has_wallet: false,
         wallet_required: true,
+        ...telegramMessagesFields,
         ...feedFields,
       };
   if (res) return sendJsonViaRes(res, body, 200, request);

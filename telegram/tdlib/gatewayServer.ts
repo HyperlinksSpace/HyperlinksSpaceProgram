@@ -4,6 +4,7 @@ import { getGatewayBindHost, getGatewayPort, getGatewaySecret } from "./env.js";
 import {
   disconnectUserSession,
   gatewayHealth,
+  getChatAvatarImageForUser,
   getConnectAttempt,
   resyncUserChats,
   restorePersistedGatewaySessions,
@@ -87,6 +88,7 @@ export function startTdlibGatewayServer(): http.Server {
             telegramUsername?: string;
             resume?: boolean;
             fresh?: boolean;
+            resumeOnly?: boolean;
           };
           const telegramUsername = (body.telegramUsername || "").trim();
           console.log(
@@ -104,7 +106,7 @@ export function startTdlibGatewayServer(): http.Server {
           let snap = body.resume
             ? await resumeExistingSession(telegramUsername)
             : await startConnectAttempt(telegramUsername, { fresh: Boolean(body.fresh) });
-          if (body.resume && snap.authState === "failed" && snap.error === "no_session") {
+          if (body.resume && snap.authState === "failed" && snap.error === "no_session" && !body.resumeOnly) {
             console.log(
               `[tdlib-gateway] ${JSON.stringify({
                 event: "connect_start_no_session_fallback",
@@ -127,18 +129,48 @@ export function startTdlibGatewayServer(): http.Server {
         }
 
         if (req.method === "POST" && pathname === "/v1/connect/resync") {
-          const body = (await readJson(req)) as { telegramUsername?: string };
+          const body = (await readJson(req)) as { telegramUsername?: string; chatIds?: number[] };
           const telegramUsername = (body.telegramUsername || "").trim();
           if (!telegramUsername) {
             sendJson(res, 400, { ok: false, error: "username_required" });
             return;
           }
-          const result = await resyncUserChats(telegramUsername);
+          const chatIds = Array.isArray(body.chatIds)
+            ? body.chatIds.filter((id) => typeof id === "number" && Number.isFinite(id))
+            : undefined;
+          const result = await resyncUserChats(
+            telegramUsername,
+            chatIds?.length ? { chatIds } : undefined,
+          );
           sendJson(res, 200, {
             ok: !result.error,
             chatCount: result.chatCount,
+            backfillCount: result.backfillCount,
             error: result.error,
           });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/chat/avatar") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const chatId = Number(url.searchParams.get("chatId"));
+          if (!telegramUsername || !Number.isFinite(chatId)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const avatar = await getChatAvatarImageForUser(telegramUsername, chatId);
+          if (avatar === "no_avatar") {
+            sendJson(res, 404, { ok: false, error: "no_avatar" });
+            return;
+          }
+          if (!avatar) {
+            sendJson(res, 503, { ok: false, error: "avatar_unavailable" });
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader("Content-Type", avatar.mime);
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          res.end(avatar.data);
           return;
         }
 

@@ -43,7 +43,7 @@ const TelegramMessagesConnectionContext = createContext<TelegramMessagesConnecti
 const POLL_MS = 2000;
 
 export function TelegramMessagesConnectionProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, authReady } = useAuth();
+  const { isAuthenticated, authReady, sessionTelegramMessagesConnected } = useAuth();
   const [isTelegramMessagesConnected, setConnected] = useState(false);
   const [connectPending, setConnectPending] = useState(false);
   const [connectSheetVisible, setConnectSheetVisible] = useState(false);
@@ -52,6 +52,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const [connectError, setConnectError] = useState<string | null>(null);
   const attemptIdRef = useRef<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const warmupInFlightRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -60,11 +61,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }
   }, []);
 
-  const refreshStatusInner = useCallback(async () => {
+  const refreshStatusInner = useCallback(async (): Promise<boolean> => {
     logTelegramConnect("refresh_status_start", { isAuthenticated, authReady });
     if (!isAuthenticated) {
       setConnected(false);
-      return;
+      return false;
     }
     const statusUrl = buildApiUrl("/api/telegram-messages-status");
     try {
@@ -74,12 +75,55 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       setConnected(connected);
       logTelegramConnect("refresh_status_ok", { connected, status: response.status, url: statusUrl });
       logPageDisplay("telegram_messages_status", { connected, status: response.status });
+      return connected;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logTelegramConnect("refresh_status_error", { message, url: statusUrl });
       setConnected(false);
+      return false;
     }
   }, [isAuthenticated, authReady]);
+
+  const silentWarmupSession = useCallback(async () => {
+    if (warmupInFlightRef.current) return;
+    warmupInFlightRef.current = true;
+    logTelegramConnect("silent_warmup_start");
+    try {
+      const response = await fetch(buildApiUrl("/api/telegram-messages-warmup"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        connected?: boolean;
+        gatewayReady?: boolean;
+        needsReconnect?: boolean;
+        authState?: string;
+        error?: string | null;
+      };
+      logTelegramConnect("silent_warmup_done", {
+        ok: json.ok ?? false,
+        gatewayReady: json.gatewayReady ?? false,
+        authState: json.authState ?? null,
+        error: json.error ?? null,
+        status: response.status,
+      });
+      if (json.needsReconnect || json.connected === false) {
+        setConnected(false);
+        return;
+      }
+      if (json.gatewayReady) {
+        logPageDisplay("telegram_messages_gateway_ready");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logTelegramConnect("silent_warmup_error", { message });
+    } finally {
+      warmupInFlightRef.current = false;
+    }
+  }, []);
 
   const applyConnectSnapshot = useCallback(
     (json: {
@@ -151,9 +195,25 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   }, []);
 
   useEffect(() => {
-    if (!authReady) return;
-    void refreshStatusInner();
-  }, [authReady, isAuthenticated, refreshStatusInner]);
+    if (!isAuthenticated) {
+      setConnected(false);
+      return;
+    }
+    if (sessionTelegramMessagesConnected === true) {
+      setConnected(true);
+      logTelegramConnect("session_telegram_messages_hydrated", { source: "auth_bootstrap" });
+    }
+  }, [isAuthenticated, sessionTelegramMessagesConnected]);
+
+  useEffect(() => {
+    if (!authReady || !isAuthenticated) return;
+    void (async () => {
+      const connected = await refreshStatusInner();
+      if (connected) {
+        void silentWarmupSession();
+      }
+    })();
+  }, [authReady, isAuthenticated, refreshStatusInner, silentWarmupSession]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 

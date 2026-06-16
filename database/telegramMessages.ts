@@ -1,5 +1,8 @@
 import { sql } from "./start.js";
 import { isMtprotoSessionActive } from "./telegramMtproto.js";
+import { TELEGRAM_THREAD_NO_AVATAR } from "../shared/telegramThreadConstants.js";
+
+export { TELEGRAM_THREAD_NO_AVATAR };
 
 export type TelegramThreadRow = {
   id: number;
@@ -99,12 +102,68 @@ export async function upsertTelegramThread(input: {
     )
     ON CONFLICT (telegram_username, telegram_chat_id) DO UPDATE
       SET title = EXCLUDED.title,
-          subtitle = COALESCE(EXCLUDED.subtitle, telegram_threads.subtitle),
-          avatar_url = COALESCE(EXCLUDED.avatar_url, telegram_threads.avatar_url),
+          subtitle = CASE
+            WHEN EXCLUDED.subtitle IS NOT NULL AND BTRIM(EXCLUDED.subtitle) <> '' THEN EXCLUDED.subtitle
+            ELSE telegram_threads.subtitle
+          END,
+          avatar_url = CASE
+            WHEN EXCLUDED.avatar_url IS NOT NULL THEN EXCLUDED.avatar_url
+            ELSE telegram_threads.avatar_url
+          END,
           last_message_at = EXCLUDED.last_message_at,
           unread_count = EXCLUDED.unread_count,
           updated_at = NOW();
   `;
+}
+
+export async function pruneTelegramThreadsBefore(
+  telegramUsername: string,
+  beforeIso: string,
+): Promise<number> {
+  const rows = (await sql`
+    DELETE FROM telegram_threads
+    WHERE telegram_username = ${telegramUsername}
+      AND updated_at < ${beforeIso}::timestamptz
+    RETURNING id;
+  `) as { id: string | number }[];
+  return rows.length;
+}
+
+export async function listIncompleteTelegramThreads(
+  telegramUsername: string,
+  limit = 50,
+): Promise<{ telegram_chat_id: number }[]> {
+  const rows = (await sql`
+    SELECT telegram_chat_id
+    FROM telegram_threads
+    WHERE telegram_username = ${telegramUsername}
+      AND (
+        avatar_url IS NULL
+        OR subtitle IS NULL
+        OR BTRIM(subtitle) = ''
+      )
+    ORDER BY last_message_at DESC, id DESC
+    LIMIT ${limit};
+  `) as { telegram_chat_id: string | number }[];
+  return rows.map((row) => ({ telegram_chat_id: Number(row.telegram_chat_id) }));
+}
+
+export async function countIncompleteTelegramThreads(telegramUsername: string): Promise<{
+  missingAvatars: number;
+  missingSubtitles: number;
+}> {
+  const rows = (await sql`
+    SELECT
+      COUNT(*) FILTER (WHERE avatar_url IS NULL)::int AS missing_avatars,
+      COUNT(*) FILTER (WHERE subtitle IS NULL OR BTRIM(subtitle) = '')::int AS missing_subtitles
+    FROM telegram_threads
+    WHERE telegram_username = ${telegramUsername};
+  `) as { missing_avatars: string | number; missing_subtitles: string | number }[];
+  const row = rows[0];
+  return {
+    missingAvatars: Number(row?.missing_avatars) || 0,
+    missingSubtitles: Number(row?.missing_subtitles) || 0,
+  };
 }
 
 export async function listTelegramThreads(telegramUsername: string): Promise<TelegramThreadRow[]> {

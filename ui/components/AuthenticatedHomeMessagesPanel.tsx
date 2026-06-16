@@ -17,7 +17,8 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
   const id = Number(row.id);
-  if (!Number.isFinite(id)) return null;
+  const telegramChatId = Number(row.telegram_chat_id);
+  if (!Number.isFinite(id) || !Number.isFinite(telegramChatId)) return null;
   const title = typeof row.title === "string" ? row.title : "";
   const subtitle = typeof row.subtitle === "string" ? row.subtitle : "";
   const avatarUrl = typeof row.avatar_url === "string" ? row.avatar_url : null;
@@ -28,6 +29,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
   const unread = Number(row.unread_count);
   return {
     id,
+    telegram_chat_id: telegramChatId,
     title,
     subtitle,
     avatar_url: avatarUrl,
@@ -43,6 +45,7 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
     const b = next[i];
     if (
       a.id !== b.id ||
+      a.telegram_chat_id !== b.telegram_chat_id ||
       a.title !== b.title ||
       a.subtitle !== b.subtitle ||
       a.last_message_at !== b.last_message_at ||
@@ -65,7 +68,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const avatarResyncAttemptedRef = useRef(false);
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
 
@@ -82,14 +84,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         chatCount?: number;
+        backfillCount?: number;
+        missingAvatars?: number;
+        missingSubtitles?: number;
         error?: string;
         needsReconnect?: boolean;
         connected?: boolean;
+        warming?: boolean;
       };
       logPageDisplay("messages_gateway_resync", {
         reason,
         ok: json.ok ?? false,
+        warming: json.warming ?? false,
         chatCount: json.chatCount ?? null,
+        backfillCount: json.backfillCount ?? null,
+        missingAvatars: json.missingAvatars ?? null,
+        missingSubtitles: json.missingSubtitles ?? null,
         error: json.error ?? null,
         needsReconnect: json.needsReconnect ?? false,
         elapsedMs: Date.now() - started,
@@ -100,7 +110,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         await refreshStatus();
         return false;
       }
-      return response.ok && json.ok !== false;
+      return response.ok && (json.ok !== false || json.warming === true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       logPageDisplay("messages_gateway_resync_error", { reason, message });
@@ -154,23 +164,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", { count: rows.length });
       }
-
-      const needsBackfill =
-        options?.allowAvatarResync !== false &&
-        rows.length > 0 &&
-        rows.some((row) => !row.avatar_url || !row.subtitle.trim());
-      if (needsBackfill && !avatarResyncAttemptedRef.current) {
-        avatarResyncAttemptedRef.current = true;
-        logPageDisplay("messages_threads_backfill_start", {
-          count: rows.length,
-          missingAvatars: rows.filter((row) => !row.avatar_url).length,
-          missingSubtitles: rows.filter((row) => !row.subtitle.trim()).length,
-        });
-        const ok = await triggerGatewayResync("threads_incomplete");
-        if (ok) {
-          await loadChats({ allowAvatarResync: false, silent: options?.silent });
-        }
-      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (!options?.silent) {
@@ -185,7 +178,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (!authReady) return;
-    avatarResyncAttemptedRef.current = false;
     lastGatewayResyncRef.current = 0;
     pollCountRef.current = 0;
     void (async () => {
@@ -261,7 +253,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     <View style={{ width: "100%", alignSelf: "stretch" }}>
       {chats.map((item, index) => (
         <MessageChatRow
-          key={item.id}
+          key={item.telegram_chat_id}
           item={item}
           isLast={index === chats.length - 1}
           colors={colors}

@@ -1,13 +1,15 @@
 import {
+  countIncompleteTelegramThreads,
   disconnectTelegramMessages,
   getConnection,
   isTelegramMessagesConnected,
+  listIncompleteTelegramThreads,
   listTelegramThreads,
 } from "../../database/telegramMessages.js";
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect, gatewayResyncChats } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -207,10 +209,40 @@ export async function telegramMessagesResyncHandler(
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
 
-  const result = await gatewayResyncChats(userOrRes);
-  const staleSession =
-    result.error === "no_session" || result.error === "session_not_ready";
-  if (staleSession) {
+  const incomplete = await listIncompleteTelegramThreads(userOrRes, 50);
+  let result =
+    incomplete.length > 0
+      ? await gatewayResyncChats(userOrRes, {
+          chatIds: incomplete.map((row) => row.telegram_chat_id),
+        })
+      : await gatewayResyncChats(userOrRes);
+
+  if (result.error === "no_session" || result.error === "session_not_ready") {
+    const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: 25_000 });
+    if (warm.ok) {
+      result =
+        incomplete.length > 0
+          ? await gatewayResyncChats(userOrRes, {
+              chatIds: incomplete.map((row) => row.telegram_chat_id),
+            })
+          : await gatewayResyncChats(userOrRes);
+    } else if (result.error === "session_not_ready" || warm.error === "warmup_timeout") {
+      const incompleteAfterWarm = await countIncompleteTelegramThreads(userOrRes);
+      return finishJson(request, res, {
+        ok: false,
+        connected: true,
+        warming: true,
+        chatCount: result.chatCount ?? 0,
+        backfillCount: result.backfillCount ?? 0,
+        missingAvatars: incompleteAfterWarm.missingAvatars,
+        missingSubtitles: incompleteAfterWarm.missingSubtitles,
+        error: result.error ?? warm.error ?? "session_not_ready",
+      });
+    }
+  }
+
+  const sessionLost = result.error === "no_session";
+  if (sessionLost) {
     await revokeMtprotoSession(userOrRes);
     await disconnectTelegramMessages(userOrRes);
     return finishJson(request, res, {
@@ -221,6 +253,7 @@ export async function telegramMessagesResyncHandler(
       error: result.error ?? "no_session",
     });
   }
+  const incompleteAfter = await countIncompleteTelegramThreads(userOrRes);
   return finishJson(
     request,
     res,
@@ -228,8 +261,126 @@ export async function telegramMessagesResyncHandler(
       ok: result.ok,
       connected: true,
       chatCount: result.chatCount ?? 0,
+      backfillCount: result.backfillCount ?? 0,
+      missingAvatars: incompleteAfter.missingAvatars,
+      missingSubtitles: incompleteAfter.missingSubtitles,
       error: result.error ?? null,
     },
     result.httpStatus >= 400 ? result.httpStatus : 200,
   );
+}
+
+function requestUrl(request: AnyRequest): URL | null {
+  const raw = (request as { url?: string }).url ?? (request as Request).url;
+  if (!raw) return null;
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+export async function telegramMessagesAvatarHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected" }, 403);
+  }
+
+  const url = requestUrl(request);
+  const chatId = Number(url?.searchParams.get("chat_id"));
+  if (!Number.isFinite(chatId)) {
+    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+  }
+
+  const avatar = await gatewayFetchChatAvatar(userOrRes, chatId);
+  if (avatar === "no_avatar") {
+    return finishJson(request, res, { ok: false, error: "no_avatar" }, 404);
+  }
+  if (!avatar) {
+    return finishJson(request, res, { ok: false, error: "avatar_unavailable" }, 503);
+  }
+
+  const headers = new Headers({
+    "Content-Type": avatar.mime,
+    "Cache-Control": "public, max-age=86400",
+  });
+  applyAuthApiCors(request, headers);
+  const body = Buffer.from(avatar.data);
+
+  if (res) {
+    res.status(200);
+    headers.forEach((v, k) => res.setHeader(k, v));
+    res.end(body);
+    return;
+  }
+  return new Response(new Uint8Array(avatar.data), { status: 200, headers });
+}
+
+export async function telegramMessagesWarmupHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, connected: false, error: "not_connected" }, 403);
+  }
+
+  const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: 50_000 });
+  if (warm.error === "no_session") {
+    await revokeMtprotoSession(userOrRes);
+    await disconnectTelegramMessages(userOrRes);
+    return finishJson(request, res, {
+      ok: false,
+      connected: false,
+      needsReconnect: true,
+      gatewayReady: false,
+      authState: warm.authState,
+      error: warm.error,
+    });
+  }
+
+  return finishJson(request, res, {
+    ok: warm.ok,
+    connected: true,
+    gatewayReady: warm.ok,
+    authState: warm.authState,
+    error: warm.error ?? null,
+  });
 }
