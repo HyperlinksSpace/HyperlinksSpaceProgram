@@ -60,6 +60,27 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }
   }, []);
 
+  const refreshStatusInner = useCallback(async () => {
+    logTelegramConnect("refresh_status_start", { isAuthenticated, authReady });
+    if (!isAuthenticated) {
+      setConnected(false);
+      return;
+    }
+    const statusUrl = buildApiUrl("/api/telegram-messages-status");
+    try {
+      const response = await fetch(statusUrl, { method: "GET", credentials: "include" });
+      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; connected?: boolean };
+      const connected = response.ok && json.ok === true && json.connected === true;
+      setConnected(connected);
+      logTelegramConnect("refresh_status_ok", { connected, status: response.status, url: statusUrl });
+      logPageDisplay("telegram_messages_status", { connected, status: response.status });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logTelegramConnect("refresh_status_error", { message, url: statusUrl });
+      setConnected(false);
+    }
+  }, [isAuthenticated, authReady]);
+
   const applyConnectSnapshot = useCallback(
     (json: {
       ok?: boolean;
@@ -81,11 +102,12 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         stopPolling();
         logTelegramConnect("connect_success", { chatCount: json.chatCount ?? null });
         logPageDisplay("telegram_messages_connected");
+        void refreshStatusInner();
       } else if (state === "failed") {
         stopPolling();
       }
     },
-    [stopPolling],
+    [stopPolling, refreshStatusInner],
   );
 
   const pollConnectStatus = useCallback(async () => {
@@ -121,27 +143,6 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       void pollConnectStatus();
     }, POLL_MS);
   }, [pollConnectStatus, stopPolling]);
-
-  const refreshStatusInner = useCallback(async () => {
-    logTelegramConnect("refresh_status_start", { isAuthenticated, authReady });
-    if (!isAuthenticated) {
-      setConnected(false);
-      return;
-    }
-    const statusUrl = buildApiUrl("/api/telegram-messages-status");
-    try {
-      const response = await fetch(statusUrl, { method: "GET", credentials: "include" });
-      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; connected?: boolean };
-      const connected = response.ok && json.ok === true && json.connected === true;
-      setConnected(connected);
-      logTelegramConnect("refresh_status_ok", { connected, status: response.status, url: statusUrl });
-      logPageDisplay("telegram_messages_status", { connected, status: response.status });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logTelegramConnect("refresh_status_error", { message, url: statusUrl });
-      setConnected(false);
-    }
-  }, [isAuthenticated, authReady]);
 
   const refreshStatus = refreshStatusInner;
 

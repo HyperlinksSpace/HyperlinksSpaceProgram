@@ -5,7 +5,7 @@ import type { Client } from "tdl";
 import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
-import { syncChatsFromTdlib } from "./syncChats.js";
+import { persistMtprotoConnection, syncChatThreads } from "./syncChats.js";
 
 export type ConnectAuthState =
   | "initializing"
@@ -203,18 +203,30 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
     record.error = "client_missing";
     return;
   }
+
   try {
-    const count = await syncChatsFromTdlib(client, record.telegramUsername);
-    record.chatCount = count;
+    await persistMtprotoConnection(client, record.telegramUsername);
+    logConnectEvent(record, "connect_session_persisted");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "session_persist_failed";
+    record.authState = "failed";
+    record.error = message;
+    logConnectEvent(record, "connect_persist_failed", { message });
+    return;
+  }
+
+  try {
+    record.chatCount = await syncChatThreads(client, record.telegramUsername);
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_sync_warning", { message });
     record.chatCount = 0;
   }
+
   record.authState = "ready";
   record.qrLink = null;
   record.error = null;
-  logConnectEvent(record, "connect_ready");
+  logConnectEvent(record, "connect_ready", { chatCount: record.chatCount ?? 0 });
 }
 
 async function waitForAuthState(

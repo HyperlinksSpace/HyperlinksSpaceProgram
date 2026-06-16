@@ -71,7 +71,11 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
 
     const ids = list.chat_ids ?? [];
     if (ids.length === 0) {
-      await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
+      try {
+        await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
+      } catch {
+        break;
+      }
       await sleep(400);
       continue;
     }
@@ -88,7 +92,11 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
 
     if (ids.length < 100) break;
     const oldest = ids[ids.length - 1];
-    await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100, offset_chat_id: oldest });
+    try {
+      await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100, offset_chat_id: oldest });
+    } catch {
+      break;
+    }
     await sleep(300);
   }
 
@@ -99,25 +107,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function syncChatsFromTdlib(
+export async function persistMtprotoConnection(
   client: Client,
   telegramUsername: string,
-): Promise<number> {
-  const chats = await loadAllChats(client);
-  await clearDemoThreads(telegramUsername);
-
-  for (const chat of chats) {
-    await upsertTelegramThread({
-      telegramUsername,
-      telegramChatId: chat.id,
-      title: chatTitle(chat),
-      subtitle: lastMessageSubtitle(chat),
-      avatarUrl: null,
-      lastMessageAt: lastMessageAtIso(chat),
-      unreadCount: Number(chat.unread_count) || 0,
-    });
-  }
-
+): Promise<void> {
   let telegramUserId: number | null = null;
   try {
     const me = (await client.invoke({ _: "getMe" })) as { id?: number };
@@ -134,7 +127,32 @@ export async function syncChatsFromTdlib(
     status: "active",
   });
   await markTelegramMessagesConnected(telegramUsername);
-  await touchMtprotoSync(telegramUsername);
+}
 
+export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {
+  const chats = await loadAllChats(client);
+  await clearDemoThreads(telegramUsername);
+
+  for (const chat of chats) {
+    await upsertTelegramThread({
+      telegramUsername,
+      telegramChatId: chat.id,
+      title: chatTitle(chat),
+      subtitle: lastMessageSubtitle(chat),
+      avatarUrl: null,
+      lastMessageAt: lastMessageAtIso(chat),
+      unreadCount: Number(chat.unread_count) || 0,
+    });
+  }
+
+  await touchMtprotoSync(telegramUsername);
   return chats.length;
+}
+
+export async function syncChatsFromTdlib(
+  client: Client,
+  telegramUsername: string,
+): Promise<number> {
+  await persistMtprotoConnection(client, telegramUsername);
+  return syncChatThreads(client, telegramUsername);
 }
