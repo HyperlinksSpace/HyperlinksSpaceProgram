@@ -10,9 +10,13 @@ import { persistMtprotoConnection, readChatAvatarBytes, refreshLiveChats, syncCh
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
+export type ConnectAuthMethod = "qr" | "phone";
+
 export type ConnectAuthState =
   | "initializing"
   | "wait_qr"
+  | "wait_phone"
+  | "wait_code"
   | "wait_password"
   | "ready"
   | "failed";
@@ -32,6 +36,7 @@ type AttemptRecord = ConnectAttemptSnapshot & {
   createdAt: number;
   connectionState: string | null;
   qrRequested: boolean;
+  authMethod: ConnectAuthMethod;
   watchdogTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -115,18 +120,36 @@ function clearConnectWatchdog(record: AttemptRecord): void {
   }
 }
 
+const WATCHDOG_WAIT_STATES: ConnectAuthState[] = [
+  "initializing",
+  "wait_qr",
+  "wait_phone",
+  "wait_code",
+];
+
 function startConnectWatchdog(record: AttemptRecord): void {
   clearConnectWatchdog(record);
   record.watchdogTimer = setTimeout(() => {
-    if (record.authState !== "initializing" && record.authState !== "wait_qr") return;
+    if (!WATCHDOG_WAIT_STATES.includes(record.authState)) return;
     if (record.qrLink) return;
+    if (record.authMethod === "phone" && (record.authState === "wait_phone" || record.authState === "wait_code")) {
+      return;
+    }
     const stuckConnecting =
       record.connectionState === "connectionStateConnecting" ||
       record.connectionState === "connectionStateWaitingForNetwork";
-    if (stuckConnecting || !record.qrRequested) {
+    if (stuckConnecting || (record.authMethod === "qr" && !record.qrRequested)) {
       failAttempt(record, "telegram_network_unreachable");
     }
   }, CONNECT_WATCHDOG_MS);
+}
+
+function normalizePhoneNumber(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const digits = trimmed.replace(/[^\d+]/g, "");
+  if (digits.startsWith("+")) return digits;
+  return `+${digits.replace(/^\+/, "")}`;
 }
 
 async function requestQrCode(record: AttemptRecord): Promise<void> {
@@ -169,7 +192,20 @@ function attachAuthListener(record: AttemptRecord): void {
     logConnectEvent(record, "connect_auth_state", { tdlibAuthState: state });
 
     if (state === "authorizationStateWaitPhoneNumber") {
-      void requestQrCode(record);
+      if (record.authMethod === "phone") {
+        clearConnectWatchdog(record);
+        record.authState = "wait_phone";
+        logConnectEvent(record, "connect_wait_phone");
+      } else {
+        void requestQrCode(record);
+      }
+      return;
+    }
+
+    if (state === "authorizationStateWaitCode") {
+      clearConnectWatchdog(record);
+      record.authState = "wait_code";
+      logConnectEvent(record, "connect_wait_code");
       return;
     }
 
@@ -265,15 +301,22 @@ export function purgeTdlibUserData(telegramUsername: string): void {
 
 export async function startConnectAttempt(
   telegramUsername: string,
-  options?: { fresh?: boolean },
+  options?: { fresh?: boolean; authMethod?: ConnectAuthMethod },
 ): Promise<ConnectAttemptSnapshot> {
+  const authMethod: ConnectAuthMethod = options?.authMethod === "phone" ? "phone" : "qr";
+
   if (options?.fresh) {
     purgeTdlibUserData(telegramUsername);
   } else {
     const existingId = activeByUser.get(telegramUsername);
     if (existingId) {
       const existing = attempts.get(existingId);
-      if (existing && existing.authState !== "failed" && Date.now() - existing.createdAt < 15 * 60_000) {
+      if (
+        existing &&
+        existing.authState !== "failed" &&
+        existing.authMethod === authMethod &&
+        Date.now() - existing.createdAt < 15 * 60_000
+      ) {
         if (existing.authState === "ready") attachLiveChatSync(existing);
         return snapshot(existing);
       }
@@ -305,6 +348,7 @@ export async function startConnectAttempt(
     createdAt: Date.now(),
     connectionState: null,
     qrRequested: false,
+    authMethod,
     watchdogTimer: null,
   };
 
@@ -330,6 +374,88 @@ export async function startConnectAttempt(
 export function getConnectAttempt(attemptId: string): ConnectAttemptSnapshot | null {
   const record = attempts.get(attemptId);
   return record ? snapshot(record) : null;
+}
+
+export async function submitConnectPhoneNumber(
+  attemptId: string,
+  phoneNumber: string,
+): Promise<ConnectAttemptSnapshot | null> {
+  const record = attempts.get(attemptId);
+  if (!record?.client) return record ? snapshot(record) : null;
+  if (record.authState === "ready") return snapshot(record);
+  if (record.authMethod !== "phone") {
+    record.error = "wrong_auth_method";
+    return snapshot(record);
+  }
+
+  const normalized = normalizePhoneNumber(phoneNumber);
+  if (!normalized || normalized.length < 8) {
+    record.error = "invalid_phone_number";
+    return snapshot(record);
+  }
+
+  record.error = null;
+  try {
+    await record.client.invoke({
+      _: "setAuthenticationPhoneNumber",
+      phone_number: normalized,
+      settings: {
+        _: "phoneNumberAuthenticationSettings",
+        allow_flash_call: false,
+        allow_missed_call: false,
+        is_current_phone_number: false,
+        allow_sms: true,
+      },
+    });
+    await waitForAuthState(record, ["wait_code", "wait_password", "ready", "failed"], 30_000);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "phone_rejected";
+    if (/not found|authorization_closed|session/i.test(message)) {
+      record.authState = "failed";
+      record.error = "session_expired_restart";
+    } else {
+      record.authState = "wait_phone";
+      record.error = message;
+    }
+    logConnectEvent(record, "connect_phone_rejected", { message });
+  }
+  return snapshot(record);
+}
+
+export async function submitConnectCode(
+  attemptId: string,
+  code: string,
+): Promise<ConnectAttemptSnapshot | null> {
+  const record = attempts.get(attemptId);
+  if (!record?.client) return record ? snapshot(record) : null;
+  if (record.authState === "ready") return snapshot(record);
+  if (record.authMethod !== "phone") {
+    record.error = "wrong_auth_method";
+    return snapshot(record);
+  }
+
+  const trimmed = code.trim();
+  if (!trimmed) {
+    record.error = "code_required";
+    return snapshot(record);
+  }
+
+  record.error = null;
+  try {
+    await record.client.invoke({ _: "checkAuthenticationCode", code: trimmed });
+    await waitForAuthState(record, ["wait_password", "ready", "failed"], 30_000);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "code_rejected";
+    if (/not found|authorization_closed|session/i.test(message)) {
+      record.authState = "failed";
+      record.error = "session_expired_restart";
+    } else {
+      record.authState = "wait_code";
+      record.error = message;
+    }
+    logConnectEvent(record, "connect_code_rejected", { message });
+  }
+  return snapshot(record);
 }
 
 export async function submitConnectPassword(

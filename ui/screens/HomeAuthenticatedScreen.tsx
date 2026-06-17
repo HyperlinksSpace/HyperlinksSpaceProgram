@@ -55,6 +55,10 @@ import {
   openAuthenticatedHomeRightPanel,
   useAuthenticatedHomeRightPanel,
 } from "../authenticatedHomeRightPanel";
+import {
+  setAuthenticatedHomeLeftNavIndex,
+  useAuthenticatedHomeLeftNavIndex,
+} from "../authenticatedHomeLeftNavIndex";
 import { useRouter } from "expo-router";
 import { useSwapCurrencyPicker } from "../swap/swapCurrencyPicker";
 
@@ -130,9 +134,12 @@ function AuthenticatedHomeChrome({
   children,
   /** When set (including `null`), overrides legacy first-child header slot. */
   header,
+  /** When false (compact home), vertical insets live in scroll content so the indicator spans header→footer. */
+  edgePadding = true,
 }: {
   children: ReactNode;
   header?: ReactNode | null;
+  edgePadding?: boolean;
 }) {
   const colors = useColors();
   const p = layout.authenticatedHome;
@@ -152,8 +159,8 @@ function AuthenticatedHomeChrome({
         style={{
           flex: 1,
           width: "100%",
-          paddingTop: p.contentInsetTop,
-          paddingBottom: p.contentInsetBottom,
+          paddingTop: edgePadding ? p.contentInsetTop : 0,
+          paddingBottom: edgePadding ? p.contentInsetBottom : 0,
         }}
       >
         {head}
@@ -547,7 +554,7 @@ export function HomeAuthenticatedScreen() {
   const colors = useColors();
   const router = useRouter();
   const { t, translateFlowError } = useAppStrings();
-  const [homeNavIndex, setHomeNavIndex] = useState(0);
+  const homeNavIndex = useAuthenticatedHomeLeftNavIndex();
   const rightPanel = useAuthenticatedHomeRightPanel();
   const swapCurrencySide = useSwapCurrencyPicker();
   const {
@@ -1192,7 +1199,7 @@ export function HomeAuthenticatedScreen() {
 
   if (status === "idle" || status === "loading") {
     return (
-      <AuthenticatedHomeChrome>
+      <AuthenticatedHomeChrome edgePadding={isWideHome}>
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
@@ -1251,7 +1258,7 @@ export function HomeAuthenticatedScreen() {
 
   if (status === "error") {
     return (
-      <AuthenticatedHomeChrome>
+      <AuthenticatedHomeChrome edgePadding={isWideHome}>
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
@@ -1306,7 +1313,7 @@ export function HomeAuthenticatedScreen() {
 
   if (status === "dev") {
     return (
-      <AuthenticatedHomeChrome>
+      <AuthenticatedHomeChrome edgePadding={isWideHome}>
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
@@ -1389,6 +1396,12 @@ export function HomeAuthenticatedScreen() {
     ...homeMainColumnInsetStyle,
     paddingTop: 0,
   } as const;
+  /** Compact: vertical chrome insets scroll with the main column. */
+  const homeCompactScrollContentStyle = {
+    flexGrow: 0,
+    paddingTop: layout.authenticatedHome.contentInsetTop,
+    paddingBottom: layout.authenticatedHome.contentInsetBottom,
+  } as const;
 
   const homeMainColumnBlocks = (
     <>
@@ -1455,7 +1468,7 @@ export function HomeAuthenticatedScreen() {
     <AuthenticatedHomeLeftNavStrip
       colors={colors}
       selectedIndex={leftNavSelectedIndex}
-      onSelectIndex={setHomeNavIndex}
+      onSelectIndex={setAuthenticatedHomeLeftNavIndex}
     />
   );
 
@@ -1503,7 +1516,10 @@ export function HomeAuthenticatedScreen() {
       </HspScrollColumn>
     </>
   ) : (
-    <HspScrollColumn style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ flexGrow: 0 }}>
+    <HspScrollColumn
+      style={{ flex: 1, minHeight: 0 }}
+      contentContainerStyle={homeCompactScrollContentStyle}
+    >
       {homeCompactMainBlock}
     </HspScrollColumn>
   );
@@ -1590,7 +1606,7 @@ export function HomeAuthenticatedScreen() {
   );
 
   return (
-    <AuthenticatedHomeChrome header={isWideHome ? homeHeaderRow : null}>
+    <AuthenticatedHomeChrome header={isWideHome ? homeHeaderRow : null} edgePadding={isWideHome}>
       <AuthenticatedHomeSplitBody
         onSplitLayoutMetricsChange={onSplitLayoutMetricsChange}
         leftColumnFooter={isWideHome ? mainColumnFooter : null}

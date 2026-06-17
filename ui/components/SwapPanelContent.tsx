@@ -10,7 +10,7 @@ import { SwapRateRow } from "./SwapRateRow";
 import { SwapStatsRow } from "./SwapStatsRow";
 import { layout } from "../theme";
 
-const SCROLL_OVERFLOW_EPSILON_PX = 0.5;
+const SCROLL_OVERFLOW_EPSILON_PX = 1;
 
 function swapPanelNeedsScroll(fixedMinContentH: number, viewportH: number): boolean {
   return fixedMinContentH > viewportH + SCROLL_OVERFLOW_EPSILON_PX;
@@ -34,6 +34,8 @@ export function SwapPanelContent() {
   const { width: windowWidth } = useWindowDimensions();
   const showSwapActionBlock = windowWidth <= layout.authenticatedHome.secondBreakpoint;
   const [viewportH, setViewportH] = useState(0);
+  /** Scroll column viewport — used for flex-fill `minHeight` (matches layout, not outer wrapper). */
+  const [scrollViewportH, setScrollViewportH] = useState(0);
   /** `null` = one-time intrinsic measure; `false` = flex-fill chart; `true` = panel scroll. */
   const [needsScroll, setNeedsScroll] = useState<boolean | null>(null);
   const fixedMinContentHRef = useRef(0);
@@ -51,21 +53,24 @@ export function SwapPanelContent() {
   useEffect(() => {
     fixedMinContentHRef.current = 0;
     measureMetricsRef.current = { layoutH: 0, contentH: 0 };
+    setScrollViewportH(0);
     setNeedsScroll(null);
   }, [showSwapActionBlock]);
 
+  const effectiveViewportH = scrollViewportH > 0 ? scrollViewportH : viewportH;
+
   useEffect(() => {
-    if (viewportH <= 0 || fixedMinContentHRef.current <= 0 || needsScroll === null) return;
-    const next = swapPanelNeedsScroll(fixedMinContentHRef.current, viewportH);
+    if (effectiveViewportH <= 0 || fixedMinContentHRef.current <= 0 || needsScroll === null) return;
+    const next = swapPanelNeedsScroll(fixedMinContentHRef.current, effectiveViewportH);
     setNeedsScroll(next);
     swapChartLog("panel_scroll_state", {
-      viewportH,
-      layoutH: viewportH,
+      viewportH: effectiveViewportH,
+      layoutH: effectiveViewportH,
       contentH: fixedMinContentHRef.current,
       needsScroll: next,
       reason: "viewport_resize",
     });
-  }, [viewportH, needsScroll]);
+  }, [effectiveViewportH, needsScroll]);
 
   const onViewportLayout = useCallback((e: LayoutChangeEvent) => {
     setViewportH(e.nativeEvent.layout.height);
@@ -87,6 +92,9 @@ export function SwapPanelContent() {
 
   const onScrollMetrics = useCallback((metrics: HspScrollMetrics) => {
     measureMetricsRef.current = metrics;
+    if (metrics.layoutH > 0) {
+      setScrollViewportH((h) => (h === metrics.layoutH ? h : metrics.layoutH));
+    }
     if (needsScroll !== null) return;
     if (metrics.layoutH <= 0 || metrics.contentH <= 0) return;
 
@@ -97,7 +105,7 @@ export function SwapPanelContent() {
   }, [needsScroll]);
 
   useLayoutEffect(() => {
-    if (needsScroll !== null || viewportH <= 0) return;
+    if (needsScroll !== null || effectiveViewportH <= 0) return;
 
     let cancelled = false;
     let frame = 0;
@@ -107,7 +115,7 @@ export function SwapPanelContent() {
     const finish = () => {
       if (cancelled || fixedMinContentHRef.current <= 0) return;
       commitScrollMode(
-        swapPanelNeedsScroll(fixedMinContentHRef.current, viewportH),
+        swapPanelNeedsScroll(fixedMinContentHRef.current, effectiveViewportH),
         "intrinsic_measure",
       );
     };
@@ -121,7 +129,7 @@ export function SwapPanelContent() {
         return;
       }
 
-      if (contentH <= viewportH + SCROLL_OVERFLOW_EPSILON_PX) {
+      if (contentH <= effectiveViewportH + SCROLL_OVERFLOW_EPSILON_PX) {
         finish();
         return;
       }
@@ -154,7 +162,7 @@ export function SwapPanelContent() {
       cancelled = true;
       cancelAnimationFrame(id);
     };
-  }, [needsScroll, viewportH, commitScrollMode]);
+  }, [needsScroll, effectiveViewportH, commitScrollMode]);
 
   const ah = layout.authenticatedHome;
   const contentInset = layout.contentSideInsetPx;
@@ -164,6 +172,7 @@ export function SwapPanelContent() {
     paddingTop: ah.swapFirstRowTopInsetPx,
     paddingHorizontal: contentInset,
   };
+  const flexFillMinHeight = scrollViewportH > 0 ? scrollViewportH : effectiveViewportH;
 
   const displayTonPriceUsd =
     selectedPointIndex != null &&
@@ -185,13 +194,14 @@ export function SwapPanelContent() {
     >
       <HspScrollColumn
         style={{ flex: 1, ...scrollShellBleed }}
+        scrollEnabled={needsScroll === true}
         onMetricsChange={onScrollMetrics}
         contentContainerStyle={
           flexFillMode
             ? {
                 ...scrollContentPadding,
                 flexGrow: 1,
-                ...(viewportH > 0 ? { minHeight: viewportH } : {}),
+                ...(flexFillMinHeight > 0 ? { minHeight: flexFillMinHeight } : {}),
               }
             : scrollContentPadding
         }

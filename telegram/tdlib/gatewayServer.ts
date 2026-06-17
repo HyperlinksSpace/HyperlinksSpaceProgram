@@ -12,7 +12,9 @@ import {
   restorePersistedGatewaySessions,
   resumeExistingSession,
   startConnectAttempt,
+  submitConnectCode,
   submitConnectPassword,
+  submitConnectPhoneNumber,
 } from "./connectAttempts.js";
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -91,14 +93,17 @@ export function startTdlibGatewayServer(): http.Server {
             resume?: boolean;
             fresh?: boolean;
             resumeOnly?: boolean;
+            authMethod?: "qr" | "phone";
           };
           const telegramUsername = (body.telegramUsername || "").trim();
+          const authMethod = body.authMethod === "phone" ? "phone" : "qr";
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "connect_start",
               telegramUsername: telegramUsername || null,
               resume: Boolean(body.resume),
               fresh: Boolean(body.fresh),
+              authMethod,
             })}`,
           );
           if (!telegramUsername) {
@@ -107,7 +112,10 @@ export function startTdlibGatewayServer(): http.Server {
           }
           let snap = body.resume
             ? await resumeExistingSession(telegramUsername)
-            : await startConnectAttempt(telegramUsername, { fresh: Boolean(body.fresh) });
+            : await startConnectAttempt(telegramUsername, {
+                fresh: Boolean(body.fresh),
+                authMethod,
+              });
           if (body.resume && snap.authState === "failed" && snap.error === "no_session" && !body.resumeOnly) {
             console.log(
               `[tdlib-gateway] ${JSON.stringify({
@@ -115,7 +123,7 @@ export function startTdlibGatewayServer(): http.Server {
                 telegramUsername,
               })}`,
             );
-            snap = await startConnectAttempt(telegramUsername);
+            snap = await startConnectAttempt(telegramUsername, { authMethod });
           }
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
@@ -248,6 +256,40 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           const snap = getConnectAttempt(attemptId);
+          if (!snap) {
+            sendJson(res, 404, { ok: false, error: "attempt_not_found" });
+            return;
+          }
+          sendJson(res, 200, { ok: true, ...snap });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/connect/phone") {
+          const body = (await readJson(req)) as { attemptId?: string; phoneNumber?: string };
+          const attemptId = (body.attemptId || "").trim();
+          const phoneNumber = body.phoneNumber || "";
+          if (!attemptId || !phoneNumber.trim()) {
+            sendJson(res, 400, { ok: false, error: "attempt_id_and_phone_required" });
+            return;
+          }
+          const snap = await submitConnectPhoneNumber(attemptId, phoneNumber);
+          if (!snap) {
+            sendJson(res, 404, { ok: false, error: "attempt_not_found" });
+            return;
+          }
+          sendJson(res, 200, { ok: true, ...snap });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/connect/code") {
+          const body = (await readJson(req)) as { attemptId?: string; code?: string };
+          const attemptId = (body.attemptId || "").trim();
+          const code = body.code || "";
+          if (!attemptId || !code.trim()) {
+            sendJson(res, 400, { ok: false, error: "attempt_id_and_code_required" });
+            return;
+          }
+          const snap = await submitConnectCode(attemptId, code);
           if (!snap) {
             sendJson(res, 404, { ok: false, error: "attempt_not_found" });
             return;

@@ -1,5 +1,8 @@
+Telegram login + Connect
+Store Telegram Connect seccion
 On page reload make the item of the main tab remain
 Chat intefrace design and implementation + AI message generation
+Think of first tabs (Messages + Swap?)
 Switch sigle chat interface to other modes on multicolumn mechanics.
 Not all avatars are displayed and messages, instant update, instant chat loads on page load
 Instant messages update

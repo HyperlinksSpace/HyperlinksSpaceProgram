@@ -100,6 +100,21 @@ const en = {
   "messages.connectSheetBody":
     "Link your Telegram account to sync your real chats into Messages.",
   "messages.connectSheetLoading": "Preparing QR code…",
+  "messages.connectSheetLoadingPhone": "Preparing phone login…",
+  "messages.connectSheetMethodQr": "Scan QR",
+  "messages.connectSheetMethodPhone": "Enter number",
+  "messages.connectSheetOpenInTelegram": "Open in Telegram",
+  "messages.connectSheetPhoneBody":
+    "Enter your phone number in international format (e.g. +1 234 567 8900). Telegram will send a login code to your Telegram app or SMS.",
+  "messages.connectSheetPhonePlaceholder": "Phone number",
+  "messages.connectSheetPhoneSubmit": "Send code",
+  "messages.connectSheetCodeTitle": "Enter login code",
+  "messages.connectSheetCodeBody":
+    "Check Telegram for a message from Telegram with your login code, then enter it below.",
+  "messages.connectSheetCodePlaceholder": "Login code",
+  "messages.connectSheetCodeSubmit": "Continue",
+  "messages.connectErrorInvalidPhone": "Enter a valid phone number with country code (e.g. +1234567890).",
+  "messages.connectErrorCodeRejected": "Incorrect login code. Check Telegram and try again.",
   "messages.connectSheetPasswordTitle": "Two-step verification password",
   "messages.connectSheetPasswordBody":
     "QR scan succeeded. Telegram does not send a second code for two-step verification — enter the cloud password you set under Settings → Privacy → Two-Step Verification, then tap Continue.",
@@ -365,6 +380,21 @@ const ru = {
   "messages.connectSheetBody":
     "Привяжите аккаунт Telegram, чтобы синхронизировать реальные чаты в «Сообщения».",
   "messages.connectSheetLoading": "Готовим QR-код…",
+  "messages.connectSheetLoadingPhone": "Готовим вход по номеру…",
+  "messages.connectSheetMethodQr": "Сканировать QR",
+  "messages.connectSheetMethodPhone": "Ввести номер",
+  "messages.connectSheetOpenInTelegram": "Открыть в Telegram",
+  "messages.connectSheetPhoneBody":
+    "Введите номер в международном формате (например, +7 900 123 45 67). Код придёт в Telegram или по SMS.",
+  "messages.connectSheetPhonePlaceholder": "Номер телефона",
+  "messages.connectSheetPhoneSubmit": "Отправить код",
+  "messages.connectSheetCodeTitle": "Код входа",
+  "messages.connectSheetCodeBody":
+    "Проверьте сообщение от Telegram с кодом входа и введите его ниже.",
+  "messages.connectSheetCodePlaceholder": "Код входа",
+  "messages.connectSheetCodeSubmit": "Продолжить",
+  "messages.connectErrorInvalidPhone": "Введите корректный номер с кодом страны (например, +79001234567).",
+  "messages.connectErrorCodeRejected": "Неверный код входа. Проверьте Telegram и попробуйте снова.",
   "messages.connectSheetPasswordTitle": "Пароль двухэтапной проверки",
   "messages.connectSheetPasswordBody":
     "QR-код принят. Telegram не присылает второй код для двухэтапной проверки — введите облачный пароль из Настройки → Конфиденциальность → Двухэтапная аутентификация и нажмите «Продолжить».",

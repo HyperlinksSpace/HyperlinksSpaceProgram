@@ -15,6 +15,8 @@ import {
 } from '../database/users.js';
 import { ensureSchema } from '../database/start.js';
 import { getDefaultWalletByUsername } from '../database/wallets.js';
+import { isTelegramMessagesConnected } from '../database/telegramMessages.js';
+import { issueAuthSession } from '../api/_lib/auth-session-issue.js';
 
 const LOG_TAG = '[api/telegram]';
 
@@ -249,6 +251,40 @@ async function getBody(
   return null;
 }
 
+function isSecureRequest(
+  request: Request | { headers?: Record<string, string | string[] | undefined>; url?: string },
+): boolean {
+  const rawUrl = (request as { url?: string }).url ?? (request as Request).url ?? '';
+  if (rawUrl.startsWith('https://')) return true;
+  const headers = (request as Request).headers;
+  const xf =
+    headers && typeof headers.get === 'function'
+      ? headers.get('x-forwarded-proto')
+      : (request as { headers?: Record<string, string | string[] | undefined> }).headers?.[
+          'x-forwarded-proto'
+        ];
+  const proto = Array.isArray(xf) ? xf[0] : xf;
+  return typeof proto === 'string' && proto.split(',')[0]?.trim() === 'https';
+}
+
+async function jsonWithAuthSession(
+  body: Record<string, unknown>,
+  telegramUsername: string,
+  request: Request | { headers?: Record<string, string | string[] | undefined>; url?: string },
+): Promise<Response> {
+  const telegram_messages_connected = await isTelegramMessagesConnected(telegramUsername);
+  const { setCookie } = await issueAuthSession({
+    telegramUsername,
+    secure: isSecureRequest(request),
+  });
+  const headers = new Headers({ 'content-type': 'application/json' });
+  headers.append('Set-Cookie', setCookie);
+  return new Response(JSON.stringify({ ...body, telegram_messages_connected }), {
+    status: 200,
+    headers,
+  });
+}
+
 export async function handlePost(
   request: Request | { json?: () => Promise<unknown>; body?: unknown },
 ): Promise<Response> {
@@ -380,8 +416,8 @@ export async function handlePost(
         feedItems: feed_items.length,
         totalMs: Date.now() - startMs,
       });
-      return new Response(
-        JSON.stringify({
+      return jsonWithAuthSession(
+        {
           ok: true,
           telegram_username: telegramUsername,
           display_name: displayName,
@@ -397,8 +433,9 @@ export async function handlePost(
             source: wallet.source,
           },
           feed_items,
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+        },
+        telegramUsername,
+        request,
       );
     }
 
@@ -408,16 +445,17 @@ export async function handlePost(
       feedItems: feed_items.length,
       totalMs: Date.now() - startMs,
     });
-    return new Response(
-      JSON.stringify({
+    return jsonWithAuthSession(
+      {
         ok: true,
         telegram_username: telegramUsername,
         display_name: displayName,
         has_wallet: false,
         wallet_required: true,
         feed_items,
-      }),
-      { status: 200, headers: { 'content-type': 'application/json' } },
+      },
+      telegramUsername,
+      request,
     );
   } catch (e) {
     logErr('db_upsert_failed', e);

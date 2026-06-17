@@ -34,6 +34,14 @@
       "destination": "/api/telegram-mtproto-connect-password"
     },
     {
+      "source": "/api/telegram/mtproto/connect/phone",
+      "destination": "/api/telegram-mtproto-connect-phone"
+    },
+    {
+      "source": "/api/telegram/mtproto/connect/code",
+      "destination": "/api/telegram-mtproto-connect-code"
+    },
+    {
       "source": "/api/kms/ping",
       "destination": "/api/wallet-envelope-ping"
     },

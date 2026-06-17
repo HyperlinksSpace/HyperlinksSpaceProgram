@@ -329,6 +329,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     TelegramFeedBootstrapRow[] | null
   >(null);
   const hasRegisteredRef = useRef(false);
+  const registerWithBackendRef = useRef<(initData: string) => void>(() => {});
   const browserSessionHydratedRef = useRef(false);
   const initPollCleanupRef = useRef<(() => void) | null>(null);
   /** Block SDK/bridge theme events until runTmaFlow has applied WebApp theme (avoids stale dark WebApp). */
@@ -351,6 +352,27 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   );
   useEffect(() => {
     setClientHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onSignedOut = () => {
+      hasRegisteredRef.current = false;
+    };
+    const onSignedIn = () => {
+      if (!isMiniAppContext()) return;
+      hasRegisteredRef.current = false;
+      const initDataStr = getInitDataString();
+      if (initDataStr) {
+        registerWithBackendRef.current(initDataStr);
+      }
+    };
+    document.addEventListener("hsp-auth-signed-out", onSignedOut);
+    document.addEventListener("hsp-auth-signed-in", onSignedIn);
+    return () => {
+      document.removeEventListener("hsp-auth-signed-out", onSignedOut);
+      document.removeEventListener("hsp-auth-signed-in", onSignedIn);
+    };
   }, []);
 
   const refreshLayoutStartup = useCallback(() => {
@@ -717,6 +739,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ initData }),
         signal: controller.signal,
       })
@@ -753,6 +776,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
             Array.isArray(fiRaw) && fiRaw.length > 0 ? (fiRaw as TelegramFeedBootstrapRow[]) : null,
           );
           setStatus("ok");
+          if (typeof document !== "undefined") {
+            document.dispatchEvent(new CustomEvent("hsp-auth-session-updated"));
+          }
         })
         .catch((e) => {
           clearTimeout(timeoutId);
@@ -777,6 +803,8 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           setStatus("error");
         });
     }
+
+    registerWithBackendRef.current = registerWithBackend;
 
     function runTmaFlow(): () => void {
       readyAndExpand();

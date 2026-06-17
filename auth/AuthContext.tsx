@@ -29,6 +29,26 @@ function writeAuthHint(value: AuthHint): void {
   }
 }
 
+function dispatchAuthLifecycleEvent(name: "hsp-auth-signed-in" | "hsp-auth-signed-out"): void {
+  if (typeof document === "undefined") return;
+  document.dispatchEvent(new CustomEvent(name));
+}
+
+type SessionJson = {
+  authenticated?: boolean;
+  feed_items?: unknown;
+  telegram_messages_connected?: boolean;
+};
+
+function parseSessionResponse(json: SessionJson, responseOk: boolean) {
+  const authenticated = responseOk && json?.authenticated === true;
+  const feedRaw = json.feed_items;
+  const feedItems = Array.isArray(feedRaw) ? feedRaw : null;
+  const telegramMessagesConnected =
+    authenticated && json.telegram_messages_connected === true ? true : authenticated ? false : null;
+  return { authenticated, feedItems, telegramMessagesConnected };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { welcomeFeedCatalogLocale } = useAppStrings();
   // SSR / first paint: keep default state. Do not read the stored auth hint before session:
@@ -48,83 +68,88 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthHydrated(true);
   }, []);
 
+  const refreshAuthSession = useCallback(async () => {
+    const startedAt = Date.now();
+    const sessionUrl = buildApiUrl(
+      `/api/auth/session?catalog_locale=${encodeURIComponent(welcomeFeedCatalogLocale)}`,
+    );
+    try {
+      const response = await fetch(sessionUrl, {
+        method: "GET",
+        credentials: "include",
+      });
+      const json = (await response.json().catch(() => ({}))) as SessionJson;
+      const { authenticated, feedItems, telegramMessagesConnected } = parseSessionResponse(
+        json,
+        response.ok,
+      );
+      writeAuthHint(authenticated ? "in" : "out");
+      setAuthenticated(authenticated);
+      setSessionFeedItems(authenticated && feedItems && feedItems.length > 0 ? feedItems : null);
+      setSessionTelegramMessagesConnected(telegramMessagesConnected);
+      logPageDisplay("auth_session_refresh", {
+        ok: response.ok,
+        status: response.status,
+        authenticated,
+        telegramMessagesConnected,
+        elapsedMs: Date.now() - startedAt,
+        feedItemCount: feedItems?.length ?? null,
+      });
+      return authenticated;
+    } catch (error) {
+      logPageDisplay("auth_session_refresh_error", {
+        elapsedMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    } finally {
+      setAuthReady(true);
+    }
+  }, [welcomeFeedCatalogLocale]);
+
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
       const startedAt = Date.now();
-      const sessionUrl = buildApiUrl(
-        `/api/auth/session?catalog_locale=${encodeURIComponent(welcomeFeedCatalogLocale)}`,
-      );
       logPageDisplay("auth_bootstrap_start", {
-        sessionUrl,
         catalogLocale: welcomeFeedCatalogLocale,
       });
-      try {
-        const response = await fetch(sessionUrl, {
-          method: "GET",
-          credentials: "include",
-        });
-        const json = (await response.json().catch(() => ({}))) as {
-          authenticated?: boolean;
-          feed_items?: unknown;
-          telegram_messages_connected?: boolean;
-        };
-        const authenticated = response.ok && json?.authenticated === true;
-        writeAuthHint(authenticated ? "in" : "out");
-        const feedRaw = json.feed_items;
-        const feedItems = Array.isArray(feedRaw) ? feedRaw : null;
-        const telegramMessagesConnected =
-          authenticated && json.telegram_messages_connected === true ? true : authenticated ? false : null;
-        logPageDisplay("auth_bootstrap_response", {
-          ok: response.ok,
-          status: response.status,
-          authenticated,
-          telegramMessagesConnected,
+      const authenticated = await refreshAuthSession();
+      if (!cancelled && authenticated) {
+        logPageDisplay("auth_bootstrap_signed_in", {
           elapsedMs: Date.now() - startedAt,
-          feedItemCount: feedItems?.length ?? null,
-          telegramAuthError:
-            typeof window !== "undefined"
-              ? new URLSearchParams(window.location.search).get("telegramAuthError")
-              : null,
         });
-        if (!cancelled) {
-          setAuthenticated(authenticated);
-          setSessionFeedItems(authenticated && feedItems && feedItems.length > 0 ? feedItems : null);
-          setSessionTelegramMessagesConnected(telegramMessagesConnected);
-          if (authenticated) {
-            logPageDisplay("auth_bootstrap_signed_in", {
-              elapsedMs: Date.now() - startedAt,
-              feedItemCount: feedItems?.length ?? 0,
-              telegramMessagesConnected,
-            });
-          }
-        }
-      } catch (error) {
-        logPageDisplay("auth_bootstrap_error", {
+      }
+      if (!cancelled) {
+        logPageDisplay("auth_bootstrap_ready", {
           elapsedMs: Date.now() - startedAt,
-          error: error instanceof Error ? error.message : String(error),
         });
-        // Ignore bootstrap errors; app can still sign in via interactive flow.
-      } finally {
-        if (!cancelled) {
-          setAuthReady(true);
-          logPageDisplay("auth_bootstrap_ready", {
-            elapsedMs: Date.now() - startedAt,
-          });
-        }
       }
     }
     void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [welcomeFeedCatalogLocale]);
+  }, [refreshAuthSession]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onSessionUpdated = () => {
+      void refreshAuthSession();
+    };
+    document.addEventListener("hsp-auth-session-updated", onSessionUpdated);
+    return () => {
+      document.removeEventListener("hsp-auth-session-updated", onSessionUpdated);
+    };
+  }, [refreshAuthSession]);
 
   const signIn = useCallback(() => {
     writeAuthHint("in");
     setAuthenticated(true);
     setAuthReady(true);
-  }, []);
+    dispatchAuthLifecycleEvent("hsp-auth-signed-in");
+    void refreshAuthSession();
+  }, [refreshAuthSession]);
 
   const signOut = useCallback(() => {
     writeAuthHint("out");
@@ -132,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthReady(true);
     setSessionFeedItems(null);
     setSessionTelegramMessagesConnected(null);
+    dispatchAuthLifecycleEvent("hsp-auth-signed-out");
     // App logout clears the OAuth cookie only; Telegram MTProto link stays in DB for relogin.
     void fetch(buildApiUrl("/api/auth/session"), {
       method: "DELETE",

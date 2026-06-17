@@ -68,7 +68,7 @@ function safeHost(url: string): string | null {
 
 export async function gatewayConnectStart(
   telegramUsername: string,
-  options?: { resume?: boolean; fresh?: boolean; resumeOnly?: boolean },
+  options?: { resume?: boolean; fresh?: boolean; resumeOnly?: boolean; authMethod?: "qr" | "phone" },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/start", {
     method: "POST",
@@ -77,6 +77,7 @@ export async function gatewayConnectStart(
       resume: Boolean(options?.resume),
       fresh: Boolean(options?.fresh),
       resumeOnly: Boolean(options?.resumeOnly),
+      authMethod: options?.authMethod === "phone" ? "phone" : "qr",
     }),
   });
   return { ...json, httpStatus: response.status };
@@ -99,6 +100,28 @@ export async function gatewayConnectPassword(
   const { response, json } = await gatewayFetch("/v1/connect/password", {
     method: "POST",
     body: JSON.stringify({ attemptId, password }),
+  });
+  return { ...json, httpStatus: response.status };
+}
+
+export async function gatewayConnectPhone(
+  attemptId: string,
+  phoneNumber: string,
+): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
+  const { response, json } = await gatewayFetch("/v1/connect/phone", {
+    method: "POST",
+    body: JSON.stringify({ attemptId, phoneNumber }),
+  });
+  return { ...json, httpStatus: response.status };
+}
+
+export async function gatewayConnectCode(
+  attemptId: string,
+  code: string,
+): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
+  const { response, json } = await gatewayFetch("/v1/connect/code", {
+    method: "POST",
+    body: JSON.stringify({ attemptId, code }),
   });
   return { ...json, httpStatus: response.status };
 }

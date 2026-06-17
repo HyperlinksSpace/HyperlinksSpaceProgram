@@ -15,10 +15,14 @@ import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
 import { logTelegramConnect } from "./telegramConnectDebug";
 
+export type MtprotoAuthMethod = "qr" | "phone";
+
 export type MtprotoAuthState =
   | "idle"
   | "initializing"
   | "wait_qr"
+  | "wait_phone"
+  | "wait_code"
   | "wait_password"
   | "ready"
   | "failed";
@@ -28,12 +32,15 @@ type TelegramMessagesConnectionCtx = {
   connectPending: boolean;
   connectSheetVisible: boolean;
   connectAuthState: MtprotoAuthState;
+  connectAuthMethod: MtprotoAuthMethod;
   connectQrLink: string | null;
   connectError: string | null;
   openConnectSheet: () => void;
   closeConnectSheet: () => void;
   refreshStatus: () => Promise<void>;
-  beginMtprotoConnect: (options?: { fresh?: boolean }) => Promise<void>;
+  beginMtprotoConnect: (options?: { fresh?: boolean; authMethod?: MtprotoAuthMethod }) => Promise<void>;
+  submitMtprotoPhone: (phoneNumber: string) => Promise<void>;
+  submitMtprotoCode: (code: string) => Promise<void>;
   submitMtprotoPassword: (password: string) => Promise<void>;
   disconnectTelegramMessages: () => Promise<void>;
 };
@@ -48,6 +55,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const [connectPending, setConnectPending] = useState(false);
   const [connectSheetVisible, setConnectSheetVisible] = useState(false);
   const [connectAuthState, setConnectAuthState] = useState<MtprotoAuthState>("idle");
+  const [connectAuthMethod, setConnectAuthMethod] = useState<MtprotoAuthMethod>("qr");
   const [connectQrLink, setConnectQrLink] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const attemptIdRef = useRef<string | null>(null);
@@ -203,9 +211,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }
     if (sessionTelegramMessagesConnected === true) {
       setConnected(true);
-      logTelegramConnect("session_telegram_messages_hydrated", { source: "auth_bootstrap" });
+      void silentWarmupSession();
     }
-  }, [isAuthenticated, sessionTelegramMessagesConnected]);
+  }, [isAuthenticated, sessionTelegramMessagesConnected, silentWarmupSession]);
 
   useEffect(() => {
     if (!authReady || !isAuthenticated) return;
@@ -219,12 +227,15 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const beginMtprotoConnect = useCallback(async (options?: { fresh?: boolean }) => {
+  const beginMtprotoConnect = useCallback(async (options?: { fresh?: boolean; authMethod?: MtprotoAuthMethod }) => {
+    const authMethod: MtprotoAuthMethod = options?.authMethod === "phone" ? "phone" : "qr";
+    setConnectAuthMethod(authMethod);
     const startUrl = buildApiUrl("/api/telegram-mtproto-connect-start");
     logTelegramConnect("connect_start", {
       url: startUrl,
       isAuthenticated,
       fresh: Boolean(options?.fresh),
+      authMethod,
       resume: !options?.fresh,
     });
     setConnectPending(true);
@@ -233,11 +244,14 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     setConnectQrLink(null);
     attemptIdRef.current = null;
     try {
+      const body: Record<string, unknown> = options?.fresh
+        ? { fresh: true, authMethod }
+        : { resume: true, authMethod };
       const response = await fetch(startUrl, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(options?.fresh ? { fresh: true } : { resume: true }),
+        body: JSON.stringify(body),
       });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -258,12 +272,14 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       if (
         json.attemptId ||
         json.authState === "wait_qr" ||
+        json.authState === "wait_phone" ||
+        json.authState === "wait_code" ||
         json.authState === "initializing" ||
         json.authState === "wait_password"
       ) {
         startPolling();
       }
-      if (!response.ok && json.authState !== "wait_qr") {
+      if (!response.ok && json.authState !== "wait_qr" && json.authState !== "wait_phone") {
         setConnectAuthState("failed");
         setConnectError(
           json.error ||
@@ -280,6 +296,84 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       logTelegramConnect("connect_finished");
     }
   }, [applyConnectSnapshot, isAuthenticated, startPolling]);
+
+  const submitMtprotoPhone = useCallback(
+    async (phoneNumber: string) => {
+      const attemptId = attemptIdRef.current;
+      if (!attemptId || !phoneNumber.trim()) return;
+      setConnectPending(true);
+      setConnectError(null);
+      try {
+        const response = await fetch(buildApiUrl("/api/telegram-mtproto-connect-phone"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attemptId, phoneNumber }),
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          authState?: string;
+          error?: string | null;
+          chatCount?: number | null;
+        };
+        if (!json.authState) {
+          setConnectError(json.error || `HTTP_${response.status}`);
+          startPolling();
+          return;
+        }
+        applyConnectSnapshot({ ...json, attemptId });
+        if (json.authState !== "ready" && json.authState !== "failed") {
+          startPolling();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setConnectError(message.includes("Failed to fetch") ? "network_error" : message);
+        startPolling();
+      } finally {
+        setConnectPending(false);
+      }
+    },
+    [applyConnectSnapshot, startPolling],
+  );
+
+  const submitMtprotoCode = useCallback(
+    async (code: string) => {
+      const attemptId = attemptIdRef.current;
+      if (!attemptId || !code.trim()) return;
+      setConnectPending(true);
+      setConnectError(null);
+      try {
+        const response = await fetch(buildApiUrl("/api/telegram-mtproto-connect-code"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attemptId, code }),
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          authState?: string;
+          error?: string | null;
+          chatCount?: number | null;
+        };
+        if (!json.authState) {
+          setConnectError(json.error || `HTTP_${response.status}`);
+          startPolling();
+          return;
+        }
+        applyConnectSnapshot({ ...json, attemptId });
+        if (json.authState !== "ready" && json.authState !== "failed") {
+          startPolling();
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setConnectError(message.includes("Failed to fetch") ? "network_error" : message);
+        startPolling();
+      } finally {
+        setConnectPending(false);
+      }
+    },
+    [applyConnectSnapshot, startPolling],
+  );
 
   const submitMtprotoPassword = useCallback(
     async (password: string) => {
@@ -366,12 +460,15 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       connectPending,
       connectSheetVisible,
       connectAuthState,
+      connectAuthMethod,
       connectQrLink,
       connectError,
       openConnectSheet,
       closeConnectSheet,
       refreshStatus,
       beginMtprotoConnect,
+      submitMtprotoPhone,
+      submitMtprotoCode,
       submitMtprotoPassword,
       disconnectTelegramMessages,
     }),
@@ -380,12 +477,15 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       connectPending,
       connectSheetVisible,
       connectAuthState,
+      connectAuthMethod,
       connectQrLink,
       connectError,
       openConnectSheet,
       closeConnectSheet,
       refreshStatus,
       beginMtprotoConnect,
+      submitMtprotoPhone,
+      submitMtprotoCode,
       submitMtprotoPassword,
       disconnectTelegramMessages,
     ],

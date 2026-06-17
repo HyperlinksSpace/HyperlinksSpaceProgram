@@ -134,17 +134,19 @@ export function HspScrollColumn({
       el.style.setProperty("scrollbar-width", "none");
       el.style.setProperty("-ms-overflow-style", "none");
       el.style.setProperty("overscroll-behavior", containOverscroll ? "contain" : "auto");
+      el.style.setProperty("overflow", scrollEnabled ? "auto" : "hidden");
+      if (!scrollEnabled) el.scrollTop = 0;
     };
     const id = requestAnimationFrame(() => {
       run();
       requestAnimationFrame(run);
     });
     return () => cancelAnimationFrame(id);
-  }, [children, containOverscroll]);
+  }, [children, containOverscroll, scrollEnabled]);
 
   /** Fallback when CSS overscroll-behavior is ignored (some RN-web / browser combos). */
   useEffect(() => {
-    if (Platform.OS !== "web" || !containOverscroll) return;
+    if (Platform.OS !== "web" || !containOverscroll || !scrollEnabled) return;
 
     let scrollEl: HTMLElement | null = null;
     let onWheel: ((e: WheelEvent) => void) | null = null;
@@ -185,7 +187,7 @@ export function HspScrollColumn({
         scrollEl.removeEventListener("wheel", onWheel);
       }
     };
-  }, [containOverscroll, children]);
+  }, [containOverscroll, scrollEnabled, children]);
 
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   useEffect(() => {

@@ -30,7 +30,9 @@ import {
   telegramMessagesWarmupHandler,
 } from './_handlers/telegram-messages.js';
 import {
+  telegramMtprotoConnectCodeHandler,
   telegramMtprotoConnectPasswordHandler,
+  telegramMtprotoConnectPhoneHandler,
   telegramMtprotoConnectStartHandler,
   telegramMtprotoConnectStatusHandler,
 } from './_handlers/telegram-mtproto.js';
@@ -75,6 +77,8 @@ const ROUTES: Record<string, ApiHandler> = {
   'telegram-mtproto-connect-start': telegramMtprotoConnectStartHandler as ApiHandler,
   'telegram-mtproto-connect-status': telegramMtprotoConnectStatusHandler as ApiHandler,
   'telegram-mtproto-connect-password': telegramMtprotoConnectPasswordHandler as ApiHandler,
+  'telegram-mtproto-connect-phone': telegramMtprotoConnectPhoneHandler as ApiHandler,
+  'telegram-mtproto-connect-code': telegramMtprotoConnectCodeHandler as ApiHandler,
 };
 
 function routeKeyFromUrl(request: Request): string {
