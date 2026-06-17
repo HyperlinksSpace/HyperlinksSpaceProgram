@@ -73,15 +73,17 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
   if (type === "updateNewMessage") {
     const message = update.message as TdMessage & { chat_id?: number };
     if (typeof message?.chat_id !== "number") return;
+    const preview = previewFromMessage(message);
     try {
       const chat = (await client.invoke({ _: "getChat", chat_id: message.chat_id })) as TdChat;
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
-        subtitle: previewFromMessage(message),
+        subtitle: preview,
         last_message: message,
       });
       logLiveSync(record, "live_chat_message_applied", {
         chatId: message.chat_id,
-        preview: previewFromMessage(message),
+        preview,
+        previewMissing: !preview,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -154,6 +156,11 @@ function scheduleChatRefresh(record: LiveSyncRecord, chatId: number, update: Rec
   }, CHAT_REFRESH_DEBOUNCE_MS);
 
   userTimers.set(chatId, timer);
+  logLiveSync(record, "live_chat_refresh_scheduled", {
+    chatId,
+    updateType: update._,
+    debounceMs: CHAT_REFRESH_DEBOUNCE_MS,
+  });
 }
 
 export function attachLiveChatSync(record: LiveSyncRecord): void {

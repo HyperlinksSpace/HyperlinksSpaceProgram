@@ -130,12 +130,9 @@ function AuthenticatedHomeChrome({
   children,
   /** When set (including `null`), overrides legacy first-child header slot. */
   header,
-  /** Below `firstBreakpoint` on web: body grows with content so root scroll moves the main block. */
-  compactScroll = false,
 }: {
   children: ReactNode;
   header?: ReactNode | null;
-  compactScroll?: boolean;
 }) {
   const colors = useColors();
   const p = layout.authenticatedHome;
@@ -145,7 +142,7 @@ function AuthenticatedHomeChrome({
   return (
     <View
       style={{
-        ...(compactScroll ? {} : { flex: 1 }),
+        flex: 1,
         width: "100%",
         alignSelf: "stretch",
         backgroundColor: colors.background,
@@ -153,14 +150,14 @@ function AuthenticatedHomeChrome({
     >
       <View
         style={{
-          ...(compactScroll ? {} : { flex: 1 }),
+          flex: 1,
           width: "100%",
           paddingTop: p.contentInsetTop,
           paddingBottom: p.contentInsetBottom,
         }}
       >
         {head}
-        <View style={compactScroll ? { width: "100%" } : { flex: 1, width: "100%" }}>{body}</View>
+        <View style={{ flex: 1, width: "100%", minHeight: 0 }}>{body}</View>
       </View>
     </View>
   );
@@ -549,7 +546,7 @@ function markWalletSecretStoredOnServer(
 export function HomeAuthenticatedScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { t, tf, translateFlowError } = useAppStrings();
+  const { t, translateFlowError } = useAppStrings();
   const [homeNavIndex, setHomeNavIndex] = useState(0);
   const rightPanel = useAuthenticatedHomeRightPanel();
   const swapCurrencySide = useSwapCurrencyPicker();
@@ -1387,10 +1384,10 @@ export function HomeAuthenticatedScreen() {
     paddingHorizontal: layout.contentSideInsetPx,
     paddingBottom: layout.contentSideInsetPx,
   } as const;
-  /** Wide left column: gap below nav strip lives in scroll padding so the thumb track starts on the nav bottom rule. */
+  /** Wide left column: list panels own top inset; no extra scroll padding. */
   const homeWideScrollContentStyle = {
     ...homeMainColumnInsetStyle,
-    paddingTop: 8,
+    paddingTop: 0,
   } as const;
 
   const homeMainColumnBlocks = (
@@ -1401,20 +1398,6 @@ export function HomeAuthenticatedScreen() {
       <AuthenticatedHomePersistedPanelSlot active={homeNavIndex === 1}>
         <AuthenticatedHomeMessagesPanel colors={colors} scrollable={false} />
       </AuthenticatedHomePersistedPanelSlot>
-      {telegramUsername ? (
-        <View style={{ width: "100%", alignSelf: "stretch", marginBottom: 8 }}>
-          <Text
-            style={{
-              textAlign: "center",
-              color: colors.primary,
-              fontSize: 16,
-              lineHeight: 24,
-            }}
-          >
-            {tf("home.wallet.loggedInAs", { username: telegramUsername })}
-          </Text>
-        </View>
-      ) : null}
       {flowError ? (
         <View style={{ width: "100%", alignItems: "center", alignSelf: "stretch", marginTop: 8, gap: 8 }}>
           <Text style={{ textAlign: "center", color: "#b00020", lineHeight: 22 }}>
@@ -1498,8 +1481,8 @@ export function HomeAuthenticatedScreen() {
   );
 
   /**
-   * Compact: wallet header → nav strip → feed → “logged in as …” scroll as one block (root scroll on web).
-   * Wide: header pinned in chrome; nav pinned; feed + status copy scroll in the left column only.
+   * Compact: wallet header → nav strip → feed scroll inside one column (header/nav pinned above scroll).
+   * Wide: header pinned in chrome; nav pinned; feed scrolls in the left column only.
    */
   const homeCompactMainBlock = (
     <>
@@ -1519,8 +1502,6 @@ export function HomeAuthenticatedScreen() {
         {homeMainColumnBlocks}
       </HspScrollColumn>
     </>
-  ) : Platform.OS === "web" ? (
-    homeCompactMainBlock
   ) : (
     <HspScrollColumn style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ flexGrow: 0 }}>
       {homeCompactMainBlock}
@@ -1609,10 +1590,7 @@ export function HomeAuthenticatedScreen() {
   );
 
   return (
-    <AuthenticatedHomeChrome
-      compactScroll={!isWideHome && Platform.OS === "web"}
-      header={isWideHome ? homeHeaderRow : null}
-    >
+    <AuthenticatedHomeChrome header={isWideHome ? homeHeaderRow : null}>
       <AuthenticatedHomeSplitBody
         onSplitLayoutMetricsChange={onSplitLayoutMetricsChange}
         leftColumnFooter={isWideHome ? mainColumnFooter : null}

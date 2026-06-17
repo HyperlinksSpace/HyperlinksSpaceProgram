@@ -108,6 +108,20 @@ export function welcomeAuthButtonActiveBackground(colors: ThemeColors, scheme: T
   return mixRgbHex(colors.undercover, colors.primary, t);
 }
 
+/** AI example prompt hover — slightly darkens `undercover`. */
+export function aiPromptButtonHoverBackground(colors: ThemeColors, scheme: ThemeName): string {
+  const toward = scheme === "light" ? colors.primary : colors.background;
+  const t = scheme === "light" ? 0.07 : 0.14;
+  return mixRgbHex(colors.undercover, toward, t);
+}
+
+/** AI example prompt press — a step darker than hover. */
+export function aiPromptButtonActiveBackground(colors: ThemeColors, scheme: ThemeName): string {
+  const toward = scheme === "light" ? colors.primary : colors.background;
+  const t = scheme === "light" ? 0.11 : 0.22;
+  return mixRgbHex(colors.undercover, toward, t);
+}
+
 /** Same on SSR and first client paint — never app dark (#111); Telegram bg shows through CSS vars. */
 const TELEGRAM_PRE_READY_FALLBACK: ThemeColors = {
   ...dark,
@@ -334,24 +348,6 @@ export function authenticatedHomeBottomBarDock(
   if (windowWidth <= ah.firstBreakpoint) return "screenFooter";
   if (windowWidth <= ah.secondBreakpoint) return "splitColumn2";
   return "splitColumn3";
-}
-
-/**
- * Web root {@link HspScrollColumn}: welcome and narrow authenticated home feed only.
- * Panel routes (`/swap`, `/send`, …) and wide home use fixed-height flex shells; each column scrolls internally.
- */
-export function rootUsesDocumentScroll(
-  pathname: string | null | undefined,
-  windowWidth: number,
-  isAuthenticated: boolean,
-  auth: { authHydrated: boolean; authReady: boolean; isAuthenticated: boolean },
-): boolean {
-  if (isWelcomeLayoutRoute(pathname, auth)) return true;
-  return (
-    isAuthenticated &&
-    (pathname === "/" || pathname === "" || pathname == null) &&
-    windowWidth <= layout.authenticatedHome.firstBreakpoint
-  );
 }
 
 /**

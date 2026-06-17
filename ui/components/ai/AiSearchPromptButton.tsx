@@ -2,7 +2,15 @@ import { createElement, useCallback, useMemo, useState } from "react";
 import { Platform, Pressable, Text, View, type TextLayoutEvent } from "react-native";
 
 import { WEB_UI_SANS_STACK } from "../../fonts";
-import { typographyRect15, useColors } from "../../theme";
+import {
+  typographyRect15,
+  useColors,
+  aiPromptButtonActiveBackground,
+  aiPromptButtonHoverBackground,
+  type ThemeColors,
+  type ThemeName,
+} from "../../theme";
+import { useTelegram } from "../Telegram";
 import {
   AI_PROMPT_BUTTON_PADDING_HORIZONTAL_PX,
   AI_PROMPT_BUTTON_PADDING_VERTICAL_PX,
@@ -19,6 +27,16 @@ type Props = {
   onPress: () => void;
 };
 
+function promptButtonBackground(
+  colors: ThemeColors,
+  scheme: ThemeName,
+  state: { pressed: boolean; hovered: boolean },
+): string {
+  if (state.pressed) return aiPromptButtonActiveBackground(colors, scheme);
+  if (state.hovered) return aiPromptButtonHoverBackground(colors, scheme);
+  return colors.undercover;
+}
+
 function fittedWidthFromTextLayout(event: TextLayoutEvent, columnWidth: number): number {
   const lines = event.nativeEvent.lines;
   if (lines.length === 0) return 0;
@@ -34,12 +52,21 @@ function AiSearchPromptButtonWeb({
   columnWidth,
   onPress,
   color,
-  backgroundColor,
-}: Props & { color: string; backgroundColor: string }) {
+  colors,
+  colorScheme,
+}: Props & {
+  color: string;
+  colors: ThemeColors;
+  colorScheme: ThemeName;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [pressed, setPressed] = useState(false);
   const buttonWidth = useMemo(
     () => (columnWidth > 0 ? measurePromptButtonOuterWidth(label, columnWidth) : 0),
     [label, columnWidth],
   );
+
+  const backgroundColor = promptButtonBackground(colors, colorScheme, { pressed, hovered });
 
   if (buttonWidth <= 0) return null;
 
@@ -53,6 +80,13 @@ function AiSearchPromptButtonWeb({
             event.preventDefault();
             onPress();
           },
+          onMouseEnter: () => setHovered(true),
+          onMouseLeave: () => {
+            setHovered(false);
+            setPressed(false);
+          },
+          onMouseDown: () => setPressed(true),
+          onMouseUp: () => setPressed(false),
           style: {
             width: buttonWidth,
             boxSizing: "border-box",
@@ -86,8 +120,13 @@ function AiSearchPromptButtonNative({
   columnWidth,
   onPress,
   color,
-  backgroundColor,
-}: Props & { color: string; backgroundColor: string }) {
+  colors,
+  colorScheme,
+}: Props & {
+  color: string;
+  colors: ThemeColors;
+  colorScheme: ThemeName;
+}) {
   const [buttonWidth, setButtonWidth] = useState<number | null>(null);
 
   const onMeasureTextLayout = useCallback(
@@ -137,13 +176,16 @@ function AiSearchPromptButtonNative({
       <Pressable
         accessibilityRole="button"
         onPress={onPress}
-        style={[
+        style={({ pressed, hovered }) => [
           {
-            backgroundColor,
             borderRadius: BUTTON_BORDER_RADIUS_PX,
             paddingHorizontal: AI_PROMPT_BUTTON_PADDING_HORIZONTAL_PX,
             paddingVertical: AI_PROMPT_BUTTON_PADDING_VERTICAL_PX,
             alignSelf: "flex-start",
+            backgroundColor: promptButtonBackground(colors, colorScheme, {
+              pressed,
+              hovered: hovered ?? false,
+            }),
           },
           buttonWidth != null ? { width: buttonWidth } : null,
         ]}
@@ -157,6 +199,7 @@ function AiSearchPromptButtonNative({
 /** Prompt chip: cover width matches the longest wrapped line (15px side / 10px vertical padding). */
 export function AiSearchPromptButton({ label, columnWidth, onPress }: Props) {
   const colors = useColors();
+  const { colorScheme } = useTelegram();
 
   if (Platform.OS === "web") {
     return (
@@ -165,7 +208,8 @@ export function AiSearchPromptButton({ label, columnWidth, onPress }: Props) {
         columnWidth={columnWidth}
         onPress={onPress}
         color={colors.primary}
-        backgroundColor={colors.undercover}
+        colors={colors}
+        colorScheme={colorScheme}
       />
     );
   }
@@ -176,7 +220,8 @@ export function AiSearchPromptButton({ label, columnWidth, onPress }: Props) {
       columnWidth={columnWidth}
       onPress={onPress}
       color={colors.primary}
-      backgroundColor={colors.undercover}
+      colors={colors}
+      colorScheme={colorScheme}
     />
   );
 }

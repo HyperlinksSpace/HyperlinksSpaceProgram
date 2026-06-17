@@ -17,6 +17,7 @@ import { authenticatedHomeBottomBarDock, layout, typographyRect15, useColors } f
 import { useAuth } from "../../auth/AuthContext";
 import { useResolvedPathname } from "../useResolvedPathname";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
+import { useSettingsSheet } from "../settings/SettingsContext";
 import { useBottomBarLayout } from "./BottomBarLayoutContext";
 import { useTelegram } from "./Telegram";
 import { SettingsIcon } from "./icons/SettingsIcon";
@@ -87,6 +88,7 @@ export function TelegramConnectFooterStrip({
   const { width: windowWidth } = useWindowDimensions();
   const { isTelegramMessagesConnected, openConnectSheet, disconnectTelegramMessages } =
     useTelegramMessagesConnection();
+  const { openSettingsSheet } = useSettingsSheet();
   const { barHeight: bottomBarHeight, footerDockedToScreenEdge } = useBottomBarLayout();
   const { isInTelegram, layoutStartup } = useTelegram();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
@@ -161,6 +163,14 @@ export function TelegramConnectFooterStrip({
     }
   };
 
+  const handleSettingsPress = () => {
+    if (onSettingsPress) {
+      onSettingsPress();
+    } else {
+      openSettingsSheet();
+    }
+  };
+
   return (
     <View pointerEvents="box-none" style={[styles.overlayHost, { bottom: stripBottomOffsetPx }]}>
       {Platform.OS !== "web" && stripWidth > 0 ? (
@@ -224,7 +234,7 @@ export function TelegramConnectFooterStrip({
             </Pressable>
           ) : null}
 
-          <Pressable accessibilityRole="button" onPress={onSettingsPress} style={styles.chipPressable}>
+          <Pressable accessibilityRole="button" onPress={handleSettingsPress} style={styles.chipPressable}>
             <LiquidGlassShaderUndercover size={CHIP_SIZE_PX} phaseOffset={0.08} isLightTheme={isLightTheme}>
               <SettingsIcon color={iconColor} size={ICON_SIZE_PX} />
             </LiquidGlassShaderUndercover>

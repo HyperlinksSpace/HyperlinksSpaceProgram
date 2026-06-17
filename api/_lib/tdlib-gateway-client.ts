@@ -180,20 +180,56 @@ export async function gatewayFetchLiveChats(
   const secret = getGatewaySecret();
   const params = new URLSearchParams({ telegramUsername });
   const url = `${base}/v1/chats/list?${params.toString()}`;
+  const started = Date.now();
+  logTdlibGatewayApi("gateway_fetch_start", {
+    method: "GET",
+    path: "/v1/chats/list",
+    gatewayHost: safeHost(url),
+  });
   try {
     const response = await fetch(url, {
       method: "GET",
       headers: { "X-Gateway-Secret": secret },
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logTdlibGatewayApi("gateway_fetch_done", {
+        path: "/v1/chats/list",
+        status: response.status,
+        ok: false,
+        elapsedMs: Date.now() - started,
+      });
+      return null;
+    }
     const json = (await response.json()) as {
       ok?: boolean;
       chats?: Record<string, unknown>[];
       revision?: number;
     };
-    if (!Array.isArray(json.chats)) return null;
+    if (!Array.isArray(json.chats)) {
+      logTdlibGatewayApi("gateway_fetch_done", {
+        path: "/v1/chats/list",
+        status: response.status,
+        ok: true,
+        elapsedMs: Date.now() - started,
+        parseError: "chats_not_array",
+      });
+      return null;
+    }
+    logTdlibGatewayApi("gateway_fetch_done", {
+      path: "/v1/chats/list",
+      status: response.status,
+      ok: true,
+      elapsedMs: Date.now() - started,
+      revision: Number(json.revision) || 0,
+      count: json.chats.length,
+    });
     return { chats: json.chats, revision: Number(json.revision) || 0 };
-  } catch {
+  } catch (err) {
+    logTdlibGatewayApi("gateway_fetch_error", {
+      path: "/v1/chats/list",
+      elapsedMs: Date.now() - started,
+      fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    });
     return null;
   }
 }

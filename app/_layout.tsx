@@ -24,10 +24,11 @@ import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/Bo
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
 import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
+import { SettingsProvider } from "../ui/settings/SettingsContext";
 import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
-import { authenticatedHomeBottomBarDock, layout, rootUsesDocumentScroll, useColors } from "../ui/theme";
+import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
 import {
   useEffect,
@@ -74,6 +75,7 @@ export default function RootLayout() {
       <AppStringsProvider>
         <AuthProvider>
           <TelegramMessagesConnectionProvider>
+            <SettingsProvider>
             <BottomBarLayoutProvider>
             {Platform.OS === "ios" ? (
               <KeyboardAvoidingView
@@ -87,6 +89,7 @@ export default function RootLayout() {
               <RootContent />
             )}
             </BottomBarLayoutProvider>
+            </SettingsProvider>
           </TelegramMessagesConnectionProvider>
         </AuthProvider>
       </AppStringsProvider>
@@ -215,7 +218,6 @@ function RootContent() {
   const { width: windowWidth } = useWindowDimensions();
   const { setFooterDockedToScreenEdge } = useBottomBarLayout();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
-  const rootScroll = rootUsesDocumentScroll(pathname, windowWidth, isAuthenticated, auth);
 
   useEffect(() => {
     setFooterDockedToScreenEdge(bottomBarDock === "screenFooter");
@@ -243,18 +245,17 @@ function RootContent() {
     };
   }, [backgroundColor, colors.accent, shellPaintReady]);
 
-  /** Panel routes + wide home: clip document scroll so only column scrollers show indicators. */
+  /** Panel routes + home: clip document scroll so only column scrollers show indicators. */
   useLayoutEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
-    const overflow = rootScroll ? "auto" : "hidden";
-    document.documentElement.style.overflow = overflow;
-    document.body.style.overflow = overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
     const expoRoot =
       document.getElementById("root") ?? document.querySelector("[data-expo-root]");
     if (expoRoot instanceof HTMLElement) {
-      expoRoot.style.overflow = overflow;
+      expoRoot.style.overflow = "hidden";
     }
-  }, [rootScroll, shellPaintReady]);
+  }, [shellPaintReady]);
 
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");
@@ -320,7 +321,7 @@ function RootContent() {
     return (
       <View
         {...(Platform.OS === "web" ? { suppressHydrationWarning: true } : {})}
-        style={[styles.root, styles.rootWeb, { backgroundColor: "#000000" }]}
+        style={[styles.root, styles.rootWebClipped, { backgroundColor: "#000000" }]}
       />
     );
   }
@@ -331,11 +332,7 @@ function RootContent() {
       {...(Platform.OS === "web" ? { suppressHydrationWarning: true } : {})}
       style={[
         styles.root,
-        Platform.OS === "web"
-          ? rootScroll
-            ? styles.rootWeb
-            : styles.rootWebClipped
-          : styles.rootOverflowHidden,
+        Platform.OS === "web" ? styles.rootWebClipped : styles.rootOverflowHidden,
         {
           backgroundColor,
           opacity: shellPaintReady ? 1 : 0,
@@ -348,7 +345,7 @@ function RootContent() {
     >
       {showGlobalLogoBar && !isRootBootstrapPending ? <GlobalLogoBarWithFallback /> : null}
       {Platform.OS === "web" ? (
-        <View style={[styles.mainShell, rootScroll ? styles.mainShellDocumentScroll : null]}>
+        <View style={styles.mainShell}>
           <Stack
             screenOptions={{
               headerShown: false,
@@ -399,12 +396,7 @@ const styles = StyleSheet.create({
   rootOverflowHidden: {
     overflow: "hidden",
   },
-  /** Web: allow document + inner column to scroll when zoomed (`overflow-y: hidden` on root blocked wheel). */
-  rootWeb: {
-    minWidth: "100%",
-    overflow: "auto",
-  } as unknown as ViewStyle,
-  /** Web panel routes + wide home: clip root; each column owns vertical scroll. */
+  /** Web: clip root; each screen column owns vertical scroll. */
   rootWebClipped: {
     minWidth: "100%",
     overflow: "hidden",
@@ -420,9 +412,4 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     width: "100%",
   },
-  /** Narrow authenticated home at `/`: page grows with feed; root `rootWeb` overflow scrolls. */
-  mainShellDocumentScroll: {
-    flexGrow: 1,
-    flexShrink: 0,
-  } as ViewStyle,
 });

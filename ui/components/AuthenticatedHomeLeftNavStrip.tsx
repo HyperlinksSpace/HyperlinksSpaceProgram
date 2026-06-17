@@ -674,8 +674,8 @@ export function AuthenticatedHomeLeftNavStrip({
         height: STRIP_HEIGHT_PX,
         paddingTop: STRIP_PADDING_PX,
         paddingBottom: STRIP_PADDING_PX,
-        /** Wide: flush with feed scroll shell so the vertical thumb aligns with the bottom rule; gap lives in scroll padding. */
-        marginBottom: layoutIsWide ? 0 : 8,
+        /** List panels own top inset; keep flush with the nav bottom rule. */
+        marginBottom: 0,
         position: "relative",
         overflow: "visible",
       }}

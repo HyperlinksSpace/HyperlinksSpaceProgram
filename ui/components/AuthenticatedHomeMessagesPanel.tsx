@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
-import type { ThemeColors } from "../theme";
+import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { MessageChatRow, type MessageChatRowData } from "./messages/MessageChatRow";
+import { homeListShellStyle } from "./messages/messageListLayout";
 
 type Props = {
   colors: ThemeColors;
@@ -69,6 +70,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
   const lastLiveRevisionRef = useRef<number | null>(null);
@@ -126,6 +130,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setError(null);
     }
     const url = buildApiUrl("/api/telegram-messages-chats");
+    const started = Date.now();
     try {
       const response = await fetch(url, { method: "GET", credentials: "include" });
       const json = (await response.json().catch(() => ({}))) as {
@@ -150,6 +155,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
         return tb - ta;
       });
+      const missingPreviewCount = rows.filter((row) => !row.subtitle.trim()).length;
+      const missingAvatarFieldCount = rows.filter((row) => !row.avatar_url).length;
       if (json.source === "live" && typeof json.revision === "number") {
         lastLiveRevisionRef.current = json.revision;
       }
@@ -163,6 +170,17 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               poll: pollCountRef.current,
               source: json.source ?? null,
               revision: json.revision ?? null,
+              elapsedMs: Date.now() - started,
+              missingPreviewCount,
+              missingAvatarFieldCount,
+            });
+          } else if (pollCountRef.current % 10 === 0) {
+            logPageDisplay("messages_chats_poll_steady", {
+              count: rows.length,
+              poll: pollCountRef.current,
+              source: json.source ?? null,
+              revision: json.revision ?? null,
+              elapsedMs: Date.now() - started,
             });
           }
           return changed ? rows : prev;
@@ -174,14 +192,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           count: rows.length,
           source: json.source ?? null,
           revision: json.revision ?? null,
+          status: response.status,
+          elapsedMs: Date.now() - started,
+          missingPreviewCount,
+          missingAvatarFieldCount,
         });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (!options?.silent) {
-        logPageDisplay("messages_chats_error", { message });
+        logPageDisplay("messages_chats_error", { message, elapsedMs: Date.now() - started });
         setError(message);
         setChats([]);
+      } else {
+        logPageDisplay("messages_chats_poll_error", {
+          message,
+          poll: pollCountRef.current,
+          elapsedMs: Date.now() - started,
+        });
       }
     } finally {
       if (!options?.silent) setLoading(false);
@@ -216,9 +244,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     return () => clearInterval(timer);
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
+  const listShellStyle = homeListShellStyle(wideListChrome);
+
   if (!isTelegramMessagesConnected) {
     return (
-      <View style={{ width: "100%", paddingVertical: 24, alignItems: "center" }}>
+      <View style={[listShellStyle, { paddingVertical: 24, alignItems: "center" }]}>
         <Text
           style={{
             textAlign: "center",
@@ -236,7 +266,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   if (loading && chats.length === 0) {
     return (
-      <View style={{ width: "100%", paddingVertical: 24, alignItems: "center" }}>
+      <View style={[listShellStyle, { paddingVertical: 24, alignItems: "center" }]}>
         <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
@@ -244,7 +274,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   if (error && chats.length === 0) {
     return (
-      <View style={{ width: "100%", paddingVertical: 16 }}>
+      <View style={[listShellStyle, { paddingVertical: 16 }]}>
         <Text style={{ textAlign: "center", color: colors.secondary, fontSize: 15, lineHeight: 20 }}>
           {t("messages.loadError")}
         </Text>
@@ -254,7 +284,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   if (chats.length === 0) {
     return (
-      <View style={{ width: "100%", paddingVertical: 16 }}>
+      <View style={[listShellStyle, { paddingVertical: 16 }]}>
         <Text style={{ textAlign: "center", color: colors.secondary, fontSize: 15, lineHeight: 20 }}>
           {t("messages.empty")}
         </Text>
@@ -263,17 +293,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }
 
   const list = (
-    <View style={{ width: "100%", alignSelf: "stretch" }}>
-      {chats.map((item, index) => (
-        <MessageChatRow
-          key={item.telegram_chat_id}
-          item={item}
-          isLast={index === chats.length - 1}
-          colors={colors}
-          timePendingLabel={t("feed.timePending")}
-        />
-      ))}
-    </View>
+    <Pressable style={{ width: "100%", alignSelf: "stretch" }} onPress={() => setSelectedChatId(null)}>
+      <View style={listShellStyle} pointerEvents="box-none">
+        {chats.map((item, index) => (
+          <MessageChatRow
+            key={item.telegram_chat_id}
+            item={item}
+            isLast={index === chats.length - 1}
+            isActive={selectedChatId === item.telegram_chat_id}
+            colors={colors}
+            timePendingLabel={t("feed.timePending")}
+            onPress={() => setSelectedChatId(item.telegram_chat_id)}
+          />
+        ))}
+      </View>
+    </Pressable>
   );
 
   if (!scrollable) {
@@ -281,8 +315,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }
 
   return (
-    <ScrollView style={{ width: "100%" }} contentContainerStyle={{ flexGrow: 1 }}>
-      {list}
+    <ScrollView
+      style={{ width: "100%" }}
+      contentContainerStyle={{ ...listShellStyle, flexGrow: 1 }}
+      onScrollBeginDrag={() => setSelectedChatId(null)}
+    >
+      {chats.map((item, index) => (
+        <MessageChatRow
+          key={item.telegram_chat_id}
+          item={item}
+          isLast={index === chats.length - 1}
+          isActive={selectedChatId === item.telegram_chat_id}
+          colors={colors}
+          timePendingLabel={t("feed.timePending")}
+          onPress={() => setSelectedChatId(item.telegram_chat_id)}
+        />
+      ))}
+      <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={() => setSelectedChatId(null)} />
     </ScrollView>
   );
 }

@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../api/_base";
 import {
@@ -10,6 +10,16 @@ import {
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
+import { HomeListRowShell } from "./HomeListRowShell";
+import {
+  homeListShellStyle,
+  MESSAGE_AVATAR_PX,
+  MESSAGE_FONT_SIZE_PX,
+  MESSAGE_ICON_TEXT_GAP_PX,
+  MESSAGE_LINE_HEIGHT_PX,
+  MESSAGE_NAME_TIME_GAP_PX,
+  MESSAGE_ROW_HEIGHT_PX,
+} from "./messages/messageListLayout";
 import type { AppLocale, AppStringKey } from "../../locales/appStrings";
 import { getAppString } from "../../locales/appStrings";
 import { useAppStrings } from "../../locales/AppStringsContext";
@@ -20,14 +30,6 @@ import { useTelegram } from "./Telegram";
 const FEED_FETCH_ATTEMPTS_ON_TIMEOUT = 2;
 /** Short backoff so a cold retry starts quickly without hammering the API. */
 const FEED_FETCH_RETRY_DELAY_MS = 200;
-
-const ROW_HEIGHT_PX = 40;
-const ICON_PX = 30;
-const ICON_TEXT_GAP_PX = 15;
-const NAME_TIME_GAP_PX = 15;
-const FONT_SIZE_PX = 15;
-const LINE_HEIGHT_PX = 20;
-const ROW_MARGIN_BOTTOM_PX = 20;
 
 type FeedRow = {
   id: number;
@@ -188,13 +190,17 @@ function resolveIconUrl(icon: unknown): string | null {
 function FeedFeedRow({
   item,
   isLast,
+  isActive,
   colors,
   timePendingLabel,
+  onPress,
 }: {
   item: FeedRow;
   isLast: boolean;
+  isActive?: boolean;
   colors: ThemeColors;
   timePendingLabel: string;
+  onPress?: () => void;
 }) {
   const p = coercePayload(item.payload);
   const title = typeof p.title === "string" ? p.title : "";
@@ -211,27 +217,32 @@ function FeedFeedRow({
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
-    fontSize: FONT_SIZE_PX,
-    lineHeight: LINE_HEIGHT_PX,
+    fontSize: MESSAGE_FONT_SIZE_PX,
+    lineHeight: MESSAGE_LINE_HEIGHT_PX,
     includeFontPadding: false,
     paddingVertical: 0,
   } as const;
 
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        height: ROW_HEIGHT_PX,
-        marginBottom: isLast ? 0 : ROW_MARGIN_BOTTOM_PX,
-        width: "100%",
-        alignSelf: "stretch",
-      }}
+    <HomeListRowShell
+      isLast={isLast}
+      isActive={isActive}
+      colors={colors}
+      onPress={onPress}
     >
       <View
         style={{
-          width: ICON_PX,
-          height: ICON_PX,
+          flexDirection: "row",
+          alignItems: "center",
+          height: MESSAGE_ROW_HEIGHT_PX,
+          width: "100%",
+          alignSelf: "stretch",
+        }}
+      >
+      <View
+        style={{
+          width: MESSAGE_AVATAR_PX,
+          height: MESSAGE_AVATAR_PX,
           alignItems: "center",
           justifyContent: "center",
         }}
@@ -242,20 +253,20 @@ function FeedFeedRow({
             recyclingKey={`feed-${item.id}`}
             cachePolicy="memory-disk"
             accessibilityIgnoresInvertColors
-            style={{ width: ICON_PX, height: ICON_PX }}
+            style={{ width: MESSAGE_AVATAR_PX, height: MESSAGE_AVATAR_PX }}
             contentFit="contain"
           />
         ) : (
-          <View style={{ width: ICON_PX, height: ICON_PX, backgroundColor: colors.secondary }} />
+          <View style={{ width: MESSAGE_AVATAR_PX, height: MESSAGE_AVATAR_PX, backgroundColor: colors.secondary }} />
         )}
       </View>
-      <View style={{ width: ICON_TEXT_GAP_PX }} />
+      <View style={{ width: MESSAGE_ICON_TEXT_GAP_PX }} />
       <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
         <View
           style={{
             flexDirection: "row",
             alignItems: "center",
-            minHeight: LINE_HEIGHT_PX,
+            minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
           <Text
@@ -270,7 +281,7 @@ function FeedFeedRow({
           >
             {title}
           </Text>
-          {gapTitleTime ? <View style={{ width: NAME_TIME_GAP_PX }} /> : null}
+          {gapTitleTime ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {timeLabel ? (
             <Text
               numberOfLines={1}
@@ -288,7 +299,7 @@ function FeedFeedRow({
           style={{
             flexDirection: "row",
             alignItems: "center",
-            minHeight: LINE_HEIGHT_PX,
+            minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
           <Text
@@ -305,7 +316,7 @@ function FeedFeedRow({
           </Text>
           {trailing ? (
             <>
-              {gapSubtitleTrailing ? <View style={{ width: NAME_TIME_GAP_PX }} /> : null}
+              {gapSubtitleTrailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
               <Text
                 numberOfLines={1}
                 ellipsizeMode="tail"
@@ -323,7 +334,8 @@ function FeedFeedRow({
           ) : null}
         </View>
       </View>
-    </View>
+      </View>
+    </HomeListRowShell>
   );
 }
 
@@ -339,7 +351,6 @@ export function AuthenticatedHomeFeedPanel({
     t,
     welcomeFeedCatalogLocale,
     welcomeFeedManualTranslation,
-    setWelcomeFeedManualTranslation,
   } = useAppStrings();
   const welcomePlaceholderFeedItems = useMemo(
     () => buildWelcomePlaceholderFeed(welcomeFeedCatalogLocale),
@@ -352,6 +363,9 @@ export function AuthenticatedHomeFeedPanel({
   const { initData, status, telegramBootstrapFeed } = useTelegram();
   const [items, setItems] = useState<FeedRow[]>(welcomePlaceholderFeedItems);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
+  const { width: windowWidth } = useWindowDimensions();
+  const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const feedLoadSeqRef = useRef(0);
   const lastRenderSnapshotIdRef = useRef<number | null>(null);
@@ -682,51 +696,37 @@ export function AuthenticatedHomeFeedPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- trigger is feedLoadKey only
   }, [feedLoadKey]);
 
+  const listShellStyle = homeListShellStyle(wideListChrome);
+
+  const renderListBody = (content: ReactNode) => (
+    <Pressable
+      style={{ width: "100%", alignSelf: "stretch" }}
+      onPress={() => setSelectedFeedId(null)}
+    >
+      <View style={listShellStyle} pointerEvents="box-none">
+        {body}
+      </View>
+    </Pressable>
+  );
+
   if (error && items.length === 0) {
-    return (
+    return renderListBody(
       <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, marginBottom: 8 }}>
         {error}
-      </Text>
+      </Text>,
     );
   }
 
   if (items.length === 0) {
-    return (
+    return renderListBody(
       <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18 }}>
         {t("feed.empty")}
-      </Text>
+      </Text>,
     );
   }
 
   const body = (
     <>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: welcomeFeedManualTranslation }}
-        accessibilityLabel={t("feed.manualWelcomeTranslationA11y")}
-        onPress={() => setWelcomeFeedManualTranslation(!welcomeFeedManualTranslation)}
-        style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
-      >
-        <View
-          style={{
-            width: 16,
-            height: 16,
-            borderWidth: 1,
-            borderColor: colors.accent,
-            marginRight: 8,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: welcomeFeedManualTranslation ? colors.accent : "transparent",
-          }}
-        >
-          {welcomeFeedManualTranslation ? (
-            <Text style={{ color: colors.background, fontSize: 11, lineHeight: 14 }}>✓</Text>
-          ) : null}
-        </View>
-        <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 16, flex: 1 }}>
-          {t("feed.manualWelcomeTranslation")}
-        </Text>
-      </Pressable>
       {error ? (
         <Text
           style={{
@@ -746,30 +746,30 @@ export function AuthenticatedHomeFeedPanel({
           key={it.id}
           item={it}
           isLast={i === items.length - 1}
+          isActive={selectedFeedId === it.id}
           colors={colors}
           timePendingLabel={t("feed.timePending")}
+          onPress={() => setSelectedFeedId(it.id)}
         />
       ))}
     </>
   );
 
   if (!scrollable) {
-    return (
-      <View style={{ alignSelf: "stretch", paddingBottom: layout.contentSideInsetPx }}>
-        {body}
-      </View>
-    );
+    return renderListBody(body);
   }
 
   return (
     <ScrollView
       ref={feedScrollRef}
       style={{ alignSelf: "stretch" }}
-      contentContainerStyle={{ paddingBottom: layout.contentSideInsetPx }}
+      contentContainerStyle={{ ...listShellStyle, flexGrow: 1 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
+      onScrollBeginDrag={() => setSelectedFeedId(null)}
     >
       {body}
+      <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={() => setSelectedFeedId(null)} />
     </ScrollView>
   );
 }

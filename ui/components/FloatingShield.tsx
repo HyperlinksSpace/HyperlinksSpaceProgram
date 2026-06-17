@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../theme";
 import { useBottomBarLayout } from "./BottomBarLayoutContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
@@ -8,6 +8,7 @@ import { SettingsIcon } from "./icons/SettingsIcon";
 import { ShieldIcon } from "./icons/ShieldIcon";
 import { useAuth } from "../../auth/AuthContext";
 import { useResolvedPathname } from "../useResolvedPathname";
+import { useSettingsSheet } from "../settings/SettingsContext";
 
 const AH = layout.authenticatedHome;
 const FS = layout.floatingShield;
@@ -77,6 +78,7 @@ export function FloatingShield() {
     isAuthenticated && (pathname === "/" || pathname === "" || pathname == null);
   const showTelegramConnectStrip =
     isAuthenticatedHome && bottomBarDock === "screenFooter" && shieldOnRight;
+  const { openSettingsSheet } = useSettingsSheet();
 
   if (showTelegramConnectStrip) {
     return null;
@@ -101,13 +103,15 @@ export function FloatingShield() {
       ]}
     >
       <View style={shieldOnRight ? styles.settingsSlotRight : styles.settingsSlotLeft}>
-        <LiquidGlassShaderUndercover
-          size={FS.settingsDiameter}
-          phaseOffset={0.08}
-          isLightTheme={isLightTheme}
-        >
-          <SlowRotatingSettingsIcon color={colors.primary} size={styles.settingsIcon.width as number} />
-        </LiquidGlassShaderUndercover>
+        <Pressable accessibilityRole="button" onPress={openSettingsSheet}>
+          <LiquidGlassShaderUndercover
+            size={FS.settingsDiameter}
+            phaseOffset={0.08}
+            isLightTheme={isLightTheme}
+          >
+            <SlowRotatingSettingsIcon color={colors.primary} size={styles.settingsIcon.width as number} />
+          </LiquidGlassShaderUndercover>
+        </Pressable>
       </View>
       <View style={shieldOnRight ? styles.shieldSlotRight : styles.shieldSlotLeft}>
         <LiquidGlassShaderUndercover

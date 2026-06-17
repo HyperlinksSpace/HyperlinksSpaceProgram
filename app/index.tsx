@@ -60,7 +60,7 @@ export default function Index() {
     );
   }
   return (
-    <ShellView suppressHydrationWarning style={{ flex: 1 }}>
+    <ShellView suppressHydrationWarning style={{ flex: 1, minHeight: 0 }}>
       <WelcomeContent />
     </ShellView>
   );

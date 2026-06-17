@@ -160,10 +160,25 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           const chats = getLiveChatList(telegramUsername);
+          const revision = getLiveChatListRevision(telegramUsername);
+          const missingPreviewCount = (chats ?? []).filter(
+            (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
+          ).length;
+          const missingAvatarCount = (chats ?? []).filter((row) => !row.avatar_url).length;
+          console.log(
+            `[tdlib-gateway] ${JSON.stringify({
+              event: "chats_list_served",
+              telegramUsername,
+              count: chats?.length ?? 0,
+              revision,
+              missingPreviewCount,
+              missingAvatarCount,
+            })}`,
+          );
           sendJson(res, 200, {
             ok: true,
             source: "live",
-            revision: getLiveChatListRevision(telegramUsername),
+            revision,
             chats: chats ?? [],
           });
           return;
@@ -173,18 +188,52 @@ export function startTdlibGatewayServer(): http.Server {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const chatId = Number(url.searchParams.get("chatId"));
           if (!telegramUsername || !Number.isFinite(chatId)) {
+            console.log(
+              `[tdlib-gateway] ${JSON.stringify({
+                event: "chat_avatar_invalid_params",
+                telegramUsername: telegramUsername || null,
+                chatId: Number.isFinite(chatId) ? chatId : null,
+              })}`,
+            );
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
+          const started = Date.now();
           const avatar = await getChatAvatarImageForUser(telegramUsername, chatId);
           if (avatar === "no_avatar") {
+            console.log(
+              `[tdlib-gateway] ${JSON.stringify({
+                event: "chat_avatar_no_avatar",
+                telegramUsername,
+                chatId,
+                elapsedMs: Date.now() - started,
+              })}`,
+            );
             sendJson(res, 404, { ok: false, error: "no_avatar" });
             return;
           }
           if (!avatar) {
+            console.log(
+              `[tdlib-gateway] ${JSON.stringify({
+                event: "chat_avatar_unavailable",
+                telegramUsername,
+                chatId,
+                elapsedMs: Date.now() - started,
+              })}`,
+            );
             sendJson(res, 503, { ok: false, error: "avatar_unavailable" });
             return;
           }
+          console.log(
+            `[tdlib-gateway] ${JSON.stringify({
+              event: "chat_avatar_ok",
+              telegramUsername,
+              chatId,
+              bytes: avatar.data.length,
+              mime: avatar.mime,
+              elapsedMs: Date.now() - started,
+            })}`,
+          );
           res.statusCode = 200;
           res.setHeader("Content-Type", avatar.mime);
           res.setHeader("Cache-Control", "public, max-age=86400");

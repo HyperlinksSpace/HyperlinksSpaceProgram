@@ -727,7 +727,8 @@ export function AuthenticatedHomeSplitBody({
   return (
     <View
       style={{
-        ...(isWide || Platform.OS !== "web" ? { flex: 1 } : {}),
+        flex: 1,
+        minHeight: 0,
         width: "100%",
         alignSelf: "stretch",
       }}
@@ -753,7 +754,7 @@ export function AuthenticatedHomeSplitBody({
               <View style={columnAiBarWrapStyle}>{leftColumnFooter}</View>
             </View>
           ) : (
-            <View style={{ width: "100%", alignSelf: "stretch" }}>{left}</View>
+            <View style={{ flex: 1, minHeight: 0, width: "100%", alignSelf: "stretch" }}>{left}</View>
           )
         ) : (
           <View

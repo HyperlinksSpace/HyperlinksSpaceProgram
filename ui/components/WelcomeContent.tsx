@@ -8,6 +8,7 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { hasWelcomeBrowserAuthContext } from "../appShell";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 import { isActuallyInTelegram } from "./telegramWebApp";
+import { HspScrollColumn } from "./HspScrollColumn";
 
 const CONTENT_GAP_BELOW_HEADER = 20;
 const MAX_TEXT_WIDTH = 360;
@@ -190,32 +191,34 @@ export function WelcomeContent() {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <View
-        style={[
-          styles.content,
-          { paddingHorizontal: layout.contentSideInsetPx, paddingTop: CONTENT_GAP_BELOW_HEADER },
-        ]}
-      >
-        <View style={styles.headingBlock}>
-          <Text
-            style={[
-              styles.headingText,
-              isWideLayout ? styles.headingTextWide : styles.headingTextNarrow,
-              { color: colors.primary },
-            ]}
-          >
-            {t("welcome.title")}
-          </Text>
+      <HspScrollColumn style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View
+          style={[
+            styles.content,
+            { paddingHorizontal: layout.contentSideInsetPx, paddingTop: CONTENT_GAP_BELOW_HEADER },
+          ]}
+        >
+          <View style={styles.headingBlock}>
+            <Text
+              style={[
+                styles.headingText,
+                isWideLayout ? styles.headingTextWide : styles.headingTextNarrow,
+                { color: colors.primary },
+              ]}
+            >
+              {t("welcome.title")}
+            </Text>
+          </View>
+          <View style={[styles.subtitleBlock, isWideLayout && styles.subtitleBlockWide]}>
+            <Text style={[styles.subtitleText, { color: colors.secondary }]}>
+              {t("welcome.subtitle")}
+            </Text>
+          </View>
+          <View style={styles.authBlock}>
+            <WelcomeAuthButtons />
+          </View>
         </View>
-        <View style={[styles.subtitleBlock, isWideLayout && styles.subtitleBlockWide]}>
-          <Text style={[styles.subtitleText, { color: colors.secondary }]}>
-            {t("welcome.subtitle")}
-          </Text>
-        </View>
-        <View style={styles.authBlock}>
-          <WelcomeAuthButtons />
-        </View>
-      </View>
+      </HspScrollColumn>
     </View>
   );
 }
@@ -223,6 +226,14 @@ export function WelcomeContent() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    minHeight: 0,
+  },
+  scroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  scrollContent: {
+    flexGrow: 0,
   },
   content: {
     alignItems: "center",

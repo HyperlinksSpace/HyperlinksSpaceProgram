@@ -2,19 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Platform,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { layout, typographyRect15, useColors } from "../theme";
+import { typographyRect15, useColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { logTelegramConnect } from "../telegram/telegramConnectDebug";
+import { AppModalSheet, AppModalSheetBackFooter, appModalSheetStyles } from "./AppModalSheet";
 
 function useQrDataUrl(link: string | null): string | null {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
@@ -142,195 +141,130 @@ export function TelegramConnectSheet() {
     (connectAuthState === "wait_qr" && !connectQrLink);
 
   return (
-    <Modal visible={connectSheetVisible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable
-          style={[styles.sheet, { backgroundColor: colors.background, borderColor: colors.highlight }]}
-          onPress={(e) => e.stopPropagation?.()}
-        >
-          <Text style={[typographyRect15, styles.title, { color: colors.primary }]}>
-            {t("messages.connectSheetTitle")}
-          </Text>
-
-          {showLoading ? (
-            <View style={styles.centerBlock}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[typographyRect15, styles.hint, { color: colors.secondary }]}>
-                {t("messages.connectSheetLoading")}
-              </Text>
-            </View>
-          ) : null}
-
-          {showQr ? (
-            <View style={styles.centerBlock}>
-              {qrDataUrl ? (
-                <Image
-                  source={{ uri: qrDataUrl }}
-                  style={styles.qr}
-                  accessibilityLabel={t("messages.connectSheetQrAlt")}
-                />
-              ) : (
-                <Text style={[typographyRect15, { color: colors.secondary }]} selectable>
-                  {connectQrLink}
-                </Text>
-              )}
-              <Text style={[typographyRect15, styles.body, { color: colors.secondary }]}>
-                {t("messages.connectSheetQrBody")}
-              </Text>
-            </View>
-          ) : null}
-
-          {showPassword ? (
-            <View style={styles.passwordBlock}>
-              <Text style={[typographyRect15, styles.title, { color: colors.primary, marginBottom: 8 }]}>
-                {t("messages.connectSheetPasswordTitle")}
-              </Text>
-              <Text style={[typographyRect15, styles.body, { color: colors.secondary }]}>
-                {t("messages.connectSheetPasswordBody")}
-              </Text>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                placeholder={t("messages.connectSheetPasswordPlaceholder")}
-                placeholderTextColor={colors.secondary}
-                style={[
-                  typographyRect15,
-                  styles.passwordInput,
-                  { color: colors.primary, borderColor: colors.highlight },
-                ]}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Pressable
-                accessibilityRole="button"
-                onPress={onSubmitPassword}
-                style={[styles.button, styles.primaryButton, { backgroundColor: colors.undercover }]}
-                disabled={connectPending || !password.trim()}
-              >
-                {connectPending ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Text style={[typographyRect15, { color: colors.primary }]}>
-                    {t("messages.connectSheetPasswordSubmit")}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          ) : null}
-
-          {showPassword && connectError ? (
-            <Text style={[typographyRect15, styles.error, { color: "#b00020" }]}>
-              {connectErrorMessage(connectError, t)}
-            </Text>
-          ) : null}
-
-          {connectAuthState === "failed" || (connectError && !showPassword) ? (
-            <Text style={[typographyRect15, styles.error, { color: "#b00020" }]}>
-              {connectErrorMessage(connectError, t)}
-            </Text>
-          ) : null}
-
-          {!showPassword && connectAuthState !== "wait_qr" && !showLoading ? (
-            <Text style={[typographyRect15, styles.body, { color: colors.secondary }]}>
-              {t("messages.connectSheetBody")}
-            </Text>
-          ) : null}
-
-          <View style={styles.actions}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={onClose}
-              style={[styles.button, { backgroundColor: colors.undercover }]}
-              disabled={connectPending && connectAuthState !== "wait_qr"}
-            >
-              <Text style={[typographyRect15, { color: colors.secondary }]}>{t("common.back")}</Text>
-            </Pressable>
-            {connectAuthState === "failed" ? (
+    <AppModalSheet
+      visible={connectSheetVisible}
+      onClose={onClose}
+      title={t("messages.connectSheetTitle")}
+      footer={
+        <AppModalSheetBackFooter
+          onClose={onClose}
+          label={t("common.back")}
+          disabled={connectPending && connectAuthState !== "wait_qr"}
+          extraActions={
+            connectAuthState === "failed" ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={onRetry}
-                style={[styles.button, styles.primaryButton, { backgroundColor: colors.undercover }]}
+                style={[
+                  appModalSheetStyles.button,
+                  appModalSheetStyles.primaryButton,
+                  { backgroundColor: colors.undercover },
+                ]}
                 disabled={connectPending}
               >
-                <Text style={[typographyRect15, { color: colors.primary }]}>{t("messages.connectRetry")}</Text>
+                <Text style={[typographyRect15, { color: colors.primary }]}>
+                  {t("messages.connectRetry")}
+                </Text>
               </Pressable>
-            ) : null}
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+            ) : null
+          }
+        />
+      }
+    >
+      {showLoading ? (
+        <View style={appModalSheetStyles.centerBlock}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[typographyRect15, appModalSheetStyles.hint, { color: colors.secondary }]}>
+            {t("messages.connectSheetLoading")}
+          </Text>
+        </View>
+      ) : null}
+
+      {showQr ? (
+        <View style={appModalSheetStyles.centerBlock}>
+          {qrDataUrl ? (
+            <Image
+              source={{ uri: qrDataUrl }}
+              style={appModalSheetStyles.qr}
+              accessibilityLabel={t("messages.connectSheetQrAlt")}
+            />
+          ) : (
+            <Text style={[typographyRect15, { color: colors.secondary }]} selectable>
+              {connectQrLink}
+            </Text>
+          )}
+          <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary }]}>
+            {t("messages.connectSheetQrBody")}
+          </Text>
+        </View>
+      ) : null}
+
+      {showPassword ? (
+        <View style={appModalSheetStyles.passwordBlock}>
+          <Text
+            style={[
+              typographyRect15,
+              appModalSheetStyles.title,
+              { color: colors.primary, marginBottom: 8 },
+            ]}
+          >
+            {t("messages.connectSheetPasswordTitle")}
+          </Text>
+          <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary }]}>
+            {t("messages.connectSheetPasswordBody")}
+          </Text>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder={t("messages.connectSheetPasswordPlaceholder")}
+            placeholderTextColor={colors.secondary}
+            style={[
+              typographyRect15,
+              appModalSheetStyles.passwordInput,
+              { color: colors.primary, borderColor: colors.highlight },
+            ]}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            accessibilityRole="button"
+            onPress={onSubmitPassword}
+            style={[
+              appModalSheetStyles.button,
+              appModalSheetStyles.primaryButton,
+              { backgroundColor: colors.undercover },
+            ]}
+            disabled={connectPending || !password.trim()}
+          >
+            {connectPending ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text style={[typographyRect15, { color: colors.primary }]}>
+                {t("messages.connectSheetPasswordSubmit")}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      ) : null}
+
+      {showPassword && connectError ? (
+        <Text style={[typographyRect15, appModalSheetStyles.error, { color: "#b00020" }]}>
+          {connectErrorMessage(connectError, t)}
+        </Text>
+      ) : null}
+
+      {connectAuthState === "failed" || (connectError && !showPassword) ? (
+        <Text style={[typographyRect15, appModalSheetStyles.error, { color: "#b00020" }]}>
+          {connectErrorMessage(connectError, t)}
+        </Text>
+      ) : null}
+
+      {!showPassword && connectAuthState !== "wait_qr" && !showLoading ? (
+        <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary }]}>
+          {t("messages.connectSheetBody")}
+        </Text>
+      ) : null}
+    </AppModalSheet>
   );
 }
-
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: layout.contentSideInsetPx,
-  },
-  sheet: {
-    width: "100%",
-    maxWidth: 380,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    ...Platform.select({
-      web: { boxSizing: "border-box" as const },
-      default: {},
-    }),
-  },
-  title: {
-    marginBottom: 10,
-  },
-  body: {
-    marginBottom: 12,
-    textAlign: "center",
-  },
-  hint: {
-    marginTop: 12,
-    textAlign: "center",
-  },
-  centerBlock: {
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  qr: {
-    width: 220,
-    height: 220,
-    marginBottom: 12,
-    borderRadius: 8,
-  },
-  passwordBlock: {
-    marginBottom: 12,
-    gap: 10,
-  },
-  passwordInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === "web" ? 10 : 8,
-    minHeight: 40,
-  },
-  error: {
-    marginBottom: 12,
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "flex-end",
-    marginTop: 8,
-  },
-  button: {
-    minHeight: 40,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  primaryButton: {
-    minWidth: 100,
-  },
-});

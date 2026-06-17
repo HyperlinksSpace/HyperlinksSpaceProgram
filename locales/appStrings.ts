@@ -28,6 +28,8 @@ const en = {
   "common.emDash": "—",
   "common.loading": "Loading…",
 
+  "settings.sheetTitle": "Settings",
+
   "debug.api": "api:",
   "debug.fetchMs": "fetchMs:",
   "debug.hasWebAppLine": "hasWebAppApi: {{has}} · inTelegram: {{in}}",
@@ -289,6 +291,8 @@ const ru = {
   "common.debug": "Отладка",
   "common.emDash": "—",
   "common.loading": "Загрузка…",
+
+  "settings.sheetTitle": "Настройки",
 
   "debug.api": "api:",
   "debug.fetchMs": "fetchMs:",
