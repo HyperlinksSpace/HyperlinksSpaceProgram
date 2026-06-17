@@ -6,8 +6,9 @@ import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
-import { backfillChatThreads, persistMtprotoConnection, readChatAvatarBytes, syncChatThreads } from "./syncChats.js";
+import { persistMtprotoConnection, readChatAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
+import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
 export type ConnectAuthState =
   | "initializing"
@@ -467,7 +468,7 @@ export async function resyncUserChats(
   attachLiveChatSync(record);
   try {
     if (options?.chatIds?.length) {
-      const backfillCount = await backfillChatThreads(record.client, telegramUsername, options.chatIds);
+      const backfillCount = await refreshLiveChats(record.client, telegramUsername, options.chatIds);
       logConnectEvent(record, "connect_backfill_ok", { backfillCount });
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
     }
@@ -553,3 +554,5 @@ export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApi
     hasApiCredentials: Boolean(getTelegramApiCredentials()),
   };
 }
+
+export { getLiveChatList, getLiveChatListRevision };

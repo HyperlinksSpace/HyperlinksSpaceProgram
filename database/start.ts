@@ -340,7 +340,7 @@ async function runSchemaMigrations() {
 
   `;
 
-  // Telegram client message sync (TDLib gateway); connection flag + chat list cache.
+  // Telegram client message sync (TDLib gateway); connection flag only — chat list lives in gateway memory.
   await sql`
     CREATE TABLE IF NOT EXISTS telegram_messages_connections (
       telegram_username   TEXT PRIMARY KEY REFERENCES users(telegram_username),
@@ -351,26 +351,7 @@ async function runSchemaMigrations() {
     );
   `;
 
-  await sql`
-    CREATE TABLE IF NOT EXISTS telegram_threads (
-      id                  BIGSERIAL PRIMARY KEY,
-      telegram_username   TEXT NOT NULL REFERENCES users(telegram_username),
-      telegram_chat_id    BIGINT NOT NULL,
-      title               TEXT NOT NULL,
-      subtitle            TEXT,
-      avatar_url          TEXT,
-      last_message_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      unread_count        INT NOT NULL DEFAULT 0,
-      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (telegram_username, telegram_chat_id)
-    );
-  `;
-
-  await sql`
-    CREATE INDEX IF NOT EXISTS idx_telegram_threads_user_activity
-      ON telegram_threads(telegram_username, last_message_at DESC);
-  `;
+  await sql`DROP TABLE IF EXISTS telegram_threads CASCADE;`;
 
   await sql`
     CREATE TABLE IF NOT EXISTS telegram_mtproto_sessions (

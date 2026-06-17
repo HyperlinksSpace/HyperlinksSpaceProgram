@@ -40,12 +40,13 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
 
 function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): boolean {
   if (prev.length !== next.length) return true;
+  for (let i = 0; i < next.length; i++) {
+    if (prev[i]?.telegram_chat_id !== next[i]?.telegram_chat_id) return true;
+  }
   for (let i = 0; i < prev.length; i++) {
     const a = prev[i];
     const b = next[i];
     if (
-      a.id !== b.id ||
-      a.telegram_chat_id !== b.telegram_chat_id ||
       a.title !== b.title ||
       a.subtitle !== b.subtitle ||
       a.last_message_at !== b.last_message_at ||
@@ -58,8 +59,8 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
   return false;
 }
 
-const MESSAGES_POLL_MS = 4_000;
-const MESSAGES_RESYNC_MS = 12_000;
+const MESSAGES_POLL_MS = 1_500;
+const MESSAGES_RESYNC_MS = 60_000;
 
 export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Props) {
   const { t } = useAppStrings();
@@ -70,6 +71,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [error, setError] = useState<string | null>(null);
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
+  const lastLiveRevisionRef = useRef<number | null>(null);
 
   const triggerGatewayResync = useCallback(async (reason: string) => {
     const url = buildApiUrl("/api/telegram-messages-resync");
@@ -84,9 +86,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         chatCount?: number;
-        backfillCount?: number;
-        missingAvatars?: number;
-        missingSubtitles?: number;
         error?: string;
         needsReconnect?: boolean;
         connected?: boolean;
@@ -97,9 +96,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         ok: json.ok ?? false,
         warming: json.warming ?? false,
         chatCount: json.chatCount ?? null,
-        backfillCount: json.backfillCount ?? null,
-        missingAvatars: json.missingAvatars ?? null,
-        missingSubtitles: json.missingSubtitles ?? null,
         error: json.error ?? null,
         needsReconnect: json.needsReconnect ?? false,
         elapsedMs: Date.now() - started,
@@ -136,6 +132,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         ok?: boolean;
         chats?: unknown[];
         error?: string;
+        source?: string;
+        revision?: number;
       };
       if (!response.ok || !json.ok) {
         throw new Error(json.error || `HTTP_${response.status}`);
@@ -147,14 +145,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (row) rows.push(row);
         }
       }
+      rows.sort((a, b) => {
+        const ta = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+        const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+        return tb - ta;
+      });
+      if (json.source === "live" && typeof json.revision === "number") {
+        lastLiveRevisionRef.current = json.revision;
+      }
       setChats((prev) => {
         const changed = chatsChanged(prev, rows);
         if (options?.silent) {
           if (changed) {
             logPageDisplay("messages_chats_poll_updated", {
               count: rows.length,
-              firstId: rows[0]?.id ?? null,
+              firstId: rows[0]?.telegram_chat_id ?? null,
               poll: pollCountRef.current,
+              source: json.source ?? null,
+              revision: json.revision ?? null,
             });
           }
           return changed ? rows : prev;
@@ -162,7 +170,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         return rows;
       });
       if (!options?.silent) {
-        logPageDisplay("messages_chats_loaded", { count: rows.length });
+        logPageDisplay("messages_chats_loaded", {
+          count: rows.length,
+          source: json.source ?? null,
+          revision: json.revision ?? null,
+        });
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -181,8 +193,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     lastGatewayResyncRef.current = 0;
     pollCountRef.current = 0;
     void (async () => {
-      await triggerGatewayResync("initial_mount");
       await loadChats();
+      await triggerGatewayResync("initial_mount");
+      await loadChats({ silent: true });
     })();
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 

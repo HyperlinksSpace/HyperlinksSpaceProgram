@@ -6,6 +6,8 @@ import {
   gatewayHealth,
   getChatAvatarImageForUser,
   getConnectAttempt,
+  getLiveChatList,
+  getLiveChatListRevision,
   resyncUserChats,
   restorePersistedGatewaySessions,
   resumeExistingSession,
@@ -58,7 +60,7 @@ export function startTdlibGatewayServer(): http.Server {
         const pathname = url.pathname;
 
         if (req.method === "GET" && (pathname === "/" || pathname === "/v1/health")) {
-          const body = { ok: true, ...gatewayHealth(), hint: "TDLib gateway is running" };
+          const body = { ...gatewayHealth(), hint: "TDLib gateway is running" };
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "health",
@@ -147,6 +149,22 @@ export function startTdlibGatewayServer(): http.Server {
             chatCount: result.chatCount,
             backfillCount: result.backfillCount,
             error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/chats/list") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          const chats = getLiveChatList(telegramUsername);
+          sendJson(res, 200, {
+            ok: true,
+            source: "live",
+            revision: getLiveChatListRevision(telegramUsername),
+            chats: chats ?? [],
           });
           return;
         }

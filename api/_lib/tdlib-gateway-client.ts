@@ -173,6 +173,31 @@ export async function gatewayWarmupSession(
   return { ok: false, authState: "session_not_ready", error: "warmup_timeout" };
 }
 
+export async function gatewayFetchLiveChats(
+  telegramUsername: string,
+): Promise<{ chats: Record<string, unknown>[]; revision: number } | null> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const params = new URLSearchParams({ telegramUsername });
+  const url = `${base}/v1/chats/list?${params.toString()}`;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as {
+      ok?: boolean;
+      chats?: Record<string, unknown>[];
+      revision?: number;
+    };
+    if (!Array.isArray(json.chats)) return null;
+    return { chats: json.chats, revision: Number(json.revision) || 0 };
+  } catch {
+    return null;
+  }
+}
+
 export async function gatewayFetchChatAvatar(
   telegramUsername: string,
   chatId: number,

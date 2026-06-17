@@ -12,6 +12,7 @@ RUN npm ci
 
 COPY scripts/load-env.ts scripts/run-tdlib-gateway.ts scripts/
 COPY telegram/tdlib ./telegram/tdlib
+COPY shared/telegramThreadConstants.ts ./shared/
 COPY database/start.ts database/telegramMessages.ts database/telegramMtproto.ts database/
 
 ENV NODE_ENV=production

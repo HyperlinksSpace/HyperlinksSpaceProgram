@@ -188,7 +188,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }, POLL_MS);
   }, [pollConnectStatus, stopPolling]);
 
-  const refreshStatus = refreshStatusInner;
+  const refreshStatus = useCallback(async (): Promise<void> => {
+    await refreshStatusInner();
+  }, [refreshStatusInner]);
 
   useEffect(() => {
     logTelegramConnect("provider_mount", { apiBase: getApiBaseUrl(), isAuthenticated, authReady });

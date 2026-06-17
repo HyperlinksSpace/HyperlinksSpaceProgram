@@ -58,6 +58,13 @@ function resolveAvatarUrl(item: MessageChatRowData): string | null {
   return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
 }
 
+function formatUnreadBadge(count: number, chatId: number): string {
+  if (!Number.isFinite(count) || count <= 0) return "";
+  if (count === chatId || count > 50_000) return "";
+  if (count > 99) return "99+";
+  return String(count);
+}
+
 export function MessageChatRow({
   item,
   isLast,
@@ -71,8 +78,7 @@ export function MessageChatRow({
 }) {
   const title = item.title.trim();
   const subtitle = item.subtitle.trim();
-  const trailing =
-    item.unread_count > 0 ? String(item.unread_count) : "";
+  const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const iconUrl = resolveAvatarUrl(item);
   const parsedClock = formatWallClock(item.last_message_at);
   const timeLabel = parsedClock || timePendingLabel;
