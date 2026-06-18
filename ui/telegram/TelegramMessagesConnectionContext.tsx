@@ -14,6 +14,12 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
 import { logTelegramConnect } from "./telegramConnectDebug";
+import { mtprotoUseCurrentPhoneNumberForCode } from "./mtprotoPhoneCodeDelivery";
+import {
+  clearStoredMtprotoConnect,
+  readStoredMtprotoConnect,
+  writeStoredMtprotoConnect,
+} from "./mtprotoConnectSessionStorage";
 
 export type MtprotoAuthMethod = "qr" | "phone";
 
@@ -38,9 +44,15 @@ type TelegramMessagesConnectionCtx = {
   openConnectSheet: () => void;
   closeConnectSheet: () => void;
   refreshStatus: () => Promise<void>;
-  beginMtprotoConnect: (options?: { fresh?: boolean; authMethod?: MtprotoAuthMethod }) => Promise<void>;
+  beginMtprotoConnect: (options?: {
+    fresh?: boolean;
+    authMethod?: MtprotoAuthMethod;
+    /** Phone switch: keep code/phone UI instead of QR loading spinner */
+    soft?: boolean;
+  }) => Promise<void>;
   submitMtprotoPhone: (phoneNumber: string) => Promise<void>;
   submitMtprotoCode: (code: string) => Promise<void>;
+  resendMtprotoCode: () => Promise<void>;
   submitMtprotoPassword: (password: string) => Promise<void>;
   disconnectTelegramMessages: () => Promise<void>;
 };
@@ -48,6 +60,23 @@ type TelegramMessagesConnectionCtx = {
 const TelegramMessagesConnectionContext = createContext<TelegramMessagesConnectionCtx | null>(null);
 
 const POLL_MS = 2000;
+
+function isPhoneAuthRegression(current: MtprotoAuthState, next: MtprotoAuthState): boolean {
+  if (next === "failed" || next === "ready") return false;
+  const advanced = new Set<MtprotoAuthState>(["wait_code", "wait_password"]);
+  const regressions = new Set<MtprotoAuthState>(["idle", "initializing", "wait_qr"]);
+  return advanced.has(current) && regressions.has(next);
+}
+
+function isMidConnectAuth(state: MtprotoAuthState): boolean {
+  return (
+    state === "initializing" ||
+    state === "wait_qr" ||
+    state === "wait_phone" ||
+    state === "wait_code" ||
+    state === "wait_password"
+  );
+}
 
 export function TelegramMessagesConnectionProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, authReady, sessionTelegramMessagesConnected } = useAuth();
@@ -59,6 +88,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const [connectQrLink, setConnectQrLink] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const attemptIdRef = useRef<string | null>(null);
+  const connectAuthStateRef = useRef<MtprotoAuthState>("idle");
+  const connectAuthMethodRef = useRef<MtprotoAuthMethod>("qr");
+  const pollGenerationRef = useRef(0);
+  const connectStartGenerationRef = useRef(0);
+  const connectStartAbortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warmupInFlightRef = useRef(false);
 
@@ -144,25 +178,49 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }) => {
       if (json.attemptId) attemptIdRef.current = json.attemptId;
       const state = json.authState ? (json.authState as MtprotoAuthState) : null;
-      if (state) setConnectAuthState(state);
-      setConnectQrLink(json.qrLink ?? null);
+      if (state) {
+        const current = connectAuthStateRef.current;
+        if (
+          isPhoneAuthRegression(current, state) &&
+          connectAuthMethodRef.current === "phone"
+        ) {
+          logTelegramConnect("connect_snapshot_ignored_regression", { current, next: state });
+          return;
+        }
+        setConnectAuthState(state);
+        connectAuthStateRef.current = state;
+      }
+      if (state === "wait_qr" && json.qrLink) {
+        setConnectQrLink(json.qrLink);
+      } else if (state && state !== "wait_qr") {
+        setConnectQrLink(null);
+      }
       setConnectError(json.error ?? (json.ok === false ? "connect_failed" : null));
 
       if (state === "ready") {
         setConnected(true);
         setConnectSheetVisible(false);
         stopPolling();
+        clearStoredMtprotoConnect();
         logTelegramConnect("connect_success", { chatCount: json.chatCount ?? null });
         logPageDisplay("telegram_messages_connected");
         void refreshStatusInner();
       } else if (state === "failed") {
         stopPolling();
+        clearStoredMtprotoConnect();
+      } else if (state && isMidConnectAuth(state) && attemptIdRef.current) {
+        writeStoredMtprotoConnect({
+          attemptId: attemptIdRef.current,
+          authState: state,
+          authMethod: connectAuthMethodRef.current,
+        });
       }
     },
     [stopPolling, refreshStatusInner],
   );
 
   const pollConnectStatus = useCallback(async () => {
+    const generation = pollGenerationRef.current;
     const attemptId = attemptIdRef.current;
     if (!attemptId) return;
     const url = buildApiUrl(
@@ -182,6 +240,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         authState: json.authState ?? null,
         error: json.error ?? null,
       });
+      if (generation !== pollGenerationRef.current) return;
       applyConnectSnapshot({ ...json, attemptId });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -202,7 +261,24 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => {
     logTelegramConnect("provider_mount", { apiBase: getApiBaseUrl(), isAuthenticated, authReady });
+    const stored = readStoredMtprotoConnect();
+    if (stored?.attemptId && isMidConnectAuth(stored.authState)) {
+      attemptIdRef.current = stored.attemptId;
+      setConnectAuthState(stored.authState);
+      connectAuthStateRef.current = stored.authState;
+      setConnectAuthMethod(stored.authMethod);
+      connectAuthMethodRef.current = stored.authMethod;
+      logTelegramConnect("connect_session_restored", {
+        authState: stored.authState,
+        authMethod: stored.authMethod,
+      });
+    }
   }, []);
+
+  useEffect(() => {
+    if (!attemptIdRef.current || !isMidConnectAuth(connectAuthStateRef.current)) return;
+    startPolling();
+  }, [startPolling]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -227,9 +303,32 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const beginMtprotoConnect = useCallback(async (options?: { fresh?: boolean; authMethod?: MtprotoAuthMethod }) => {
+  const beginMtprotoConnect = useCallback(async (options?: {
+    fresh?: boolean;
+    authMethod?: MtprotoAuthMethod;
+    soft?: boolean;
+  }) => {
     const authMethod: MtprotoAuthMethod = options?.authMethod === "phone" ? "phone" : "qr";
+    const softPhoneStart = Boolean(options?.soft) && authMethod === "phone";
+    const current = connectAuthStateRef.current;
+    if (
+      !options?.fresh &&
+      authMethod === "qr" &&
+      connectAuthMethodRef.current === "phone" &&
+      (current === "wait_code" || current === "wait_phone" || current === "wait_password")
+    ) {
+      logTelegramConnect("connect_start_skipped_phone_in_progress", { current, authMethod });
+      if (attemptIdRef.current) startPolling();
+      return;
+    }
+    connectStartGenerationRef.current += 1;
+    const startGeneration = connectStartGenerationRef.current;
+    connectStartAbortRef.current?.abort();
+    const abortController = new AbortController();
+    connectStartAbortRef.current = abortController;
+    pollGenerationRef.current += 1;
     setConnectAuthMethod(authMethod);
+    connectAuthMethodRef.current = authMethod;
     const startUrl = buildApiUrl("/api/telegram-mtproto-connect-start");
     logTelegramConnect("connect_start", {
       url: startUrl,
@@ -240,9 +339,18 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     });
     setConnectPending(true);
     setConnectError(null);
-    setConnectAuthState("initializing");
-    setConnectQrLink(null);
-    attemptIdRef.current = null;
+    if (softPhoneStart) {
+      setConnectQrLink(null);
+    } else if (!options?.fresh && attemptIdRef.current && isMidConnectAuth(current)) {
+      setConnectQrLink(null);
+    } else {
+      setConnectAuthState("initializing");
+      connectAuthStateRef.current = "initializing";
+      setConnectQrLink(null);
+    }
+    if (options?.fresh) {
+      attemptIdRef.current = null;
+    }
     try {
       const body: Record<string, unknown> = options?.fresh
         ? { fresh: true, authMethod }
@@ -252,7 +360,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        signal: abortController.signal,
       });
+      if (startGeneration !== connectStartGenerationRef.current) return;
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         attemptId?: string;
@@ -268,6 +378,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         error: json.error ?? null,
         debug: json.debug ?? null,
       });
+      if (startGeneration !== connectStartGenerationRef.current) return;
       applyConnectSnapshot(json);
       if (
         json.attemptId ||
@@ -281,34 +392,88 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       }
       if (!response.ok && json.authState !== "wait_qr" && json.authState !== "wait_phone") {
         setConnectAuthState("failed");
+        connectAuthStateRef.current = "failed";
         setConnectError(
           json.error ||
             (response.status === 504 ? "gateway_timeout_retry" : `HTTP_${response.status}`),
         );
       }
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        logTelegramConnect("connect_aborted");
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       setConnectAuthState("failed");
+      connectAuthStateRef.current = "failed";
       setConnectError(message);
       logTelegramConnect("connect_error", { message });
     } finally {
-      setConnectPending(false);
-      logTelegramConnect("connect_finished");
+      if (startGeneration === connectStartGenerationRef.current) {
+        setConnectPending(false);
+        logTelegramConnect("connect_finished");
+      }
     }
   }, [applyConnectSnapshot, isAuthenticated, startPolling]);
 
+  const waitForPhoneGatewayReady = useCallback(
+    async (timeoutMs: number): Promise<boolean> => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        if (connectAuthStateRef.current === "failed") return false;
+        if (attemptIdRef.current) {
+          await pollConnectStatus();
+          if (connectAuthStateRef.current === "wait_phone") return true;
+          if (connectAuthStateRef.current === "failed") return false;
+        }
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return (
+        Boolean(attemptIdRef.current) && connectAuthStateRef.current === "wait_phone"
+      );
+    },
+    [pollConnectStatus],
+  );
+
   const submitMtprotoPhone = useCallback(
     async (phoneNumber: string) => {
-      const attemptId = attemptIdRef.current;
-      if (!attemptId || !phoneNumber.trim()) return;
+      if (!phoneNumber.trim()) return;
       setConnectPending(true);
       setConnectError(null);
       try {
+        const needsPhoneSession =
+          connectAuthMethodRef.current !== "phone" || connectAuthStateRef.current !== "wait_phone";
+        if (needsPhoneSession) {
+          stopPolling();
+          setConnectAuthMethod("phone");
+          connectAuthMethodRef.current = "phone";
+          await beginMtprotoConnect({ fresh: true, authMethod: "phone", soft: true });
+          const ready = await waitForPhoneGatewayReady(45_000);
+          if (!ready) {
+            setConnectError(
+              connectAuthStateRef.current === "failed"
+                ? "session_expired_restart"
+                : "telegram_network_unreachable",
+            );
+            return;
+          }
+        }
+
+        const attemptId = attemptIdRef.current;
+        if (!attemptId) {
+          setConnectError("session_expired_restart");
+          return;
+        }
+
         const response = await fetch(buildApiUrl("/api/telegram-mtproto-connect-phone"), {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ attemptId, phoneNumber }),
+          body: JSON.stringify({
+            attemptId,
+            phoneNumber,
+            isCurrentPhoneNumber: mtprotoUseCurrentPhoneNumberForCode(),
+          }),
         });
         const json = (await response.json().catch(() => ({}))) as {
           ok?: boolean;
@@ -319,6 +484,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         if (!json.authState) {
           setConnectError(json.error || `HTTP_${response.status}`);
           startPolling();
+          return;
+        }
+        if (!response.ok || json.ok === false) {
+          setConnectError(json.error || `HTTP_${response.status}`);
+          applyConnectSnapshot({ ...json, attemptId });
           return;
         }
         applyConnectSnapshot({ ...json, attemptId });
@@ -333,7 +503,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         setConnectPending(false);
       }
     },
-    [applyConnectSnapshot, startPolling],
+    [applyConnectSnapshot, startPolling, beginMtprotoConnect, waitForPhoneGatewayReady, stopPolling],
   );
 
   const submitMtprotoCode = useCallback(
@@ -374,6 +544,39 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     },
     [applyConnectSnapshot, startPolling],
   );
+
+  const resendMtprotoCode = useCallback(async () => {
+    const attemptId = attemptIdRef.current;
+    if (!attemptId || connectAuthStateRef.current !== "wait_code") return;
+    setConnectPending(true);
+    setConnectError(null);
+    try {
+      const response = await fetch(buildApiUrl("/api/telegram-mtproto-connect-resend-code"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        authState?: string;
+        error?: string | null;
+      };
+      logTelegramConnect("connect_resend_response", {
+        status: response.status,
+        authState: json.authState ?? null,
+        error: json.error ?? null,
+      });
+      if (json.error) {
+        setConnectError(json.error);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setConnectError(message.includes("Failed to fetch") ? "network_error" : message);
+    } finally {
+      setConnectPending(false);
+    }
+  }, []);
 
   const submitMtprotoPassword = useCallback(
     async (password: string) => {
@@ -424,19 +627,33 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const openConnectSheet = useCallback(() => {
     logTelegramConnect("open_connect_sheet");
     setConnectSheetVisible(true);
-    setConnectAuthState("idle");
-    setConnectError(null);
-    setConnectQrLink(null);
-  }, []);
+    const current = connectAuthStateRef.current;
+    if (!isMidConnectAuth(current)) {
+      setConnectAuthState("idle");
+      connectAuthStateRef.current = "idle";
+      setConnectAuthMethod("qr");
+      connectAuthMethodRef.current = "qr";
+      setConnectError(null);
+      setConnectQrLink(null);
+    } else if (attemptIdRef.current) {
+      startPolling();
+    }
+  }, [startPolling]);
 
   const closeConnectSheet = useCallback(() => {
     logTelegramConnect("close_connect_sheet");
     stopPolling();
     setConnectSheetVisible(false);
-    setConnectAuthState("idle");
-    setConnectError(null);
-    setConnectQrLink(null);
-    attemptIdRef.current = null;
+    const current = connectAuthStateRef.current;
+    if (!isMidConnectAuth(current)) {
+      setConnectAuthState("idle");
+      connectAuthStateRef.current = "idle";
+      setConnectAuthMethod("qr");
+      connectAuthMethodRef.current = "qr";
+      setConnectError(null);
+      setConnectQrLink(null);
+      attemptIdRef.current = null;
+    }
   }, [stopPolling]);
 
   const disconnectTelegramMessages = useCallback(async () => {
@@ -469,6 +686,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       beginMtprotoConnect,
       submitMtprotoPhone,
       submitMtprotoCode,
+      resendMtprotoCode,
       submitMtprotoPassword,
       disconnectTelegramMessages,
     }),
@@ -486,6 +704,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       beginMtprotoConnect,
       submitMtprotoPhone,
       submitMtprotoCode,
+      resendMtprotoCode,
       submitMtprotoPassword,
       disconnectTelegramMessages,
     ],

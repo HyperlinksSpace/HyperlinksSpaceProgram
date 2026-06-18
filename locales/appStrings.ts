@@ -101,8 +101,11 @@ const en = {
     "Link your Telegram account to sync your real chats into Messages.",
   "messages.connectSheetLoading": "Preparing QR code…",
   "messages.connectSheetLoadingPhone": "Preparing phone login…",
-  "messages.connectSheetMethodQr": "Scan QR",
-  "messages.connectSheetMethodPhone": "Enter number",
+  "messages.connectSheetScanQr": "Scan QR",
+  "messages.connectSheetOrPhone": "Or enter the phone number",
+  "messages.connectSheetPhoneTitle": "Enter your phone number",
+  "messages.connectSheetPhoneMobileHint":
+    "Enter your number — with a cloud gateway the code is sent by SMS or in a Telegram chat from Telegram (not via QR).",
   "messages.connectSheetOpenInTelegram": "Open in Telegram",
   "messages.connectSheetPhoneBody":
     "Enter your phone number in international format (e.g. +1 234 567 8900). Telegram will send a login code to your Telegram app or SMS.",
@@ -110,9 +113,14 @@ const en = {
   "messages.connectSheetPhoneSubmit": "Send code",
   "messages.connectSheetCodeTitle": "Enter login code",
   "messages.connectSheetCodeBody":
-    "Check Telegram for a message from Telegram with your login code, then enter it below.",
+    "Check SMS on your phone or a Telegram message from Telegram with your login code, then enter it below.",
+  "messages.connectSheetCodeBodyDesktop":
+    "Login runs on a cloud server, not in this browser. Telegram usually sends the code by SMS to your phone — check text messages first. You may also see it in the Telegram app under Settings → Devices. Do not resubmit your phone number (that cancels the code).",
+  "messages.connectSheetCodeResend": "Resend code",
   "messages.connectSheetCodePlaceholder": "Login code",
   "messages.connectSheetCodeSubmit": "Continue",
+  "messages.connectErrorGatewayPhoneEndpoint":
+    "Phone login is unavailable on the TDLib gateway. Restart it: stop npm run tdlib:gateway, then start it again.",
   "messages.connectErrorInvalidPhone": "Enter a valid phone number with country code (e.g. +1234567890).",
   "messages.connectErrorCodeRejected": "Incorrect login code. Check Telegram and try again.",
   "messages.connectSheetPasswordTitle": "Two-step verification password",
@@ -381,8 +389,11 @@ const ru = {
     "Привяжите аккаунт Telegram, чтобы синхронизировать реальные чаты в «Сообщения».",
   "messages.connectSheetLoading": "Готовим QR-код…",
   "messages.connectSheetLoadingPhone": "Готовим вход по номеру…",
-  "messages.connectSheetMethodQr": "Сканировать QR",
-  "messages.connectSheetMethodPhone": "Ввести номер",
+  "messages.connectSheetScanQr": "Сканировать QR",
+  "messages.connectSheetOrPhone": "Или введите номер телефона",
+  "messages.connectSheetPhoneTitle": "Введите номер телефона",
+  "messages.connectSheetPhoneMobileHint":
+    "Введите номер — при облачном шлюзе код придёт по SMS или в чат от Telegram (не по QR).",
   "messages.connectSheetOpenInTelegram": "Открыть в Telegram",
   "messages.connectSheetPhoneBody":
     "Введите номер в международном формате (например, +7 900 123 45 67). Код придёт в Telegram или по SMS.",
@@ -390,9 +401,14 @@ const ru = {
   "messages.connectSheetPhoneSubmit": "Отправить код",
   "messages.connectSheetCodeTitle": "Код входа",
   "messages.connectSheetCodeBody":
-    "Проверьте сообщение от Telegram с кодом входа и введите его ниже.",
+    "Проверьте SMS на телефоне или сообщение от Telegram с кодом входа и введите его ниже.",
+  "messages.connectSheetCodeBodyDesktop":
+    "Вход идёт через облачный сервер, а не в этом браузере. Обычно код приходит по SMS на телефон — сначала проверьте SMS. Также код может появиться в Telegram: Настройки → Устройства. Не отправляйте номер повторно — это отменяет код.",
+  "messages.connectSheetCodeResend": "Отправить код снова",
   "messages.connectSheetCodePlaceholder": "Код входа",
   "messages.connectSheetCodeSubmit": "Продолжить",
+  "messages.connectErrorGatewayPhoneEndpoint":
+    "Вход по номеру недоступен на шлюзе TDLib. Перезапустите: остановите npm run tdlib:gateway и запустите снова.",
   "messages.connectErrorInvalidPhone": "Введите корректный номер с кодом страны (например, +79001234567).",
   "messages.connectErrorCodeRejected": "Неверный код входа. Проверьте Telegram и попробуйте снова.",
   "messages.connectSheetPasswordTitle": "Пароль двухэтапной проверки",

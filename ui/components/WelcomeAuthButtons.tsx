@@ -1,4 +1,4 @@
-import { Alert, Pressable, StyleSheet, Text, TextInput, View, Platform } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View, Platform } from "react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
@@ -8,13 +8,13 @@ import {
   useColors,
   typographyRect15,
   uiIconButtonVerticalCompensationY,
-  uiTextVerticalCompensationTransform,
   welcomeAuthButtonHoverBackground,
   welcomeAuthButtonActiveBackground,
 } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
+import { WelcomeAuthFormField, WELCOME_AUTH_MAX_WIDTH } from "./WelcomeAuthFormField";
 import { useTelegram } from "./Telegram";
 import { isActuallyInTelegram } from "./telegramWebApp";
 import { getApiBaseUrl } from "../../api/_base";
@@ -23,21 +23,11 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { isDesktopAppShell } from "../appShell";
 
 const BUTTON_HEIGHT = 40;
-/** Same line box as {@link typographyRect15} — used to pad the email field like a flex-centered label row. */
-const EMAIL_ROW_LINE_HEIGHT = 18;
 const BUTTON_GAP = 20;
-export const WELCOME_AUTH_MAX_WIDTH = 360;
 const BUTTON_H_PADDING = 20;
 const ICON_SIZE = 16;
 const ICON_GAP = 10;
 const GAP_BEFORE_EMAIL_BLOCK = 20;
-const EMAIL_LABEL_TO_INPUT_GAP = 10;
-const INPUT_TO_EMAIL_BUTTON_GAP = 20;
-const INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR = 10;
-const EMAIL_ERROR_LINE_HEIGHT = 30;
-const EMAIL_INVALID_COLOR = "#FF0000";
-/** Text inset from the left inside the field (per design: 110px). */
-const EMAIL_INPUT_TEXT_INSET_LEFT = 10;
 
 const ICONS = {
   google: {
@@ -132,7 +122,6 @@ export function WelcomeAuthButtons() {
   const [emailInvalid, setEmailInvalid] = useState(false);
   /** Web hover: RN `Pressable` style state has no `hovered` in typings; use hover events (see theme hover helpers). */
   const [hoverOAuthId, setHoverOAuthId] = useState<BrowserOAuthProvider | null>(null);
-  const [hoverEmailSignIn, setHoverEmailSignIn] = useState(false);
   const useBlackIcons = colorScheme === "light";
 
   useEffect(() => {
@@ -337,46 +326,20 @@ export function WelcomeAuthButtons() {
           </Pressable>
         );
       })}
-      <View style={[styles.emailBlock, { marginTop: GAP_BEFORE_EMAIL_BLOCK }]}>
-        <Text style={[styles.emailTitle, { color: colors.primary }]}>{t("welcome.auth.signInEmailTitle")}</Text>
-        <View
-          style={[
-            styles.emailInputShell,
-            {
-              backgroundColor: colors.undercover,
-              borderColor: colors.accent,
-              marginTop: EMAIL_LABEL_TO_INPUT_GAP,
-              ...(Platform.OS === "web"
-                ? ({
-                    "--welcome-email-autofill-bg": colors.undercover,
-                    "--welcome-email-autofill-fg": colors.primary,
-                  } as Record<string, string>)
-                : {}),
-            },
-          ]}
-        >
-          <TextInput
-            {...(Platform.OS === "web" ? { id: "welcome-email-input" } : {})}
-            style={[styles.emailInputInner, { color: colors.primary }]}
-            placeholder={t("welcome.auth.emailPlaceholder")}
-            placeholderTextColor={colors.secondary}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={email}
-            onChangeText={(next) => {
-              setEmail(next);
-              if (emailInvalid) setEmailInvalid(false);
-            }}
-          />
-        </View>
-        {emailInvalid ? (
-          <Text style={[styles.emailInvalidText, { color: EMAIL_INVALID_COLOR }]}>{t("welcome.auth.emailInvalid")}</Text>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sign in"
-          onPress={() => {
+      <View style={{ marginTop: GAP_BEFORE_EMAIL_BLOCK, width: "100%", alignItems: "center" }}>
+        <WelcomeAuthFormField
+          label={t("welcome.auth.signInEmailTitle")}
+          value={email}
+          onChangeText={(next) => {
+            setEmail(next);
+            if (emailInvalid) setEmailInvalid(false);
+          }}
+          placeholder={t("welcome.auth.emailPlaceholder")}
+          keyboardType="email-address"
+          inputId="welcome-email-input"
+          errorText={emailInvalid ? t("welcome.auth.emailInvalid") : null}
+          submitLabel={t("welcome.auth.signInButton")}
+          onSubmit={() => {
             if (!isValidBasicEmail(email)) {
               setEmailInvalid(true);
               return;
@@ -384,30 +347,7 @@ export function WelcomeAuthButtons() {
             setEmailInvalid(false);
             /* wired when auth flows land */
           }}
-          onHoverIn={Platform.OS === "web" ? () => setHoverEmailSignIn(true) : undefined}
-          onHoverOut={Platform.OS === "web" ? () => setHoverEmailSignIn(false) : undefined}
-          style={({ pressed }) => {
-            const webHover = Platform.OS === "web" && hoverEmailSignIn;
-            let backgroundColor = colors.undercover;
-            if (pressed) {
-              backgroundColor = welcomeAuthButtonActiveBackground(colors, colorScheme);
-            } else if (webHover) {
-              backgroundColor = welcomeAuthButtonHoverBackground(colors, colorScheme);
-            }
-            return [
-              styles.emailSignInButton,
-              {
-                backgroundColor,
-                marginTop: emailInvalid
-                  ? INPUT_TO_EMAIL_BUTTON_GAP_WITH_ERROR
-                  : INPUT_TO_EMAIL_BUTTON_GAP,
-                opacity: pressed ? 0.92 : 1,
-              },
-            ];
-          }}
-        >
-          <Text style={[styles.label, { color: colors.primary }]}>{t("welcome.auth.signInButton")}</Text>
-        </Pressable>
+        />
       </View>
       <WelcomeAppPreviews />
     </View>
@@ -437,72 +377,5 @@ const styles = StyleSheet.create({
   iconDims: {
     width: ICON_SIZE,
     height: ICON_SIZE,
-  },
-  emailBlock: {
-    width: "100%",
-    maxWidth: WELCOME_AUTH_MAX_WIDTH,
-  },
-  emailTitle: {
-    fontSize: 15,
-    lineHeight: 30,
-    fontWeight: "400",
-  },
-  /**
-   * Single undercover strip + one border. TextInput fills it (no nested box / second border).
-   */
-  emailInputShell: {
-    width: "100%",
-    maxWidth: WELCOME_AUTH_MAX_WIDTH,
-    height: BUTTON_HEIGHT,
-    borderWidth: 1,
-    borderStyle: "solid",
-    overflow: "hidden",
-    ...Platform.select({
-      web: {
-        boxSizing: "border-box",
-        minHeight: BUTTON_HEIGHT,
-        maxHeight: BUTTON_HEIGHT,
-      },
-      default: {},
-    }),
-  },
-  emailInputInner: {
-    ...typographyRect15,
-    /** Same optical nudge as `Text` defaults (`ensureUiSansFontFamilyDefaults`); explicit so placeholder/value match “Sign in”. */
-    ...uiTextVerticalCompensationTransform,
-    flex: 1,
-    alignSelf: "stretch",
-    width: "100%",
-    minHeight: BUTTON_HEIGHT,
-    borderWidth: 0,
-    backgroundColor: "transparent",
-    paddingLeft: EMAIL_INPUT_TEXT_INSET_LEFT,
-    paddingRight: BUTTON_H_PADDING,
-    margin: 0,
-    ...Platform.select({
-      web: {
-        /** RN-web: vertically center single-line placeholder like a 18px label in a 40px row (provider / Sign in buttons). */
-        paddingTop: (BUTTON_HEIGHT - EMAIL_ROW_LINE_HEIGHT) / 2,
-        paddingBottom: (BUTTON_HEIGHT - EMAIL_ROW_LINE_HEIGHT) / 2,
-        outlineWidth: 0,
-        boxSizing: "border-box",
-      },
-      default: {
-        paddingVertical: 0,
-      },
-    }),
-  },
-  emailInvalidText: {
-    lineHeight: EMAIL_ERROR_LINE_HEIGHT,
-    fontSize: 15,
-    fontWeight: "400",
-  },
-  emailSignInButton: {
-    width: "100%",
-    maxWidth: WELCOME_AUTH_MAX_WIDTH,
-    height: BUTTON_HEIGHT,
-    paddingHorizontal: BUTTON_H_PADDING,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

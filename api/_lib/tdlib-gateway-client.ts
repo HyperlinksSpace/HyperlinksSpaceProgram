@@ -107,10 +107,25 @@ export async function gatewayConnectPassword(
 export async function gatewayConnectPhone(
   attemptId: string,
   phoneNumber: string,
+  options?: { isCurrentPhoneNumber?: boolean },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/phone", {
     method: "POST",
-    body: JSON.stringify({ attemptId, phoneNumber }),
+    body: JSON.stringify({
+      attemptId,
+      phoneNumber,
+      isCurrentPhoneNumber: Boolean(options?.isCurrentPhoneNumber),
+    }),
+  });
+  return { ...json, httpStatus: response.status };
+}
+
+export async function gatewayConnectResendCode(
+  attemptId: string,
+): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
+  const { response, json } = await gatewayFetch("/v1/connect/code/resend", {
+    method: "POST",
+    body: JSON.stringify({ attemptId }),
   });
   return { ...json, httpStatus: response.status };
 }

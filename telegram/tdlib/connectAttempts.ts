@@ -175,11 +175,13 @@ function attachAuthListener(record: AttemptRecord): void {
   if (!client) return;
 
   client.on("error", (err: Error) => {
+    if (!attempts.has(record.attemptId)) return;
     logConnectEvent(record, "connect_client_error", { message: err.message });
     failAttempt(record, err.message || "tdlib_client_error");
   });
 
   client.on("update", (update: { _?: string; authorization_state?: { _?: string; link?: string }; state?: { _?: string } }) => {
+    if (!attempts.has(record.attemptId)) return;
     if (update._ === "updateConnectionState") {
       record.connectionState = update.state?._ ?? null;
       logConnectEvent(record, "connect_connection_state", { connectionState: record.connectionState });
@@ -192,7 +194,8 @@ function attachAuthListener(record: AttemptRecord): void {
     logConnectEvent(record, "connect_auth_state", { tdlibAuthState: state });
 
     if (state === "authorizationStateWaitPhoneNumber") {
-      if (record.authMethod === "phone") {
+      if (record.authMethod === "phone" || readStoredAuthMethod(record.telegramUsername) === "phone") {
+        record.authMethod = "phone";
         clearConnectWatchdog(record);
         record.authState = "wait_phone";
         logConnectEvent(record, "connect_wait_phone");
@@ -204,8 +207,19 @@ function attachAuthListener(record: AttemptRecord): void {
 
     if (state === "authorizationStateWaitCode") {
       clearConnectWatchdog(record);
+      record.authMethod = "phone";
+      writeStoredAuthMethod(record.telegramUsername, "phone");
       record.authState = "wait_code";
-      logConnectEvent(record, "connect_wait_code");
+      const codeInfo = (
+        update.authorization_state as {
+          code_info?: { type?: { _?: string }; next_type?: { _?: string }; timeout?: number };
+        }
+      )?.code_info;
+      logConnectEvent(record, "connect_wait_code", {
+        codeType: codeInfo?.type?._ ?? null,
+        nextCodeType: codeInfo?.next_type?._ ?? null,
+        codeTimeoutSec: codeInfo?.timeout ?? null,
+      });
       return;
     }
 
@@ -265,6 +279,7 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   record.authState = "ready";
   record.qrLink = null;
   record.error = null;
+  clearStoredAuthMethod(record.telegramUsername);
   attachLiveChatSync(record);
   logConnectEvent(record, "connect_ready", { chatCount: record.chatCount ?? 0 });
 }
@@ -283,14 +298,25 @@ async function waitForAuthState(
   return record.authState;
 }
 
-export function purgeTdlibUserData(telegramUsername: string): void {
+async function waitForConnectionReady(record: AttemptRecord, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (record.authState === "failed") return false;
+    if (record.connectionState === "connectionStateReady") return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return record.connectionState === "connectionStateReady";
+}
+
+export async function purgeTdlibUserData(telegramUsername: string): Promise<void> {
   detachLiveChatSync(telegramUsername);
   const existingId = activeByUser.get(telegramUsername);
-  if (existingId) disposeAttempt(existingId);
+  if (existingId) await disposeAttemptAsync(existingId);
   const base = getTdlibUserDir(telegramUsername);
   if (fs.existsSync(base)) {
     fs.rmSync(base, { recursive: true, force: true });
   }
+  await new Promise((r) => setTimeout(r, 400));
   console.log(
     `[tdlib-gateway] ${JSON.stringify({
       event: "connect_purge_user_data",
@@ -299,14 +325,80 @@ export function purgeTdlibUserData(telegramUsername: string): void {
   );
 }
 
+const AUTH_METHOD_MARKER = "connect-auth-method.json";
+
+function authMethodMarkerPath(telegramUsername: string): string {
+  return path.join(getTdlibUserDir(telegramUsername), AUTH_METHOD_MARKER);
+}
+
+function readStoredAuthMethod(telegramUsername: string): ConnectAuthMethod | null {
+  try {
+    const markerPath = authMethodMarkerPath(telegramUsername);
+    if (!fs.existsSync(markerPath)) return null;
+    const raw = JSON.parse(fs.readFileSync(markerPath, "utf8")) as { authMethod?: string };
+    if (raw.authMethod === "phone") return "phone";
+    if (raw.authMethod === "qr") return "qr";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAuthMethod(telegramUsername: string, authMethod: ConnectAuthMethod): void {
+  const base = getTdlibUserDir(telegramUsername);
+  fs.mkdirSync(base, { recursive: true });
+  fs.writeFileSync(authMethodMarkerPath(telegramUsername), JSON.stringify({ authMethod }));
+}
+
+function clearStoredAuthMethod(telegramUsername: string): void {
+  const markerPath = authMethodMarkerPath(telegramUsername);
+  if (fs.existsSync(markerPath)) fs.unlinkSync(markerPath);
+}
+
+function resolveConnectAuthMethod(
+  telegramUsername: string,
+  requested: ConnectAuthMethod,
+  fresh?: boolean,
+): ConnectAuthMethod {
+  if (fresh) return requested;
+  const stored = readStoredAuthMethod(telegramUsername);
+  if (stored === "phone" && requested === "qr") {
+    console.log(
+      `[tdlib-gateway] ${JSON.stringify({
+        event: "connect_auth_method_override",
+        telegramUsername,
+        requested,
+        stored,
+      })}`,
+    );
+    return "phone";
+  }
+  return requested;
+}
+
+const IN_PROGRESS_PHONE_STATES = new Set<ConnectAuthState>([
+  "initializing",
+  "wait_phone",
+  "wait_code",
+  "wait_password",
+]);
+
+function isInProgressPhoneAttempt(record: AttemptRecord): boolean {
+  return record.authMethod === "phone" && IN_PROGRESS_PHONE_STATES.has(record.authState);
+}
+
 export async function startConnectAttempt(
   telegramUsername: string,
   options?: { fresh?: boolean; authMethod?: ConnectAuthMethod },
 ): Promise<ConnectAttemptSnapshot> {
-  const authMethod: ConnectAuthMethod = options?.authMethod === "phone" ? "phone" : "qr";
+  const authMethod = resolveConnectAuthMethod(
+    telegramUsername,
+    options?.authMethod === "phone" ? "phone" : "qr",
+    options?.fresh,
+  );
 
   if (options?.fresh) {
-    purgeTdlibUserData(telegramUsername);
+    await purgeTdlibUserData(telegramUsername);
   } else {
     const existingId = activeByUser.get(telegramUsername);
     if (existingId) {
@@ -314,11 +406,15 @@ export async function startConnectAttempt(
       if (
         existing &&
         existing.authState !== "failed" &&
-        existing.authMethod === authMethod &&
         Date.now() - existing.createdAt < 15 * 60_000
       ) {
-        if (existing.authState === "ready") attachLiveChatSync(existing);
-        return snapshot(existing);
+        if (isInProgressPhoneAttempt(existing) && authMethod === "qr") {
+          return snapshot(existing);
+        }
+        if (existing.authMethod === authMethod) {
+          if (existing.authState === "ready") attachLiveChatSync(existing);
+          return snapshot(existing);
+        }
       }
       disposeAttempt(existingId);
     }
@@ -354,6 +450,9 @@ export async function startConnectAttempt(
 
   attempts.set(attemptId, record);
   activeByUser.set(telegramUsername, attemptId);
+  if (authMethod === "phone") {
+    writeStoredAuthMethod(telegramUsername, "phone");
+  }
 
   try {
     const client = createTdlibClient(telegramUsername, (created) => {
@@ -379,12 +478,27 @@ export function getConnectAttempt(attemptId: string): ConnectAttemptSnapshot | n
 export async function submitConnectPhoneNumber(
   attemptId: string,
   phoneNumber: string,
+  options?: { isCurrentPhoneNumber?: boolean },
 ): Promise<ConnectAttemptSnapshot | null> {
   const record = attempts.get(attemptId);
-  if (!record?.client) return record ? snapshot(record) : null;
+  if (!record) return null;
+  if (!record.client) {
+    await waitForAuthState(record, ["wait_phone", "failed"], 45_000);
+  }
+  if (!record.client) return snapshot(record);
   if (record.authState === "ready") return snapshot(record);
   if (record.authMethod !== "phone") {
     record.error = "wrong_auth_method";
+    return snapshot(record);
+  }
+  if (record.authState === "initializing") {
+    await waitForAuthState(record, ["wait_phone", "failed"], 45_000);
+  }
+  if (record.authState !== "wait_phone") {
+    if (record.authState === "wait_code" || record.authState === "wait_password") {
+      return snapshot(record);
+    }
+    record.error = "session_not_ready";
     return snapshot(record);
   }
 
@@ -395,21 +509,53 @@ export async function submitConnectPhoneNumber(
   }
 
   record.error = null;
-  try {
-    await record.client.invoke({
+  const useCurrentPhone = Boolean(options?.isCurrentPhoneNumber);
+  const invokePhone = async (): Promise<void> => {
+    await record.client!.invoke({
       _: "setAuthenticationPhoneNumber",
       phone_number: normalized,
       settings: {
         _: "phoneNumberAuthenticationSettings",
         allow_flash_call: false,
         allow_missed_call: false,
-        is_current_phone_number: false,
+        is_current_phone_number: useCurrentPhone,
         allow_sms: true,
       },
     });
+  };
+
+  try {
+    await waitForConnectionReady(record, 30_000);
+    let lastError: Error | null = null;
+    for (let tryNum = 0; tryNum < 4; tryNum++) {
+      try {
+        await invokePhone();
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const retryable = /another authorization query|call_flood|wait/i.test(lastError.message);
+        if (!retryable || tryNum === 3) throw lastError;
+        logConnectEvent(record, "connect_phone_retry", {
+          message: lastError.message,
+          tryNum: tryNum + 1,
+        });
+        await new Promise((r) => setTimeout(r, 800 * (tryNum + 1)));
+        await waitForConnectionReady(record, 15_000);
+      }
+    }
     await waitForAuthState(record, ["wait_code", "wait_password", "ready", "failed"], 30_000);
+    if (record.authState === "wait_code") {
+      record.error = null;
+      logConnectEvent(record, "connect_phone_code_sent", { isCurrentPhone: useCurrentPhone });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "phone_rejected";
+    if (record.authState === "wait_code") {
+      record.error = null;
+      logConnectEvent(record, "connect_phone_code_sent_after_error", { message });
+      return snapshot(record);
+    }
     if (/not found|authorization_closed|session/i.test(message)) {
       record.authState = "failed";
       record.error = "session_expired_restart";
@@ -418,6 +564,22 @@ export async function submitConnectPhoneNumber(
       record.error = message;
     }
     logConnectEvent(record, "connect_phone_rejected", { message });
+  }
+  return snapshot(record);
+}
+
+export async function resendConnectCode(attemptId: string): Promise<ConnectAttemptSnapshot | null> {
+  const record = attempts.get(attemptId);
+  if (!record?.client) return record ? snapshot(record) : null;
+  if (record.authState !== "wait_code") return snapshot(record);
+  record.error = null;
+  try {
+    await record.client.invoke({ _: "resendAuthenticationCode" });
+    logConnectEvent(record, "connect_code_resent");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "resend_failed";
+    record.error = message;
+    logConnectEvent(record, "connect_code_resend_failed", { message });
   }
   return snapshot(record);
 }
@@ -484,21 +646,27 @@ export async function submitConnectPassword(
 }
 
 export function disposeAttempt(attemptId: string): void {
+  void disposeAttemptAsync(attemptId);
+}
+
+async function disposeAttemptAsync(attemptId: string): Promise<void> {
   const record = attempts.get(attemptId);
   if (!record) return;
   detachLiveChatSync(record.telegramUsername);
   clearConnectWatchdog(record);
-  if (record.client) {
-    try {
-      record.client.close();
-    } catch {
-      /* ignore */
-    }
-  }
   attempts.delete(attemptId);
   if (activeByUser.get(record.telegramUsername) === attemptId) {
     activeByUser.delete(record.telegramUsername);
   }
+  if (record.client) {
+    try {
+      await record.client.close();
+    } catch {
+      /* ignore */
+    }
+    record.client = null;
+  }
+  await new Promise((r) => setTimeout(r, 300));
 }
 
 export async function disconnectUserSession(telegramUsername: string): Promise<void> {
@@ -532,7 +700,10 @@ async function waitForUserSessionReady(
 }
 
 /** Resume an existing on-disk TDLib session (fast — client polls for QR/ready). */
-export async function resumeExistingSession(telegramUsername: string): Promise<ConnectAttemptSnapshot> {
+export async function resumeExistingSession(
+  telegramUsername: string,
+  options?: { authMethod?: ConnectAuthMethod },
+): Promise<ConnectAttemptSnapshot> {
   const base = getTdlibUserDir(telegramUsername);
   if (!fs.existsSync(path.join(base, "db"))) {
     return {
@@ -544,7 +715,7 @@ export async function resumeExistingSession(telegramUsername: string): Promise<C
       chatCount: null,
     };
   }
-  return startConnectAttempt(telegramUsername);
+  return startConnectAttempt(telegramUsername, { authMethod: options?.authMethod });
 }
 
 /** Re-sync chat list + avatars for an already-authorized user (no QR). */

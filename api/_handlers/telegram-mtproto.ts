@@ -4,6 +4,7 @@ import {
   gatewayConnectCode,
   gatewayConnectPassword,
   gatewayConnectPhone,
+  gatewayConnectResendCode,
   gatewayConnectStart,
   gatewayConnectStatus,
   gatewayHealthCheckDetailed,
@@ -389,7 +390,11 @@ export async function telegramMtprotoConnectPhoneHandler(
     return userOrRes;
   }
 
-  const body = await parseRequestBody<{ attemptId?: string; phoneNumber?: string }>(request);
+  const body = await parseRequestBody<{
+    attemptId?: string;
+    phoneNumber?: string;
+    isCurrentPhoneNumber?: boolean;
+  }>(request);
   const attemptId = (body.attemptId || "").trim();
   const phoneNumber = body.phoneNumber || "";
   if (!attemptId || !phoneNumber.trim()) {
@@ -402,13 +407,21 @@ export async function telegramMtprotoConnectPhoneHandler(
   }
 
   try {
-    const snap = await gatewayConnectPhone(attemptId, phoneNumber);
+    const snap = await gatewayConnectPhone(attemptId, phoneNumber, {
+      isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
+    });
     const authState = snap.authState ?? "wait_phone";
+    const gatewayFailed = snap.httpStatus >= 400 || snap.error === "not_found" || snap.error === "attempt_not_found";
     return finishJson(
       request,
       res,
       {
-        ok: authState === "wait_code" || authState === "wait_password" || authState === "ready" || authState === "wait_phone",
+        ok:
+          !gatewayFailed &&
+          (authState === "wait_code" ||
+            authState === "wait_password" ||
+            authState === "ready" ||
+            authState === "wait_phone"),
         attemptId,
         authState,
         qrLink: snap.qrLink ?? null,
@@ -464,6 +477,60 @@ export async function telegramMtprotoConnectCodeHandler(
       res,
       {
         ok: authState === "wait_password" || authState === "ready" || authState === "wait_code",
+        attemptId,
+        authState,
+        qrLink: snap.qrLink ?? null,
+        error: snap.error ?? null,
+        chatCount: snap.chatCount ?? null,
+      },
+      snap.httpStatus >= 400 ? snap.httpStatus : 200,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "gateway_error";
+    return finishJson(request, res, { ok: false, error: message, authState: "wait_code" }, 503);
+  }
+}
+
+export async function telegramMtprotoConnectResendCodeHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const body = await parseRequestBody<{ attemptId?: string }>(request);
+  const attemptId = (body.attemptId || "").trim();
+  if (!attemptId) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: "attempt_id_required", authState: "wait_code" },
+      400,
+    );
+  }
+
+  try {
+    const snap = await gatewayConnectResendCode(attemptId);
+    const authState = snap.authState ?? "wait_code";
+    return finishJson(
+      request,
+      res,
+      {
+        ok: authState === "wait_code",
         attemptId,
         authState,
         qrLink: snap.qrLink ?? null,

@@ -12,6 +12,7 @@ import {
   restorePersistedGatewaySessions,
   resumeExistingSession,
   startConnectAttempt,
+  resendConnectCode,
   submitConnectCode,
   submitConnectPassword,
   submitConnectPhoneNumber,
@@ -111,7 +112,7 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           let snap = body.resume
-            ? await resumeExistingSession(telegramUsername)
+            ? await resumeExistingSession(telegramUsername, { authMethod })
             : await startConnectAttempt(telegramUsername, {
                 fresh: Boolean(body.fresh),
                 authMethod,
@@ -265,14 +266,36 @@ export function startTdlibGatewayServer(): http.Server {
         }
 
         if (req.method === "POST" && pathname === "/v1/connect/phone") {
-          const body = (await readJson(req)) as { attemptId?: string; phoneNumber?: string };
+          const body = (await readJson(req)) as {
+            attemptId?: string;
+            phoneNumber?: string;
+            isCurrentPhoneNumber?: boolean;
+          };
           const attemptId = (body.attemptId || "").trim();
           const phoneNumber = body.phoneNumber || "";
           if (!attemptId || !phoneNumber.trim()) {
             sendJson(res, 400, { ok: false, error: "attempt_id_and_phone_required" });
             return;
           }
-          const snap = await submitConnectPhoneNumber(attemptId, phoneNumber);
+          const snap = await submitConnectPhoneNumber(attemptId, phoneNumber, {
+            isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
+          });
+          if (!snap) {
+            sendJson(res, 404, { ok: false, error: "attempt_not_found" });
+            return;
+          }
+          sendJson(res, 200, { ok: true, ...snap });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/connect/code/resend") {
+          const body = (await readJson(req)) as { attemptId?: string };
+          const attemptId = (body.attemptId || "").trim();
+          if (!attemptId) {
+            sendJson(res, 400, { ok: false, error: "attempt_id_required" });
+            return;
+          }
+          const snap = await resendConnectCode(attemptId);
           if (!snap) {
             sendJson(res, 404, { ok: false, error: "attempt_not_found" });
             return;
