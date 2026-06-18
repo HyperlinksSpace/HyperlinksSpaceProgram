@@ -13,6 +13,12 @@ export type GatewayConnectSnapshot = {
   qrLink?: string | null;
   error?: string | null;
   chatCount?: number | null;
+  codeDelivery?: {
+    type: string;
+    nextType?: string | null;
+    timeoutSec?: number | null;
+    phoneMasked?: string | null;
+  } | null;
 };
 
 async function gatewayFetch(

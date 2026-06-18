@@ -231,6 +231,7 @@ export async function telegramMtprotoConnectStartHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );
@@ -289,6 +290,7 @@ export async function telegramMtprotoConnectStatusHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus,
     );
@@ -354,6 +356,7 @@ export async function telegramMtprotoConnectPasswordHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );
@@ -427,6 +430,7 @@ export async function telegramMtprotoConnectPhoneHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );
@@ -482,6 +486,7 @@ export async function telegramMtprotoConnectCodeHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );
@@ -536,6 +541,7 @@ export async function telegramMtprotoConnectResendCodeHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );

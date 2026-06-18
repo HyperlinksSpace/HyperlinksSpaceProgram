@@ -105,7 +105,10 @@ const en = {
   "messages.connectSheetOrPhone": "Or enter the phone number",
   "messages.connectSheetPhoneTitle": "Enter your phone number",
   "messages.connectSheetPhoneMobileHint":
-    "Enter your number — with a cloud gateway the code is sent by SMS or in a Telegram chat from Telegram (not via QR).",
+    "Phone login on a cloud server often cannot deliver SMS. Prefer scanning the QR code (Settings → Devices → Link Desktop Device).",
+  "messages.connectSheetPhoneCloudWarning":
+    "Phone codes from cloud servers usually arrive only in the official Telegram chat on another device — not by SMS. QR scan is more reliable.",
+  "messages.connectSheetUseQrInstead": "Use QR code instead",
   "messages.connectSheetOpenInTelegram": "Open in Telegram",
   "messages.connectSheetPhoneBody":
     "Enter your phone number in international format (e.g. +1 234 567 8900). Telegram will send a login code to your Telegram app or SMS.",
@@ -116,6 +119,13 @@ const en = {
     "Check SMS on your phone or a Telegram message from Telegram with your login code, then enter it below.",
   "messages.connectSheetCodeBodyDesktop":
     "Login runs on a cloud server, not in this browser. Telegram usually sends the code by SMS to your phone — check text messages first. You may also see it in the Telegram app under Settings → Devices. Do not resubmit your phone number (that cancels the code).",
+  "messages.connectSheetCodeSentTelegram":
+    "Telegram accepted {phone}. Open the official Telegram chat (verified gray account) on any device logged into that number, or check Settings → Devices for a login alert.",
+  "messages.connectSheetCodeSentSms": "Telegram sent a login code by SMS to {phone}.",
+  "messages.connectSheetCodeSentCall": "Telegram is sending a login code by phone call to {phone}.",
+  "messages.connectSheetCodeSentGeneric":
+    "Telegram accepted {phone}. Check SMS or the Telegram app (official Telegram chat / Settings → Devices).",
+  "messages.connectSheetCodePhoneUnknown": "your number",
   "messages.connectSheetCodeResend": "Resend code",
   "messages.connectSheetCodePlaceholder": "Login code",
   "messages.connectSheetCodeSubmit": "Continue",
@@ -393,7 +403,10 @@ const ru = {
   "messages.connectSheetOrPhone": "Или введите номер телефона",
   "messages.connectSheetPhoneTitle": "Введите номер телефона",
   "messages.connectSheetPhoneMobileHint":
-    "Введите номер — при облачном шлюзе код придёт по SMS или в чат от Telegram (не по QR).",
+    "При облачном сервере SMS часто не приходит. Надёжнее — QR: Настройки → Устройства → Подключить устройство.",
+  "messages.connectSheetPhoneCloudWarning":
+    "Код с облачного сервера обычно приходит только в официальный чат Telegram на другом устройстве, не по SMS. QR надёжнее.",
+  "messages.connectSheetUseQrInstead": "Войти по QR-коду",
   "messages.connectSheetOpenInTelegram": "Открыть в Telegram",
   "messages.connectSheetPhoneBody":
     "Введите номер в международном формате (например, +7 900 123 45 67). Код придёт в Telegram или по SMS.",
@@ -404,6 +417,13 @@ const ru = {
     "Проверьте SMS на телефоне или сообщение от Telegram с кодом входа и введите его ниже.",
   "messages.connectSheetCodeBodyDesktop":
     "Вход идёт через облачный сервер, а не в этом браузере. Обычно код приходит по SMS на телефон — сначала проверьте SMS. Также код может появиться в Telegram: Настройки → Устройства. Не отправляйте номер повторно — это отменяет код.",
+  "messages.connectSheetCodeSentTelegram":
+    "Telegram принял номер {phone}. Откройте официальный чат Telegram (серый значок) на устройстве с этим номером или проверьте Настройки → Устройства.",
+  "messages.connectSheetCodeSentSms": "Telegram отправил код входа по SMS на {phone}.",
+  "messages.connectSheetCodeSentCall": "Telegram отправляет код входа звонком на {phone}.",
+  "messages.connectSheetCodeSentGeneric":
+    "Telegram принял номер {phone}. Проверьте SMS или приложение Telegram (чат Telegram / Настройки → Устройства).",
+  "messages.connectSheetCodePhoneUnknown": "ваш номер",
   "messages.connectSheetCodeResend": "Отправить код снова",
   "messages.connectSheetCodePlaceholder": "Код входа",
   "messages.connectSheetCodeSubmit": "Продолжить",

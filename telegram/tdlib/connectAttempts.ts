@@ -21,6 +21,13 @@ export type ConnectAuthState =
   | "ready"
   | "failed";
 
+export type ConnectCodeDelivery = {
+  type: string;
+  nextType: string | null;
+  timeoutSec: number | null;
+  phoneMasked: string | null;
+};
+
 export type ConnectAttemptSnapshot = {
   attemptId: string;
   telegramUsername: string;
@@ -28,6 +35,7 @@ export type ConnectAttemptSnapshot = {
   qrLink: string | null;
   error: string | null;
   chatCount: number | null;
+  codeDelivery: ConnectCodeDelivery | null;
 };
 
 type AttemptRecord = ConnectAttemptSnapshot & {
@@ -78,6 +86,48 @@ function createTdlibClient(telegramUsername: string, hook?: (client: Client) => 
 const attempts = new Map<string, AttemptRecord>();
 const activeByUser = new Map<string, string>();
 
+function maskPhoneNumber(phone: string | undefined | null): string | null {
+  if (!phone?.trim()) return null;
+  const trimmed = phone.trim();
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length < 4) return trimmed;
+  const prefix = trimmed.startsWith("+") ? "+" : "";
+  return `${prefix}***${digits.slice(-4)}`;
+}
+
+type TdCodeInfo = {
+  type?: { _?: string };
+  next_type?: { _?: string };
+  timeout?: number;
+  phone_number?: string;
+};
+
+function applyCodeInfo(record: AttemptRecord, codeInfo: TdCodeInfo | undefined): void {
+  if (!codeInfo) return;
+  record.codeDelivery = {
+    type: codeInfo.type?._ ?? "unknown",
+    nextType: codeInfo.next_type?._ ?? null,
+    timeoutSec: typeof codeInfo.timeout === "number" ? codeInfo.timeout : null,
+    phoneMasked: maskPhoneNumber(codeInfo.phone_number),
+  };
+}
+
+async function syncCodeDeliveryFromClient(record: AttemptRecord): Promise<void> {
+  if (!record.client || record.authState !== "wait_code") return;
+  try {
+    const state = (await record.client.invoke({ _: "getAuthorizationState" })) as {
+      _?: string;
+      code_info?: TdCodeInfo;
+    };
+    if (state._ === "authorizationStateWaitCode") {
+      applyCodeInfo(record, state.code_info);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logConnectEvent(record, "connect_code_info_sync_failed", { message });
+  }
+}
+
 function snapshot(record: AttemptRecord): ConnectAttemptSnapshot {
   return {
     attemptId: record.attemptId,
@@ -86,6 +136,7 @@ function snapshot(record: AttemptRecord): ConnectAttemptSnapshot {
     qrLink: record.qrLink,
     error: record.error,
     chatCount: record.chatCount,
+    codeDelivery: record.codeDelivery,
   };
 }
 
@@ -210,15 +261,15 @@ function attachAuthListener(record: AttemptRecord): void {
       record.authMethod = "phone";
       writeStoredAuthMethod(record.telegramUsername, "phone");
       record.authState = "wait_code";
-      const codeInfo = (
-        update.authorization_state as {
-          code_info?: { type?: { _?: string }; next_type?: { _?: string }; timeout?: number };
-        }
-      )?.code_info;
+      applyCodeInfo(
+        record,
+        (update.authorization_state as { code_info?: TdCodeInfo })?.code_info,
+      );
       logConnectEvent(record, "connect_wait_code", {
-        codeType: codeInfo?.type?._ ?? null,
-        nextCodeType: codeInfo?.next_type?._ ?? null,
-        codeTimeoutSec: codeInfo?.timeout ?? null,
+        codeType: record.codeDelivery?.type ?? null,
+        nextCodeType: record.codeDelivery?.nextType ?? null,
+        codeTimeoutSec: record.codeDelivery?.timeoutSec ?? null,
+        phoneMasked: record.codeDelivery?.phoneMasked ?? null,
       });
       return;
     }
@@ -428,6 +479,7 @@ export async function startConnectAttempt(
       qrLink: null,
       error: "telegram_api_credentials_missing",
       chatCount: null,
+      codeDelivery: null,
     };
   }
 
@@ -439,6 +491,7 @@ export async function startConnectAttempt(
     qrLink: null,
     error: null,
     chatCount: null,
+    codeDelivery: null,
     client: null,
     passwordResolve: null,
     createdAt: Date.now(),
@@ -546,14 +599,24 @@ export async function submitConnectPhoneNumber(
     }
     await waitForAuthState(record, ["wait_code", "wait_password", "ready", "failed"], 30_000);
     if (record.authState === "wait_code") {
+      await syncCodeDeliveryFromClient(record);
       record.error = null;
-      logConnectEvent(record, "connect_phone_code_sent", { isCurrentPhone: useCurrentPhone });
+      logConnectEvent(record, "connect_phone_code_sent", {
+        isCurrentPhone: useCurrentPhone,
+        codeType: record.codeDelivery?.type ?? null,
+        phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+      });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "phone_rejected";
     if (record.authState === "wait_code") {
+      await syncCodeDeliveryFromClient(record);
       record.error = null;
-      logConnectEvent(record, "connect_phone_code_sent_after_error", { message });
+      logConnectEvent(record, "connect_phone_code_sent_after_error", {
+        message,
+        codeType: record.codeDelivery?.type ?? null,
+        phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+      });
       return snapshot(record);
     }
     if (/not found|authorization_closed|session/i.test(message)) {
@@ -575,7 +638,10 @@ export async function resendConnectCode(attemptId: string): Promise<ConnectAttem
   record.error = null;
   try {
     await record.client.invoke({ _: "resendAuthenticationCode" });
-    logConnectEvent(record, "connect_code_resent");
+    await syncCodeDeliveryFromClient(record);
+    logConnectEvent(record, "connect_code_resent", {
+      codeType: record.codeDelivery?.type ?? null,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "resend_failed";
     record.error = message;
@@ -713,6 +779,7 @@ export async function resumeExistingSession(
       qrLink: null,
       error: "no_session",
       chatCount: null,
+      codeDelivery: null,
     };
   }
   return startConnectAttempt(telegramUsername, { authMethod: options?.authMethod });

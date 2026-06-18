@@ -15,6 +15,7 @@ import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
 import { logTelegramConnect } from "./telegramConnectDebug";
 import { mtprotoUseCurrentPhoneNumberForCode } from "./mtprotoPhoneCodeDelivery";
+import { type ConnectCodeDeliveryInfo } from "./formatConnectCodeDelivery";
 import {
   clearStoredMtprotoConnect,
   readStoredMtprotoConnect,
@@ -41,6 +42,7 @@ type TelegramMessagesConnectionCtx = {
   connectAuthMethod: MtprotoAuthMethod;
   connectQrLink: string | null;
   connectError: string | null;
+  connectCodeDelivery: ConnectCodeDeliveryInfo | null;
   openConnectSheet: () => void;
   closeConnectSheet: () => void;
   refreshStatus: () => Promise<void>;
@@ -54,6 +56,7 @@ type TelegramMessagesConnectionCtx = {
   submitMtprotoCode: (code: string) => Promise<void>;
   resendMtprotoCode: () => Promise<void>;
   submitMtprotoPassword: (password: string) => Promise<void>;
+  switchToQrConnect: () => Promise<void>;
   disconnectTelegramMessages: () => Promise<void>;
 };
 
@@ -87,11 +90,13 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const [connectAuthMethod, setConnectAuthMethod] = useState<MtprotoAuthMethod>("qr");
   const [connectQrLink, setConnectQrLink] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectCodeDelivery, setConnectCodeDelivery] = useState<ConnectCodeDeliveryInfo | null>(null);
   const attemptIdRef = useRef<string | null>(null);
   const connectAuthStateRef = useRef<MtprotoAuthState>("idle");
   const connectAuthMethodRef = useRef<MtprotoAuthMethod>("qr");
   const pollGenerationRef = useRef(0);
   const connectStartGenerationRef = useRef(0);
+  const lastCodeDeliveryLogRef = useRef<string | null>(null);
   const connectStartAbortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warmupInFlightRef = useRef(false);
@@ -175,9 +180,21 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       error?: string | null;
       attemptId?: string | null;
       chatCount?: number | null;
+      codeDelivery?: ConnectCodeDeliveryInfo | null;
     }) => {
       if (json.attemptId) attemptIdRef.current = json.attemptId;
       const state = json.authState ? (json.authState as MtprotoAuthState) : null;
+      if (json.codeDelivery) {
+        setConnectCodeDelivery(json.codeDelivery);
+        const deliveryKey = JSON.stringify(json.codeDelivery);
+        if (deliveryKey !== lastCodeDeliveryLogRef.current) {
+          lastCodeDeliveryLogRef.current = deliveryKey;
+          logTelegramConnect("connect_code_delivery", json.codeDelivery);
+        }
+      } else if (state !== "wait_code" && state !== "wait_password") {
+        setConnectCodeDelivery(null);
+        lastCodeDeliveryLogRef.current = null;
+      }
       if (state) {
         const current = connectAuthStateRef.current;
         if (
@@ -202,6 +219,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         setConnectSheetVisible(false);
         stopPolling();
         clearStoredMtprotoConnect();
+        setConnectCodeDelivery(null);
         logTelegramConnect("connect_success", { chatCount: json.chatCount ?? null });
         logPageDisplay("telegram_messages_connected");
         void refreshStatusInner();
@@ -578,6 +596,21 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }
   }, []);
 
+  const switchToQrConnect = useCallback(async () => {
+    stopPolling();
+    setConnectPending(true);
+    setConnectError(null);
+    setConnectCodeDelivery(null);
+    lastCodeDeliveryLogRef.current = null;
+    setConnectAuthMethod("qr");
+    connectAuthMethodRef.current = "qr";
+    try {
+      await beginMtprotoConnect({ fresh: true, authMethod: "qr" });
+    } finally {
+      setConnectPending(false);
+    }
+  }, [beginMtprotoConnect, stopPolling]);
+
   const submitMtprotoPassword = useCallback(
     async (password: string) => {
       const attemptId = attemptIdRef.current;
@@ -680,6 +713,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       connectAuthMethod,
       connectQrLink,
       connectError,
+      connectCodeDelivery,
       openConnectSheet,
       closeConnectSheet,
       refreshStatus,
@@ -688,6 +722,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       submitMtprotoCode,
       resendMtprotoCode,
       submitMtprotoPassword,
+      switchToQrConnect,
       disconnectTelegramMessages,
     }),
     [
@@ -698,6 +733,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       connectAuthMethod,
       connectQrLink,
       connectError,
+      connectCodeDelivery,
       openConnectSheet,
       closeConnectSheet,
       refreshStatus,
@@ -706,6 +742,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       submitMtprotoCode,
       resendMtprotoCode,
       submitMtprotoPassword,
+      switchToQrConnect,
       disconnectTelegramMessages,
     ],
   );
