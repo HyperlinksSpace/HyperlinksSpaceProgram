@@ -553,7 +553,7 @@ function markWalletSecretStoredOnServer(
 export function HomeAuthenticatedScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { t, translateFlowError } = useAppStrings();
+  const { t, tf, translateFlowError } = useAppStrings();
   const homeNavIndex = useAuthenticatedHomeLeftNavIndex();
   const rightPanel = useAuthenticatedHomeRightPanel();
   const swapCurrencySide = useSwapCurrencyPicker();
