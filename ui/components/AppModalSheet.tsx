@@ -1,33 +1,48 @@
+import { useEffect, useState } from "react";
 import {
   Modal,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type ReactNode,
 } from "react-native";
 import { layout, typographyRect15, useColors } from "../theme";
+import { HspScrollColumn } from "./HspScrollColumn";
+
+/** Top inset of modal sheet from the viewport (px). */
+export const APP_MODAL_SHEET_TOP_INSET_PX = 60;
+/** Bottom breathing room so the sheet does not touch the screen edge (px). */
+export const APP_MODAL_SHEET_BOTTOM_INSET_PX = layout.contentSideInsetPx;
 
 export const appModalSheetStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
-    paddingHorizontal: layout.contentSideInsetPx,
+    overflow: "hidden",
+    ...Platform.select({
+      web: { overscrollBehavior: "contain" as const },
+      default: {},
+    }),
   },
   sheet: {
     width: "100%",
     maxWidth: 380,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 20,
+    overflow: "hidden",
     ...Platform.select({
       web: { boxSizing: "border-box" as const },
       default: {},
     }),
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   title: {
     marginBottom: 10,
@@ -91,22 +106,78 @@ type Props = {
 
 export function AppModalSheet({ visible, onClose, title, children, footer }: Props) {
   const colors = useColors();
+  const { height: windowHeight } = useWindowDimensions();
+  const sheetMaxHeight = Math.max(
+    160,
+    windowHeight - APP_MODAL_SHEET_TOP_INSET_PX - APP_MODAL_SHEET_BOTTOM_INSET_PX,
+  );
+  const [scrollColumnHeight, setScrollColumnHeight] = useState(sheetMaxHeight);
+
+  useEffect(() => {
+    if (!visible) {
+      setScrollColumnHeight(sheetMaxHeight);
+    }
+  }, [visible, sheetMaxHeight]);
+
+  useEffect(() => {
+    setScrollColumnHeight((current) => Math.min(current, sheetMaxHeight));
+  }, [sheetMaxHeight]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web" || typeof document === "undefined") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+    };
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={appModalSheetStyles.backdrop} onPress={onClose}>
+      <Pressable
+        style={[
+          appModalSheetStyles.backdrop,
+          {
+            paddingTop: APP_MODAL_SHEET_TOP_INSET_PX,
+            paddingBottom: APP_MODAL_SHEET_BOTTOM_INSET_PX,
+            paddingHorizontal: layout.contentSideInsetPx,
+          },
+        ]}
+        onPress={onClose}
+      >
         <Pressable
           style={[
             appModalSheetStyles.sheet,
-            { backgroundColor: colors.background, borderColor: colors.highlight },
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.highlight,
+              maxHeight: sheetMaxHeight,
+              height: scrollColumnHeight,
+            },
           ]}
           onPress={(e) => e.stopPropagation?.()}
         >
-          <Text style={[typographyRect15, appModalSheetStyles.title, { color: colors.primary }]}>
-            {title}
-          </Text>
-          {children}
-          {footer}
+          <HspScrollColumn
+            style={{ height: scrollColumnHeight, maxHeight: sheetMaxHeight, flexGrow: 0, flexShrink: 1 }}
+            contentContainerStyle={appModalSheetStyles.scrollContent}
+            containOverscroll
+            onMetricsChange={({ contentH }) => {
+              if (contentH <= 0) return;
+              const capped = Math.min(Math.max(contentH, 160), sheetMaxHeight);
+              setScrollColumnHeight((prev) => (prev === capped ? prev : capped));
+            }}
+          >
+            <Text style={[typographyRect15, appModalSheetStyles.title, { color: colors.primary }]}>
+              {title}
+            </Text>
+            {children}
+            {footer}
+          </HspScrollColumn>
         </Pressable>
       </Pressable>
     </Modal>

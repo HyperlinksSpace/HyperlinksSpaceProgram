@@ -1,5 +1,6 @@
 Telegram login + Connect
 Store Telegram Connect seccion
+Mobile testing
 On page reload make the item of the main tab remain
 Chat intefrace design and implementation + AI message generation
 Think of first tabs (Messages + Swap?)

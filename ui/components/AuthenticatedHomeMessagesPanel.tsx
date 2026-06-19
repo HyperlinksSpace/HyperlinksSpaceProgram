@@ -6,6 +6,12 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
+import {
+  clearAuthenticatedHomeSelectedChat,
+  selectAuthenticatedHomeChat,
+  syncAuthenticatedHomeSelectedChat,
+  useAuthenticatedHomeSelectedChat,
+} from "../authenticatedHomeSelectedChat";
 import { MessageChatRow, type MessageChatRowData } from "./messages/MessageChatRow";
 import { homeListShellStyle } from "./messages/messageListLayout";
 
@@ -70,9 +76,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedChatId, setSelectedChatId] = useState<number | null>(null);
+  const selectedChat = useAuthenticatedHomeSelectedChat();
+  const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const { width: windowWidth } = useWindowDimensions();
   const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
+  const chatSelectionEnabled = wideListChrome;
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
   const lastLiveRevisionRef = useRef<number | null>(null);
@@ -187,6 +195,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         }
         return rows;
       });
+      syncAuthenticatedHomeSelectedChat(rows);
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
           count: rows.length,
@@ -292,18 +301,31 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     );
   }
 
+  const handleChatPress = useCallback(
+    (item: MessageChatRowData) => {
+      if (!chatSelectionEnabled) return;
+      selectAuthenticatedHomeChat(item);
+    },
+    [chatSelectionEnabled],
+  );
+
+  const handleClearSelection = useCallback(() => {
+    if (!chatSelectionEnabled) return;
+    clearAuthenticatedHomeSelectedChat();
+  }, [chatSelectionEnabled]);
+
   const list = (
-    <Pressable style={{ width: "100%", alignSelf: "stretch" }} onPress={() => setSelectedChatId(null)}>
+    <Pressable style={{ width: "100%", alignSelf: "stretch" }} onPress={handleClearSelection}>
       <View style={listShellStyle} pointerEvents="box-none">
         {chats.map((item, index) => (
           <MessageChatRow
             key={item.telegram_chat_id}
             item={item}
             isLast={index === chats.length - 1}
-            isActive={selectedChatId === item.telegram_chat_id}
+            isActive={chatSelectionEnabled && selectedChatId === item.telegram_chat_id}
             colors={colors}
             timePendingLabel={t("feed.timePending")}
-            onPress={() => setSelectedChatId(item.telegram_chat_id)}
+            onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
           />
         ))}
       </View>
@@ -318,20 +340,20 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     <ScrollView
       style={{ width: "100%" }}
       contentContainerStyle={{ ...listShellStyle, flexGrow: 1 }}
-      onScrollBeginDrag={() => setSelectedChatId(null)}
+      onScrollBeginDrag={handleClearSelection}
     >
       {chats.map((item, index) => (
         <MessageChatRow
           key={item.telegram_chat_id}
           item={item}
           isLast={index === chats.length - 1}
-          isActive={selectedChatId === item.telegram_chat_id}
+          isActive={chatSelectionEnabled && selectedChatId === item.telegram_chat_id}
           colors={colors}
           timePendingLabel={t("feed.timePending")}
-          onPress={() => setSelectedChatId(item.telegram_chat_id)}
+          onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
         />
       ))}
-      <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={() => setSelectedChatId(null)} />
+      <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={handleClearSelection} />
     </ScrollView>
   );
 }

@@ -21,6 +21,7 @@ import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeade
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import { AuthenticatedHomeMessagesPanel } from "../components/AuthenticatedHomeMessagesPanel";
+import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { GetPanelContent } from "../components/get/GetPanelContent";
 import { SendPanelContent } from "../components/send/SendPanelContent";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
@@ -59,6 +60,10 @@ import {
   setAuthenticatedHomeLeftNavIndex,
   useAuthenticatedHomeLeftNavIndex,
 } from "../authenticatedHomeLeftNavIndex";
+import {
+  clearAuthenticatedHomeSelectedChat,
+  useAuthenticatedHomeSelectedChat,
+} from "../authenticatedHomeSelectedChat";
 import { useRouter } from "expo-router";
 import { useSwapCurrencyPicker } from "../swap/swapCurrencyPicker";
 
@@ -555,6 +560,7 @@ export function HomeAuthenticatedScreen() {
   const router = useRouter();
   const { t, tf, translateFlowError } = useAppStrings();
   const homeNavIndex = useAuthenticatedHomeLeftNavIndex();
+  const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const rightPanel = useAuthenticatedHomeRightPanel();
   const swapCurrencySide = useSwapCurrencyPicker();
   const {
@@ -595,8 +601,16 @@ export function HomeAuthenticatedScreen() {
   const smartActiveOnWide = isWideHome && rightPanel === "smart";
   const sendActiveOnWide = isWideHome && rightPanel === "send";
   const getActiveOnWide = isWideHome && rightPanel === "get";
+  const messagesChatOpen =
+    isWideHome && homeNavIndex === 1 && selectedMessageChat != null;
   // Feed (left column) remains the active item when it is the displayed content.
   const leftNavSelectedIndex = homeNavIndex;
+
+  useEffect(() => {
+    if (!isWideHome) {
+      clearAuthenticatedHomeSelectedChat();
+    }
+  }, [isWideHome]);
 
   useEffect(() => {
     // Wide home (2- or 3-column): default right pane when nothing is stored yet.
@@ -1533,7 +1547,16 @@ export function HomeAuthenticatedScreen() {
         minHeight: 0,
       }}
     >
-      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "swap"}>
+      <AuthenticatedHomePersistedPanelSlot active={messagesChatOpen}>
+        {selectedMessageChat ? (
+          <MessageChatPanel
+            chat={selectedMessageChat}
+            colors={colors}
+            timePendingLabel={t("feed.timePending")}
+          />
+        ) : null}
+      </AuthenticatedHomePersistedPanelSlot>
+      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "swap"}>
         <View
           style={{
             flex: 1,
@@ -1550,7 +1573,7 @@ export function HomeAuthenticatedScreen() {
           </AuthenticatedHomePersistedPanelSlot>
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "trade"}>
+      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "trade"}>
         <View
           style={{
             flex: 1,
@@ -1562,7 +1585,7 @@ export function HomeAuthenticatedScreen() {
           <TradePanelContent />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "smart"}>
+      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "smart"}>
         <View
           style={{
             flex: 1,
@@ -1574,7 +1597,7 @@ export function HomeAuthenticatedScreen() {
           <SmartPanelContent />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "send"}>
+      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "send"}>
         <View
           style={{
             flex: 1,
@@ -1586,7 +1609,7 @@ export function HomeAuthenticatedScreen() {
           <SendPanelContent />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={rightPanel === "get"}>
+      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "get"}>
         <View
           style={{
             flex: 1,
@@ -1614,7 +1637,11 @@ export function HomeAuthenticatedScreen() {
         left={homeLeftColumn}
         right={homeWideRightColumn}
         middleColumnFooter={
-          sendActiveOnWide
+          messagesChatOpen
+            ? aiBarDock === "splitColumn2"
+              ? embeddedAiBar
+              : null
+            : sendActiveOnWide
             ? isTripleColumn
               ? sendColumnFooter
               : embeddedAiBar
