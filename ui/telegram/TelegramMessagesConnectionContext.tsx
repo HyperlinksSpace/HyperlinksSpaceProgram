@@ -20,6 +20,7 @@ import {
   clearStoredMtprotoConnect,
   readStoredMtprotoConnect,
   writeStoredMtprotoConnect,
+  type StoredMtprotoConnect,
 } from "./mtprotoConnectSessionStorage";
 
 export type MtprotoAuthMethod = "qr" | "phone";
@@ -61,6 +62,17 @@ type TelegramMessagesConnectionCtx = {
 };
 
 const TelegramMessagesConnectionContext = createContext<TelegramMessagesConnectionCtx | null>(null);
+
+function phoneAuthState(state: MtprotoAuthState): boolean {
+  return state === "wait_phone" || state === "wait_code" || state === "wait_password";
+}
+
+function normalizeRestoredConnectSession(stored: StoredMtprotoConnect): StoredMtprotoConnect {
+  if (phoneAuthState(stored.authState) && stored.authMethod !== "phone") {
+    return { ...stored, authMethod: "phone" };
+  }
+  return stored;
+}
 
 const POLL_MS = 2000;
 
@@ -207,9 +219,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         setConnectAuthState(state);
         connectAuthStateRef.current = state;
       }
-      if (state === "wait_qr" && json.qrLink) {
+      if (json.qrLink) {
         setConnectQrLink(json.qrLink);
-      } else if (state && state !== "wait_qr") {
+      } else if (state === "ready" || state === "failed" || state === "idle") {
         setConnectQrLink(null);
       }
       setConnectError(json.error ?? (json.ok === false ? "connect_failed" : null));
@@ -279,7 +291,8 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => {
     logTelegramConnect("provider_mount", { apiBase: getApiBaseUrl(), isAuthenticated, authReady });
-    const stored = readStoredMtprotoConnect();
+    const storedRaw = readStoredMtprotoConnect();
+    const stored = storedRaw ? normalizeRestoredConnectSession(storedRaw) : null;
     if (stored?.attemptId && isMidConnectAuth(stored.authState)) {
       attemptIdRef.current = stored.attemptId;
       setConnectAuthState(stored.authState);
@@ -456,24 +469,39 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const submitMtprotoPhone = useCallback(
     async (phoneNumber: string) => {
       if (!phoneNumber.trim()) return;
+      if (connectAuthStateRef.current === "wait_code" || connectAuthStateRef.current === "wait_password") {
+        return;
+      }
       setConnectPending(true);
       setConnectError(null);
       try {
-        const needsPhoneSession =
-          connectAuthMethodRef.current !== "phone" || connectAuthStateRef.current !== "wait_phone";
-        if (needsPhoneSession) {
-          stopPolling();
-          setConnectAuthMethod("phone");
+        const hasLivePhoneSession =
+          Boolean(attemptIdRef.current) &&
+          (connectAuthStateRef.current === "wait_phone" ||
+            (connectAuthStateRef.current === "initializing" && connectAuthMethodRef.current === "phone"));
+        if (hasLivePhoneSession) {
           connectAuthMethodRef.current = "phone";
-          await beginMtprotoConnect({ fresh: true, authMethod: "phone", soft: true });
-          const ready = await waitForPhoneGatewayReady(45_000);
-          if (!ready) {
-            setConnectError(
-              connectAuthStateRef.current === "failed"
-                ? "session_expired_restart"
-                : "telegram_network_unreachable",
-            );
-            return;
+          setConnectAuthMethod("phone");
+        } else {
+          const needsPhoneSession =
+            !attemptIdRef.current ||
+            connectAuthStateRef.current === "idle" ||
+            connectAuthStateRef.current === "failed" ||
+            connectAuthStateRef.current === "wait_qr";
+          if (needsPhoneSession) {
+            stopPolling();
+            setConnectAuthMethod("phone");
+            connectAuthMethodRef.current = "phone";
+            await beginMtprotoConnect({ fresh: true, authMethod: "phone", soft: true });
+            const ready = await waitForPhoneGatewayReady(45_000);
+            if (!ready) {
+              setConnectError(
+                connectAuthStateRef.current === "failed"
+                  ? "session_expired_restart"
+                  : "telegram_network_unreachable",
+              );
+              return;
+            }
           }
         }
 

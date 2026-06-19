@@ -98,7 +98,11 @@ const en = {
   "messages.connectPrompt": "Connect Telegram to see your chats here.",
   "messages.connectRetry": "Try again",
   "messages.connectSheetBody":
-    "Link your Telegram account to sync your real chats into Messages.",
+    "You can connect Telegram from any device and access the account with the connected Telegram on any device. QR code connection is now the most reliable.",
+  "messages.connectSheetMethodsTitle": "Connection methods",
+  "messages.connectSheetOneTouchConnect": "1 Touch Connect",
+  "messages.connectSheetPassToTelegramApp": "Pass to Telegram App",
+  "messages.connectSheetEnterNumber": "Enter number",
   "messages.connectSheetLoading": "Preparing QR code…",
   "messages.connectSheetLoadingPhone": "Preparing phone login…",
   "messages.connectSheetScanQr": "Scan QR",
@@ -120,7 +124,7 @@ const en = {
   "messages.connectSheetCodeBodyDesktop":
     "Login runs on a cloud server, not in this browser. Telegram usually sends the code by SMS to your phone — check text messages first. You may also see it in the Telegram app under Settings → Devices. Do not resubmit your phone number (that cancels the code).",
   "messages.connectSheetCodeSentTelegram":
-    "Telegram accepted {phone}. Open the official Telegram chat (verified gray account) on any device logged into that number, or check Settings → Devices for a login alert.",
+    "Telegram accepted {phone}. The code is sent only inside the Telegram app (not SMS) — open the official Telegram chat (verified account, often 42777) on a device already logged into that number, or Settings → Devices → active login attempt.",
   "messages.connectSheetCodeSentSms": "Telegram sent a login code by SMS to {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram is sending a login code by phone call to {phone}.",
   "messages.connectSheetCodeSentGeneric":
@@ -396,7 +400,11 @@ const ru = {
   "messages.connectPrompt": "Подключите Telegram, чтобы видеть чаты здесь.",
   "messages.connectRetry": "Повторить",
   "messages.connectSheetBody":
-    "Привяжите аккаунт Telegram, чтобы синхронизировать реальные чаты в «Сообщения».",
+    "Подключить Telegram можно с любого устройства — после привязки аккаунт с подключённым Telegram доступен на любом устройстве. Сейчас самый надёжный способ — вход по QR-коду.",
+  "messages.connectSheetMethodsTitle": "Способы подключения",
+  "messages.connectSheetOneTouchConnect": "Подключение в один клик",
+  "messages.connectSheetPassToTelegramApp": "Передать в приложение Telegram",
+  "messages.connectSheetEnterNumber": "Ввести номер",
   "messages.connectSheetLoading": "Готовим QR-код…",
   "messages.connectSheetLoadingPhone": "Готовим вход по номеру…",
   "messages.connectSheetScanQr": "Сканировать QR",
@@ -418,7 +426,7 @@ const ru = {
   "messages.connectSheetCodeBodyDesktop":
     "Вход идёт через облачный сервер, а не в этом браузере. Обычно код приходит по SMS на телефон — сначала проверьте SMS. Также код может появиться в Telegram: Настройки → Устройства. Не отправляйте номер повторно — это отменяет код.",
   "messages.connectSheetCodeSentTelegram":
-    "Telegram принял номер {phone}. Откройте официальный чат Telegram (серый значок) на устройстве с этим номером или проверьте Настройки → Устройства.",
+    "Telegram принял номер {phone}. Код приходит только в приложении Telegram (не SMS) — откройте официальный чат Telegram (верифицированный аккаунт, часто 42777) на устройстве с этим номером или Настройки → Устройства → активная попытка входа.",
   "messages.connectSheetCodeSentSms": "Telegram отправил код входа по SMS на {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram отправляет код входа звонком на {phone}.",
   "messages.connectSheetCodeSentGeneric":

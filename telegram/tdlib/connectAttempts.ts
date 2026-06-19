@@ -270,6 +270,9 @@ function attachAuthListener(record: AttemptRecord): void {
         nextCodeType: record.codeDelivery?.nextType ?? null,
         codeTimeoutSec: record.codeDelivery?.timeoutSec ?? null,
         phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+        codeLength:
+          (update.authorization_state as { code_info?: { type?: { length?: number } } })?.code_info
+            ?.type?.length ?? null,
       });
       return;
     }
@@ -572,7 +575,10 @@ export async function submitConnectPhoneNumber(
         allow_flash_call: false,
         allow_missed_call: false,
         is_current_phone_number: useCurrentPhone,
-        allow_sms: true,
+        has_unknown_phone_number: false,
+        allow_sms_retriever_api: false,
+        firebase_authentication_settings: null,
+        authentication_tokens: [],
       },
     });
   };
@@ -582,11 +588,19 @@ export async function submitConnectPhoneNumber(
     let lastError: Error | null = null;
     for (let tryNum = 0; tryNum < 4; tryNum++) {
       try {
+        if (record.authState === "wait_code" || record.authState === "wait_password") {
+          lastError = null;
+          break;
+        }
         await invokePhone();
         lastError = null;
         break;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
+        if (record.authState === "wait_code" || record.authState === "wait_password") {
+          lastError = null;
+          break;
+        }
         const retryable = /another authorization query|call_flood|wait/i.test(lastError.message);
         if (!retryable || tryNum === 3) throw lastError;
         logConnectEvent(record, "connect_phone_retry", {

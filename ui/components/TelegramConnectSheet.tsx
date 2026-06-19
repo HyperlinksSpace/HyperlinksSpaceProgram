@@ -1,55 +1,21 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Platform,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographyRect15, useColors } from "../theme";
 import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
-import { preferPhoneMtprotoConnect } from "../telegram/preferPhoneMtprotoConnect";
-import { isCloudMtprotoGateway } from "../telegram/mtprotoGatewayMode";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
 import { logTelegramConnect } from "../telegram/telegramConnectDebug";
 import { isActuallyInTelegram } from "./telegramWebApp";
 import { AppModalSheet, AppModalSheetBackFooter, appModalSheetStyles } from "./AppModalSheet";
 import { WelcomeAuthFormField } from "./WelcomeAuthFormField";
-
-function useQrDataUrl(link: string | null): string | null {
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || !link) {
-      setDataUrl(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const QRCode = await import("qrcode");
-        const url = await QRCode.toDataURL(link, { margin: 1, width: 220 });
-        if (!cancelled) setDataUrl(url);
-      } catch {
-        if (!cancelled) setDataUrl(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [link]);
-
-  return dataUrl;
-}
+import { TelegramConnectQrImage } from "./TelegramConnectQrImage";
 
 function isLocalDevApiBase(): boolean {
   try {
     const base = getApiBaseUrl();
-    return /localhost|127\.0\.0\.1|192\.168\.|10\./.test(base);
+    return /localhost|127\.0\.1|192\.168\.|10\./.test(base);
   } catch {
     return false;
   }
@@ -106,6 +72,33 @@ function connectErrorMessage(error: string | null, t: (key: string) => string): 
   return error;
 }
 
+function ConnectMethodSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  const colors = useColors();
+  return (
+    <View style={{ width: "100%", marginBottom: 18 }}>
+      <Text
+        style={[
+          typographyRect15,
+          {
+            color: colors.primary,
+            marginBottom: 8,
+            fontWeight: Platform.OS === "web" ? ("600" as const) : "600",
+          },
+        ]}
+      >
+        {title}
+      </Text>
+      {children}
+    </View>
+  );
+}
+
 export function TelegramConnectSheet() {
   const colors = useColors();
   const { t, tf } = useAppStrings();
@@ -114,7 +107,6 @@ export function TelegramConnectSheet() {
     closeConnectSheet,
     connectPending,
     connectAuthState,
-    connectAuthMethod,
     connectQrLink,
     connectError,
     connectCodeDelivery,
@@ -129,9 +121,8 @@ export function TelegramConnectSheet() {
   const [password, setPassword] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
   const [loginCode, setLoginCode] = useState("");
-  const [phoneFlowStarted, setPhoneFlowStarted] = useState(false);
   const [phoneInvalid, setPhoneInvalid] = useState(false);
-  const qrDataUrl = useQrDataUrl(connectQrLink);
+  const sheetBootstrapRef = useRef(false);
 
   useEffect(() => {
     logTelegramConnect("sheet_visible", { visible: connectSheetVisible, connectAuthState, connectPending });
@@ -143,21 +134,34 @@ export function TelegramConnectSheet() {
       setPhoneNumber("");
       setLoginCode("");
       setPhoneInvalid(false);
-      setPhoneFlowStarted(false);
+      sheetBootstrapRef.current = false;
       return;
     }
-    if (connectAuthState === "idle") {
-      const authMethod = preferPhoneMtprotoConnect() ? "phone" : "qr";
-      void beginMtprotoConnect({ authMethod });
+    if (sheetBootstrapRef.current) return;
+    if (connectAuthState === "wait_code" || connectAuthState === "wait_password") {
+      sheetBootstrapRef.current = true;
+      return;
     }
-  }, [connectSheetVisible, connectAuthState, beginMtprotoConnect]);
+    sheetBootstrapRef.current = true;
+
+    if (connectAuthState === "idle") {
+      void beginMtprotoConnect({ authMethod: "qr" });
+      return;
+    }
+    if (connectAuthState === "failed") {
+      void beginMtprotoConnect({ fresh: true, authMethod: "qr" });
+      return;
+    }
+    if (connectAuthState === "wait_phone") {
+      void switchToQrConnect();
+    }
+  }, [connectSheetVisible, connectAuthState, beginMtprotoConnect, switchToQrConnect]);
 
   const onRetry = useCallback(() => {
     setPassword("");
     setPhoneNumber("");
     setLoginCode("");
     setPhoneInvalid(false);
-    setPhoneFlowStarted(false);
     void beginMtprotoConnect({ fresh: true, authMethod: "qr" });
   }, [beginMtprotoConnect]);
 
@@ -172,7 +176,6 @@ export function TelegramConnectSheet() {
       return;
     }
     setPhoneInvalid(false);
-    setPhoneFlowStarted(true);
     void submitMtprotoPhone(trimmed);
   }, [phoneNumber, submitMtprotoPhone]);
 
@@ -189,7 +192,6 @@ export function TelegramConnectSheet() {
   }, [connectQrLink]);
 
   const onSwitchToQr = useCallback(() => {
-    setPhoneFlowStarted(false);
     setPhoneNumber("");
     setLoginCode("");
     setPhoneInvalid(false);
@@ -202,35 +204,12 @@ export function TelegramConnectSheet() {
     setPhoneNumber("");
     setLoginCode("");
     setPhoneInvalid(false);
-    setPhoneFlowStarted(false);
     closeConnectSheet();
   }, [closeConnectSheet]);
 
   const showCode = connectAuthState === "wait_code";
   const showPassword = connectAuthState === "wait_password";
-  const inPhoneFlow =
-    phoneFlowStarted ||
-    connectAuthMethod === "phone" ||
-    connectAuthState === "wait_phone" ||
-    connectAuthState === "wait_code" ||
-    connectAuthState === "wait_password";
-  const showPhoneEntry =
-    inPhoneFlow ||
-    connectAuthState === "wait_qr";
-  const showQrBlock =
-    !inPhoneFlow &&
-    connectAuthState === "wait_qr" &&
-    Boolean(connectQrLink);
-  const showLoading =
-    !inPhoneFlow &&
-    !showCode &&
-    !showPassword &&
-    (connectAuthState === "initializing" ||
-      (connectAuthState === "wait_qr" && !connectQrLink));
-
-  const loadingLabel = inPhoneFlow
-    ? t("messages.connectSheetLoadingPhone")
-    : t("messages.connectSheetLoading");
+  const showMethods = !showCode && !showPassword && connectAuthState !== "failed";
 
   const phoneErrorText =
     phoneInvalid || connectError === "invalid_phone_number"
@@ -244,8 +223,6 @@ export function TelegramConnectSheet() {
   const canResendCode =
     connectCodeDelivery?.type !== "authenticationCodeTypeTelegramMessage" ||
     Boolean(connectCodeDelivery?.nextType);
-
-  const cloudGateway = isCloudMtprotoGateway();
 
   return (
     <AppModalSheet
@@ -278,103 +255,83 @@ export function TelegramConnectSheet() {
         />
       }
     >
-      {showLoading ? (
-        <View style={appModalSheetStyles.centerBlock}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[typographyRect15, appModalSheetStyles.hint, { color: colors.secondary }]}>
-            {loadingLabel}
+      {showMethods ? (
+        <>
+          <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary }]}>
+            {t("messages.connectSheetBody")}
           </Text>
-        </View>
-      ) : null}
 
-      {showQrBlock ? (
-        <View style={appModalSheetStyles.centerBlock}>
           <Text
             style={[
               typographyRect15,
-              appModalSheetStyles.title,
-              { color: colors.primary, marginBottom: 10, textAlign: "center" },
+              {
+                color: colors.primary,
+                marginBottom: 12,
+                fontWeight: Platform.OS === "web" ? ("600" as const) : "600",
+              },
             ]}
           >
-            {t("messages.connectSheetScanQr")}
+            {t("messages.connectSheetMethodsTitle")}
           </Text>
-          <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary, marginBottom: 8, textAlign: "center" }]}>
-            {t("messages.connectSheetQrBody")}
-          </Text>
-          {qrDataUrl ? (
-            <Image
-              source={{ uri: qrDataUrl }}
-              style={appModalSheetStyles.qr}
-              accessibilityLabel={t("messages.connectSheetQrAlt")}
-            />
-          ) : (
-            <Text style={[typographyRect15, { color: colors.secondary }]} selectable>
-              {connectQrLink}
+
+          <ConnectMethodSection title={t("messages.connectSheetScanQr")}>
+            <Text
+              style={[
+                typographyRect15,
+                { color: colors.secondary, marginBottom: 8, textAlign: "left" },
+              ]}
+            >
+              {t("messages.connectSheetQrBody")}
             </Text>
-          )}
-          {!inTelegramApp ? (
+            <View style={{ alignItems: "center", width: "100%" }}>
+              <TelegramConnectQrImage
+                link={connectQrLink}
+                loadingLabel={t("messages.connectSheetLoading")}
+                qrAlt={t("messages.connectSheetQrAlt")}
+              />
+            </View>
+          </ConnectMethodSection>
+
+          <ConnectMethodSection title={t("messages.connectSheetOneTouchConnect")}>
             <Pressable
               accessibilityRole="button"
               onPress={onOpenInTelegram}
+              disabled={!connectQrLink || connectPending}
               style={[
                 appModalSheetStyles.button,
                 appModalSheetStyles.primaryButton,
-                { backgroundColor: colors.undercover, marginTop: 4 },
+                {
+                  backgroundColor: colors.undercover,
+                  alignSelf: "stretch",
+                  opacity: connectQrLink ? 1 : 0.5,
+                },
               ]}
             >
               <Text style={[typographyRect15, { color: colors.primary }]}>
-                {t("messages.connectSheetOpenInTelegram")}
+                {t("messages.connectSheetPassToTelegramApp")}
               </Text>
             </Pressable>
-          ) : null}
-        </View>
-      ) : null}
+          </ConnectMethodSection>
 
-      {showPhoneEntry && !showCode ? (
-        <View style={{ marginTop: showQrBlock ? 12 : 0, width: "100%" }}>
-          {cloudGateway && !showQrBlock ? (
-            <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary, marginBottom: 8 }]}>
-              {t("messages.connectSheetPhoneCloudWarning")}
-            </Text>
-          ) : inTelegramApp && !showQrBlock ? (
-            <Text style={[typographyRect15, appModalSheetStyles.body, { color: colors.secondary, marginBottom: 8 }]}>
-              {t("messages.connectSheetPhoneMobileHint")}
-            </Text>
-          ) : null}
-          <WelcomeAuthFormField
-            label={
-              showQrBlock
-                ? t("messages.connectSheetOrPhone")
-                : t("messages.connectSheetPhoneTitle")
-            }
-          value={phoneNumber}
-          onChangeText={(next) => {
-            setPhoneNumber(next);
-            if (phoneInvalid) setPhoneInvalid(false);
-          }}
-          placeholder={t("messages.connectSheetPhonePlaceholder")}
-          keyboardType="phone-pad"
-          textContentType="telephoneNumber"
-          inputId="telegram-connect-phone-input"
-          errorText={phoneErrorText}
-          submitLabel={t("messages.connectSheetPhoneSubmit")}
-          onSubmit={onSubmitPhone}
-          submitDisabled={!phoneNumber.trim()}
-          submitting={connectPending && (connectAuthState === "wait_phone" || connectAuthState === "wait_qr")}
-        />
-        {inPhoneFlow && !showQrBlock ? (
-          <Pressable
-            accessibilityRole="button"
-            onPress={onSwitchToQr}
-            style={[appModalSheetStyles.button, { marginTop: 8, alignSelf: "center" }]}
-            disabled={connectPending}
-          >
-            <Text style={[typographyRect15, { color: colors.primary }]}>
-              {t("messages.connectSheetUseQrInstead")}
-            </Text>
-          </Pressable>
-        ) : null}
-        </View>
+          <ConnectMethodSection title={t("messages.connectSheetEnterNumber")}>
+            <WelcomeAuthFormField
+              value={phoneNumber}
+              onChangeText={(next) => {
+                setPhoneNumber(next);
+                if (phoneInvalid) setPhoneInvalid(false);
+              }}
+              placeholder={t("messages.connectSheetPhonePlaceholder")}
+              keyboardType="phone-pad"
+              textContentType="telephoneNumber"
+              inputId="telegram-connect-phone-input"
+              errorText={phoneErrorText}
+              submitLabel={t("messages.connectSheetPhoneSubmit")}
+              onSubmit={onSubmitPhone}
+              submitDisabled={!phoneNumber.trim()}
+              submitting={connectPending && (connectAuthState === "wait_phone" || connectAuthState === "wait_qr")}
+            />
+          </ConnectMethodSection>
+        </>
       ) : null}
 
       {showCode ? (
@@ -466,13 +423,18 @@ export function TelegramConnectSheet() {
         </View>
       ) : null}
 
-      {showPhoneEntry && connectError && connectError !== "invalid_phone_number" && !showCode && !showPassword ? (
-        <Text style={[typographyRect15, appModalSheetStyles.error, { color: "#b00020" }]}>
-          {connectErrorMessage(connectError, t)}
-        </Text>
+      {connectAuthState === "failed" ? (
+        <View style={appModalSheetStyles.centerBlock}>
+          <Text style={[typographyRect15, appModalSheetStyles.error, { color: "#b00020" }]}>
+            {connectErrorMessage(connectError, t)}
+          </Text>
+          {connectPending ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 8 }} />
+          ) : null}
+        </View>
       ) : null}
 
-      {connectAuthState === "failed" || (connectError && !showPassword && !showCode && !showPhoneEntry) ? (
+      {showMethods && connectError && connectError !== "invalid_phone_number" ? (
         <Text style={[typographyRect15, appModalSheetStyles.error, { color: "#b00020" }]}>
           {connectErrorMessage(connectError, t)}
         </Text>
