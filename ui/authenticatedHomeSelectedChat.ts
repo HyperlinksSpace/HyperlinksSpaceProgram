@@ -24,6 +24,19 @@ function readStoredChat(): MessageChatRowData | null {
             ? String(row.last_message_at)
             : null,
         unread_count: Number.isFinite(Number(row.unread_count)) ? Number(row.unread_count) : 0,
+        peer_user_id: Number.isFinite(Number(row.peer_user_id)) ? Number(row.peer_user_id) : null,
+        presence_kind:
+          row.presence_kind === "online" ||
+          row.presence_kind === "recently" ||
+          row.presence_kind === "last_week" ||
+          row.presence_kind === "last_month" ||
+          row.presence_kind === "offline"
+            ? row.presence_kind
+            : null,
+        presence_at:
+          typeof row.presence_at === "string" || typeof row.presence_at === "number"
+            ? String(row.presence_at)
+            : null,
       };
     }
   } catch {
@@ -67,7 +80,9 @@ export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
     selectedChat?.telegram_chat_id === chat.telegram_chat_id &&
     selectedChat.title === chat.title &&
     selectedChat.subtitle === chat.subtitle &&
-    selectedChat.last_message_at === chat.last_message_at
+    selectedChat.last_message_at === chat.last_message_at &&
+    selectedChat.presence_kind === chat.presence_kind &&
+    selectedChat.presence_at === chat.presence_at
   ) {
     return;
   }
@@ -114,7 +129,9 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.subtitle !== selectedChat.subtitle ||
     fresh.last_message_at !== selectedChat.last_message_at ||
     fresh.unread_count !== selectedChat.unread_count ||
-    fresh.avatar_url !== selectedChat.avatar_url
+    fresh.avatar_url !== selectedChat.avatar_url ||
+    fresh.presence_kind !== selectedChat.presence_kind ||
+    fresh.presence_at !== selectedChat.presence_at
   ) {
     selectedChat = fresh;
     writeStoredChat(fresh);

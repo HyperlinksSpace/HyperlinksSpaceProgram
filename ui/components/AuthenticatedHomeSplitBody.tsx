@@ -673,7 +673,7 @@ export function AuthenticatedHomeSplitBody({
     if (middleColumnFooter && !isTriple) {
       return (
         <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
-          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
+          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset, overflow: "visible" }}>{right}</View>
           <View style={columnAiBarWrapStyle}>{middleColumnFooter}</View>
         </View>
       );
@@ -681,14 +681,14 @@ export function AuthenticatedHomeSplitBody({
     if (middleColumnFooter && isTriple) {
       return (
         <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
-          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
+          <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset, overflow: "visible" }}>{right}</View>
           <View style={columnAiBarWrapStyle}>{middleColumnFooter}</View>
         </View>
       );
     }
     return (
       <View style={{ ...middleFlexBase, flexDirection: "column", minHeight: 0 }}>
-        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset }}>{right}</View>
+        <View style={{ flex: 1, minHeight: 0, paddingHorizontal: inset, overflow: "visible" }}>{right}</View>
       </View>
     );
   })();

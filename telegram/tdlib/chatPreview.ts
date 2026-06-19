@@ -9,11 +9,54 @@ export type TdMessage = {
 export type TdChat = {
   id: number;
   title?: string;
-  type?: { _?: string; title?: string; first_name?: string; last_name?: string; username?: string };
+  type?: {
+    _?: string;
+    title?: string;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+    user_id?: number;
+  };
   last_message?: TdMessage;
   unread_count?: number;
   photo?: { small?: { id?: number } };
 };
+
+export type ChatPresenceKind = "online" | "recently" | "last_week" | "last_month" | "offline";
+
+export type ChatPresence = {
+  kind: ChatPresenceKind;
+  at: string | null;
+};
+
+export function peerUserIdFromChat(chat: TdChat): number | null {
+  if (chat.type?._ !== "chatTypePrivate") return null;
+  const userId = chat.type.user_id;
+  return typeof userId === "number" && Number.isFinite(userId) ? userId : null;
+}
+
+export function presenceFromTdlibStatus(status: unknown): ChatPresence | null {
+  if (!status || typeof status !== "object") return null;
+  const row = status as { _?: string; was_online?: number };
+  switch (row._) {
+    case "userStatusOnline":
+      return { kind: "online", at: null };
+    case "userStatusRecently":
+      return { kind: "recently", at: null };
+    case "userStatusLastWeek":
+      return { kind: "last_week", at: null };
+    case "userStatusLastMonth":
+      return { kind: "last_month", at: null };
+    case "userStatusOffline": {
+      const was = row.was_online;
+      const at =
+        typeof was === "number" && was > 0 ? new Date(was * 1000).toISOString() : null;
+      return { kind: "offline", at };
+    }
+    default:
+      return null;
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

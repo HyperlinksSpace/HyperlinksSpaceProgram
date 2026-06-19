@@ -8,6 +8,8 @@ import {
   chatTitle,
   lastMessageAtIso,
   normalizeUnreadCount,
+  peerUserIdFromChat,
+  presenceFromTdlibStatus,
   resolveLastMessagePreview,
   type TdChat,
 } from "./chatPreview.js";
@@ -25,6 +27,7 @@ type TdFile = {
 const AVATAR_DOWNLOAD_TIMEOUT_MS = 15_000;
 const AVATAR_SYNC_CONCURRENCY = 3;
 const PREVIEW_SYNC_CONCURRENCY = 8;
+const PRESENCE_SYNC_CONCURRENCY = 8;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -262,6 +265,22 @@ async function enrichChatRow(
   return { subtitle: nextSubtitle, avatarUrl: nextAvatar };
 }
 
+async function resolveChatPresence(
+  client: Client,
+  chat: TdChat,
+): Promise<{ kind: LiveChatRow["presence_kind"]; at: string | null } | null> {
+  const peerUserId = peerUserIdFromChat(chat);
+  if (peerUserId == null) return null;
+  try {
+    const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as {
+      status?: unknown;
+    };
+    return presenceFromTdlibStatus(user.status);
+  } catch {
+    return null;
+  }
+}
+
 export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {
   const chats = await loadAllChats(client);
 
@@ -270,6 +289,9 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   );
   let avatarUrls = await mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
     resolveChatAvatarUrl(client, chat),
+  );
+  let presences = await mapWithConcurrency(chats, PRESENCE_SYNC_CONCURRENCY, (chat) =>
+    resolveChatPresence(client, chat),
   );
 
   for (let pass = 0; pass < 3; pass++) {
@@ -284,6 +306,7 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   const liveRows: Omit<LiveChatRow, "revision">[] = [];
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
+    const presence = presences[i];
     liveRows.push({
       telegram_chat_id: chat.id,
       title: chatTitle(chat),
@@ -291,6 +314,9 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       avatar_url: avatarUrls[i] ?? null,
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
+      peer_user_id: peerUserIdFromChat(chat),
+      presence_kind: presence?.kind ?? null,
+      presence_at: presence?.at ?? null,
     });
   }
 

@@ -12,36 +12,30 @@ import {
 import { layout, typographyRect15, useColors } from "../theme";
 import { HspScrollColumn } from "./HspScrollColumn";
 
-/** Top inset of modal sheet from the viewport (px). */
-export const APP_MODAL_SHEET_TOP_INSET_PX = 60;
-/** Bottom breathing room so the sheet does not touch the screen edge (px). */
-export const APP_MODAL_SHEET_BOTTOM_INSET_PX = layout.contentSideInsetPx;
-
 export const appModalSheetStyles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "flex-start",
+  overlayBlock: {
+    width: "100%",
     alignItems: "center",
-    overflow: "hidden",
-    ...Platform.select({
-      web: { overscrollBehavior: "contain" as const },
-      default: {},
-    }),
+    justifyContent: "center",
+    paddingHorizontal: layout.contentSideInsetPx,
+    paddingVertical: layout.contentSideInsetPx,
+  },
+  backdropFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   sheet: {
     width: "100%",
     maxWidth: 380,
-    alignSelf: "stretch",
     borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
+    borderRadius: 0,
+    zIndex: 1,
     ...Platform.select({
       web: { boxSizing: "border-box" as const },
       default: {},
     }),
   },
-  scrollContent: {
+  sheetBody: {
     paddingHorizontal: 20,
     paddingVertical: 20,
   },
@@ -108,10 +102,6 @@ type Props = {
 export function AppModalSheet({ visible, onClose, title, children, footer }: Props) {
   const colors = useColors();
   const { height: windowHeight } = useWindowDimensions();
-  const sheetScrollHeight = Math.max(
-    160,
-    windowHeight - APP_MODAL_SHEET_TOP_INSET_PX - APP_MODAL_SHEET_BOTTOM_INSET_PX,
-  );
 
   useEffect(() => {
     if (!visible || Platform.OS !== "web" || typeof document === "undefined") return;
@@ -129,47 +119,47 @@ export function AppModalSheet({ visible, onClose, title, children, footer }: Pro
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        style={[
-          appModalSheetStyles.backdrop,
-          {
-            paddingTop: APP_MODAL_SHEET_TOP_INSET_PX,
-            paddingBottom: APP_MODAL_SHEET_BOTTOM_INSET_PX,
-            paddingHorizontal: layout.contentSideInsetPx,
-          },
-        ]}
-        onPress={onClose}
+      <HspScrollColumn
+        style={{ height: windowHeight, width: "100%", minHeight: 0 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          minHeight: windowHeight,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+        containOverscroll
       >
-        <View
-          style={[
-            appModalSheetStyles.sheet,
-            {
-              backgroundColor: colors.background,
-              borderColor: colors.highlight,
-              maxHeight: sheetScrollHeight,
-              height: sheetScrollHeight,
-            },
-          ]}
-          {...(Platform.OS === "web"
-            ? ({
-                onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
-              } as object)
-            : {})}
-          onStartShouldSetResponder={() => true}
-        >
-          <HspScrollColumn
-            style={{ height: sheetScrollHeight, width: "100%", minHeight: 0 }}
-            contentContainerStyle={appModalSheetStyles.scrollContent}
-            containOverscroll
+        <View style={[appModalSheetStyles.overlayBlock, { minHeight: windowHeight }]}>
+          <Pressable
+            style={appModalSheetStyles.backdropFill}
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+          />
+          <View
+            style={[
+              appModalSheetStyles.sheet,
+              appModalSheetStyles.sheetBody,
+              {
+                backgroundColor: colors.background,
+                borderColor: colors.highlight,
+              },
+            ]}
+            {...(Platform.OS === "web"
+              ? ({
+                  onClick: (e: { stopPropagation?: () => void }) => e.stopPropagation?.(),
+                } as object)
+              : {})}
+            onStartShouldSetResponder={() => true}
           >
             <Text style={[typographyRect15, appModalSheetStyles.title, { color: colors.primary }]}>
               {title}
             </Text>
             {children}
             {footer}
-          </HspScrollColumn>
+          </View>
         </View>
-      </Pressable>
+      </HspScrollColumn>
     </Modal>
   );
 }

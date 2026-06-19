@@ -2,7 +2,9 @@ import {
   chatTitle,
   lastMessageAtIso,
   normalizeUnreadCount,
+  peerUserIdFromChat,
   previewFromMessage,
+  type ChatPresenceKind,
   type TdChat,
   type TdMessage,
 } from "./chatPreview.js";
@@ -14,6 +16,9 @@ export type LiveChatRow = {
   avatar_url: string | null;
   last_message_at: string;
   unread_count: number;
+  peer_user_id: number | null;
+  presence_kind: ChatPresenceKind | null;
+  presence_at: string | null;
   /** Monotonic version bumped on each update (for client diffing). */
   revision: number;
 };
@@ -101,8 +106,35 @@ export function patchLiveChatFromTdlib(
     avatar_url: input.avatar_url !== undefined ? input.avatar_url : (existing?.avatar_url ?? null),
     last_message_at: lastMessageAtIso(chat, input.last_message ?? chat.last_message),
     unread_count: normalizeUnreadCount(chat),
+    peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
+    presence_kind: existing?.presence_kind ?? null,
+    presence_at: existing?.presence_at ?? null,
   };
   return upsertLiveChatRow(telegramUsername, row);
+}
+
+export function patchLiveChatPresence(
+  telegramUsername: string,
+  peerUserId: number,
+  presence: { kind: ChatPresenceKind; at: string | null },
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  for (const row of cache.chats.values()) {
+    if (row.peer_user_id !== peerUserId) continue;
+    return upsertLiveChatRow(telegramUsername, {
+      telegram_chat_id: row.telegram_chat_id,
+      title: row.title,
+      subtitle: row.subtitle,
+      avatar_url: row.avatar_url,
+      last_message_at: row.last_message_at,
+      unread_count: row.unread_count,
+      peer_user_id: row.peer_user_id,
+      presence_kind: presence.kind,
+      presence_at: presence.at,
+    });
+  }
+  return null;
 }
 
 export function applyLiveMessageUpdate(
@@ -126,6 +158,9 @@ export function applyLiveMessageUpdate(
       typeof unreadCount === "number" && unreadCount >= 0
         ? unreadCount
         : (existing?.unread_count ?? 0),
+    peer_user_id: existing?.peer_user_id ?? null,
+    presence_kind: existing?.presence_kind ?? null,
+    presence_at: existing?.presence_at ?? null,
   };
   return upsertLiveChatRow(telegramUsername, row);
 }

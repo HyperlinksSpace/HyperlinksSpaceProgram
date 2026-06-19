@@ -34,6 +34,20 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
       ? row.last_message_at
       : null;
   const unread = Number(row.unread_count);
+  const peerUserId = Number(row.peer_user_id);
+  const presenceKindRaw = row.presence_kind;
+  const presenceKind =
+    presenceKindRaw === "online" ||
+    presenceKindRaw === "recently" ||
+    presenceKindRaw === "last_week" ||
+    presenceKindRaw === "last_month" ||
+    presenceKindRaw === "offline"
+      ? presenceKindRaw
+      : null;
+  const presenceAt =
+    typeof row.presence_at === "string" || typeof row.presence_at === "number"
+      ? String(row.presence_at)
+      : null;
   return {
     id,
     telegram_chat_id: telegramChatId,
@@ -42,6 +56,9 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     avatar_url: avatarUrl,
     last_message_at: lastAt == null ? null : String(lastAt),
     unread_count: Number.isFinite(unread) ? unread : 0,
+    peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
+    presence_kind: presenceKind,
+    presence_at: presenceAt,
   };
 }
 
@@ -58,7 +75,9 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.subtitle !== b.subtitle ||
       a.last_message_at !== b.last_message_at ||
       a.unread_count !== b.unread_count ||
-      a.avatar_url !== b.avatar_url
+      a.avatar_url !== b.avatar_url ||
+      a.presence_kind !== b.presence_kind ||
+      a.presence_at !== b.presence_at
     ) {
       return true;
     }
@@ -253,6 +272,19 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     return () => clearInterval(timer);
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
+  const handleChatPress = useCallback(
+    (item: MessageChatRowData) => {
+      if (!chatSelectionEnabled) return;
+      selectAuthenticatedHomeChat(item);
+    },
+    [chatSelectionEnabled],
+  );
+
+  const handleClearSelection = useCallback(() => {
+    if (!chatSelectionEnabled) return;
+    clearAuthenticatedHomeSelectedChat();
+  }, [chatSelectionEnabled]);
+
   const listShellStyle = homeListShellStyle(wideListChrome);
 
   if (!isTelegramMessagesConnected) {
@@ -300,19 +332,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       </View>
     );
   }
-
-  const handleChatPress = useCallback(
-    (item: MessageChatRowData) => {
-      if (!chatSelectionEnabled) return;
-      selectAuthenticatedHomeChat(item);
-    },
-    [chatSelectionEnabled],
-  );
-
-  const handleClearSelection = useCallback(() => {
-    if (!chatSelectionEnabled) return;
-    clearAuthenticatedHomeSelectedChat();
-  }, [chatSelectionEnabled]);
 
   const list = (
     <Pressable style={{ width: "100%", alignSelf: "stretch" }} onPress={handleClearSelection}>

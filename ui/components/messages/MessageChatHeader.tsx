@@ -1,20 +1,28 @@
-import { Platform, Text, View } from "react-native";
+import { useMemo } from "react";
+import { Platform, Text, View, type ViewStyle } from "react-native";
+import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import type { ThemeColors } from "../../theme";
-import { formatMessageChatWallClock } from "./formatMessageChatTime";
+import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
+import { layout, type ThemeColors } from "../../theme";
+import { formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
 import type { MessageChatRowData } from "./MessageChatRow";
-import { MESSAGE_LINE_HEIGHT_PX, MESSAGE_FONT_SIZE_PX, MESSAGE_ROW_HEIGHT_PX } from "./messageListLayout";
+import {
+  MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
+  MESSAGE_FONT_SIZE_PX,
+  MESSAGE_LINE_HEIGHT_PX,
+} from "./messageListLayout";
 
 type Props = {
   chat: MessageChatRowData;
   colors: ThemeColors;
-  timePendingLabel: string;
 };
 
-export function MessageChatHeader({ chat, colors, timePendingLabel }: Props) {
+export function MessageChatHeader({ chat, colors }: Props) {
+  const { locale } = useAppStrings();
+  const lineT = hairlineBorderWidthPx();
+  const columnBleedPx = layout.contentSideInsetPx;
   const title = chat.title.trim();
-  const parsedClock = formatMessageChatWallClock(chat.last_message_at);
-  const lastSeenLabel = parsedClock || timePendingLabel;
+  const presenceLabel = formatMessageChatPresenceLabel(chat, locale);
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -22,45 +30,80 @@ export function MessageChatHeader({ chat, colors, timePendingLabel }: Props) {
     lineHeight: MESSAGE_LINE_HEIGHT_PX,
     includeFontPadding: false,
     paddingVertical: 0,
-    textAlign: "center" as const,
-  };
+  } as const;
+
+  const borderLineStyle = useMemo((): ViewStyle => {
+    return {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: lineT,
+      backgroundColor: colors.highlight,
+      zIndex: 1,
+    };
+  }, [colors.highlight, lineT]);
+
+  const fullBleedShellStyle = useMemo((): ViewStyle => {
+    const bleed = columnBleedPx * 2;
+    return Platform.OS === "web"
+      ? {
+          width: `calc(100% + ${bleed}px)` as unknown as number,
+          marginLeft: -columnBleedPx,
+          marginRight: -columnBleedPx,
+        }
+      : {
+          marginHorizontal: -columnBleedPx,
+          alignSelf: "stretch",
+        };
+  }, [columnBleedPx]);
 
   return (
     <View
       style={{
-        width: "100%",
-        alignSelf: "stretch",
-        minHeight: MESSAGE_ROW_HEIGHT_PX,
+        ...fullBleedShellStyle,
+        height: MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
+        position: "relative",
         justifyContent: "center",
-        alignItems: "center",
-        borderBottomWidth: 1,
-        borderBottomColor: colors.highlight,
+        overflow: "visible",
       }}
     >
-      <Text
-        numberOfLines={1}
-        ellipsizeMode="tail"
+      <View
         style={{
-          ...textBase,
-          color: colors.primary,
-          maxWidth: "100%",
+          width: "100%",
+          justifyContent: "center",
+          alignItems: "center",
+          paddingHorizontal: columnBleedPx,
         }}
       >
-        {title}
-      </Text>
-      {lastSeenLabel ? (
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"
           style={{
             ...textBase,
-            color: colors.secondary,
-            maxWidth: "100%",
+            color: colors.primary,
+            textAlign: "center",
+            width: "100%",
           }}
         >
-          {lastSeenLabel}
+          {title}
         </Text>
-      ) : null}
+        {presenceLabel ? (
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={{
+              ...textBase,
+              color: colors.secondary,
+              textAlign: "center",
+              width: "100%",
+            }}
+          >
+            {presenceLabel}
+          </Text>
+        ) : null}
+      </View>
+      <View pointerEvents="none" collapsable={false} style={borderLineStyle} />
     </View>
   );
 }

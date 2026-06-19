@@ -1,6 +1,6 @@
 import type { Client } from "tdl";
-import { clearLiveChatCache, patchLiveChatFromTdlib } from "./liveChatCache.js";
-import { previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
+import { clearLiveChatCache, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
+import { presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -14,6 +14,7 @@ const LIVE_UPDATE_TYPES = new Set([
   "updateChatPosition",
   "updateMessageEdited",
   "updateDeleteMessages",
+  "updateUserStatus",
 ]);
 
 type LiveSyncRecord = {
@@ -128,6 +129,20 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     return;
   }
 
+  if (type === "updateUserStatus") {
+    const userId = update.user_id;
+    const status = update.status;
+    if (typeof userId !== "number") return;
+    const presence = presenceFromTdlibStatus(status);
+    if (!presence) return;
+    patchLiveChatPresence(record.telegramUsername, userId, presence);
+    logLiveSync(record, "live_chat_presence_applied", {
+      peerUserId: userId,
+      kind: presence.kind,
+    });
+    return;
+  }
+
   const chatId = chatIdFromUpdate(update);
   if (chatId == null) return;
 
@@ -173,7 +188,7 @@ export function attachLiveChatSync(record: LiveSyncRecord): void {
     const type = update._;
     if (typeof type !== "string" || !LIVE_UPDATE_TYPES.has(type)) return;
 
-    if (type === "updateNewMessage" || type === "updateChatLastMessage") {
+    if (type === "updateNewMessage" || type === "updateChatLastMessage" || type === "updateUserStatus") {
       void applyLiveUpdate(record, update);
       return;
     }

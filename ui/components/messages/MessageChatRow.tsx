@@ -29,6 +29,9 @@ export type MessageChatRowData = {
   avatar_url: string | null;
   last_message_at: string | null;
   unread_count: number;
+  peer_user_id?: number | null;
+  presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
+  presence_at?: string | null;
 };
 
 function resolveAvatarUrl(item: MessageChatRowData): string | null {

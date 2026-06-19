@@ -1549,11 +1549,7 @@ export function HomeAuthenticatedScreen() {
     >
       <AuthenticatedHomePersistedPanelSlot active={messagesChatOpen}>
         {selectedMessageChat ? (
-          <MessageChatPanel
-            chat={selectedMessageChat}
-            colors={colors}
-            timePendingLabel={t("feed.timePending")}
-          />
+          <MessageChatPanel chat={selectedMessageChat} colors={colors} />
         ) : null}
       </AuthenticatedHomePersistedPanelSlot>
       <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && rightPanel === "swap"}>

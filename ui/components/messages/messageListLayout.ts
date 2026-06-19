@@ -1,3 +1,6 @@
+/** Matches {@link AuthenticatedHomeLeftNavStrip} total strip height. */
+export const MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX = 55;
+
 /** Shared list row metrics — aligned with {@link AuthenticatedHomeFeedPanel} feed rows. */
 export const MESSAGE_ROW_HEIGHT_PX = 40;
 export const MESSAGE_AVATAR_PX = 30;

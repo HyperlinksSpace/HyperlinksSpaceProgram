@@ -89,6 +89,9 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     avatar_url: row.avatar_url ?? null,
     last_message_at: row.last_message_at,
     unread_count: row.unread_count ?? 0,
+    peer_user_id: row.peer_user_id ?? null,
+    presence_kind: row.presence_kind ?? null,
+    presence_at: row.presence_at ?? null,
   }));
   return { chats, revision: live.revision };
 }
