@@ -601,9 +601,8 @@ export function HomeAuthenticatedScreen() {
   const smartActiveOnWide = isWideHome && rightPanel === "smart";
   const sendActiveOnWide = isWideHome && rightPanel === "send";
   const getActiveOnWide = isWideHome && rightPanel === "get";
-  const messagesChatOpen =
-    isWideHome && homeNavIndex === 1 && selectedMessageChat != null;
-  // Feed (left column) remains the active item when it is the displayed content.
+  const messagesChatOpen = isWideHome && selectedMessageChat != null;
+  // Left nav only switches the first column; chat pane is independent until header menu is used.
   const leftNavSelectedIndex = homeNavIndex;
 
   useEffect(() => {
@@ -1492,7 +1491,9 @@ export function HomeAuthenticatedScreen() {
       displayName={headerDisplayName}
       layoutIsWide={isWideHome}
         activeHeaderMenuKey={
-          swapActiveOnWide
+          messagesChatOpen
+            ? null
+            : swapActiveOnWide
             ? "swap"
             : smartActiveOnWide
               ? "smart"

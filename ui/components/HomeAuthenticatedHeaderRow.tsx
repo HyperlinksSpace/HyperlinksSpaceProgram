@@ -28,6 +28,7 @@ import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
+import { clearAuthenticatedHomeSelectedChat } from "../authenticatedHomeSelectedChat";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
@@ -202,6 +203,7 @@ export function HomeAuthenticatedHeaderRow({
     (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
       const route = `/${key}`;
       if (atOrAboveFirstBreakpoint) {
+        clearAuthenticatedHomeSelectedChat();
         openAuthenticatedHomeRightPanel(key);
         if (pathname === route) {
           router.replace("/");
