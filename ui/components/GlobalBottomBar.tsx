@@ -98,9 +98,20 @@ function Scrollbar({
 }
 
 // Shared entry point: chooses platform-specific implementation and shared colors.
-export function GlobalBottomBar() {
+export type GlobalBottomBarOptions = {
+  placeholderText?: string;
+  iconRotationDeg?: number;
+  sendAccessibilityLabel?: string;
+  /** When true, draft is local to this bar (chat compose) instead of shared AI draft. */
+  useLocalDraft?: boolean;
+  /** When set, replaces default AI navigation on send. */
+  onSubmit?: (text: string) => void;
+};
+
+export function GlobalBottomBar(options?: GlobalBottomBarOptions) {
   const colors = useColors();
   const { t } = useAppStrings();
+  const [localDraft, setLocalDraft] = useState("");
   const premadePrompts = React.useMemo(
     () =>
       [
@@ -110,10 +121,16 @@ export function GlobalBottomBar() {
       ] as const,
     [t],
   );
-  const placeholderWeb = t("global.bottomBar.placeholderWeb");
-  const placeholderNative = t("global.bottomBar.placeholderNative");
+  const placeholderWeb = options?.placeholderText ?? t("global.bottomBar.placeholderWeb");
+  const placeholderNative = options?.placeholderText ?? t("global.bottomBar.placeholderNative");
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge, draftText, setDraftText } = useBottomBarLayout();
+  const useLocalDraft = options?.useLocalDraft ?? false;
+  const value = useLocalDraft ? localDraft : draftText;
+  const setValue = useLocalDraft ? setLocalDraft : setDraftText;
+  const iconRotationDeg = options?.iconRotationDeg ?? 0;
+  const sendAccessibilityLabel = options?.sendAccessibilityLabel;
+  const onSubmitOverride = options?.onSubmit;
   const { width: windowWidth } = useWindowDimensions();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
   const launchPrimary =
@@ -140,10 +157,13 @@ export function GlobalBottomBar() {
         topBorderColor={topBorderColor}
         hideBottomBorder={hideBottomBorder}
         contentMaxWidth={contentMaxWidth}
-        value={draftText}
-        setValue={setDraftText}
+        value={value}
+        setValue={setValue}
         premadePrompts={premadePrompts}
         placeholderText={placeholderWeb}
+        iconRotationDeg={iconRotationDeg}
+        sendAccessibilityLabel={sendAccessibilityLabel}
+        onSubmitOverride={onSubmitOverride}
       />
     );
   }
@@ -157,10 +177,13 @@ export function GlobalBottomBar() {
       topBorderColor={topBorderColor}
       hideBottomBorder={hideBottomBorder}
       contentMaxWidth={contentMaxWidth}
-      value={draftText}
-      setValue={setDraftText}
+      value={value}
+      setValue={setValue}
       premadePrompts={premadePrompts}
       placeholderText={placeholderNative}
+      iconRotationDeg={iconRotationDeg}
+      sendAccessibilityLabel={sendAccessibilityLabel}
+      onSubmitOverride={onSubmitOverride}
     />
   );
 }
@@ -252,6 +275,9 @@ function WebBottomBar({
   setValue,
   premadePrompts,
   placeholderText,
+  iconRotationDeg = 0,
+  sendAccessibilityLabel,
+  onSubmitOverride,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -264,6 +290,9 @@ function WebBottomBar({
   setValue: (next: string) => void;
   premadePrompts: readonly [string, string, string];
   placeholderText: string;
+  iconRotationDeg?: number;
+  sendAccessibilityLabel?: string;
+  onSubmitOverride?: (text: string) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -429,17 +458,21 @@ function WebBottomBar({
 
   const handleSend = useCallback(() => {
     let text = value.trim();
-    if (!text && premadePrompts.length > 0) {
+    if (!text && !onSubmitOverride && premadePrompts.length > 0) {
       text = premadePrompts[Math.floor(Math.random() * premadePrompts.length)] ?? "";
       setValue(text);
     }
     if (!text) return;
     setValue("");
+    if (onSubmitOverride) {
+      onSubmitOverride(text);
+      return;
+    }
     router.push({
       pathname: "/ai" as any,
       params: { prompt: text, route: pathname ?? "/" },
     });
-  }, [router, pathname, value, setValue, premadePrompts]);
+  }, [router, pathname, value, setValue, premadePrompts, onSubmitOverride]);
 
   return (
     <View
@@ -505,6 +538,8 @@ function WebBottomBar({
             undercoverColor={undercoverColor}
             onPress={handleSend}
             wrapStyle={[styles.sendWrap, styles.sendWrapWeb]}
+            iconRotationDeg={iconRotationDeg}
+            accessibilityLabel={sendAccessibilityLabel}
           />
         </View>
       </View>
@@ -547,6 +582,9 @@ function NativeBottomBar({
   setValue,
   premadePrompts,
   placeholderText,
+  iconRotationDeg = 0,
+  sendAccessibilityLabel,
+  onSubmitOverride,
 }: {
   backgroundColor: string;
   inputColor: string;
@@ -559,6 +597,9 @@ function NativeBottomBar({
   setValue: (next: string) => void;
   premadePrompts: readonly [string, string, string];
   placeholderText: string;
+  iconRotationDeg?: number;
+  sendAccessibilityLabel?: string;
+  onSubmitOverride?: (text: string) => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -578,18 +619,22 @@ function NativeBottomBar({
       triggerHaptic("heavy");
     }
     let text = value.trim();
-    if (!text && premadePrompts.length > 0) {
+    if (!text && !onSubmitOverride && premadePrompts.length > 0) {
       text = premadePrompts[Math.floor(Math.random() * premadePrompts.length)] ?? "";
       setValue(text);
     }
     if (!text) return;
     Keyboard.dismiss();
     setValue("");
+    if (onSubmitOverride) {
+      onSubmitOverride(text);
+      return;
+    }
     router.push({
       pathname: "/ai" as any,
       params: { prompt: text, route: pathname ?? "/" },
     });
-  }, [router, pathname, triggerHaptic, value, setValue, premadePrompts]);
+  }, [router, pathname, triggerHaptic, value, setValue, premadePrompts, onSubmitOverride]);
 
   const onContentSizeChange = useCallback(
     (e: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
@@ -737,6 +782,8 @@ function NativeBottomBar({
             undercoverColor={undercoverColor}
             onPress={submit}
             wrapStyle={styles.sendWrap}
+            iconRotationDeg={iconRotationDeg}
+            accessibilityLabel={sendAccessibilityLabel}
           />
         </View>
       </View>

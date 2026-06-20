@@ -22,6 +22,7 @@ import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLe
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import { AuthenticatedHomeMessagesPanel } from "../components/AuthenticatedHomeMessagesPanel";
 import { MessageChatPanel } from "../components/messages/MessageChatPanel";
+import { MessageChatWriteBottomBar } from "../components/messages/MessageChatWriteBottomBar";
 import { GetPanelContent } from "../components/get/GetPanelContent";
 import { SendPanelContent } from "../components/send/SendPanelContent";
 import { AuthenticatedHomeSplitBody } from "../components/AuthenticatedHomeSplitBody";
@@ -1634,7 +1635,9 @@ export function HomeAuthenticatedScreen() {
         left={homeLeftColumn}
         right={homeWideRightColumn}
         middleColumnFooter={
-          messagesChatOpen
+          messagesChatOpen && isTripleColumn
+            ? <MessageChatWriteBottomBar />
+            : messagesChatOpen
             ? aiBarDock === "splitColumn2"
               ? embeddedAiBar
               : null

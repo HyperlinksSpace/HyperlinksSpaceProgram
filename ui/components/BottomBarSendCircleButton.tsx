@@ -17,6 +17,8 @@ type Props = {
   onPress: () => void;
   wrapStyle?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  /** Degrees clockwise; chat compose uses -45 for upper-right diagonal. */
+  iconRotationDeg?: number;
 };
 
 /**
@@ -29,6 +31,7 @@ export function BottomBarSendCircleButton({
   onPress,
   wrapStyle,
   accessibilityLabel = "Send",
+  iconRotationDeg = 0,
 }: Props) {
   return (
     <Pressable
@@ -47,15 +50,23 @@ export function BottomBarSendCircleButton({
           justifyContent: "center",
         }}
       >
-        <Svg
-          width={ARROW_WIDTH}
-          height={ARROW_HEIGHT}
-          viewBox="0 0 10 14"
-          preserveAspectRatio="xMidYMid meet"
-          fill="none"
+        <View
+          style={
+            iconRotationDeg !== 0
+              ? { transform: [{ rotate: `${iconRotationDeg}deg` }] }
+              : undefined
+          }
         >
-          <Path d={ARROW_PATH_D} fill={iconColor} />
-        </Svg>
+          <Svg
+            width={ARROW_WIDTH}
+            height={ARROW_HEIGHT}
+            viewBox="0 0 10 14"
+            preserveAspectRatio="xMidYMid meet"
+            fill="none"
+          >
+            <Path d={ARROW_PATH_D} fill={iconColor} />
+          </Svg>
+        </View>
       </View>
     </Pressable>
   );

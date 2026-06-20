@@ -154,6 +154,8 @@ const en = {
   "messages.chatPresence.lastMonth": "last seen within a month",
   "messages.chatPresence.lastSeen": "last seen at {{time}}",
   "messages.chatPresence.unknown": "last seen recently",
+  "messages.chatWrite.placeholder": "Write",
+  "messages.chatWrite.send": "Write",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
   "swap.action.summary": "Buy 1 ton",
@@ -462,6 +464,8 @@ const ru = {
   "messages.chatPresence.lastMonth": "был(а) в этом месяце",
   "messages.chatPresence.lastSeen": "был(а) в {{time}}",
   "messages.chatPresence.unknown": "был(а) недавно",
+  "messages.chatWrite.placeholder": "Написать",
+  "messages.chatWrite.send": "Написать",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
   "swap.action.summary": "Купить 1 ton",
