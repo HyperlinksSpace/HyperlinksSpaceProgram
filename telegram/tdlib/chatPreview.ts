@@ -79,7 +79,7 @@ export function chatTitle(chat: TdChat): string {
   return `Chat ${chat.id}`;
 }
 
-function formattedTextPlain(value: unknown): string | null {
+export function formattedTextPlain(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;
   const obj = value as { text?: string; _?: string };
   const text = obj.text;

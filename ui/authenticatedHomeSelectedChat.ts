@@ -3,6 +3,16 @@ import type { MessageChatRowData } from "./components/messages/MessageChatRow";
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_selected_chat_v1";
 
+export type AuthenticatedHomeHistoryLoadTarget = {
+  chatId: number | null;
+  generation: number;
+};
+
+const HISTORY_LOAD_SNAPSHOT_IDLE: AuthenticatedHomeHistoryLoadTarget = {
+  chatId: null,
+  generation: 0,
+};
+
 function readStoredChat(): MessageChatRowData | null {
   try {
     if (typeof globalThis !== "undefined" && "localStorage" in globalThis) {
@@ -58,8 +68,24 @@ function writeStoredChat(chat: MessageChatRowData | null): void {
 }
 
 let selectedChat: MessageChatRowData | null = null;
+/** Session-only: history fetch runs only after an explicit chat row click. */
+let historyLoadChatId: number | null = null;
+let historyLoadGeneration = 0;
+let historyLoadSnapshot: AuthenticatedHomeHistoryLoadTarget = HISTORY_LOAD_SNAPSHOT_IDLE;
 let hydratedFromStorage = false;
 const listeners = new Set<() => void>();
+
+function syncHistoryLoadSnapshot(): AuthenticatedHomeHistoryLoadTarget {
+  const chatId = historyLoadChatId;
+  const generation = historyLoadGeneration;
+  if (
+    historyLoadSnapshot.chatId !== chatId ||
+    historyLoadSnapshot.generation !== generation
+  ) {
+    historyLoadSnapshot = { chatId, generation };
+  }
+  return historyLoadSnapshot;
+}
 
 function hydrateFromStorageIfNeeded() {
   if (hydratedFromStorage) return;
@@ -75,8 +101,15 @@ function emit() {
 
 export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
   hydrateFromStorageIfNeeded();
+  if (chat == null) {
+    historyLoadChatId = null;
+    syncHistoryLoadSnapshot();
+    selectedChat = null;
+    writeStoredChat(null);
+    emit();
+    return;
+  }
   if (
-    chat != null &&
     selectedChat?.telegram_chat_id === chat.telegram_chat_id &&
     selectedChat.title === chat.title &&
     selectedChat.subtitle === chat.subtitle &&
@@ -91,7 +124,19 @@ export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
   emit();
 }
 
+/** Select chat and start (or restart) paginated history load for that chat. */
+export function openAuthenticatedHomeChatHistory(chat: MessageChatRowData) {
+  hydrateFromStorageIfNeeded();
+  selectedChat = chat;
+  writeStoredChat(chat);
+  historyLoadChatId = chat.telegram_chat_id;
+  historyLoadGeneration += 1;
+  syncHistoryLoadSnapshot();
+  emit();
+}
+
 export function clearAuthenticatedHomeSelectedChat() {
+  historyLoadChatId = null;
   selectAuthenticatedHomeChat(null);
 }
 
@@ -113,6 +158,24 @@ function subscribe(onStoreChange: () => void) {
 
 export function useAuthenticatedHomeSelectedChat(): MessageChatRowData | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+function getHistoryLoadSnapshot(): AuthenticatedHomeHistoryLoadTarget {
+  hydrateFromStorageIfNeeded();
+  return syncHistoryLoadSnapshot();
+}
+
+function getHistoryLoadServerSnapshot(): AuthenticatedHomeHistoryLoadTarget {
+  return HISTORY_LOAD_SNAPSHOT_IDLE;
+}
+
+/** Set only by {@link openAuthenticatedHomeChatHistory} (explicit chat click). */
+export function useAuthenticatedHomeHistoryLoadTarget(): AuthenticatedHomeHistoryLoadTarget {
+  return useSyncExternalStore(
+    subscribe,
+    getHistoryLoadSnapshot,
+    getHistoryLoadServerSnapshot,
+  );
 }
 
 /** Refresh stored selection when poll updates the same chat row. */

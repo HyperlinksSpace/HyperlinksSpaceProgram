@@ -158,6 +158,7 @@ const en = {
   "messages.chatWrite.placeholder": "Write",
   "messages.chatWrite.send": "Write",
   "messages.chatEmpty": "No messages yet.",
+  "messages.channelBadge": "Channel",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
   "swap.action.summary": "Buy 1 ton",
@@ -470,6 +471,7 @@ const ru = {
   "messages.chatWrite.placeholder": "Написать",
   "messages.chatWrite.send": "Написать",
   "messages.chatEmpty": "Сообщений пока нет.",
+  "messages.channelBadge": "Канал",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
   "swap.action.summary": "Купить 1 ton",

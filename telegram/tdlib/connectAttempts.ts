@@ -946,21 +946,40 @@ export async function getChatHistoryForUser(
   telegramUsername: string,
   chatId: number,
   limit = 50,
-): Promise<{ messages: Awaited<ReturnType<typeof fetchChatHistory>>; error: string | null }> {
+  beforeMessageId?: number | null,
+): Promise<{
+  chat_kind: Awaited<ReturnType<typeof fetchChatHistory>>["chat_kind"];
+  messages: Awaited<ReturnType<typeof fetchChatHistory>>["messages"];
+  error: string | null;
+}> {
   let record = getActiveRecord(telegramUsername);
   if (!record?.client || record.authState !== "ready") {
     record = await waitForUserSessionReady(telegramUsername, 30_000);
   }
   if (!record?.client || record.authState !== "ready") {
-    return { messages: [], error: "session_not_ready" };
+    return { chat_kind: "private", messages: [], error: "session_not_ready" };
   }
   try {
-    const messages = await fetchChatHistory(record.client, chatId, limit);
-    return { messages, error: null };
+    const result = await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
+    return { chat_kind: result.chat_kind, messages: result.messages, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "history_failed";
-    return { messages: [], error: message };
+    return { chat_kind: "private", messages: [], error: message };
   }
+}
+
+export async function getMessageMediaForUser(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+): Promise<{ data: Buffer; mime: string } | null> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 15_000);
+  }
+  if (!record?.client || record.authState !== "ready") return null;
+  const { readMessageMediaBytes } = await import("./messageMedia.js");
+  return readMessageMediaBytes(record.client, chatId, messageId);
 }
 
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {

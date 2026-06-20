@@ -1,5 +1,5 @@
 import { View } from "react-native";
-import type { ThemeColors } from "../../theme";
+import { layout, type ThemeColors } from "../../theme";
 import { MessageChatHeader } from "./MessageChatHeader";
 import { MessageChatMessageList } from "./MessageChatMessageList";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -11,6 +11,7 @@ type Props = {
 
 /** Wide-layout chat pane (middle column). */
 export function MessageChatPanel({ chat, colors }: Props) {
+  const columnBleedPx = layout.contentSideInsetPx;
   return (
     <View
       style={{
@@ -19,6 +20,7 @@ export function MessageChatPanel({ chat, colors }: Props) {
         alignSelf: "stretch",
         minHeight: 0,
         overflow: "visible",
+        marginHorizontal: -columnBleedPx,
       }}
     >
       <MessageChatHeader chat={chat} colors={colors} />

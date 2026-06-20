@@ -8,7 +8,7 @@ import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import {
   clearAuthenticatedHomeSelectedChat,
-  selectAuthenticatedHomeChat,
+  openAuthenticatedHomeChatHistory,
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
@@ -275,7 +275,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const handleChatPress = useCallback(
     (item: MessageChatRowData) => {
       if (!chatSelectionEnabled) return;
-      selectAuthenticatedHomeChat(item);
+      openAuthenticatedHomeChatHistory(item);
     },
     [chatSelectionEnabled],
   );

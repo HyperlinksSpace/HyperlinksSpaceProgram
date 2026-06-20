@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ComponentRef,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import {
@@ -33,6 +34,13 @@ const DEFAULT_SCROLLBAR_RIGHT_INSET = layout.scrollIndicatorRightInsetPx;
 export type HspScrollMetrics = {
   layoutH: number;
   contentH: number;
+  scrollY: number;
+};
+
+export type HspScrollColumnHandle = {
+  scrollToEnd: () => void;
+  scrollToY: (y: number) => void;
+  getMetrics: () => HspScrollMetrics;
 };
 
 type Props = {
@@ -42,7 +50,7 @@ type Props = {
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** Fired when viewport/content heights change (e.g. to toggle scroll vs flex-fill layouts). */
-  onMetricsChange?: (metrics: HspScrollMetrics) => void;
+  onMetricsChange?: (metrics: Omit<HspScrollMetrics, "scrollY">) => void;
   /** Inset (px) of the thumb from the right edge of the scroll shell; default {@link layout.scrollIndicatorRightInsetPx}. */
   scrollbarRightInsetPx?: number;
   /**
@@ -52,6 +60,13 @@ type Props = {
   containOverscroll?: boolean;
   /** When false, content is flex-filled without scrolling (root layout on panel routes). */
   scrollEnabled?: boolean;
+  /** Where to place the viewport on first mount; chat panes use `bottom`. */
+  initialScrollPosition?: "top" | "bottom";
+  /** Fired when the user scrolls within {@link nearTopThresholdPx} of the top. */
+  onNearTop?: () => void;
+  nearTopThresholdPx?: number;
+  /** Optional imperative scroll API (scroll-to-end, preserve position on prepend). */
+  scrollControllerRef?: React.MutableRefObject<HspScrollColumnHandle | null>;
 };
 
 /**
@@ -66,12 +81,20 @@ export function HspScrollColumn({
   scrollbarRightInsetPx = DEFAULT_SCROLLBAR_RIGHT_INSET,
   containOverscroll = true,
   scrollEnabled = true,
+  initialScrollPosition = "top",
+  onNearTop,
+  nearTopThresholdPx = 120,
+  scrollControllerRef,
 }: Props) {
   const colors = useColors();
   const thumbColor = indicatorColor ?? colors.accent;
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const didInitialTopResetRef = useRef(false);
+  const didInitialBottomScrollRef = useRef(false);
+  const nearTopFiredRef = useRef(false);
+  const scrollMetricsRef = useRef({ layoutH: 0, contentH: 0, scrollY: 0 });
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
+  scrollMetricsRef.current = scroll;
 
   const syncScrollMetricsFromDom = useCallback(() => {
     if (Platform.OS !== "web") return;
@@ -98,6 +121,7 @@ export function HspScrollColumn({
   useLayoutEffect(() => {
     if (didMountScrollResetRef.current) return;
     didMountScrollResetRef.current = true;
+    if (initialScrollPosition === "bottom") return;
     if (Platform.OS === "web") {
       const instance = scrollRef.current as unknown as {
         getScrollableNode?: () => HTMLElement | null | undefined;
@@ -115,7 +139,7 @@ export function HspScrollColumn({
       requestAnimationFrame(syncScrollMetricsFromDom);
     });
     return () => cancelAnimationFrame(id);
-  }, [syncScrollMetricsFromDom]);
+  }, [initialScrollPosition, syncScrollMetricsFromDom]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -222,6 +246,16 @@ export function HspScrollColumn({
       scrollY: y,
       ...(ch > 0 ? { contentH: ch } : {}),
     }));
+    if (onNearTop) {
+      if (y <= nearTopThresholdPx) {
+        if (!nearTopFiredRef.current) {
+          nearTopFiredRef.current = true;
+          onNearTop();
+        }
+      } else {
+        nearTopFiredRef.current = false;
+      }
+    }
     if (Platform.OS === "web") {
       syncScrollMetricsFromDom();
     }
@@ -230,7 +264,7 @@ export function HspScrollColumn({
   const onLayout = (e: LayoutChangeEvent) => {
     const lh = e.nativeEvent.layout.height;
     setScroll((prev) => ({ ...prev, layoutH: lh }));
-    if (!didInitialTopResetRef.current) {
+    if (initialScrollPosition === "top" && !didInitialTopResetRef.current) {
       didInitialTopResetRef.current = true;
       requestAnimationFrame(() => {
         if (Platform.OS === "web") {
@@ -276,6 +310,55 @@ export function HspScrollColumn({
     },
     [],
   );
+
+  const scrollToEnd = useCallback(() => {
+    if (Platform.OS === "web") {
+      const instance = scrollRef.current as unknown as {
+        getScrollableNode?: () => HTMLElement | null | undefined;
+      } | null;
+      const el = instance?.getScrollableNode?.();
+      if (el) {
+        const layoutH = el.clientHeight;
+        const contentH = el.scrollHeight;
+        const y = Math.max(0, contentH - layoutH);
+        el.scrollTop = y;
+        setScroll((prev) => ({
+          ...prev,
+          layoutH: layoutH > 0 ? layoutH : prev.layoutH,
+          contentH: contentH > 0 ? contentH : prev.contentH,
+          scrollY: y,
+        }));
+        return;
+      }
+    }
+    scrollRef.current?.scrollToEnd({ animated: false });
+  }, []);
+
+  useEffect(() => {
+    if (!scrollControllerRef) return;
+    const controller: HspScrollColumnHandle = {
+      scrollToEnd,
+      scrollToY,
+      getMetrics: () => ({
+        layoutH: scrollMetricsRef.current.layoutH,
+        contentH: scrollMetricsRef.current.contentH,
+        scrollY: scrollMetricsRef.current.scrollY,
+      }),
+    };
+    (scrollControllerRef as MutableRefObject<HspScrollColumnHandle | null>).current = controller;
+    return () => {
+      if (scrollControllerRef.current === controller) {
+        scrollControllerRef.current = null;
+      }
+    };
+  }, [scrollControllerRef, scrollToEnd, scrollToY]);
+
+  useLayoutEffect(() => {
+    if (initialScrollPosition !== "bottom" || didInitialBottomScrollRef.current) return;
+    if (scroll.layoutH <= 0 || scroll.contentH <= scroll.layoutH + 0.5) return;
+    didInitialBottomScrollRef.current = true;
+    scrollToEnd();
+  }, [initialScrollPosition, scroll.contentH, scroll.layoutH, scrollToEnd]);
 
   const indicator = useMemo(() => {
     const viewH = scroll.layoutH;

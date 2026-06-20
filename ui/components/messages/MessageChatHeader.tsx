@@ -45,18 +45,11 @@ export function MessageChatHeader({ chat, colors }: Props) {
   }, [colors.highlight, lineT]);
 
   const fullBleedShellStyle = useMemo((): ViewStyle => {
-    const bleed = columnBleedPx * 2;
-    return Platform.OS === "web"
-      ? {
-          width: `calc(100% + ${bleed}px)` as unknown as number,
-          marginLeft: -columnBleedPx,
-          marginRight: -columnBleedPx,
-        }
-      : {
-          marginHorizontal: -columnBleedPx,
-          alignSelf: "stretch",
-        };
-  }, [columnBleedPx]);
+    return {
+      width: "100%",
+      alignSelf: "stretch",
+    };
+  }, []);
 
   return (
     <View

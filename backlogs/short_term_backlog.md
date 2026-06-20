@@ -1,3 +1,8 @@
+Time in messages
+Videos and photos
+Messages nicknames in chats
+Scrolling indicator
+Date
 Telegram login + Connect
 Store Telegram Connect seccion
 Mobile testing

@@ -1,20 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Text, View } from "react-native";
+import { View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../../api/_base";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
-import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { typographyRect15, type ThemeColors } from "../../theme";
+import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import type { MessageChatHistoryItem } from "./messageChatHistoryTypes";
+import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
+import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_AVATAR_GAP_PX,
   MESSAGE_BUBBLE_AVATAR_PX,
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
-  MESSAGE_BUBBLE_FONT_SIZE_PX,
-  MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
 } from "./messageChatLayout";
@@ -39,12 +37,13 @@ function resolveMessageAvatarUrl(
 
 type Props = {
   chat: MessageChatRowData;
+  chatKind: MessageChatKind | null;
   item: MessageChatHistoryItem;
   colors: ThemeColors;
   columnWidthPx: number;
 };
 
-export function MessageChatMessageRow({ chat, item, colors, columnWidthPx }: Props) {
+export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidthPx }: Props) {
   const iconUrl = resolveMessageAvatarUrl(chat, item);
   const avatarInitials = useMemo(
     () => extractChatAvatarInitials(item.sender_name || chat.title),
@@ -63,15 +62,10 @@ export function MessageChatMessageRow({ chat, item, colors, columnWidthPx }: Pro
     columnWidthPx - MESSAGE_BUBBLE_AVATAR_PX - MESSAGE_BUBBLE_AVATAR_GAP_PX,
   );
 
-  const textStyle = [
-    typographyRect15,
-    {
-      fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-      lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-      fontWeight: "400" as const,
-      color: colors.primary,
-    },
-  ];
+  const bubbleInnerMaxWidth = Math.max(
+    0,
+    bubbleMaxWidth - MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+  );
 
   return (
     <View
@@ -123,21 +117,13 @@ export function MessageChatMessageRow({ chat, item, colors, columnWidthPx }: Pro
           backgroundColor: colors.undercover,
         }}
       >
-        <Text
-          style={[
-            ...textStyle,
-            Platform.OS === "web"
-              ? ({
-                  fontFamily: WEB_UI_SANS_STACK,
-                  textAlign: "left",
-                  whiteSpace: "pre-wrap",
-                  overflowWrap: "break-word",
-                } as object)
-              : { textAlign: "left" },
-          ]}
-        >
-          {item.text}
-        </Text>
+        <MessageChatBubbleBody
+          chatId={chat.telegram_chat_id}
+          item={item}
+          chatKind={chatKind}
+          colors={colors}
+          maxWidthPx={bubbleInnerMaxWidth}
+        />
       </View>
     </View>
   );

@@ -1,0 +1,202 @@
+import type { Client } from "tdl";
+import {
+  chatTitle,
+  formattedTextPlain,
+  previewFromMessage,
+  type TdChat,
+  type TdMessage,
+} from "./chatPreview.js";
+
+export type ChatKind = "private" | "group" | "supergroup" | "channel";
+
+export type MessageContentKind =
+  | "text"
+  | "photo"
+  | "video"
+  | "document"
+  | "animation"
+  | "sticker"
+  | "other";
+
+export type MappedChatHistoryMessage = {
+  telegram_message_id: number;
+  text: string;
+  sent_at: string;
+  sender_name: string;
+  sender_user_id: number | null;
+  sender_chat_id: number | null;
+  sender_is_channel: boolean;
+  is_outgoing: boolean;
+  content_kind: MessageContentKind;
+  has_media: boolean;
+};
+
+type TdUser = {
+  id?: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
+
+export function chatKindFromTdChat(chat: TdChat): ChatKind {
+  const kind = chat.type?._;
+  if (kind === "chatTypePrivate") return "private";
+  if (kind === "chatTypeBasicGroup") return "group";
+  if (kind === "chatTypeSupergroup") {
+    const row = chat.type as { is_channel?: boolean };
+    return row.is_channel ? "channel" : "supergroup";
+  }
+  if (kind === "chatTypeChannel") return "channel";
+  return chat.id < 0 ? "supergroup" : "private";
+}
+
+export function isGroupLikeChatKind(kind: ChatKind): boolean {
+  return kind === "group" || kind === "supergroup" || kind === "channel";
+}
+
+function messageContentKind(message: TdMessage): MessageContentKind {
+  const type = message.content?._;
+  if (type === "messageText") return "text";
+  if (type === "messagePhoto") return "photo";
+  if (type === "messageVideo") return "video";
+  if (type === "messageDocument") return "document";
+  if (type === "messageAnimation") return "animation";
+  if (type === "messageSticker") return "sticker";
+  return "other";
+}
+
+function hasDisplayableMedia(message: TdMessage): boolean {
+  const kind = messageContentKind(message);
+  return kind === "photo" || kind === "video" || kind === "animation";
+}
+
+function captionText(message: TdMessage): string | null {
+  const c = message.content;
+  if (!c || typeof c !== "object") return null;
+  const caption = formattedTextPlain((c as { caption?: unknown }).caption);
+  return caption ?? null;
+}
+
+function bodyText(message: TdMessage): string {
+  const c = message.content;
+  if (!c || typeof c !== "object") return "";
+  if (c._ === "messageText") {
+    return formattedTextPlain((c as { text?: unknown }).text) ?? "";
+  }
+  const caption = captionText(message);
+  if (caption) return caption;
+  return previewFromMessage(message) ?? "";
+}
+
+function senderUserId(message: TdMessage): number | null {
+  const sender = message.sender_id;
+  if (sender?._ === "messageSenderUser" && typeof sender.user_id === "number") {
+    return sender.user_id;
+  }
+  return null;
+}
+
+function senderChatId(message: TdMessage): number | null {
+  const sender = message.sender_id;
+  if (sender?._ === "messageSenderChat" && typeof sender.chat_id === "number") {
+    return sender.chat_id;
+  }
+  return null;
+}
+
+function messageSentAtIso(message: TdMessage): string {
+  const ts = message.date;
+  if (typeof ts === "number" && ts > 0) {
+    return new Date(ts * 1000).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+async function resolveUserName(client: Client, userId: number, cache: Map<number, string>): Promise<string> {
+  const cached = cache.get(userId);
+  if (cached) return cached;
+  try {
+    const user = (await client.invoke({ _: "getUser", user_id: userId })) as TdUser;
+    const parts = [user.first_name, user.last_name].filter(
+      (part): part is string => typeof part === "string" && part.trim().length > 0,
+    );
+    const name =
+      parts.join(" ").trim() ||
+      (typeof user.username === "string" && user.username.trim()
+        ? `@${user.username.trim()}`
+        : "User");
+    cache.set(userId, name);
+    return name;
+  } catch {
+    return "User";
+  }
+}
+
+async function resolveChatName(
+  client: Client,
+  chatId: number,
+  cache: Map<number, { title: string; isChannel: boolean }>,
+): Promise<{ title: string; isChannel: boolean }> {
+  const cached = cache.get(chatId);
+  if (cached) return cached;
+  try {
+    const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+    const title = chatTitle(chat);
+    const kind = chatKindFromTdChat(chat);
+    const resolved = { title, isChannel: kind === "channel" };
+    cache.set(chatId, resolved);
+    return resolved;
+  } catch {
+    return { title: "Channel", isChannel: true };
+  }
+}
+
+async function resolveSenderName(
+  client: Client,
+  message: TdMessage,
+  chat: TdChat,
+  userCache: Map<number, string>,
+  chatCache: Map<number, { title: string; isChannel: boolean }>,
+): Promise<{ name: string; isChannel: boolean }> {
+  const userId = senderUserId(message);
+  if (userId != null) {
+    return { name: await resolveUserName(client, userId, userCache), isChannel: false };
+  }
+  const senderChatIdValue = senderChatId(message);
+  if (senderChatIdValue != null) {
+    const resolved = await resolveChatName(client, senderChatIdValue, chatCache);
+    return { name: resolved.title, isChannel: resolved.isChannel };
+  }
+  return { name: chatTitle(chat), isChannel: chatKindFromTdChat(chat) === "channel" };
+}
+
+export async function mapHistoryMessage(
+  client: Client,
+  message: TdMessage,
+  chat: TdChat,
+  userCache: Map<number, string>,
+  chatCache: Map<number, { title: string; isChannel: boolean }>,
+): Promise<MappedChatHistoryMessage | null> {
+  const telegramMessageId = Number(message.id);
+  if (!Number.isFinite(telegramMessageId)) return null;
+
+  const text = bodyText(message).trim();
+  const hasMedia = hasDisplayableMedia(message);
+  if (!text && !hasMedia) return null;
+
+  const sender = await resolveSenderName(client, message, chat, userCache, chatCache);
+  const senderChatIdValue = senderChatId(message);
+
+  return {
+    telegram_message_id: telegramMessageId,
+    text,
+    sent_at: messageSentAtIso(message),
+    sender_name: sender.name,
+    sender_user_id: senderUserId(message),
+    sender_chat_id: senderChatIdValue,
+    sender_is_channel: sender.isChannel,
+    is_outgoing: Boolean(message.is_outgoing),
+    content_kind: messageContentKind(message),
+    has_media: hasMedia,
+  };
+}

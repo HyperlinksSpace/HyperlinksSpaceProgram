@@ -282,10 +282,28 @@ export async function gatewayFetchChatMessages(
   telegramUsername: string,
   chatId: number,
   limit = 50,
-): Promise<{ messages: Record<string, unknown>[]; error: string | null }> {
+  beforeMessageId?: number | null,
+): Promise<{
+  messages: Record<string, unknown>[];
+  chatKind: string | null;
+  error: string | null;
+  hasMoreOlder: boolean;
+}> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
-  const url = `${base}/v1/chat/messages?telegramUsername=${encodeURIComponent(telegramUsername)}&chatId=${encodeURIComponent(String(chatId))}&limit=${encodeURIComponent(String(limit))}`;
+  const params = new URLSearchParams({
+    telegramUsername,
+    chatId: String(chatId),
+    limit: String(limit),
+  });
+  if (
+    typeof beforeMessageId === "number" &&
+    Number.isFinite(beforeMessageId) &&
+    beforeMessageId > 0
+  ) {
+    params.set("beforeMessageId", String(beforeMessageId));
+  }
+  const url = `${base}/v1/chat/messages?${params.toString()}`;
   try {
     const response = await fetch(url, {
       method: "GET",
@@ -294,17 +312,58 @@ export async function gatewayFetchChatMessages(
     const json = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       messages?: Record<string, unknown>[];
+      chat_kind?: string;
+      has_more_older?: boolean;
       error?: string;
     };
     if (!response.ok || !json.ok) {
-      return { messages: [], error: json.error ?? "history_unavailable" };
+      return {
+        messages: [],
+        chatKind: null,
+        error: json.error ?? "history_unavailable",
+        hasMoreOlder: false,
+      };
     }
-    return { messages: Array.isArray(json.messages) ? json.messages : [], error: null };
+    return {
+      messages: Array.isArray(json.messages) ? json.messages : [],
+      chatKind: typeof json.chat_kind === "string" ? json.chat_kind : null,
+      error: null,
+      hasMoreOlder: Boolean(json.has_more_older),
+    };
   } catch (err) {
     return {
       messages: [],
+      chatKind: null,
       error: err instanceof Error ? err.message : "gateway_unreachable",
+      hasMoreOlder: false,
     };
+  }
+}
+
+export async function gatewayFetchMessageMedia(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+): Promise<{ data: ArrayBuffer; mime: string } | null> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const params = new URLSearchParams({
+    telegramUsername,
+    chatId: String(chatId),
+    messageId: String(messageId),
+  });
+  const url = `${base}/v1/chat/message-media?${params.toString()}`;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    if (!response.ok) return null;
+    const mime = response.headers.get("Content-Type") || "application/octet-stream";
+    const data = await response.arrayBuffer();
+    return { data, mime };
+  } catch {
+    return null;
   }
 }
 

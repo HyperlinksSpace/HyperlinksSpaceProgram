@@ -6,6 +6,7 @@ import {
   gatewayHealth,
   getChatAvatarImageForUser,
   getChatHistoryForUser,
+  getMessageMediaForUser,
   getUserAvatarImageForUser,
   getConnectAttempt,
   getLiveChatList,
@@ -199,27 +200,61 @@ export function startTdlibGatewayServer(): http.Server {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const chatId = Number(url.searchParams.get("chatId"));
           const limit = Number(url.searchParams.get("limit") || "50");
+          const beforeMessageIdRaw = url.searchParams.get("beforeMessageId");
+          const beforeMessageId =
+            beforeMessageIdRaw != null && beforeMessageIdRaw.trim() !== ""
+              ? Number(beforeMessageIdRaw)
+              : null;
           if (!telegramUsername || !Number.isFinite(chatId)) {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
           const started = Date.now();
-          const result = await getChatHistoryForUser(telegramUsername, chatId, limit);
+          const result = await getChatHistoryForUser(
+            telegramUsername,
+            chatId,
+            limit,
+            Number.isFinite(beforeMessageId) ? beforeMessageId : null,
+          );
           console.log(
             `[tdlib-gateway] ${JSON.stringify({
               event: "chat_history_served",
               telegramUsername,
               chatId,
+              beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
               count: result.messages.length,
               error: result.error,
               elapsedMs: Date.now() - started,
             })}`,
           );
+          const pageLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 100);
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
+            chat_kind: result.chat_kind,
             messages: result.messages,
+            has_more_older: !result.error && result.messages.length >= pageLimit,
             error: result.error,
           });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/chat/message-media") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const chatId = Number(url.searchParams.get("chatId"));
+          const messageId = Number(url.searchParams.get("messageId"));
+          if (!telegramUsername || !Number.isFinite(chatId) || !Number.isFinite(messageId)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const media = await getMessageMediaForUser(telegramUsername, chatId, messageId);
+          if (!media) {
+            sendJson(res, 404, { ok: false, error: "media_unavailable" });
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader("Content-Type", media.mime);
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          res.end(media.data);
           return;
         }
 

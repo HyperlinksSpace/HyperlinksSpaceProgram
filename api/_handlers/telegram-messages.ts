@@ -6,7 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchUserAvatar, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -440,6 +440,7 @@ export async function telegramMessagesHistoryHandler(
   const limitRaw = url.searchParams.get("limit");
   const parsedLimit = limitRaw == null || limitRaw.trim() === "" ? 50 : Number(limitRaw);
   const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
+  const beforeMessageId = parseOptionalIdParam(url, "before_message_id");
   if (chatId == null) {
     logTelegramMessagesApi("messages_history_bad_request", {
       telegramUsername: userOrRes,
@@ -450,11 +451,13 @@ export async function telegramMessagesHistoryHandler(
   }
 
   const started = Date.now();
-  const result = await gatewayFetchChatMessages(userOrRes, chatId, limit);
+  const result = await gatewayFetchChatMessages(userOrRes, chatId, limit, beforeMessageId);
   logTelegramMessagesApi("messages_history_served", {
     telegramUsername: userOrRes,
     chatId,
+    beforeMessageId,
     count: result.messages.length,
+    hasMoreOlder: result.hasMoreOlder,
     error: result.error,
     elapsedMs: Date.now() - started,
   });
@@ -463,12 +466,76 @@ export async function telegramMessagesHistoryHandler(
     return finishJson(
       request,
       res,
-      { ok: false, error: result.error, messages: [] },
+      { ok: false, error: result.error, messages: [], has_more_older: false },
       result.error === "session_not_ready" ? 503 : 502,
     );
   }
 
-  return finishJson(request, res, { ok: true, messages: result.messages }, 200);
+  return finishJson(
+    request,
+    res,
+    {
+      ok: true,
+      chat_kind: result.chatKind,
+      messages: result.messages,
+      has_more_older: result.hasMoreOlder,
+    },
+    200,
+  );
+}
+
+export async function telegramMessagesMediaHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected" }, 403);
+  }
+
+  const url = requestUrl(request);
+  const chatId = parseOptionalIdParam(url, "chat_id");
+  const messageId = parseOptionalIdParam(url, "message_id");
+  if (chatId == null || messageId == null) {
+    return finishJson(request, res, { ok: false, error: "chat_id_and_message_id_required" }, 400);
+  }
+
+  const media = await gatewayFetchMessageMedia(userOrRes, chatId, messageId);
+  if (!media) {
+    return finishJson(request, res, { ok: false, error: "media_unavailable" }, 404);
+  }
+
+  const headers = new Headers({
+    "Content-Type": media.mime,
+    "Cache-Control": "public, max-age=86400",
+  });
+  applyAuthApiCors(request, headers);
+  const body = Buffer.from(media.data);
+
+  if (res) {
+    res.status(200);
+    headers.forEach((v, k) => res.setHeader(k, v));
+    res.end(body);
+    return;
+  }
+  return new Response(new Uint8Array(media.data), { status: 200, headers });
 }
 
 export async function telegramMessagesWarmupHandler(
