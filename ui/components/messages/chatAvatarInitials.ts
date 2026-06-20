@@ -106,20 +106,11 @@ export function colorForAvatarLetter(letter: string, scheme: ThemeName): string 
   return palette[letterPaletteIndex(letter, palette.length)];
 }
 
-/** One color per initial; dual-letter avatars always get two distinct hues. */
+/** One color per initial; multi-letter avatars reuse the first letter's hue. */
 export function colorsForAvatarInitials(initials: string[], scheme: ThemeName): string[] {
-  const palette = letterPalette(scheme);
   if (initials.length === 0) return [];
-  if (initials.length === 1) {
-    return [palette[letterPaletteIndex(initials[0], palette.length)]];
-  }
-
-  const firstIdx = letterPaletteIndex(initials[0], palette.length);
-  let secondIdx = letterPaletteIndex(initials[1], palette.length);
-  if (secondIdx === firstIdx) {
-    secondIdx = (secondIdx + Math.floor(palette.length / 2)) % palette.length;
-  }
-  return [palette[firstIdx], palette[secondIdx]];
+  const firstColor = colorForAvatarLetter(initials[0], scheme);
+  return initials.map(() => firstColor);
 }
 
 /** Filled circle behind initials — blends theme undercover toward primary for subtle depth. */

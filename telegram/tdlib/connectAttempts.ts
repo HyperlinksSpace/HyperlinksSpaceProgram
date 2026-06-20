@@ -6,7 +6,8 @@ import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
-import { persistMtprotoConnection, readChatAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
+import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
+import { fetchChatHistory } from "./chatHistory.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
@@ -923,6 +924,43 @@ export async function getChatAvatarImageForUser(
   const result = await readChatAvatarBytes(record.client, chatId);
   if (result === TELEGRAM_THREAD_NO_AVATAR) return "no_avatar";
   return result;
+}
+
+export async function getUserAvatarImageForUser(
+  telegramUsername: string,
+  userId: number,
+): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 15_000);
+  }
+  if (!record?.client || record.authState !== "ready") {
+    return null;
+  }
+  const result = await readUserAvatarBytes(record.client, userId);
+  if (result === TELEGRAM_THREAD_NO_AVATAR) return "no_avatar";
+  return result;
+}
+
+export async function getChatHistoryForUser(
+  telegramUsername: string,
+  chatId: number,
+  limit = 50,
+): Promise<{ messages: Awaited<ReturnType<typeof fetchChatHistory>>; error: string | null }> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 30_000);
+  }
+  if (!record?.client || record.authState !== "ready") {
+    return { messages: [], error: "session_not_ready" };
+  }
+  try {
+    const messages = await fetchChatHistory(record.client, chatId, limit);
+    return { messages, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "history_failed";
+    return { messages: [], error: message };
+  }
 }
 
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {

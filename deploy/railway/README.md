@@ -2,6 +2,20 @@
 
 Long-running MTProto sidecar for Vercel (`TDLIB_GATEWAY_URL`). Not deployable on Vercel serverless.
 
+## Quick deploy
+
+Dashboard: [railway.app/dashboard](https://railway.app/dashboard)
+
+One-time: `npx railway login` and `npx railway link` (select project → **tdlib-gateway** service).
+
+```bash
+npm run deploy:railway:tdlib-gateway
+```
+
+Verify: `curl https://YOUR-SERVICE.up.railway.app/v1/health` → `"ok": true`.
+
+See sections below for env vars, volume, and Vercel wiring.
+
 ## Build
 
 The Docker image uses **`deploy/railway/package.json`** (6 runtime deps only), not the root Expo lockfile. That keeps Railway builds fast and avoids monorepo `npm ci` sync failures.

@@ -278,6 +278,71 @@ export async function gatewayFetchLiveChats(
   }
 }
 
+export async function gatewayFetchChatMessages(
+  telegramUsername: string,
+  chatId: number,
+  limit = 50,
+): Promise<{ messages: Record<string, unknown>[]; error: string | null }> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const url = `${base}/v1/chat/messages?telegramUsername=${encodeURIComponent(telegramUsername)}&chatId=${encodeURIComponent(String(chatId))}&limit=${encodeURIComponent(String(limit))}`;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    const json = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      messages?: Record<string, unknown>[];
+      error?: string;
+    };
+    if (!response.ok || !json.ok) {
+      return { messages: [], error: json.error ?? "history_unavailable" };
+    }
+    return { messages: Array.isArray(json.messages) ? json.messages : [], error: null };
+  } catch (err) {
+    return {
+      messages: [],
+      error: err instanceof Error ? err.message : "gateway_unreachable",
+    };
+  }
+}
+
+export async function gatewayFetchUserAvatar(
+  telegramUsername: string,
+  userId: number,
+): Promise<{ data: ArrayBuffer; mime: string } | "no_avatar" | null> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const url = `${base}/v1/user/avatar?telegramUsername=${encodeURIComponent(telegramUsername)}&userId=${encodeURIComponent(String(userId))}`;
+  const started = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    logTdlibGatewayApi("gateway_fetch_done", {
+      path: "/v1/user/avatar",
+      status: response.status,
+      ok: response.ok,
+      elapsedMs: Date.now() - started,
+      userId,
+    });
+    if (response.status === 404) return "no_avatar";
+    if (!response.ok) return null;
+    const mime = response.headers.get("content-type") ?? "image/jpeg";
+    return { data: await response.arrayBuffer(), mime };
+  } catch (err) {
+    logTdlibGatewayApi("gateway_fetch_error", {
+      path: "/v1/user/avatar",
+      elapsedMs: Date.now() - started,
+      fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      userId,
+    });
+    return null;
+  }
+}
+
 export async function gatewayFetchChatAvatar(
   telegramUsername: string,
   chatId: number,

@@ -2,7 +2,10 @@ import type { Client } from "tdl";
 
 export type TdMessage = {
   id?: number;
+  chat_id?: number;
   date?: number;
+  is_outgoing?: boolean;
+  sender_id?: { _?: string; user_id?: number; chat_id?: number };
   content?: Record<string, unknown>;
 };
 
@@ -137,6 +140,15 @@ export function previewFromMessage(msg: TdMessage | undefined | null): string | 
   if (type === "messageChatUpgradeTo") return "Group upgraded";
   if (type.startsWith("message")) return "Message";
   return null;
+}
+
+/** Full text for chat body (no preview truncation on plain text messages). */
+export function messageDisplayText(msg: TdMessage | undefined | null): string | null {
+  const c = msg?.content;
+  if (!c || typeof c !== "object") return null;
+  if (c._ !== "messageText") return null;
+  const text = formattedTextPlain(c.text);
+  return text ?? null;
 }
 
 export function lastMessageAtIso(chat: TdChat, message?: TdMessage | null): string {

@@ -6,7 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchLiveChats, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchUserAvatar, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -304,14 +304,20 @@ export async function telegramMessagesResyncHandler(
   );
 }
 
-function requestUrl(request: AnyRequest): URL | null {
-  const raw = (request as { url?: string }).url ?? (request as Request).url;
-  if (!raw) return null;
+function requestUrl(request: AnyRequest): URL {
+  const raw = (request as { url?: string }).url ?? (request as Request).url ?? "";
   try {
     return new URL(raw);
   } catch {
-    return null;
+    return new URL(raw, "http://localhost");
   }
+}
+
+function parseOptionalIdParam(url: URL, key: string): number | null {
+  const raw = url.searchParams.get(key);
+  if (raw == null || raw.trim() === "") return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export async function telegramMessagesAvatarHandler(
@@ -344,21 +350,27 @@ export async function telegramMessagesAvatarHandler(
   }
 
   const url = requestUrl(request);
-  const chatId = Number(url?.searchParams.get("chat_id"));
-  if (!Number.isFinite(chatId)) {
+  const chatId = parseOptionalIdParam(url, "chat_id");
+  const userId = parseOptionalIdParam(url, "user_id");
+  const hasUserId = userId != null;
+  if (chatId == null && !hasUserId) {
     logTelegramMessagesApi("messages_avatar_bad_request", {
       telegramUsername: userOrRes,
-      chatIdRaw: url?.searchParams.get("chat_id") ?? null,
+      chatIdRaw: url.searchParams.get("chat_id"),
+      userIdRaw: url.searchParams.get("user_id"),
     });
-    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+    return finishJson(request, res, { ok: false, error: "chat_id_or_user_id_required" }, 400);
   }
 
   const started = Date.now();
-  const avatar = await gatewayFetchChatAvatar(userOrRes, chatId);
+  const avatar = hasUserId
+    ? await gatewayFetchUserAvatar(userOrRes, userId)
+    : await gatewayFetchChatAvatar(userOrRes, chatId!);
   if (avatar === "no_avatar") {
     logTelegramMessagesApi("messages_avatar_no_avatar", {
       telegramUsername: userOrRes,
-      chatId,
+      chatId: hasUserId ? null : chatId,
+      userId: hasUserId ? userId : null,
       elapsedMs: Date.now() - started,
     });
     return finishJson(request, res, { ok: false, error: "no_avatar" }, 404);
@@ -366,14 +378,16 @@ export async function telegramMessagesAvatarHandler(
   if (!avatar) {
     logTelegramMessagesApi("messages_avatar_unavailable", {
       telegramUsername: userOrRes,
-      chatId,
+      chatId: hasUserId ? null : chatId,
+      userId: hasUserId ? userId : null,
       elapsedMs: Date.now() - started,
     });
     return finishJson(request, res, { ok: false, error: "avatar_unavailable" }, 503);
   }
   logTelegramMessagesApi("messages_avatar_ok", {
     telegramUsername: userOrRes,
-    chatId,
+    chatId: hasUserId ? null : chatId,
+    userId: hasUserId ? userId : null,
     mime: avatar.mime,
     bytes: avatar.data.byteLength,
     elapsedMs: Date.now() - started,
@@ -393,6 +407,68 @@ export async function telegramMessagesAvatarHandler(
     return;
   }
   return new Response(new Uint8Array(avatar.data), { status: 200, headers });
+}
+
+export async function telegramMessagesHistoryHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const url = requestUrl(request);
+  const chatId = parseOptionalIdParam(url, "chat_id");
+  const limitRaw = url.searchParams.get("limit");
+  const parsedLimit = limitRaw == null || limitRaw.trim() === "" ? 50 : Number(limitRaw);
+  const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
+  if (chatId == null) {
+    logTelegramMessagesApi("messages_history_bad_request", {
+      telegramUsername: userOrRes,
+      chatIdRaw: url.searchParams.get("chat_id"),
+      requestUrl: url.pathname + url.search,
+    });
+    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+  }
+
+  const started = Date.now();
+  const result = await gatewayFetchChatMessages(userOrRes, chatId, limit);
+  logTelegramMessagesApi("messages_history_served", {
+    telegramUsername: userOrRes,
+    chatId,
+    count: result.messages.length,
+    error: result.error,
+    elapsedMs: Date.now() - started,
+  });
+
+  if (result.error) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: result.error, messages: [] },
+      result.error === "session_not_ready" ? 503 : 502,
+    );
+  }
+
+  return finishJson(request, res, { ok: true, messages: result.messages }, 200);
 }
 
 export async function telegramMessagesWarmupHandler(

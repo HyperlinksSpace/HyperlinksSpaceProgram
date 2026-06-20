@@ -174,6 +174,40 @@ export async function readChatAvatarBytes(
   }
 }
 
+type TdUserProfile = {
+  profile_photo?: { small?: { id?: number } };
+};
+
+export async function readUserAvatarBytes(
+  client: Client,
+  userId: number,
+): Promise<{ data: Buffer; mime: string } | typeof TELEGRAM_THREAD_NO_AVATAR | null> {
+  try {
+    const user = (await client.invoke({ _: "getUser", user_id: userId })) as TdUserProfile;
+    const fileId = user.profile_photo?.small?.id;
+    if (typeof fileId !== "number") return TELEGRAM_THREAD_NO_AVATAR;
+    let file = user.profile_photo?.small as TdFile | undefined;
+    if (!file?.local?.is_downloading_completed || !file.local.path) {
+      await client.invoke({
+        _: "downloadFile",
+        file_id: fileId,
+        priority: 16,
+        offset: 0,
+        limit: 0,
+        synchronous: true,
+      });
+      file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+    }
+    const filePath = file?.local?.path;
+    if (!filePath) return null;
+    const buf = await fs.promises.readFile(filePath);
+    if (buf.length === 0) return null;
+    return { data: buf, mime: mimeFromPath(filePath) };
+  } catch {
+    return null;
+  }
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,

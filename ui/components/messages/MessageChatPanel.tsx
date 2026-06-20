@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import type { ThemeColors } from "../../theme";
 import { MessageChatHeader } from "./MessageChatHeader";
+import { MessageChatMessageList } from "./MessageChatMessageList";
 import type { MessageChatRowData } from "./MessageChatRow";
 
 type Props = {
@@ -8,7 +9,7 @@ type Props = {
   colors: ThemeColors;
 };
 
-/** Wide-layout chat pane (middle column). Message list body comes later. */
+/** Wide-layout chat pane (middle column). */
 export function MessageChatPanel({ chat, colors }: Props) {
   return (
     <View
@@ -21,7 +22,7 @@ export function MessageChatPanel({ chat, colors }: Props) {
       }}
     >
       <MessageChatHeader chat={chat} colors={colors} />
-      <View style={{ flex: 1, minHeight: 0 }} />
+      <MessageChatMessageList chat={chat} colors={colors} />
     </View>
   );
 }

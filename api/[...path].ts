@@ -25,6 +25,7 @@ import {
   telegramMessagesConnectHandler,
   telegramMessagesDisconnectHandler,
   telegramMessagesAvatarHandler,
+  telegramMessagesHistoryHandler,
   telegramMessagesResyncHandler,
   telegramMessagesStatusHandler,
   telegramMessagesWarmupHandler,
@@ -72,6 +73,7 @@ const ROUTES: Record<string, ApiHandler> = {
   'telegram-messages-disconnect': telegramMessagesDisconnectHandler as ApiHandler,
   'telegram-messages-chats': telegramMessagesChatsHandler as ApiHandler,
   'telegram-messages-avatar': telegramMessagesAvatarHandler as ApiHandler,
+  'telegram-messages-history': telegramMessagesHistoryHandler as ApiHandler,
   'telegram-messages-resync': telegramMessagesResyncHandler as ApiHandler,
   'telegram-messages-warmup': telegramMessagesWarmupHandler as ApiHandler,
   /** TDLib QR connect (proxies to local/remote gateway). */

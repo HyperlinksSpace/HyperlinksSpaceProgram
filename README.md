@@ -205,6 +205,24 @@ vercel --prod
 
 Deploying from repository root makes this folder the project root, so `api/bot` is deployed and no Root Directory setting is needed. The project is configured so Vercel runs `npx expo export -p web` and serves the `dist/` output. Link the project first with `vercel` if needed.
 
+## Deploy TDLib gateway to Railway
+
+Telegram message sync uses a long-running **TDLib gateway** sidecar (not Vercel serverless). Deploy it to [Railway](https://railway.app/dashboard) after one-time setup (`npx railway login` and `npx railway link` — select the **tdlib-gateway** service).
+
+From the repository root:
+
+```bash
+npm run deploy:railway:tdlib-gateway
+```
+
+Equivalent direct CLI:
+
+```bash
+npx @railway/cli up --detach
+```
+
+Set the Railway public domain on Vercel as `TDLIB_GATEWAY_URL`, then redeploy Vercel (`vercel --prod`). Full setup (env vars, volume, health check): [`deploy/railway/README.md`](./deploy/railway/README.md).
+
 ## Telegram bot
 
 The bot is extended beyond a basic "Hello" and "Start program" responder and now supports AI streaming and threads.

@@ -148,6 +148,7 @@ const en = {
   "messages.connectSheetTitle": "Connect Telegram messages",
   "messages.empty": "No chats yet.",
   "messages.loadError": "Could not load chats.",
+  "messages.historyLoadError": "Could not load messages.",
   "messages.chatPresence.online": "online",
   "messages.chatPresence.recently": "last seen recently",
   "messages.chatPresence.lastWeek": "last seen within a week",
@@ -156,6 +157,7 @@ const en = {
   "messages.chatPresence.unknown": "last seen recently",
   "messages.chatWrite.placeholder": "Write",
   "messages.chatWrite.send": "Write",
+  "messages.chatEmpty": "No messages yet.",
 
   "swap.footer.insufficientAmount": "Insufficient amount",
   "swap.action.summary": "Buy 1 ton",
@@ -458,6 +460,7 @@ const ru = {
   "messages.connectSheetTitle": "Подключить сообщения Telegram",
   "messages.empty": "Чатов пока нет.",
   "messages.loadError": "Не удалось загрузить чаты.",
+  "messages.historyLoadError": "Не удалось загрузить сообщения.",
   "messages.chatPresence.online": "в сети",
   "messages.chatPresence.recently": "был(а) недавно",
   "messages.chatPresence.lastWeek": "был(а) на этой неделе",
@@ -466,6 +469,7 @@ const ru = {
   "messages.chatPresence.unknown": "был(а) недавно",
   "messages.chatWrite.placeholder": "Написать",
   "messages.chatWrite.send": "Написать",
+  "messages.chatEmpty": "Сообщений пока нет.",
 
   "swap.footer.insufficientAmount": "Недостаточная сумма",
   "swap.action.summary": "Купить 1 ton",
