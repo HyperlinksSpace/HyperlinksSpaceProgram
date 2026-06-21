@@ -1,3 +1,4 @@
+Bot instead of the status in bot
 Time in messages
 Videos and photos
 Messages nicknames in chats
