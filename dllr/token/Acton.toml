@@ -1,0 +1,44 @@
+[package]
+name = "token"
+description = "dllr minter"
+version = "0.1.0"
+license = "Apache-2.0"
+
+[toolchain]
+acton = "1.1.0"
+
+[contracts.JettonMinter]
+display-name = "JettonMinter"
+src = "contracts/src/JettonMinter.tolk"
+depends = ["JettonWallet"]
+
+[contracts.JettonWallet]
+display-name = "JettonWallet"
+src = "contracts/src/JettonWallet.tolk"
+depends = []
+
+[test]
+
+[fmt]
+width = 100
+ignore = []
+
+[scripts]
+deploy-emulation = "acton script contracts/scripts/deploy.tolk"
+deploy-testnet = "acton script contracts/scripts/deploy.tolk --net testnet"
+jetton-change-admin = "acton script contracts/scripts/change-admin.tolk"
+jetton-change-metadata = "acton script contracts/scripts/change-metadata.tolk"
+jetton-claim-admin = "acton script contracts/scripts/claim-admin.tolk"
+jetton-info = "acton script contracts/scripts/info.tolk"
+jetton-mint = "acton script contracts/scripts/mint.tolk"
+jetton-transfer = "acton script contracts/scripts/transfer.tolk"
+
+[import-mappings]
+acton = ".acton"
+contracts = "contracts/src"
+gen = "gen"
+tests = "contracts/tests"
+wrappers = "contracts/wrappers"
+
+# Check full Acton.toml reference and all available keys:
+# https://ton-blockchain.github.io/acton/docs/acton-toml
