@@ -1,21 +1,23 @@
 import { createElement, useMemo } from "react";
 import { Platform, Text, View } from "react-native";
-import { Image } from "expo-image";
 import { buildApiUrl } from "../../../api/_base";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { typographyRect15, type ThemeColors } from "../../theme";
+import { useTelegram } from "../Telegram";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
-import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
+import { groupSenderDisplayColor } from "./groupSenderColor";
+import type { MessageChatHistoryItem, MessageChatKind, MessageChatReplyPreview } from "./messageChatHistoryTypes";
 import { isGroupLikeChatKind } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-  MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX,
 } from "./messageChatLayout";
+import { MessageChatMediaImage } from "./MessageChatMediaImage";
+import { shouldInlineBubbleTime } from "./messageChatBubbleMeasure";
 
 type Props = {
   chatId: number;
@@ -31,8 +33,76 @@ function resolveMediaUrl(chatId: number, messageId: number): string {
   );
 }
 
+function MessageChatReplyBlock({
+  reply,
+  colors,
+  maxWidthPx,
+}: {
+  reply: MessageChatReplyPreview;
+  colors: ThemeColors;
+  maxWidthPx: number;
+}) {
+  const { colorScheme } = useTelegram();
+  const barColor = groupSenderDisplayColor(
+    reply.sender_user_id,
+    null,
+    reply.sender_name,
+    colorScheme,
+  );
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        maxWidth: maxWidthPx,
+        marginBottom: 6,
+        borderRadius: 6,
+        overflow: "hidden",
+        backgroundColor: colors.highlight,
+      }}
+    >
+      <View style={{ width: 3, backgroundColor: barColor, flexShrink: 0 }} />
+      <View style={{ flex: 1, paddingVertical: 5, paddingHorizontal: 8, minWidth: 0 }}>
+        <Text
+          numberOfLines={1}
+          style={[
+            typographyRect15,
+            {
+              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+              lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+              fontWeight: "500",
+              color: barColor,
+              textAlign: "left",
+            },
+            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
+          ]}
+        >
+          {reply.sender_name}
+        </Text>
+        <Text
+          numberOfLines={2}
+          style={[
+            typographyRect15,
+            {
+              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+              lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+              fontWeight: "400",
+              color: colors.secondary,
+              textAlign: "left",
+            },
+            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
+          ]}
+        >
+          {reply.text}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidthPx }: Props) {
   const { t } = useAppStrings();
+  const { colorScheme } = useTelegram();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) && !item.is_outgoing && item.sender_name.trim().length > 0;
@@ -44,6 +114,16 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
       item.content_kind === "animation");
   const mediaUrl = showMedia ? resolveMediaUrl(chatId, item.telegram_message_id) : null;
   const bodyText = item.text.trim();
+  const replyTo = item.reply_to ?? null;
+  const mediaWidthPx = Math.min(maxWidthPx, 320);
+  const mediaHeightPx = Math.min(maxWidthPx, 320);
+
+  const senderColor = groupSenderDisplayColor(
+    item.sender_user_id,
+    item.sender_chat_id ?? null,
+    item.sender_name,
+    colorScheme,
+  );
 
   const textStyle = useMemo(
     () => [
@@ -58,25 +138,18 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
     [colors.primary],
   );
 
-  const senderStyle = useMemo(
-    () => [
-      typographyRect15,
-      {
-        fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-        lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-        fontWeight: "700" as const,
-        color: colors.primary,
-      },
-    ],
-    [colors.primary],
-  );
-
   const metaStyle = {
     fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
     lineHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
     color: colors.secondary,
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
   } as const;
+
+  const inlineTime =
+    Platform.OS === "web" &&
+    bodyText &&
+    timeLabel &&
+    shouldInlineBubbleTime(bodyText, timeLabel, maxWidthPx);
 
   const webTextBlock =
     Platform.OS === "web" && (bodyText || (timeLabel && !showMedia))
@@ -95,7 +168,7 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
               overflowWrap: "break-word",
             },
           },
-          timeLabel
+          inlineTime && timeLabel
             ? createElement(
                 "span",
                 {
@@ -119,19 +192,60 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
                 timeLabel,
               )
             : null,
-          bodyText,
+          bodyText || null,
+          !inlineTime && timeLabel && bodyText
+            ? createElement(
+                "div",
+                {
+                  style: {
+                    clear: "both",
+                    textAlign: "right",
+                    marginTop: 2,
+                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
+                    color: colors.secondary,
+                    userSelect: "none",
+                  },
+                },
+                timeLabel,
+              )
+            : null,
+          !bodyText && timeLabel && !showMedia
+            ? createElement(
+                "div",
+                {
+                  style: {
+                    textAlign: "right",
+                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
+                    color: colors.secondary,
+                    userSelect: "none",
+                  },
+                },
+                timeLabel,
+              )
+            : null,
         )
       : null;
 
   return (
     <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start" }}>
+      {replyTo ? (
+        <MessageChatReplyBlock reply={replyTo} colors={colors} maxWidthPx={maxWidthPx} />
+      ) : null}
+
       {showSenderHeader ? (
         <Text
           style={[
-            ...senderStyle,
-            Platform.OS === "web"
-              ? ({ fontFamily: WEB_UI_SANS_STACK, textAlign: "left" } as object)
-              : { textAlign: "left" },
+            typographyRect15,
+            {
+              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+              lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+              fontWeight: "500",
+              color: senderColor,
+              textAlign: "left",
+            },
+            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
           ]}
         >
           {item.sender_name.trim()}
@@ -153,18 +267,17 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
       ) : null}
 
       {showMedia && mediaUrl ? (
-        <View>
-          <Image
-            source={{ uri: mediaUrl }}
-            accessibilityIgnoresInvertColors
-            style={{
-              width: Math.min(maxWidthPx, 320),
-              height: Math.min(maxWidthPx, 320),
-              borderRadius: MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
-              marginBottom: bodyText ? 8 : 0,
-              marginTop: showSenderHeader || showChannelBadge ? 4 : 0,
-            }}
-            contentFit="cover"
+        <View
+          style={{
+            marginTop: showSenderHeader || showChannelBadge ? 4 : 0,
+            marginBottom: bodyText ? 8 : 0,
+          }}
+        >
+          <MessageChatMediaImage
+            uri={mediaUrl}
+            widthPx={mediaWidthPx}
+            heightPx={mediaHeightPx}
+            colors={colors}
           />
           {Platform.OS === "web" && timeLabel && !bodyText ? (
             createElement(
@@ -186,7 +299,7 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
         </View>
       ) : null}
 
-      {Platform.OS !== "web" && showMedia && mediaUrl && timeLabel && !bodyText ? (
+      {Platform.OS !== "web" && showMedia && timeLabel && !bodyText ? (
         <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: 4 }]}>{timeLabel}</Text>
       ) : null}
 
@@ -197,10 +310,11 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
           {bodyText ? (
             <Text style={[...textStyle, { textAlign: "left" }]}>{bodyText}</Text>
           ) : null}
-          {timeLabel ? (
-            <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: bodyText ? 2 : 0 }]}>
-              {timeLabel}
-            </Text>
+          {timeLabel && bodyText ? (
+            <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: 2 }]}>{timeLabel}</Text>
+          ) : null}
+          {timeLabel && !bodyText && !showMedia ? (
+            <Text style={[metaStyle, { alignSelf: "flex-end" }]}>{timeLabel}</Text>
           ) : null}
         </View>
       ) : null}

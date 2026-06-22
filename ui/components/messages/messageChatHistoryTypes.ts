@@ -13,6 +13,12 @@ export type MessageChatKind =
   | "supergroup"
   | "channel";
 
+export type MessageChatReplyPreview = {
+  sender_name: string;
+  sender_user_id: number | null;
+  text: string;
+};
+
 export type MessageChatHistoryItem = {
   telegram_message_id: number;
   text: string;
@@ -24,6 +30,7 @@ export type MessageChatHistoryItem = {
   is_outgoing: boolean;
   content_kind?: MessageChatContentKind;
   has_media?: boolean;
+  reply_to?: MessageChatReplyPreview | null;
 };
 
 export function isGroupLikeChatKind(kind: MessageChatKind | null | undefined): boolean {

@@ -6,6 +6,11 @@ export type TdMessage = {
   date?: number;
   is_outgoing?: boolean;
   sender_id?: { _?: string; user_id?: number; chat_id?: number };
+  reply_to?: {
+    _?: string;
+    chat_id?: number;
+    message_id?: number;
+  };
   content?: Record<string, unknown>;
 };
 

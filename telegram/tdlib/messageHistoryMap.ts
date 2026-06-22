@@ -29,6 +29,11 @@ export type MappedChatHistoryMessage = {
   is_outgoing: boolean;
   content_kind: MessageContentKind;
   has_media: boolean;
+  reply_to?: {
+    sender_name: string;
+    sender_user_id: number | null;
+    text: string;
+  } | null;
 };
 
 type TdUser = {
@@ -85,7 +90,38 @@ function bodyText(message: TdMessage): string {
   }
   const caption = captionText(message);
   if (caption) return caption;
+  if (hasDisplayableMedia(message)) return "";
   return previewFromMessage(message) ?? "";
+}
+
+async function resolveReplyPreview(
+  client: Client,
+  message: TdMessage,
+  userCache: Map<number, string>,
+  chatCache: Map<number, { title: string; isChannel: boolean }>,
+): Promise<{ sender_name: string; sender_user_id: number | null; text: string } | null> {
+  const reply = message.reply_to;
+  if (reply?._ !== "messageReplyMessage") return null;
+  const chatId = reply.chat_id;
+  const messageId = reply.message_id;
+  if (typeof chatId !== "number" || typeof messageId !== "number") return null;
+  try {
+    const replied = (await client.invoke({
+      _: "getMessage",
+      chat_id: chatId,
+      message_id: messageId,
+    })) as TdMessage;
+    const sender = await resolveSenderName(client, replied, { id: chatId } as TdChat, userCache, chatCache);
+    const text = bodyText(replied).trim() || previewFromMessage(replied) || "";
+    if (!text) return null;
+    return {
+      sender_name: sender.name,
+      sender_user_id: senderUserId(replied),
+      text: text.slice(0, 200),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function senderUserId(message: TdMessage): number | null {
@@ -186,6 +222,7 @@ export async function mapHistoryMessage(
 
   const sender = await resolveSenderName(client, message, chat, userCache, chatCache);
   const senderChatIdValue = senderChatId(message);
+  const replyTo = await resolveReplyPreview(client, message, userCache, chatCache);
 
   return {
     telegram_message_id: telegramMessageId,
@@ -198,5 +235,6 @@ export async function mapHistoryMessage(
     is_outgoing: Boolean(message.is_outgoing),
     content_kind: messageContentKind(message),
     has_media: hasMedia,
+    reply_to: replyTo,
   };
 }

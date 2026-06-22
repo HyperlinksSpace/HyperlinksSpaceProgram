@@ -47,6 +47,22 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!text.trim() && !hasMedia) return null;
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
+  let replyTo: MessageChatHistoryItem["reply_to"] = null;
+  const replyRaw = row.reply_to;
+  if (replyRaw && typeof replyRaw === "object" && !Array.isArray(replyRaw)) {
+    const replyRow = replyRaw as Record<string, unknown>;
+    const replySenderName =
+      typeof replyRow.sender_name === "string" ? replyRow.sender_name.trim() : "";
+    const replyText = typeof replyRow.text === "string" ? replyRow.text.trim() : "";
+    if (replySenderName && replyText) {
+      const replySenderUserId = Number(replyRow.sender_user_id);
+      replyTo = {
+        sender_name: replySenderName,
+        sender_user_id: Number.isFinite(replySenderUserId) ? replySenderUserId : null,
+        text: replyText,
+      };
+    }
+  }
   return {
     telegram_message_id: telegramMessageId,
     text,
@@ -58,6 +74,7 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     is_outgoing: Boolean(row.is_outgoing),
     content_kind: contentKind,
     has_media: hasMedia,
+    reply_to: replyTo,
   };
 }
 
