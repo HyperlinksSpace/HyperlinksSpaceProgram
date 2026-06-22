@@ -29,6 +29,8 @@ export type MappedChatHistoryMessage = {
   is_outgoing: boolean;
   content_kind: MessageContentKind;
   has_media: boolean;
+  media_width?: number | null;
+  media_height?: number | null;
   reply_to?: {
     sender_name: string;
     sender_user_id: number | null;
@@ -68,6 +70,39 @@ function messageContentKind(message: TdMessage): MessageContentKind {
   if (type === "messageAnimation") return "animation";
   if (type === "messageSticker") return "sticker";
   return "other";
+}
+
+function mediaDimensions(message: TdMessage): { width: number | null; height: number | null } {
+  const content = message.content;
+  if (!content || typeof content !== "object") return { width: null, height: null };
+  const row = content as Record<string, unknown>;
+  const type = row._;
+  if (type === "messagePhoto") {
+    const photo = row.photo as { sizes?: Array<{ width?: number; height?: number }> } | undefined;
+    const sizes = photo?.sizes;
+    if (!Array.isArray(sizes) || sizes.length === 0) return { width: null, height: null };
+    let bestW = 0;
+    let bestH = 0;
+    for (const size of sizes) {
+      const w = Number(size.width);
+      const h = Number(size.height);
+      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
+      if (w * h > bestW * bestH) {
+        bestW = w;
+        bestH = h;
+      }
+    }
+    return bestW > 0 ? { width: bestW, height: bestH } : { width: null, height: null };
+  }
+  if (type === "messageVideo" || type === "messageAnimation") {
+    const media = (row.video ?? row.animation) as { width?: number; height?: number } | undefined;
+    const w = Number(media?.width);
+    const h = Number(media?.height);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return { width: w, height: h };
+    }
+  }
+  return { width: null, height: null };
 }
 
 function hasDisplayableMedia(message: TdMessage): boolean {
@@ -223,6 +258,7 @@ export async function mapHistoryMessage(
   const sender = await resolveSenderName(client, message, chat, userCache, chatCache);
   const senderChatIdValue = senderChatId(message);
   const replyTo = await resolveReplyPreview(client, message, userCache, chatCache);
+  const dimensions = mediaDimensions(message);
 
   return {
     telegram_message_id: telegramMessageId,
@@ -235,6 +271,8 @@ export async function mapHistoryMessage(
     is_outgoing: Boolean(message.is_outgoing),
     content_kind: messageContentKind(message),
     has_media: hasMedia,
+    media_width: dimensions.width,
+    media_height: dimensions.height,
     reply_to: replyTo,
   };
 }

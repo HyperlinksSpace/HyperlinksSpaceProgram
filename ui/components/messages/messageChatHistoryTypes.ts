@@ -30,6 +30,8 @@ export type MessageChatHistoryItem = {
   is_outgoing: boolean;
   content_kind?: MessageChatContentKind;
   has_media?: boolean;
+  media_width?: number | null;
+  media_height?: number | null;
   reply_to?: MessageChatReplyPreview | null;
 };
 

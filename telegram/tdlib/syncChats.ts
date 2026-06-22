@@ -6,7 +6,9 @@ import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.
 import { getTdlibUserDir } from "./env.js";
 import {
   chatTitle,
+  isChatPinnedInMainList,
   lastMessageAtIso,
+  mainListOrderKey,
   normalizeUnreadCount,
   peerUserIdFromChat,
   presenceFromTdlibStatus,
@@ -351,6 +353,8 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       peer_user_id: peerUserIdFromChat(chat),
       presence_kind: presence?.kind ?? null,
       presence_at: presence?.at ?? null,
+      is_pinned: isChatPinnedInMainList(chat),
+      pin_order: mainListOrderKey(chat),
     });
   }
 

@@ -1,6 +1,8 @@
 import {
   chatTitle,
+  isChatPinnedInMainList,
   lastMessageAtIso,
+  mainListOrderKey,
   normalizeUnreadCount,
   peerUserIdFromChat,
   previewFromMessage,
@@ -19,9 +21,34 @@ export type LiveChatRow = {
   peer_user_id: number | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
+  is_pinned: boolean;
+  pin_order: string;
   /** Monotonic version bumped on each update (for client diffing). */
   revision: number;
 };
+
+function comparePinOrderDesc(a: string, b: string): number {
+  try {
+    const left = BigInt(a);
+    const right = BigInt(b);
+    if (right > left) return 1;
+    if (right < left) return -1;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+function sortLiveChatRows(rows: LiveChatRow[]): LiveChatRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+    if (a.is_pinned && b.is_pinned) {
+      const byPinOrder = comparePinOrderDesc(a.pin_order, b.pin_order);
+      if (byPinOrder !== 0) return byPinOrder;
+    }
+    return Date.parse(b.last_message_at) - Date.parse(a.last_message_at);
+  });
+}
 
 type UserCache = {
   chats: Map<number, LiveChatRow>;
@@ -55,9 +82,7 @@ export function getLiveChatListRevision(telegramUsername: string): number {
 export function getLiveChatList(telegramUsername: string): LiveChatRow[] | null {
   const cache = caches.get(telegramUsername);
   if (!cache || cache.chats.size === 0) return null;
-  return [...cache.chats.values()].sort(
-    (a, b) => Date.parse(b.last_message_at) - Date.parse(a.last_message_at),
-  );
+  return sortLiveChatRows([...cache.chats.values()]);
 }
 
 export function seedLiveChatList(
@@ -109,6 +134,8 @@ export function patchLiveChatFromTdlib(
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
+    is_pinned: isChatPinnedInMainList(chat),
+    pin_order: mainListOrderKey(chat),
   };
   return upsertLiveChatRow(telegramUsername, row);
 }
@@ -132,6 +159,8 @@ export function patchLiveChatPresence(
       peer_user_id: row.peer_user_id,
       presence_kind: presence.kind,
       presence_at: presence.at,
+      is_pinned: row.is_pinned,
+      pin_order: row.pin_order,
     });
   }
   return null;
@@ -161,6 +190,8 @@ export function applyLiveMessageUpdate(
     peer_user_id: existing?.peer_user_id ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
+    is_pinned: existing?.is_pinned ?? false,
+    pin_order: existing?.pin_order ?? "0",
   };
   return upsertLiveChatRow(telegramUsername, row);
 }

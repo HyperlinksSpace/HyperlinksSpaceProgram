@@ -28,7 +28,25 @@ export type TdChat = {
   last_message?: TdMessage;
   unread_count?: number;
   photo?: { small?: { id?: number } };
+  positions?: Array<{
+    list?: { _?: string };
+    order?: string;
+    is_pinned?: boolean;
+  }>;
 };
+
+export function isChatPinnedInMainList(chat: TdChat): boolean {
+  const positions = chat.positions;
+  if (!Array.isArray(positions)) return false;
+  return positions.some((row) => row.list?._ === "chatListMain" && row.is_pinned === true);
+}
+
+export function mainListOrderKey(chat: TdChat): string {
+  const positions = chat.positions;
+  if (!Array.isArray(positions)) return "0";
+  const main = positions.find((row) => row.list?._ === "chatListMain");
+  return typeof main?.order === "string" ? main.order : "0";
+}
 
 export type ChatPresenceKind = "online" | "recently" | "last_week" | "last_month" | "offline";
 

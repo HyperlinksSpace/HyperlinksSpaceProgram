@@ -74,6 +74,8 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     is_outgoing: Boolean(row.is_outgoing),
     content_kind: contentKind,
     has_media: hasMedia,
+    media_width: Number.isFinite(Number(row.media_width)) ? Number(row.media_width) : null,
+    media_height: Number.isFinite(Number(row.media_height)) ? Number(row.media_height) : null,
     reply_to: replyTo,
   };
 }
@@ -179,7 +181,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [columnWidthPx, setColumnWidthPx] = useState(0);
-  const columnBleedPx = layout.contentSideInsetPx;
   const scrollControllerRef = useRef<HspScrollColumnHandle | null>(null);
   const loadingOlderRef = useRef(false);
 
@@ -326,8 +327,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     columnWidthPx - MESSAGE_CHAT_BODY_PADDING_PX * 2,
   );
 
-  const scrollShellBleed = { marginHorizontal: -columnBleedPx };
-
   if (!shouldLoadHistory) {
     return (
       <View
@@ -336,7 +335,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           minHeight: 0,
           width: "100%",
           alignSelf: "stretch",
-          ...scrollShellBleed,
         }}
         onLayout={onColumnLayout}
       />
@@ -350,7 +348,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         minHeight: 0,
         width: "100%",
         alignSelf: "stretch",
-        ...scrollShellBleed,
       }}
       onLayout={onColumnLayout}
     >

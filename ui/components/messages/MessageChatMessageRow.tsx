@@ -25,6 +25,7 @@ import {
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
 } from "./messageChatLayout";
+import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
 import type { MessageChatRowData } from "./MessageChatRow";
 
 function resolveMessageAvatarUrl(
@@ -94,7 +95,11 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     (item.content_kind === "photo" ||
       item.content_kind === "video" ||
       item.content_kind === "animation");
-  const mediaWidthPx = Math.min(bubbleInnerMaxWidth, 320);
+  const { widthPx: mediaWidthPx } = resolveMessageMediaDimensions(
+    bubbleInnerMaxWidth,
+    item.media_width,
+    item.media_height,
+  );
 
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;

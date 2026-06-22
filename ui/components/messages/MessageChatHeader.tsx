@@ -44,17 +44,11 @@ export function MessageChatHeader({ chat, colors }: Props) {
     };
   }, [colors.highlight, lineT]);
 
-  const fullBleedShellStyle = useMemo((): ViewStyle => {
-    return {
-      width: "100%",
-      alignSelf: "stretch",
-    };
-  }, []);
-
   return (
     <View
       style={{
-        ...fullBleedShellStyle,
+        width: "100%",
+        alignSelf: "stretch",
         height: MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
         position: "relative",
         justifyContent: "center",

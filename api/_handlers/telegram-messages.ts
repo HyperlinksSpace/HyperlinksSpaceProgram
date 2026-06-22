@@ -92,6 +92,8 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     peer_user_id: row.peer_user_id ?? null,
     presence_kind: row.presence_kind ?? null,
     presence_at: row.presence_at ?? null,
+    is_pinned: Boolean(row.is_pinned),
+    pin_order: typeof row.pin_order === "string" ? row.pin_order : "0",
   }));
   return { chats, revision: live.revision };
 }

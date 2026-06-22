@@ -14,6 +14,7 @@ export const MESSAGE_BUBBLE_TIME_FONT_SIZE_PX = 11;
 export const MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX = 15;
 export const MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX = 52;
 export const MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX = 8;
+export const MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX = 360;
 
 /** Initial / paginated history page size (scroll up to load older). */
 export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;

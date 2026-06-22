@@ -7,17 +7,23 @@ import { typographyRect15, type ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import { groupSenderDisplayColor } from "./groupSenderColor";
-import type { MessageChatHistoryItem, MessageChatKind, MessageChatReplyPreview } from "./messageChatHistoryTypes";
+import type {
+  MessageChatContentKind,
+  MessageChatHistoryItem,
+  MessageChatKind,
+  MessageChatReplyPreview,
+} from "./messageChatHistoryTypes";
 import { isGroupLikeChatKind } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
-  MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX,
 } from "./messageChatLayout";
-import { MessageChatMediaImage } from "./MessageChatMediaImage";
-import { shouldInlineBubbleTime } from "./messageChatBubbleMeasure";
+import {
+  MessageChatMediaContent,
+  resolveMessageMediaDimensions,
+} from "./MessageChatMediaContent";
 
 type Props = {
   chatId: number;
@@ -30,6 +36,65 @@ type Props = {
 function resolveMediaUrl(chatId: number, messageId: number): string {
   return buildApiUrl(
     `/api/telegram-messages-media?chat_id=${chatId}&message_id=${messageId}`,
+  );
+}
+
+function webTimeTail(timeLabel: string, colors: ThemeColors) {
+  return createElement(
+    "span",
+    {
+      className: "hsp-message-bubble-time-tail",
+      style: {
+        display: "inline-block",
+        verticalAlign: "bottom",
+        height: 0,
+        float: "right",
+        clear: "right",
+      },
+    },
+    createElement(
+      "span",
+      {
+        className: "hsp-message-bubble-time",
+        style: {
+          display: "inline-block",
+          marginLeft: 6,
+          fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+          lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
+          color: colors.secondary,
+          userSelect: "none",
+          whiteSpace: "nowrap",
+        },
+      },
+      timeLabel,
+    ),
+  );
+}
+
+function webBubbleTextBlock(
+  bodyText: string,
+  timeLabel: string,
+  maxWidthPx: number,
+  colors: ThemeColors,
+) {
+  return createElement(
+    "div",
+    {
+      className: "hsp-message-bubble-text-block",
+      style: {
+        display: "flow-root",
+        maxWidth: maxWidthPx,
+        fontFamily: WEB_UI_SANS_STACK,
+        fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+        lineHeight: `${MESSAGE_BUBBLE_LINE_HEIGHT_PX}px`,
+        color: colors.primary,
+        textAlign: "left",
+        whiteSpace: "pre-wrap",
+        overflowWrap: "break-word",
+      },
+    },
+    bodyText || null,
+    timeLabel ? webTimeTail(timeLabel, colors) : null,
   );
 }
 
@@ -107,16 +172,18 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) && !item.is_outgoing && item.sender_name.trim().length > 0;
   const showChannelBadge = Boolean(item.sender_is_channel);
+  const contentKind: MessageChatContentKind = item.content_kind ?? "other";
   const showMedia =
     Boolean(item.has_media) &&
-    (item.content_kind === "photo" ||
-      item.content_kind === "video" ||
-      item.content_kind === "animation");
+    (contentKind === "photo" || contentKind === "video" || contentKind === "animation");
   const mediaUrl = showMedia ? resolveMediaUrl(chatId, item.telegram_message_id) : null;
   const bodyText = item.text.trim();
   const replyTo = item.reply_to ?? null;
-  const mediaWidthPx = Math.min(maxWidthPx, 320);
-  const mediaHeightPx = Math.min(maxWidthPx, 320);
+  const { widthPx: mediaWidthPx, heightPx: mediaHeightPx } = resolveMessageMediaDimensions(
+    maxWidthPx,
+    item.media_width,
+    item.media_height,
+  );
 
   const senderColor = groupSenderDisplayColor(
     item.sender_user_id,
@@ -145,91 +212,8 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
   } as const;
 
-  const inlineTime =
-    Platform.OS === "web" &&
-    bodyText &&
-    timeLabel &&
-    shouldInlineBubbleTime(bodyText, timeLabel, maxWidthPx);
-
-  const webTextBlock =
-    Platform.OS === "web" && (bodyText || (timeLabel && !showMedia))
-      ? createElement(
-          "div",
-          {
-            className: "hsp-message-bubble-text-block",
-            style: {
-              maxWidth: maxWidthPx,
-              fontFamily: WEB_UI_SANS_STACK,
-              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-              lineHeight: `${MESSAGE_BUBBLE_LINE_HEIGHT_PX}px`,
-              color: colors.primary,
-              textAlign: "left",
-              whiteSpace: "pre-wrap",
-              overflowWrap: "break-word",
-            },
-          },
-          inlineTime && timeLabel
-            ? createElement(
-                "span",
-                {
-                  className: "hsp-message-bubble-time",
-                  style: {
-                    float: "right",
-                    clear: "right",
-                    marginLeft: 8,
-                    marginTop: Math.max(
-                      0,
-                      MESSAGE_BUBBLE_LINE_HEIGHT_PX - MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
-                    ),
-                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
-                    color: colors.secondary,
-                    userSelect: "none",
-                    minWidth: MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX,
-                    textAlign: "right",
-                  },
-                },
-                timeLabel,
-              )
-            : null,
-          bodyText || null,
-          !inlineTime && timeLabel && bodyText
-            ? createElement(
-                "div",
-                {
-                  style: {
-                    clear: "both",
-                    textAlign: "right",
-                    marginTop: 2,
-                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
-                    color: colors.secondary,
-                    userSelect: "none",
-                  },
-                },
-                timeLabel,
-              )
-            : null,
-          !bodyText && timeLabel && !showMedia
-            ? createElement(
-                "div",
-                {
-                  style: {
-                    textAlign: "right",
-                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
-                    color: colors.secondary,
-                    userSelect: "none",
-                  },
-                },
-                timeLabel,
-              )
-            : null,
-        )
-      : null;
-
   return (
-    <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start" }}>
+    <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start", width: showMedia ? mediaWidthPx : undefined }}>
       {replyTo ? (
         <MessageChatReplyBlock reply={replyTo} colors={colors} maxWidthPx={maxWidthPx} />
       ) : null}
@@ -270,32 +254,38 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
         <View
           style={{
             marginTop: showSenderHeader || showChannelBadge ? 4 : 0,
-            marginBottom: bodyText ? 8 : 0,
+            marginBottom: bodyText ? 6 : 0,
+            position: "relative",
+            alignSelf: "flex-start",
           }}
         >
-          <MessageChatMediaImage
+          <MessageChatMediaContent
             uri={mediaUrl}
+            contentKind={contentKind}
             widthPx={mediaWidthPx}
             heightPx={mediaHeightPx}
             colors={colors}
           />
-          {Platform.OS === "web" && timeLabel && !bodyText ? (
-            createElement(
-              "div",
-              {
-                style: {
-                  textAlign: "right",
-                  marginTop: 4,
-                  fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-                  lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
-                  color: colors.secondary,
-                  fontFamily: WEB_UI_SANS_STACK,
-                  userSelect: "none",
+          {Platform.OS === "web" && timeLabel && !bodyText
+            ? createElement(
+                "div",
+                {
+                  style: {
+                    position: "absolute",
+                    right: 8,
+                    bottom: 6,
+                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
+                    color: "rgba(255,255,255,0.92)",
+                    fontFamily: WEB_UI_SANS_STACK,
+                    userSelect: "none",
+                    textShadow: "0 1px 2px rgba(0,0,0,0.65)",
+                    pointerEvents: "none",
+                  },
                 },
-              },
-              timeLabel,
-            )
-          ) : null}
+                timeLabel,
+              )
+            : null}
         </View>
       ) : null}
 
@@ -303,18 +293,19 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
         <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: 4 }]}>{timeLabel}</Text>
       ) : null}
 
-      {Platform.OS === "web" ? (
-        webTextBlock
-      ) : bodyText || (timeLabel && !showMedia) ? (
+      {Platform.OS === "web" && (bodyText || (timeLabel && !showMedia))
+        ? webBubbleTextBlock(bodyText, timeLabel, maxWidthPx, colors)
+        : null}
+
+      {Platform.OS !== "web" && (bodyText || (timeLabel && !showMedia)) ? (
         <View style={{ marginTop: showSenderHeader || showChannelBadge || showMedia ? 4 : 0 }}>
           {bodyText ? (
             <Text style={[...textStyle, { textAlign: "left" }]}>{bodyText}</Text>
           ) : null}
-          {timeLabel && bodyText ? (
-            <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: 2 }]}>{timeLabel}</Text>
-          ) : null}
-          {timeLabel && !bodyText && !showMedia ? (
-            <Text style={[metaStyle, { alignSelf: "flex-end" }]}>{timeLabel}</Text>
+          {timeLabel ? (
+            <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: bodyText ? 2 : 0 }]}>
+              {timeLabel}
+            </Text>
           ) : null}
         </View>
       ) : null}

@@ -11,6 +11,7 @@ import { HomeListRowShell } from "../HomeListRowShell";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
+import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import {
   MESSAGE_AVATAR_PX,
@@ -32,6 +33,7 @@ export type MessageChatRowData = {
   peer_user_id?: number | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
   presence_at?: string | null;
+  is_pinned?: boolean;
 };
 
 function resolveAvatarUrl(item: MessageChatRowData): string | null {
@@ -70,12 +72,12 @@ export function MessageChatRow({
   const title = item.title.trim();
   const subtitle = item.subtitle.trim();
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
+  const isPinned = Boolean(item.is_pinned);
   const iconUrl = resolveAvatarUrl(item);
   const parsedClock = formatMessageChatWallClock(item.last_message_at);
   const timeLabel = parsedClock || timePendingLabel;
   const timeIsProvisional = !parsedClock;
   const gapTitleTime = !!(title && timeLabel.trim());
-  const gapSubtitleTrailing = !!(subtitle && trailing);
   const avatarLogOnceRef = useRef(false);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -224,19 +226,17 @@ export function MessageChatRow({
             ellipsizeMode="tail"
             style={{
               ...textBase,
-              flex: trailing ? 1 : 1,
+              flex: 1,
               minWidth: 0,
               color: colors.secondary,
             }}
           >
             {subtitle}
           </Text>
-          {trailing ? (
-            <>
-              {gapSubtitleTrailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
-              <MessageUnreadCountBadge label={trailing} colors={colors} />
-            </>
-          ) : null}
+          {isPinned || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
+          {isPinned ? <MessageChatPinIcon size={14} color={colors.secondary} /> : null}
+          {isPinned && trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
+          {trailing ? <MessageUnreadCountBadge label={trailing} colors={colors} /> : null}
         </View>
       </View>
       </View>

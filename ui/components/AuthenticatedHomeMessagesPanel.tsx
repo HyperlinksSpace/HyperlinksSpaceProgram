@@ -59,6 +59,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
     presence_kind: presenceKind,
     presence_at: presenceAt,
+    is_pinned: Boolean(row.is_pinned),
   };
 }
 
@@ -77,12 +78,24 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
       a.presence_kind !== b.presence_kind ||
-      a.presence_at !== b.presence_at
+      a.presence_at !== b.presence_at ||
+      Boolean(a.is_pinned) !== Boolean(b.is_pinned)
     ) {
       return true;
     }
   }
   return false;
+}
+
+function sortChatRows(rows: MessageChatRowData[]): MessageChatRowData[] {
+  return [...rows].sort((a, b) => {
+    const aPinned = Boolean(a.is_pinned);
+    const bPinned = Boolean(b.is_pinned);
+    if (aPinned !== bPinned) return aPinned ? -1 : 1;
+    const ta = a.last_message_at ? Date.parse(a.last_message_at) : 0;
+    const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
+    return tb - ta;
+  });
 }
 
 const MESSAGES_POLL_MS = 1_500;
@@ -178,6 +191,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         }
       }
       rows.sort((a, b) => {
+        const aPinned = Boolean(a.is_pinned);
+        const bPinned = Boolean(b.is_pinned);
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
         const ta = a.last_message_at ? Date.parse(a.last_message_at) : 0;
         const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
         return tb - ta;
@@ -210,9 +226,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               elapsedMs: Date.now() - started,
             });
           }
-          return changed ? rows : prev;
+          return changed ? sortChatRows(rows) : prev;
         }
-        return rows;
+        return sortChatRows(rows);
       });
       syncAuthenticatedHomeSelectedChat(rows);
       if (!options?.silent) {
