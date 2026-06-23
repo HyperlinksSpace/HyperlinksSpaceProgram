@@ -304,6 +304,9 @@ export function SmartUndercoverMultilineField({
 
   return (
     <View
+      {...(Platform.OS === "web"
+        ? ({ className: "smart-undercover-multiline-field" } as Record<string, string>)
+        : {})}
       style={[
         styles.shell,
         {

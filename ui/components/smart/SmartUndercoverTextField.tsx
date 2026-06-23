@@ -32,6 +32,9 @@ export function SmartUndercoverTextField({
 
   return (
     <View
+      {...(Platform.OS === "web"
+        ? ({ className: "smart-undercover-text-field" } as Record<string, string>)
+        : {})}
       style={[
         styles.shell,
         {

@@ -11,6 +11,7 @@ import { typographyAeroport20, typographyRect15, useColors } from "../../theme";
 import { SmartPurposeMenuWithDivider } from "./SmartPurposeMenuWithDivider";
 import { SmartStandardHelpHint } from "./SmartStandardHelpHint";
 import { SmartCompanySection } from "./SmartCompanySection";
+import { SmartPurposeFields } from "./SmartPurposeFields";
 
 const SUBTITLE_TO_MENU_GAP_PX = 15;
 const MENU_ITEM_GAP_PX = 20;
@@ -171,7 +172,7 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
         <SmartStandardHelpHint labelStyle={{ fontSize: VERSION_FONT_SIZE_PX }} />
       </View>
 
-      {activeKey === "company" ? <SmartCompanySection /> : null}
+      {activeKey === "company" ? <SmartCompanySection /> : <SmartPurposeFields purposeKey={activeKey} />}
     </>
   );
 }
