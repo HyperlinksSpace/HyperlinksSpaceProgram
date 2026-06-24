@@ -333,7 +333,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         style={{
           flex: 1,
           minHeight: 0,
-          width: "100%",
           alignSelf: "stretch",
         }}
         onLayout={onColumnLayout}
@@ -346,7 +345,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       style={{
         flex: 1,
         minHeight: 0,
-        width: "100%",
         alignSelf: "stretch",
       }}
       onLayout={onColumnLayout}

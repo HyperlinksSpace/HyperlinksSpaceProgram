@@ -47,7 +47,6 @@ export function MessageChatHeader({ chat, colors }: Props) {
   return (
     <View
       style={{
-        width: "100%",
         alignSelf: "stretch",
         height: MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
         position: "relative",
