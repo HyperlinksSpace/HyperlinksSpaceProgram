@@ -460,6 +460,7 @@ export async function telegramMessagesHistoryHandler(
     beforeMessageId,
     count: result.messages.length,
     hasMoreOlder: result.hasMoreOlder,
+    nextBeforeMessageId: result.nextBeforeMessageId,
     error: result.error,
     elapsedMs: Date.now() - started,
   });
@@ -468,7 +469,13 @@ export async function telegramMessagesHistoryHandler(
     return finishJson(
       request,
       res,
-      { ok: false, error: result.error, messages: [], has_more_older: false },
+      {
+        ok: false,
+        error: result.error,
+        messages: [],
+        has_more_older: false,
+        next_before_message_id: null,
+      },
       result.error === "session_not_ready" ? 503 : 502,
     );
   }
@@ -481,6 +488,7 @@ export async function telegramMessagesHistoryHandler(
       chat_kind: result.chatKind,
       messages: result.messages,
       has_more_older: result.hasMoreOlder,
+      next_before_message_id: result.nextBeforeMessageId,
     },
     200,
   );

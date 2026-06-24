@@ -950,6 +950,8 @@ export async function getChatHistoryForUser(
 ): Promise<{
   chat_kind: Awaited<ReturnType<typeof fetchChatHistory>>["chat_kind"];
   messages: Awaited<ReturnType<typeof fetchChatHistory>>["messages"];
+  has_more_older: boolean;
+  next_before_message_id: number | null;
   error: string | null;
 }> {
   let record = getActiveRecord(telegramUsername);
@@ -957,14 +959,32 @@ export async function getChatHistoryForUser(
     record = await waitForUserSessionReady(telegramUsername, 30_000);
   }
   if (!record?.client || record.authState !== "ready") {
-    return { chat_kind: "private", messages: [], error: "session_not_ready" };
+    return {
+      chat_kind: "private",
+      messages: [],
+      has_more_older: false,
+      next_before_message_id: null,
+      error: "session_not_ready",
+    };
   }
   try {
     const result = await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
-    return { chat_kind: result.chat_kind, messages: result.messages, error: null };
+    return {
+      chat_kind: result.chat_kind,
+      messages: result.messages,
+      has_more_older: result.has_more_older,
+      next_before_message_id: result.next_before_message_id,
+      error: null,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "history_failed";
-    return { chat_kind: "private", messages: [], error: message };
+    return {
+      chat_kind: "private",
+      messages: [],
+      has_more_older: false,
+      next_before_message_id: null,
+      error: message,
+    };
   }
 }
 

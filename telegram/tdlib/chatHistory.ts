@@ -44,7 +44,12 @@ export async function fetchChatHistory(
   chatId: number,
   limit = 50,
   beforeMessageId?: number | null,
-): Promise<{ chat_kind: ChatKind; messages: MappedChatHistoryMessage[] }> {
+): Promise<{
+  chat_kind: ChatKind;
+  messages: MappedChatHistoryMessage[];
+  has_more_older: boolean;
+  next_before_message_id: number | null;
+}> {
   try {
     await client.invoke({ _: "openChat", chat_id: chatId });
   } catch {
@@ -56,34 +61,91 @@ export async function fetchChatHistory(
     typeof beforeMessageId === "number" &&
     Number.isFinite(beforeMessageId) &&
     beforeMessageId > 0;
+  const rawBatchLimit = Math.min(100, Math.max(pageLimit, 50));
 
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
   const chatKind = chatKindFromTdChat(chat);
 
-  const loadPage = async (): Promise<TdMessage[]> => {
+  const loadPage = async (cursorMessageId?: number | null): Promise<TdMessage[]> => {
     const history = (await client.invoke({
       _: "getChatHistory",
       chat_id: chatId,
-      from_message_id: loadOlder ? beforeMessageId! : 0,
-      offset: loadOlder ? -pageLimit : 0,
-      limit: pageLimit,
+      from_message_id:
+        typeof cursorMessageId === "number" && Number.isFinite(cursorMessageId) && cursorMessageId > 0
+          ? cursorMessageId
+          : 0,
+      offset:
+        typeof cursorMessageId === "number" && Number.isFinite(cursorMessageId) && cursorMessageId > 0
+          ? -rawBatchLimit
+          : 0,
+      limit: rawBatchLimit,
       only_local: false,
     })) as { messages?: TdMessage[] };
     const raw = Array.isArray(history.messages) ? history.messages : [];
     return raw.filter((message) => {
       const telegramMessageId = Number(message.id);
-      if (!loadOlder) return true;
-      if (!Number.isFinite(telegramMessageId)) return false;
-      return telegramMessageId < beforeMessageId!;
+      if (
+        typeof cursorMessageId !== "number" ||
+        !Number.isFinite(cursorMessageId) ||
+        cursorMessageId <= 0
+      ) {
+        return true;
+      }
+      return Number.isFinite(telegramMessageId) && telegramMessageId < cursorMessageId;
     });
   };
 
-  let raw = await loadPage();
-  if (!loadOlder && raw.length < Math.min(pageLimit, 5)) {
+  let raw = await loadPage(loadOlder ? beforeMessageId! : null);
+  if (!loadOlder && raw.length < Math.min(rawBatchLimit, 5)) {
     await sleep(600);
-    raw = await loadPage();
+    raw = await loadPage(null);
+  }
+  const mappedById = new Map<number, MappedChatHistoryMessage>();
+  let currentRaw = raw;
+  let nextBeforeMessageId: number | null = null;
+  let hasMoreOlder = false;
+  let batches = 0;
+
+  while (currentRaw.length > 0 && batches < 10) {
+    const mapped = await mapHistoryBatch(client, currentRaw, chat);
+    for (const row of mapped) {
+      mappedById.set(row.telegram_message_id, row);
+    }
+
+    const oldestRawMessageId = currentRaw.reduce<number | null>((oldest, message) => {
+      const telegramMessageId = Number(message.id);
+      if (!Number.isFinite(telegramMessageId) || telegramMessageId <= 0) return oldest;
+      if (oldest == null || telegramMessageId < oldest) return telegramMessageId;
+      return oldest;
+    }, null);
+
+    if (oldestRawMessageId == null) {
+      hasMoreOlder = false;
+      break;
+    }
+
+    nextBeforeMessageId = oldestRawMessageId;
+    hasMoreOlder = currentRaw.length >= rawBatchLimit;
+    if (mappedById.size >= pageLimit || !hasMoreOlder) {
+      break;
+    }
+
+    currentRaw = await loadPage(nextBeforeMessageId);
+    batches += 1;
   }
 
-  const messages = await mapHistoryBatch(client, raw, chat);
-  return { chat_kind: chatKind, messages };
+  const messages = [...mappedById.values()]
+    .sort((a, b) => {
+      const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
+      if (byTime !== 0) return byTime;
+      return a.telegram_message_id - b.telegram_message_id;
+    })
+    .slice(-pageLimit);
+
+  return {
+    chat_kind: chatKind,
+    messages,
+    has_more_older: hasMoreOlder,
+    next_before_message_id: hasMoreOlder ? nextBeforeMessageId : null,
+  };
 }

@@ -122,6 +122,7 @@ async function fetchChatHistoryPage(
   chatKind: MessageChatKind | null;
   error: string | null;
   hasMoreOlder: boolean;
+  nextBeforeMessageId: number | null;
 }> {
   const params = new URLSearchParams({
     chat_id: String(chatId),
@@ -141,6 +142,7 @@ async function fetchChatHistoryPage(
     messages?: unknown[];
     chat_kind?: unknown;
     has_more_older?: boolean;
+    next_before_message_id?: number;
     error?: string;
   };
   if (!response.ok || !json.ok) {
@@ -149,6 +151,7 @@ async function fetchChatHistoryPage(
       chatKind: null,
       error: json.error || `HTTP_${response.status}`,
       hasMoreOlder: false,
+      nextBeforeMessageId: null,
     };
   }
   const rows: MessageChatHistoryItem[] = [];
@@ -163,6 +166,12 @@ async function fetchChatHistoryPage(
     chatKind: normalizeChatKind(json.chat_kind),
     error: null,
     hasMoreOlder: Boolean(json.has_more_older),
+    nextBeforeMessageId:
+      typeof json.next_before_message_id === "number" &&
+      Number.isFinite(json.next_before_message_id) &&
+      json.next_before_message_id > 0
+        ? json.next_before_message_id
+        : null,
   };
 }
 
@@ -179,6 +188,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [loadingInitial, setLoadingInitial] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [nextBeforeMessageId, setNextBeforeMessageId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [columnWidthPx, setColumnWidthPx] = useState(0);
   const scrollControllerRef = useRef<HspScrollColumnHandle | null>(null);
@@ -204,6 +214,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       setLoadingInitial(false);
       setLoadingOlder(false);
       setHasMoreOlder(false);
+      setNextBeforeMessageId(null);
       return;
     }
 
@@ -214,6 +225,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     setMessages([]);
     setChatKind(null);
     setHasMoreOlder(false);
+    setNextBeforeMessageId(null);
 
     void (async () => {
       try {
@@ -240,6 +252,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         setMessages(result.messages);
         setChatKind(result.chatKind);
         setHasMoreOlder(result.hasMoreOlder);
+        setNextBeforeMessageId(result.nextBeforeMessageId);
         scrollToBottom();
       } catch (e) {
         if (cancelled) return;
@@ -247,6 +260,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         setError(message);
         setMessages([]);
         setHasMoreOlder(false);
+        setNextBeforeMessageId(null);
       } finally {
         if (!cancelled) setLoadingInitial(false);
       }
@@ -269,12 +283,10 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       loadingInitial ||
       loadingOlderRef.current ||
       !hasMoreOlder ||
-      messages.length === 0
+      nextBeforeMessageId == null
     ) {
       return;
     }
-    const oldest = messages[0];
-    if (!oldest) return;
 
     loadingOlderRef.current = true;
     setLoadingOlder(true);
@@ -284,7 +296,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       let result = await fetchChatHistoryPage(
         chat.telegram_chat_id,
         MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-        oldest.telegram_message_id,
+        nextBeforeMessageId,
       );
       if (
         result.error === "session_not_ready" ||
@@ -294,13 +306,14 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-          oldest.telegram_message_id,
+          nextBeforeMessageId,
         );
       }
       if (result.error) return;
 
       setMessages((prev) => mergeHistoryMessages(prev, result.messages));
       setHasMoreOlder(result.hasMoreOlder);
+      setNextBeforeMessageId(result.nextBeforeMessageId);
 
       if (metricsBefore) {
         requestAnimationFrame(() => {
@@ -316,7 +329,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
-  }, [chat.telegram_chat_id, hasMoreOlder, loadingInitial, messages]);
+  }, [chat.telegram_chat_id, hasMoreOlder, loadingInitial, nextBeforeMessageId]);
 
   const handleNearTop = useCallback(() => {
     void loadOlderMessages();

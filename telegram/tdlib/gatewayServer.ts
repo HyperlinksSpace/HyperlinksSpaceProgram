@@ -223,16 +223,18 @@ export function startTdlibGatewayServer(): http.Server {
               chatId,
               beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
               count: result.messages.length,
+              hasMoreOlder: result.has_more_older,
+              nextBeforeMessageId: result.next_before_message_id,
               error: result.error,
               elapsedMs: Date.now() - started,
             })}`,
           );
-          const pageLimit = Math.min(Math.max(Number.isFinite(limit) ? limit : 50, 1), 100);
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             chat_kind: result.chat_kind,
             messages: result.messages,
-            has_more_older: !result.error && result.messages.length >= pageLimit,
+            has_more_older: !result.error && result.has_more_older,
+            next_before_message_id: result.next_before_message_id,
             error: result.error,
           });
           return;

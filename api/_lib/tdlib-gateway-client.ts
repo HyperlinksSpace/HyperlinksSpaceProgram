@@ -288,6 +288,7 @@ export async function gatewayFetchChatMessages(
   chatKind: string | null;
   error: string | null;
   hasMoreOlder: boolean;
+  nextBeforeMessageId: number | null;
 }> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
@@ -314,6 +315,7 @@ export async function gatewayFetchChatMessages(
       messages?: Record<string, unknown>[];
       chat_kind?: string;
       has_more_older?: boolean;
+      next_before_message_id?: number;
       error?: string;
     };
     if (!response.ok || !json.ok) {
@@ -322,6 +324,7 @@ export async function gatewayFetchChatMessages(
         chatKind: null,
         error: json.error ?? "history_unavailable",
         hasMoreOlder: false,
+        nextBeforeMessageId: null,
       };
     }
     return {
@@ -329,6 +332,12 @@ export async function gatewayFetchChatMessages(
       chatKind: typeof json.chat_kind === "string" ? json.chat_kind : null,
       error: null,
       hasMoreOlder: Boolean(json.has_more_older),
+      nextBeforeMessageId:
+        typeof json.next_before_message_id === "number" &&
+        Number.isFinite(json.next_before_message_id) &&
+        json.next_before_message_id > 0
+          ? json.next_before_message_id
+          : null,
     };
   } catch (err) {
     return {
@@ -336,6 +345,7 @@ export async function gatewayFetchChatMessages(
       chatKind: null,
       error: err instanceof Error ? err.message : "gateway_unreachable",
       hasMoreOlder: false,
+      nextBeforeMessageId: null,
     };
   }
 }

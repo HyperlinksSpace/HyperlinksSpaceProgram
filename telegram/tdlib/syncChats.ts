@@ -38,13 +38,18 @@ function sleep(ms: number): Promise<void> {
 async function loadAllChats(client: Client): Promise<TdChat[]> {
   const chatList = { _: "chatListMain" as const };
   const collected = new Map<number, TdChat>();
+  let offsetOrder = "9223372036854775807";
+  let offsetChatId = 0;
+  let warmedUp = false;
 
-  for (let round = 0; round < 40; round++) {
+  for (let round = 0; round < 80; round++) {
     let list: { chat_ids?: number[] };
     try {
       list = (await client.invoke({
         _: "getChats",
         chat_list: chatList,
+        offset_order: offsetOrder,
+        offset_chat_id: offsetChatId,
         limit: 100,
       })) as { chat_ids?: number[] };
     } catch {
@@ -53,6 +58,8 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
 
     const ids = list.chat_ids ?? [];
     if (ids.length === 0) {
+      if (warmedUp) break;
+      warmedUp = true;
       try {
         await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
       } catch {
@@ -73,13 +80,16 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
     }
 
     if (ids.length < 100) break;
-    const oldest = ids[ids.length - 1];
-    try {
-      await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100, offset_chat_id: oldest });
-    } catch {
-      break;
-    }
-    await sleep(300);
+    const lastChat = [...ids]
+      .reverse()
+      .map((chatId) => collected.get(chatId))
+      .find((chat): chat is TdChat => Boolean(chat));
+    if (!lastChat) break;
+    const nextOffsetOrder = mainListOrderKey(lastChat);
+    if (!nextOffsetOrder || nextOffsetOrder === "0") break;
+    if (nextOffsetOrder === offsetOrder && lastChat.id === offsetChatId) break;
+    offsetOrder = nextOffsetOrder;
+    offsetChatId = lastChat.id;
   }
 
   return [...collected.values()];
