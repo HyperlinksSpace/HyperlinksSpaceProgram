@@ -223,6 +223,10 @@ textarea[data-ai-input="true"] {
 }
 
 #smart-company-title-input,
+#smart-agreement-title-input,
+#smart-investment-title-input,
+#smart-revenue-title-input,
+#smart-partners-title-input,
 .smart-undercover-text-input {
   border: none !important;
   box-shadow: none !important;
@@ -234,6 +238,22 @@ textarea[data-ai-input="true"] {
 #smart-company-title-input:-webkit-autofill:hover,
 #smart-company-title-input:-webkit-autofill:focus,
 #smart-company-title-input:-webkit-autofill:active,
+#smart-agreement-title-input:-webkit-autofill,
+#smart-agreement-title-input:-webkit-autofill:hover,
+#smart-agreement-title-input:-webkit-autofill:focus,
+#smart-agreement-title-input:-webkit-autofill:active,
+#smart-investment-title-input:-webkit-autofill,
+#smart-investment-title-input:-webkit-autofill:hover,
+#smart-investment-title-input:-webkit-autofill:focus,
+#smart-investment-title-input:-webkit-autofill:active,
+#smart-revenue-title-input:-webkit-autofill,
+#smart-revenue-title-input:-webkit-autofill:hover,
+#smart-revenue-title-input:-webkit-autofill:focus,
+#smart-revenue-title-input:-webkit-autofill:active,
+#smart-partners-title-input:-webkit-autofill,
+#smart-partners-title-input:-webkit-autofill:hover,
+#smart-partners-title-input:-webkit-autofill:focus,
+#smart-partners-title-input:-webkit-autofill:active,
 .smart-undercover-text-input:-webkit-autofill,
 .smart-undercover-text-input:-webkit-autofill:hover,
 .smart-undercover-text-input:-webkit-autofill:focus,
@@ -245,6 +265,10 @@ textarea[data-ai-input="true"] {
 }
 
 #smart-company-text-input,
+#smart-agreement-text-input,
+#smart-investment-text-input,
+#smart-revenue-text-input,
+#smart-partners-text-input,
 .smart-undercover-multiline-input {
   border: none !important;
   box-shadow: none !important;
@@ -254,6 +278,10 @@ textarea[data-ai-input="true"] {
 }
 
 #smart-company-text-input::-webkit-scrollbar,
+#smart-agreement-text-input::-webkit-scrollbar,
+#smart-investment-text-input::-webkit-scrollbar,
+#smart-revenue-text-input::-webkit-scrollbar,
+#smart-partners-text-input::-webkit-scrollbar,
 .smart-undercover-multiline-input::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -261,8 +289,11 @@ textarea[data-ai-input="true"] {
 }
 
 #smart-company-text-input::placeholder,
+#smart-agreement-text-input::placeholder,
+#smart-investment-text-input::placeholder,
+#smart-revenue-text-input::placeholder,
+#smart-partners-text-input::placeholder,
 .smart-undercover-multiline-input::placeholder {
   font-size: 15px;
   line-height: 30px;
 }
-

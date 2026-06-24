@@ -172,7 +172,11 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
         <SmartStandardHelpHint labelStyle={{ fontSize: VERSION_FONT_SIZE_PX }} />
       </View>
 
-      {activeKey === "company" ? <SmartCompanySection /> : <SmartPurposeFields purposeKey={activeKey} />}
+      {activeKey === "company" ? (
+        <SmartCompanySection />
+      ) : (
+        <SmartPurposeFields key={activeKey} purposeKey={activeKey} />
+      )}
     </>
   );
 }

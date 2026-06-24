@@ -6,13 +6,9 @@ import { typographyRect15, useColors } from "../../theme";
 import { SmartFormBottomTextLane } from "./SmartFormBottomTextLane";
 import { SmartFounderBlock } from "./SmartFounderBlock";
 import { SmartFounderCountStepper } from "./SmartFounderCountStepper";
+import { SmartTitleTextSection } from "./SmartTitleTextSection";
 import { createFounderFields, type FounderFieldState } from "./smartFounderUtils";
-import { SmartUndercoverMultilineField } from "./SmartUndercoverMultilineField";
-import { SmartUndercoverTextField } from "./SmartUndercoverTextField";
 
-const VERSION_TO_TITLE_GAP_PX = 30;
-const LABEL_TO_INPUT_GAP_PX = 10;
-const TITLE_TO_TEXT_SECTION_GAP_PX = 20;
 const TEXT_FORM_TO_LOGO_GAP_PX = 30;
 const LOGO_LABEL_TO_BUTTON_GAP_PX = 15;
 const BUTTON_TO_FOUNDERS_GAP_PX = 30;
@@ -66,29 +62,16 @@ export function SmartCompanySection() {
 
   return (
     <>
-      <View style={{ height: VERSION_TO_TITLE_GAP_PX }} />
-
-      <Text style={sectionLabelStyle(colors.primary)}>{t("smart.company.titleLabel")}</Text>
-
-      <View style={{ height: LABEL_TO_INPUT_GAP_PX }} />
-
-      <SmartUndercoverTextField
-        nativeID={SMART_COMPANY_TITLE_INPUT_ID}
-        value={title}
-        onChangeText={setTitle}
-      />
-
-      <View style={{ height: TITLE_TO_TEXT_SECTION_GAP_PX }} />
-
-      <Text style={sectionLabelStyle(colors.primary)}>{t("smart.company.textLabel")}</Text>
-
-      <View style={{ height: LABEL_TO_INPUT_GAP_PX }} />
-
-      <SmartUndercoverMultilineField
-        nativeID={SMART_COMPANY_TEXT_INPUT_ID}
-        value={bodyText}
+      <SmartTitleTextSection
+        title={title}
+        text={bodyText}
+        titleLabel={t("smart.company.titleLabel")}
+        textLabel={t("smart.company.textLabel")}
+        textPlaceholder={t("smart.company.textPlaceholder")}
+        titleInputId={SMART_COMPANY_TITLE_INPUT_ID}
+        textInputId={SMART_COMPANY_TEXT_INPUT_ID}
+        onChangeTitle={setTitle}
         onChangeText={setBodyText}
-        placeholder={t("smart.company.textPlaceholder")}
       />
 
       <View style={{ height: TEXT_FORM_TO_LOGO_GAP_PX }} />

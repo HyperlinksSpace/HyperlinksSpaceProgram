@@ -241,6 +241,10 @@ const en = {
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
   "smart.company.titleLabel": "Title*",
   "smart.company.titleDefault": "Company Smart Deal v.1 №123",
+  "smart.agreement.titleDefault": "Agreement Smart Deal v.1 №123",
+  "smart.investment.titleDefault": "Investment Smart Deal v.1 №123",
+  "smart.revenue.titleDefault": "Revenue Smart Deal v.1 №123",
+  "smart.partners.titleDefault": "Partners Smart Deal v.1 №123",
   "smart.company.textLabel": "Text",
   "smart.company.textPlaceholder":
     "e.g. Hyperlinks.Space: The core for a multi-planetary future\nHerewith we agree to create a company on the following terms...",
@@ -554,6 +558,10 @@ const ru = {
   "smart.dealVersion.partners": "Partners Smart Deal v.1",
   "smart.company.titleLabel": "Title*",
   "smart.company.titleDefault": "Company Smart Deal v.1 №123",
+  "smart.agreement.titleDefault": "Agreement Smart Deal v.1 №123",
+  "smart.investment.titleDefault": "Investment Smart Deal v.1 №123",
+  "smart.revenue.titleDefault": "Revenue Smart Deal v.1 №123",
+  "smart.partners.titleDefault": "Partners Smart Deal v.1 №123",
   "smart.company.textLabel": "Text",
   "smart.company.textPlaceholder":
     "e.g. Hyperlinks.Space: The core for a multi-planetary future\nHerewith we agree to create a company on the following terms...",
