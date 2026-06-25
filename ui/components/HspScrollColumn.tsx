@@ -96,6 +96,19 @@ export function HspScrollColumn({
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
   scrollMetricsRef.current = scroll;
 
+  const syncNearTopLatch = useCallback(
+    (scrollY: number) => {
+      if (!onNearTop) {
+        nearTopFiredRef.current = false;
+        return;
+      }
+      if (scrollY > nearTopThresholdPx) {
+        nearTopFiredRef.current = false;
+      }
+    },
+    [nearTopThresholdPx, onNearTop],
+  );
+
   const syncScrollMetricsFromDom = useCallback(() => {
     if (Platform.OS !== "web") return;
     const instance = scrollRef.current as unknown as {
@@ -108,13 +121,14 @@ export function HspScrollColumn({
     const scrollYRaw = el.scrollTop;
     const scrollY = scrollYRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : scrollYRaw;
     if (layoutH <= 0) return;
+    syncNearTopLatch(scrollY);
     setScroll((prev) => ({
       ...prev,
       layoutH,
       scrollY,
       ...(contentH > 0 ? { contentH } : {}),
     }));
-  }, []);
+  }, [syncNearTopLatch]);
 
   /** Reset scroll only on first mount — not when `children` change (e.g. split-pane resize reflow). */
   const didMountScrollResetRef = useRef(false);
@@ -132,6 +146,7 @@ export function HspScrollColumn({
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
     setScroll((prev) => ({ ...prev, scrollY: 0 }));
+    syncNearTopLatch(0);
     if (Platform.OS !== "web") return;
     syncScrollMetricsFromDom();
     const id = requestAnimationFrame(() => {
@@ -139,7 +154,7 @@ export function HspScrollColumn({
       requestAnimationFrame(syncScrollMetricsFromDom);
     });
     return () => cancelAnimationFrame(id);
-  }, [initialScrollPosition, syncScrollMetricsFromDom]);
+  }, [initialScrollPosition, syncNearTopLatch, syncScrollMetricsFromDom]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -277,6 +292,7 @@ export function HspScrollColumn({
           scrollRef.current?.scrollTo({ y: 0, animated: false });
         }
         setScroll((prev) => ({ ...prev, scrollY: 0 }));
+        syncNearTopLatch(0);
       });
     }
     if (Platform.OS === "web") {
@@ -306,9 +322,10 @@ export function HspScrollColumn({
         if (el) el.scrollTop = clamped;
       }
       scrollRef.current?.scrollTo({ y: clamped, animated: false });
+      syncNearTopLatch(clamped);
       setScroll((prev) => ({ ...prev, scrollY: clamped }));
     },
-    [],
+    [syncNearTopLatch],
   );
 
   const scrollToEnd = useCallback(() => {
@@ -328,11 +345,12 @@ export function HspScrollColumn({
           contentH: contentH > 0 ? contentH : prev.contentH,
           scrollY: y,
         }));
+        syncNearTopLatch(y);
         return;
       }
     }
     scrollRef.current?.scrollToEnd({ animated: false });
-  }, []);
+  }, [syncNearTopLatch]);
 
   useEffect(() => {
     if (!scrollControllerRef) return;
