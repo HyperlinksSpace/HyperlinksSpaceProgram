@@ -229,7 +229,7 @@ export function MessageChatRow({
               ...textBase,
               flex: 1,
               minWidth: 0,
-              color: colors.accent,
+              color: colors.primary,
             }}
           >
             {subtitle}

@@ -1,4 +1,5 @@
 Emojis rendering, fix time, writing messages, photos and videos, messages loading
+AI column scrolling indicator
 Back button on choose currency screen
 Bot instead of the status in bot
 Time in messages
