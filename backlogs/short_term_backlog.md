@@ -1,3 +1,5 @@
+Make logs more compact
+Chat history
 Emojis rendering, fix time, writing messages, photos and videos, messages loading
 AI column scrolling indicator
 Back button on choose currency screen

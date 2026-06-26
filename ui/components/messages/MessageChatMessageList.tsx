@@ -101,9 +101,11 @@ function mergeHistoryMessages(
   const byId = new Map<number, MessageChatHistoryItem>();
   for (const row of existing) byId.set(row.telegram_message_id, row);
   for (const row of incoming) byId.set(row.telegram_message_id, row);
-  return [...byId.values()].sort(
-    (a, b) => Date.parse(a.sent_at) - Date.parse(b.sent_at),
-  );
+  return [...byId.values()].sort((a, b) => {
+    const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
+    if (byTime !== 0) return byTime;
+    return a.telegram_message_id - b.telegram_message_id;
+  });
 }
 
 async function warmupTelegramSession(): Promise<void> {
@@ -293,31 +295,46 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     const metricsBefore = scrollControllerRef.current?.getMetrics();
+    let cursorBeforeMessageId = nextBeforeMessageId;
+    let keepLoading = true;
+    let totalAdded = 0;
 
     try {
-      let result = await fetchChatHistoryPage(
-        chat.telegram_chat_id,
-        MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-        nextBeforeMessageId,
-      );
-      if (
-        result.error === "session_not_ready" ||
-        result.error === "history_unavailable"
-      ) {
-        await warmupTelegramSession();
-        result = await fetchChatHistoryPage(
+      while (keepLoading && cursorBeforeMessageId != null) {
+        let result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-          nextBeforeMessageId,
+          cursorBeforeMessageId,
         );
+        if (
+          result.error === "session_not_ready" ||
+          result.error === "history_unavailable"
+        ) {
+          await warmupTelegramSession();
+          result = await fetchChatHistoryPage(
+            chat.telegram_chat_id,
+            MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+            cursorBeforeMessageId,
+          );
+        }
+        if (result.error) break;
+
+        const addedThisBatch = result.messages.length;
+        totalAdded += addedThisBatch;
+        setMessages((prev) => mergeHistoryMessages(prev, result.messages));
+        setHasMoreOlder(result.hasMoreOlder);
+        setNextBeforeMessageId(result.nextBeforeMessageId);
+
+        keepLoading =
+          result.hasMoreOlder &&
+          result.nextBeforeMessageId != null &&
+          addedThisBatch > 0 &&
+          addedThisBatch < MESSAGE_CHAT_HISTORY_PAGE_SIZE &&
+          totalAdded < MESSAGE_CHAT_HISTORY_PAGE_SIZE;
+        cursorBeforeMessageId = result.nextBeforeMessageId;
       }
-      if (result.error) return;
 
-      setMessages((prev) => mergeHistoryMessages(prev, result.messages));
-      setHasMoreOlder(result.hasMoreOlder);
-      setNextBeforeMessageId(result.nextBeforeMessageId);
-
-      if (metricsBefore) {
+      if (metricsBefore && totalAdded > 0) {
         requestAnimationFrame(() => {
           const metricsAfter = scrollControllerRef.current?.getMetrics();
           if (!metricsAfter) return;
@@ -331,6 +348,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
               Math.max(0, metricsBefore.scrollY + delta - revealPx),
             );
           }
+          scrollControllerRef.current?.clearNearTopLatch();
         });
       }
     } finally {

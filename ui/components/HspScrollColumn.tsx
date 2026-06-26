@@ -41,6 +41,8 @@ export type HspScrollColumnHandle = {
   scrollToEnd: () => void;
   scrollToY: (y: number) => void;
   getMetrics: () => HspScrollMetrics;
+  /** Allow {@link onNearTop} to fire again after prepending content near the top. */
+  clearNearTopLatch: () => void;
 };
 
 type Props = {
@@ -362,6 +364,9 @@ export function HspScrollColumn({
         contentH: scrollMetricsRef.current.contentH,
         scrollY: scrollMetricsRef.current.scrollY,
       }),
+      clearNearTopLatch: () => {
+        nearTopFiredRef.current = false;
+      },
     };
     (scrollControllerRef as MutableRefObject<HspScrollColumnHandle | null>).current = controller;
     return () => {

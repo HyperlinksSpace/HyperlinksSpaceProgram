@@ -13,6 +13,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function sortHistoryMessages(rows: MappedChatHistoryMessage[]): MappedChatHistoryMessage[] {
+  return [...rows].sort((a, b) => {
+    const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
+    if (byTime !== 0) return byTime;
+    return a.telegram_message_id - b.telegram_message_id;
+  });
+}
+
+function oldestRawMessageId(messages: TdMessage[]): number | null {
+  let oldest: number | null = null;
+  for (const message of messages) {
+    const telegramMessageId = Number(message.id);
+    if (!Number.isFinite(telegramMessageId) || telegramMessageId <= 0) continue;
+    if (oldest == null || telegramMessageId < oldest) oldest = telegramMessageId;
+  }
+  return oldest;
+}
+
 async function mapHistoryBatch(
   client: Client,
   messages: TdMessage[],
@@ -31,12 +49,7 @@ async function mapHistoryBatch(
     seenIds.add(row.telegram_message_id);
     rows.push(row);
   }
-  rows.sort((a, b) => {
-    const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
-    if (byTime !== 0) return byTime;
-    return a.telegram_message_id - b.telegram_message_id;
-  });
-  return rows;
+  return sortHistoryMessages(rows);
 }
 
 export async function fetchChatHistory(
@@ -71,11 +84,15 @@ export async function fetchChatHistory(
       _: "getChatHistory",
       chat_id: chatId,
       from_message_id:
-        typeof cursorMessageId === "number" && Number.isFinite(cursorMessageId) && cursorMessageId > 0
+        typeof cursorMessageId === "number" &&
+        Number.isFinite(cursorMessageId) &&
+        cursorMessageId > 0
           ? cursorMessageId
           : 0,
       offset:
-        typeof cursorMessageId === "number" && Number.isFinite(cursorMessageId) && cursorMessageId > 0
+        typeof cursorMessageId === "number" &&
+        Number.isFinite(cursorMessageId) &&
+        cursorMessageId > 0
           ? -rawBatchLimit
           : 0,
       limit: rawBatchLimit,
@@ -95,57 +112,54 @@ export async function fetchChatHistory(
     });
   };
 
-  let raw = await loadPage(loadOlder ? beforeMessageId! : null);
-  if (!loadOlder && raw.length < Math.min(rawBatchLimit, 5)) {
-    await sleep(600);
-    raw = await loadPage(null);
-  }
   const mappedById = new Map<number, MappedChatHistoryMessage>();
-  let currentRaw = raw;
-  let nextBeforeMessageId: number | null = null;
-  let hasMoreOlder = false;
+  let cursorMessageId: number | null = loadOlder ? beforeMessageId! : null;
+  let lastBatchWasFull = false;
   let batches = 0;
+  const maxBatches = 20;
 
-  while (currentRaw.length > 0 && batches < 10) {
-    const mapped = await mapHistoryBatch(client, currentRaw, chat);
+  while (batches < maxBatches) {
+    let raw = await loadPage(cursorMessageId);
+    if (!loadOlder && batches === 0 && raw.length < Math.min(rawBatchLimit, 5)) {
+      await sleep(600);
+      raw = await loadPage(null);
+    }
+    if (raw.length === 0) {
+      lastBatchWasFull = false;
+      break;
+    }
+
+    lastBatchWasFull = raw.length >= rawBatchLimit;
+    const mapped = await mapHistoryBatch(client, raw, chat);
     for (const row of mapped) {
       mappedById.set(row.telegram_message_id, row);
     }
 
-    const oldestRawMessageId = currentRaw.reduce<number | null>((oldest, message) => {
-      const telegramMessageId = Number(message.id);
-      if (!Number.isFinite(telegramMessageId) || telegramMessageId <= 0) return oldest;
-      if (oldest == null || telegramMessageId < oldest) return telegramMessageId;
-      return oldest;
-    }, null);
-
-    if (oldestRawMessageId == null) {
-      hasMoreOlder = false;
+    if (mappedById.size >= pageLimit || !lastBatchWasFull) {
       break;
     }
 
-    nextBeforeMessageId = oldestRawMessageId;
-    hasMoreOlder = currentRaw.length >= rawBatchLimit;
-    if (mappedById.size >= pageLimit || !hasMoreOlder) {
+    const oldestRawId = oldestRawMessageId(raw);
+    if (oldestRawId == null) {
+      lastBatchWasFull = false;
       break;
     }
-
-    currentRaw = await loadPage(nextBeforeMessageId);
+    cursorMessageId = oldestRawId;
     batches += 1;
   }
 
-  const messages = [...mappedById.values()]
-    .sort((a, b) => {
-      const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
-      if (byTime !== 0) return byTime;
-      return a.telegram_message_id - b.telegram_message_id;
-    })
-    .slice(-pageLimit);
+  const sorted = sortHistoryMessages([...mappedById.values()]);
+  const messages = sorted.slice(-pageLimit);
+  const oldestReturnedId = messages[0]?.telegram_message_id ?? null;
+  const hasMoreOlder =
+    sorted.length > pageLimit ||
+    (lastBatchWasFull && oldestReturnedId != null);
 
   return {
     chat_kind: chatKind,
     messages,
     has_more_older: hasMoreOlder,
-    next_before_message_id: hasMoreOlder ? nextBeforeMessageId : null,
+    next_before_message_id:
+      hasMoreOlder && oldestReturnedId != null ? oldestReturnedId : null,
   };
 }
