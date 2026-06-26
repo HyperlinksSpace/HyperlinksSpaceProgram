@@ -68,7 +68,7 @@ function writeStoredChat(chat: MessageChatRowData | null): void {
 }
 
 let selectedChat: MessageChatRowData | null = null;
-/** Session-only: history fetch runs only after an explicit chat row click. */
+/** Persisted: restore the opened chat and resume its history on reload. */
 let historyLoadChatId: number | null = null;
 let historyLoadGeneration = 0;
 let historyLoadSnapshot: AuthenticatedHomeHistoryLoadTarget = HISTORY_LOAD_SNAPSHOT_IDLE;
@@ -91,6 +91,11 @@ function hydrateFromStorageIfNeeded() {
   if (hydratedFromStorage) return;
   hydratedFromStorage = true;
   selectedChat = readStoredChat();
+  if (selectedChat && historyLoadGeneration === 0) {
+    historyLoadChatId = selectedChat.telegram_chat_id;
+    historyLoadGeneration = 1;
+    syncHistoryLoadSnapshot();
+  }
 }
 
 function emit() {
@@ -169,7 +174,7 @@ function getHistoryLoadServerSnapshot(): AuthenticatedHomeHistoryLoadTarget {
   return HISTORY_LOAD_SNAPSHOT_IDLE;
 }
 
-/** Set only by {@link openAuthenticatedHomeChatHistory} (explicit chat click). */
+/** Resumes from storage on reload and increments on explicit chat clicks. */
 export function useAuthenticatedHomeHistoryLoadTarget(): AuthenticatedHomeHistoryLoadTarget {
   return useSyncExternalStore(
     subscribe,

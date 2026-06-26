@@ -73,6 +73,7 @@ export function MessageChatRow({
   const subtitle = item.subtitle.trim();
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
+  const showPin = isPinned && !trailing;
   const iconUrl = resolveAvatarUrl(item);
   const parsedClock = formatMessageChatWallClock(item.last_message_at);
   const timeLabel = parsedClock || timePendingLabel;
@@ -233,9 +234,8 @@ export function MessageChatRow({
           >
             {subtitle}
           </Text>
-          {isPinned || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
-          {isPinned ? <MessageChatPinIcon size={14} color={colors.secondary} /> : null}
-          {isPinned && trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
+          {showPin || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
+          {showPin ? <MessageChatPinIcon size={20} color={colors.accent} /> : null}
           {trailing ? <MessageUnreadCountBadge label={trailing} colors={colors} /> : null}
         </View>
       </View>

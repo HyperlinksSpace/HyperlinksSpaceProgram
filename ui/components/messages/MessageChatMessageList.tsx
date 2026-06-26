@@ -26,6 +26,8 @@ type Props = {
   colors: ThemeColors;
 };
 
+const MESSAGE_CHAT_OLDER_REVEAL_PX = 220;
+
 function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
@@ -321,7 +323,13 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           if (!metricsAfter) return;
           const delta = metricsAfter.contentH - metricsBefore.contentH;
           if (delta > 0) {
-            scrollControllerRef.current?.scrollToY(metricsBefore.scrollY + delta);
+            const revealPx =
+              metricsBefore.scrollY <= MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX
+                ? MESSAGE_CHAT_OLDER_REVEAL_PX
+                : 0;
+            scrollControllerRef.current?.scrollToY(
+              Math.max(0, metricsBefore.scrollY + delta - revealPx),
+            );
           }
         });
       }

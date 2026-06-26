@@ -1,18 +1,40 @@
-import Svg, { Path } from "react-native-svg";
+import Svg, { Rect } from "react-native-svg";
 
 type Props = {
   size?: number;
   color: string;
 };
 
-/** Small pushpin for pinned chats in the list (Telegram-style). */
-export function MessageChatPinIcon({ size = 14, color }: Props) {
+const PIN_PIXELS = [
+  [5, 14],
+  [4, 15],
+  [6, 13],
+  [7, 12],
+  [8, 11],
+  [14, 5],
+  [15, 6],
+  [13, 4],
+  [12, 5],
+  [11, 6],
+  [10, 7],
+  [8, 8],
+  [9, 9],
+  [10, 10],
+  [11, 11],
+  [12, 12],
+  [7, 7],
+  [14, 7],
+  [13, 8],
+  [12, 9],
+] as const;
+
+/** Pixel pin icon from `assets/pin.svg` in a 20x20 transparent box. */
+export function MessageChatPinIcon({ size = 20, color }: Props) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M16 12V4h1c.55 0 1-.45 1-1s-.45-1-1-1H8c-.55 0-1 .45-1 1s.45 1 1 1h1v8c0 1.1-.9 2-2 2H5v2h5.2c.38 1.12 1.44 1.93 2.8 1.93s2.42-.81 2.8-1.93H19v-2h-2c-1.1 0-2-.9-2-2z"
-        fill={color}
-      />
+    <Svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+      {PIN_PIXELS.map(([x, y]) => (
+        <Rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={color} />
+      ))}
     </Svg>
   );
 }
