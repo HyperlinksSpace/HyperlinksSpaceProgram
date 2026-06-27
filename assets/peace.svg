@@ -1,0 +1,14 @@
+<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hspPeaceBg" x1="2" y1="2" x2="18" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B39DDB"/>
+      <stop offset="0.55" stop-color="#7E57C2"/>
+      <stop offset="1" stop-color="#512DA8"/>
+    </linearGradient>
+  </defs>
+  <circle cx="10" cy="10" r="9.5" fill="url(#hspPeaceBg)"/>
+  <circle cx="10" cy="10" r="9.5" stroke="#4527A0" stroke-width="0.35"/>
+  <path d="M10 4.75V15.25" stroke="#FFFFFF" stroke-width="1.55" stroke-linecap="round"/>
+  <path d="M10 12.1L6.15 15.95" stroke="#FFFFFF" stroke-width="1.55" stroke-linecap="round"/>
+  <path d="M10 12.1L13.85 15.95" stroke="#FFFFFF" stroke-width="1.55" stroke-linecap="round"/>
+</svg>

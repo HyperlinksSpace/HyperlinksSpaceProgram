@@ -27,7 +27,7 @@ import {
 } from "./messageChatLayout";
 import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
 import type { MessageChatRowData } from "./MessageChatRow";
-import { specialUserCrossBadgeExtraWidthPx } from "./specialTelegramUserDisplay";
+import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
 
 function resolveMessageAvatarUrl(
   chat: MessageChatRowData,
@@ -105,7 +105,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;
     if (showMedia) extra = Math.max(extra, mediaWidthPx);
-    const senderName = item.sender_name.trim();
+    const senderName = specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
     if (senderName) {
       extra = Math.max(
         extra,
@@ -113,7 +113,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
           senderName,
           MESSAGE_BUBBLE_FONT_SIZE_PX,
           MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-        ) + specialUserCrossBadgeExtraWidthPx(item.sender_user_id),
+        ) + specialUserBadgeExtraWidthPx(item.sender_user_id),
       );
     }
     const reply = item.reply_to;

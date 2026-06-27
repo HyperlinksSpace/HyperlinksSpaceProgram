@@ -1,10 +1,14 @@
 import { createElement, type ReactNode } from "react";
 import { Platform, Text, View, type TextStyle, type ViewStyle } from "react-native";
+import { MessageChatMonaLisaIcon } from "./MessageChatMonaLisaIcon";
+import { MessageChatPeaceIcon } from "./MessageChatPeaceIcon";
 import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
+import { MessageChatStatusTgsBadge } from "./MessageChatStatusTgsBadge";
 import {
-  SPECIAL_USER_CROSS_BADGE_GAP_PX,
-  SPECIAL_USER_CROSS_BADGE_SIZE_PX,
-  specialUserShowsCrossBadge,
+  SPECIAL_USER_BADGE_GAP_PX,
+  SPECIAL_USER_BADGE_SIZE_PX,
+  specialUserBadgeKind,
+  specialUserDisplayName,
   specialUserShowsShineName,
 } from "./specialTelegramUserDisplay";
 
@@ -28,6 +32,19 @@ function webShineNameNode(name: string, color: string | undefined): ReactNode {
   );
 }
 
+function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof specialUserBadgeKind>>; size: number }) {
+  if (kind === "cross") {
+    return <MessageChatCrossIcon size={size} />;
+  }
+  if (kind === "peace_sign") {
+    return <MessageChatPeaceIcon size={size} />;
+  }
+  if (kind === "mona_lisa") {
+    return <MessageChatMonaLisaIcon size={size} />;
+  }
+  return <MessageChatStatusTgsBadge size={size} />;
+}
+
 export function SpecialTelegramUserName({
   name,
   telegramUserId,
@@ -36,15 +53,16 @@ export function SpecialTelegramUserName({
   textAlign = "left",
   containerStyle,
 }: Props) {
-  const trimmed = name.trim();
-  const showCross = specialUserShowsCrossBadge(telegramUserId);
+  const displayName = specialUserDisplayName(telegramUserId, name);
+  const badgeKind = specialUserBadgeKind(telegramUserId);
+  const showBadge = badgeKind != null;
   const showShine = specialUserShowsShineName(telegramUserId);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
 
   const nameContent =
     Platform.OS === "web" && showShine
-      ? webShineNameNode(trimmed, shineColor)
-      : trimmed;
+      ? webShineNameNode(displayName, shineColor)
+      : displayName;
 
   const nameText = (
     <Text
@@ -57,14 +75,14 @@ export function SpecialTelegramUserName({
           flexShrink: 1,
           minWidth: 0,
         },
-        showCross ? { flex: 0 } : null,
+        showBadge ? { flex: 0 } : null,
       ]}
     >
       {nameContent}
     </Text>
   );
 
-  if (!showCross) {
+  if (!showBadge) {
     if (textAlign === "center") {
       return (
         <View style={[{ alignItems: "center", maxWidth: "100%" }, containerStyle]}>
@@ -90,9 +108,17 @@ export function SpecialTelegramUserName({
       ]}
     >
       <View style={{ flexShrink: 1, minWidth: 0, maxWidth: "100%" }}>{nameText}</View>
-      <View style={{ width: SPECIAL_USER_CROSS_BADGE_GAP_PX, flexShrink: 0 }} />
-      <View style={{ width: SPECIAL_USER_CROSS_BADGE_SIZE_PX, height: SPECIAL_USER_CROSS_BADGE_SIZE_PX, flexShrink: 0 }}>
-        <MessageChatCrossIcon size={SPECIAL_USER_CROSS_BADGE_SIZE_PX} />
+      <View style={{ width: SPECIAL_USER_BADGE_GAP_PX, flexShrink: 0 }} />
+      <View
+        style={{
+          width: SPECIAL_USER_BADGE_SIZE_PX,
+          height: SPECIAL_USER_BADGE_SIZE_PX,
+          flexShrink: 0,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <SpecialUserBadge kind={badgeKind} size={SPECIAL_USER_BADGE_SIZE_PX} />
       </View>
     </View>
   );
