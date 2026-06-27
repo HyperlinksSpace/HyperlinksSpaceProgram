@@ -11,6 +11,7 @@ import {
   MESSAGE_FONT_SIZE_PX,
   MESSAGE_LINE_HEIGHT_PX,
 } from "./messageListLayout";
+import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 
 type Props = {
   chat: MessageChatRowData;
@@ -62,18 +63,16 @@ export function MessageChatHeader({ chat, colors }: Props) {
           paddingHorizontal: columnBleedPx,
         }}
       >
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={{
+        <SpecialTelegramUserName
+          name={title}
+          telegramUserId={chat.peer_user_id ?? null}
+          textAlign="center"
+          textStyle={{
             ...textBase,
             color: colors.primary,
-            textAlign: "center",
-            width: "100%",
           }}
-        >
-          {title}
-        </Text>
+          containerStyle={{ width: "100%" }}
+        />
         {presenceLabel ? (
           <Text
             numberOfLines={1}

@@ -297,3 +297,82 @@ textarea[data-ai-input="true"] {
   font-size: 15px;
   line-height: 30px;
 }
+
+/*
+ * Irina (telegram user id 402111770): metallic shine sweep on display name (web).
+ * Base tone follows inline --hsp-shine-base (sender color in groups, theme primary in lists).
+ */
+.hsp-special-user-name-shine {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  background-image: linear-gradient(
+    105deg,
+    var(--hsp-shine-base, currentColor) 0%,
+    var(--hsp-shine-base, currentColor) 38%,
+    color-mix(in srgb, var(--hsp-shine-base, currentColor) 55%, #ffffff 45%) 46%,
+    #ffffff 50%,
+    color-mix(in srgb, var(--hsp-shine-base, currentColor) 55%, #ffffff 45%) 54%,
+    var(--hsp-shine-base, currentColor) 62%,
+    var(--hsp-shine-base, currentColor) 100%
+  );
+  background-size: 240% 100%;
+  background-position: 120% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: hsp-special-user-shine-sweep 4.8s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+  filter: drop-shadow(0 0 0.35px color-mix(in srgb, var(--hsp-shine-base, currentColor) 80%, #ffffff 20%));
+}
+
+.hsp-special-user-name-shine::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: -30%;
+  width: 42%;
+  height: 120%;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 35%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.08) 65%,
+    transparent 100%
+  );
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  animation: hsp-special-user-shine-glance 6.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes hsp-special-user-shine-sweep {
+  0%,
+  18%,
+  100% {
+    background-position: 120% 0;
+  }
+  42% {
+    background-position: -20% 0;
+  }
+  58% {
+    background-position: -20% 0;
+  }
+}
+
+@keyframes hsp-special-user-shine-glance {
+  0%,
+  24%,
+  100% {
+    left: -35%;
+    opacity: 0;
+  }
+  36% {
+    opacity: 0.95;
+  }
+  52% {
+    left: 125%;
+    opacity: 0;
+  }
+}

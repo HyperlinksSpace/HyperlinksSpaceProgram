@@ -24,6 +24,7 @@ import {
   MessageChatMediaContent,
   resolveMessageMediaDimensions,
 } from "./MessageChatMediaContent";
+import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 
 type Props = {
   chatId: number;
@@ -128,22 +129,19 @@ function MessageChatReplyBlock({
     >
       <View style={{ width: 3, backgroundColor: barColor, flexShrink: 0 }} />
       <View style={{ flex: 1, paddingVertical: 5, paddingHorizontal: 8, minWidth: 0 }}>
-        <Text
-          numberOfLines={1}
-          style={[
-            typographyRect15,
-            {
-              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-              lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-              fontWeight: "500",
-              color: barColor,
-              textAlign: "left",
-            },
-            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
-          ]}
-        >
-          {reply.sender_name}
-        </Text>
+        <SpecialTelegramUserName
+          name={reply.sender_name}
+          telegramUserId={reply.sender_user_id}
+          textStyle={{
+            ...typographyRect15,
+            fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+            lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+            fontWeight: "500",
+            color: barColor,
+            textAlign: "left",
+            ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
+          }}
+        />
         <Text
           numberOfLines={2}
           style={[
@@ -219,21 +217,19 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
       ) : null}
 
       {showSenderHeader ? (
-        <Text
-          style={[
-            typographyRect15,
-            {
-              fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-              lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-              fontWeight: "500",
-              color: senderColor,
-              textAlign: "left",
-            },
-            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
-          ]}
-        >
-          {item.sender_name.trim()}
-        </Text>
+        <SpecialTelegramUserName
+          name={item.sender_name}
+          telegramUserId={item.sender_user_id}
+          textStyle={{
+            ...typographyRect15,
+            fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+            lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+            fontWeight: "500",
+            color: senderColor,
+            textAlign: "left",
+            ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
+          }}
+        />
       ) : null}
 
       {showChannelBadge ? (

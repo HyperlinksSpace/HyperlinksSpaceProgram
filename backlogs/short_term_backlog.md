@@ -1,3 +1,5 @@
+Cross
+Rate
 Make logs more compact
 Chat history
 Emojis rendering, fix time, writing messages, photos and videos, messages loading

@@ -12,6 +12,7 @@ import { ChatAvatarFallback } from "./ChatAvatarFallback";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
+import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import {
   MESSAGE_AVATAR_PX,
@@ -189,18 +190,16 @@ export function MessageChatRow({
             minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{
-              ...textBase,
-              flex: 1,
-              minWidth: 0,
-              color: colors.primary,
-            }}
-          >
-            {title}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <SpecialTelegramUserName
+              name={title}
+              telegramUserId={item.peer_user_id ?? null}
+              textStyle={{
+                ...textBase,
+                color: colors.primary,
+              }}
+            />
+          </View>
           {gapTitleTime ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {timeLabel ? (
             <Text

@@ -27,6 +27,7 @@ import {
 } from "./messageChatLayout";
 import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
 import type { MessageChatRowData } from "./MessageChatRow";
+import { specialUserCrossBadgeExtraWidthPx } from "./specialTelegramUserDisplay";
 
 function resolveMessageAvatarUrl(
   chat: MessageChatRowData,
@@ -112,7 +113,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
           senderName,
           MESSAGE_BUBBLE_FONT_SIZE_PX,
           MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-        ),
+        ) + specialUserCrossBadgeExtraWidthPx(item.sender_user_id),
       );
     }
     const reply = item.reply_to;
