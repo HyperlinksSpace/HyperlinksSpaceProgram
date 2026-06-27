@@ -800,6 +800,189 @@ export async function resumeExistingSession(
   return startConnectAttempt(telegramUsername, { authMethod: options?.authMethod });
 }
 
+export async function listContactsForUser(
+  telegramUsername: string,
+): Promise<
+  Array<{
+    userId: number;
+    firstName: string;
+    lastName: string;
+    username: string | null;
+    chatId: number | null;
+  }>
+> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    const base = getTdlibUserDir(telegramUsername);
+    if (!fs.existsSync(path.join(base, "db"))) return [];
+    await startConnectAttempt(telegramUsername);
+    record = await waitForUserSessionReady(telegramUsername, 90_000);
+  }
+  if (!record?.client || record.authState !== "ready") return [];
+
+  try {
+    const result = (await record.client.invoke({ _: "getContacts" })) as { user_ids?: number[] };
+    const rows: Array<{
+      userId: number;
+      firstName: string;
+      lastName: string;
+      username: string | null;
+      chatId: number | null;
+    }> = [];
+    for (const userId of result.user_ids ?? []) {
+      if (!Number.isFinite(userId) || userId <= 0) continue;
+      const user = (await record.client.invoke({ _: "getUser", user_id: userId })) as {
+        first_name?: string;
+        last_name?: string;
+        username?: string;
+      };
+      let chatId: number | null = null;
+      try {
+        const chat = (await record.client.invoke({
+          _: "createPrivateChat",
+          user_id: userId,
+          force: true,
+        })) as { id?: number };
+        chatId = typeof chat.id === "number" ? chat.id : null;
+      } catch {
+        chatId = null;
+      }
+      rows.push({
+        userId,
+        firstName: typeof user.first_name === "string" ? user.first_name : "",
+        lastName: typeof user.last_name === "string" ? user.last_name : "",
+        username: typeof user.username === "string" ? user.username : null,
+        chatId,
+      });
+    }
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+export async function searchChatsForUser(
+  telegramUsername: string,
+  query: string,
+): Promise<Array<{ chatId: number; title: string; peerUserId: number | null }>> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    const base = getTdlibUserDir(telegramUsername);
+    if (!fs.existsSync(path.join(base, "db"))) return [];
+    await startConnectAttempt(telegramUsername);
+    record = await waitForUserSessionReady(telegramUsername, 90_000);
+  }
+  if (!record?.client || record.authState !== "ready") return [];
+
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const collected = new Map<number, { chatId: number; title: string; peerUserId: number | null }>();
+  for (const chatList of [{ _: "chatListMain" as const }, { _: "chatListArchive" as const }]) {
+    try {
+      const result = (await record.client.invoke({
+        _: "searchChats",
+        chat_list: chatList,
+        query: trimmed,
+        limit: 30,
+      })) as { chat_ids?: number[] };
+      for (const chatId of result.chat_ids ?? []) {
+        if (collected.has(chatId)) continue;
+        try {
+          const chat = (await record.client.invoke({ _: "getChat", chat_id: chatId })) as {
+            id?: number;
+            title?: string;
+            type?: { _?: string; user_id?: number; first_name?: string; last_name?: string };
+          };
+          const peerUserId =
+            chat.type?._ === "chatTypePrivate" && typeof chat.type.user_id === "number"
+              ? chat.type.user_id
+              : null;
+          collected.set(chatId, {
+            chatId,
+            title: chat.title?.trim() || `Chat ${chatId}`,
+            peerUserId,
+          });
+        } catch {
+          /* skip */
+        }
+      }
+    } catch {
+      /* skip list */
+    }
+  }
+  return [...collected.values()];
+}
+
+export async function searchContactsForUser(
+  telegramUsername: string,
+  query: string,
+): Promise<
+  Array<{
+    userId: number;
+    firstName: string;
+    lastName: string;
+    username: string | null;
+    chatId: number | null;
+  }>
+> {
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    const base = getTdlibUserDir(telegramUsername);
+    if (!fs.existsSync(path.join(base, "db"))) return [];
+    await startConnectAttempt(telegramUsername);
+    record = await waitForUserSessionReady(telegramUsername, 90_000);
+  }
+  if (!record?.client || record.authState !== "ready") return [];
+
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  try {
+    const result = (await record.client.invoke({
+      _: "searchContacts",
+      query: trimmed,
+      limit: 30,
+    })) as { user_ids?: number[] };
+    const rows: Array<{
+      userId: number;
+      firstName: string;
+      lastName: string;
+      username: string | null;
+      chatId: number | null;
+    }> = [];
+    for (const userId of result.user_ids ?? []) {
+      if (!Number.isFinite(userId) || userId <= 0) continue;
+      const user = (await record.client.invoke({ _: "getUser", user_id: userId })) as {
+        first_name?: string;
+        last_name?: string;
+        username?: string;
+      };
+      let chatId: number | null = null;
+      try {
+        const chat = (await record.client.invoke({
+          _: "createPrivateChat",
+          user_id: userId,
+          force: true,
+        })) as { id?: number };
+        chatId = typeof chat.id === "number" ? chat.id : null;
+      } catch {
+        chatId = null;
+      }
+      rows.push({
+        userId,
+        firstName: typeof user.first_name === "string" ? user.first_name : "",
+        lastName: typeof user.last_name === "string" ? user.last_name : "",
+        username: typeof user.username === "string" ? user.username : null,
+        chatId,
+      });
+    }
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
 /** Re-sync chat list + avatars for an already-authorized user (no QR). */
 export async function resyncUserChats(
   telegramUsername: string,

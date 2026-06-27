@@ -113,7 +113,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
           senderName,
           MESSAGE_BUBBLE_FONT_SIZE_PX,
           MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-        ) + specialUserBadgeExtraWidthPx(item.sender_user_id),
+        ) + specialUserBadgeExtraWidthPx(item.sender_user_id, senderName),
       );
     }
     const reply = item.reply_to;

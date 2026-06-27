@@ -14,6 +14,8 @@ import {
   resyncUserChats,
   restorePersistedGatewaySessions,
   resumeExistingSession,
+  searchChatsForUser,
+  searchContactsForUser,
   startConnectAttempt,
   resendConnectCode,
   submitConnectCode,
@@ -162,6 +164,21 @@ export function startTdlibGatewayServer(): http.Server {
             backfillCount: result.backfillCount,
             error: result.error,
           });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/users/search") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const query = (url.searchParams.get("query") || "").trim();
+          if (!telegramUsername || !query) {
+            sendJson(res, 400, { ok: false, error: "username_and_query_required" });
+            return;
+          }
+          const [contacts, chats] = await Promise.all([
+            searchContactsForUser(telegramUsername, query),
+            searchChatsForUser(telegramUsername, query),
+          ]);
+          sendJson(res, 200, { ok: true, contacts, chats });
           return;
         }
 

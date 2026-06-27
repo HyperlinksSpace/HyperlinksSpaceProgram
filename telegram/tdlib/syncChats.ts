@@ -16,6 +16,10 @@ import {
   type TdChat,
 } from "./chatPreview.js";
 import { patchLiveChatFromTdlib, seedLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import {
+  specialUserForceIncludedPeerUserIds,
+  SUPPLEMENTARY_CONTACT_SEARCH_QUERIES,
+} from "../../shared/specialTelegramUsers.js";
 
 type TdFile = {
   id?: number;
@@ -35,8 +39,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadAllChats(client: Client): Promise<TdChat[]> {
-  const chatList = { _: "chatListMain" as const };
+async function loadChatsFromList(
+  client: Client,
+  chatList: { _: "chatListMain" } | { _: "chatListArchive" },
+): Promise<TdChat[]> {
   const collected = new Map<number, TdChat>();
   let offsetOrder = "9223372036854775807";
   let offsetChatId = 0;
@@ -91,6 +97,112 @@ async function loadAllChats(client: Client): Promise<TdChat[]> {
     offsetOrder = nextOffsetOrder;
     offsetChatId = lastChat.id;
   }
+
+  return [...collected.values()];
+}
+
+async function openPrivateChatsForUserIds(client: Client, userIds: number[]): Promise<TdChat[]> {
+  const chats: TdChat[] = [];
+  for (const userId of userIds) {
+    if (!Number.isFinite(userId) || userId <= 0) continue;
+    try {
+      const chat = (await client.invoke({
+        _: "createPrivateChat",
+        user_id: userId,
+        force: true,
+      })) as TdChat;
+      chats.push(chat);
+    } catch {
+      /* chat may be unavailable */
+    }
+  }
+  return chats;
+}
+
+async function discoverPrivateChatsByContactSearch(
+  client: Client,
+  queries: readonly string[],
+): Promise<TdChat[]> {
+  const userIds = new Set<number>();
+  for (const query of queries) {
+    const trimmed = query.trim();
+    if (!trimmed) continue;
+    try {
+      const result = (await client.invoke({
+        _: "searchContacts",
+        query: trimmed,
+        limit: 30,
+      })) as { user_ids?: number[] };
+      for (const userId of result.user_ids ?? []) {
+        if (Number.isFinite(userId) && userId > 0) userIds.add(userId);
+      }
+    } catch {
+      /* skip failed query */
+    }
+  }
+  return openPrivateChatsForUserIds(client, [...userIds]);
+}
+
+async function discoverPrivateChatsByChatSearch(
+  client: Client,
+  queries: readonly string[],
+): Promise<TdChat[]> {
+  const collected = new Map<number, TdChat>();
+  for (const query of queries) {
+    const trimmed = query.trim();
+    if (!trimmed) continue;
+    for (const chatList of [{ _: "chatListMain" as const }, { _: "chatListArchive" as const }]) {
+      try {
+        const result = (await client.invoke({
+          _: "searchChats",
+          chat_list: chatList,
+          query: trimmed,
+          limit: 20,
+        })) as { chat_ids?: number[] };
+        for (const chatId of result.chat_ids ?? []) {
+          if (collected.has(chatId)) continue;
+          try {
+            const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+            collected.set(chatId, chat);
+          } catch {
+            /* skip unreadable chat */
+          }
+        }
+      } catch {
+        /* skip failed search */
+      }
+    }
+  }
+  return [...collected.values()];
+}
+
+async function loadSupplementaryPrivateChats(client: Client): Promise<TdChat[]> {
+  const merged = new Map<number, TdChat>();
+
+  for (const chat of await openPrivateChatsForUserIds(client, specialUserForceIncludedPeerUserIds())) {
+    merged.set(chat.id, chat);
+  }
+
+  for (const chat of await discoverPrivateChatsByContactSearch(client, SUPPLEMENTARY_CONTACT_SEARCH_QUERIES)) {
+    merged.set(chat.id, chat);
+  }
+
+  for (const chat of await discoverPrivateChatsByChatSearch(client, SUPPLEMENTARY_CONTACT_SEARCH_QUERIES)) {
+    merged.set(chat.id, chat);
+  }
+
+  return [...merged.values()];
+}
+
+async function loadAllChats(client: Client): Promise<TdChat[]> {
+  const collected = new Map<number, TdChat>();
+  const merge = (chats: TdChat[]) => {
+    for (const chat of chats) collected.set(chat.id, chat);
+  };
+
+  merge(await loadChatsFromList(client, { _: "chatListMain" }));
+  merge(await loadChatsFromList(client, { _: "chatListArchive" }));
+  merge(await loadSupplementaryPrivateChats(client));
 
   return [...collected.values()];
 }

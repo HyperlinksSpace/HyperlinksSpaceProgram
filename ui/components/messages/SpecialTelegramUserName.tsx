@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import { Platform, Text, View, type TextStyle, type ViewStyle } from "react-native";
+import { MessageChatRussianFlagIcon } from "./MessageChatRussianFlagIcon";
 import { MessageChatMonaLisaIcon } from "./MessageChatMonaLisaIcon";
 import { MessageChatPeaceIcon } from "./MessageChatPeaceIcon";
 import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
@@ -42,6 +43,9 @@ function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof 
   if (kind === "mona_lisa") {
     return <MessageChatMonaLisaIcon size={size} />;
   }
+  if (kind === "russian_flag") {
+    return <MessageChatRussianFlagIcon size={size} />;
+  }
   return <MessageChatStatusTgsBadge size={size} />;
 }
 
@@ -54,9 +58,9 @@ export function SpecialTelegramUserName({
   containerStyle,
 }: Props) {
   const displayName = specialUserDisplayName(telegramUserId, name);
-  const badgeKind = specialUserBadgeKind(telegramUserId);
+  const badgeKind = specialUserBadgeKind(telegramUserId, name);
   const showBadge = badgeKind != null;
-  const showShine = specialUserShowsShineName(telegramUserId);
+  const showShine = specialUserShowsShineName(telegramUserId, name);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
 
   const nameContent =
