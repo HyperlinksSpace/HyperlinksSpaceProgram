@@ -1,5 +1,5 @@
 import { buildApiUrl } from "../../api/_base";
-import type { MessageChatHistoryItem } from "../components/messages/messageChatHistoryTypes";
+import type { MessageChatHistoryItem, MessageOutgoingStatus } from "../components/messages/messageChatHistoryTypes";
 
 export type SendTelegramChatMessageResult =
   | { ok: true; message: MessageChatHistoryItem }
@@ -14,6 +14,16 @@ function normalizeSentMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!text.trim()) return null;
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
+  let outgoingStatus: MessageOutgoingStatus | null = "delivered";
+  const outgoingRaw = row.outgoing_status;
+  if (
+    outgoingRaw === "pending" ||
+    outgoingRaw === "delivered" ||
+    outgoingRaw === "read" ||
+    outgoingRaw === "failed"
+  ) {
+    outgoingStatus = outgoingRaw;
+  }
   return {
     telegram_message_id: telegramMessageId,
     text,
@@ -23,6 +33,7 @@ function normalizeSentMessage(raw: unknown): MessageChatHistoryItem | null {
     sender_chat_id: Number.isFinite(senderChatId) ? senderChatId : null,
     sender_is_channel: Boolean(row.sender_is_channel),
     is_outgoing: true,
+    outgoing_status: outgoingStatus,
     content_kind: "text",
     has_media: false,
     media_width: null,

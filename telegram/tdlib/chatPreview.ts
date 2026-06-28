@@ -5,6 +5,7 @@ export type TdMessage = {
   chat_id?: number;
   date?: number;
   is_outgoing?: boolean;
+  sending_state?: { _?: string };
   sender_id?: { _?: string; user_id?: number; chat_id?: number };
   reply_to?: {
     _?: string;
@@ -27,6 +28,7 @@ export type TdChat = {
   };
   last_message?: TdMessage;
   unread_count?: number;
+  last_read_outbox_message_id?: number;
   photo?: { small?: { id?: number } };
   positions?: Array<{
     list?: { _?: string };

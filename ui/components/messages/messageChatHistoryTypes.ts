@@ -19,6 +19,9 @@ export type MessageChatReplyPreview = {
   text: string;
 };
 
+/** Outgoing message delivery state for bubble checkmarks. */
+export type MessageOutgoingStatus = "pending" | "delivered" | "read" | "failed";
+
 export type MessageChatHistoryItem = {
   telegram_message_id: number;
   text: string;
@@ -28,6 +31,8 @@ export type MessageChatHistoryItem = {
   sender_chat_id?: number | null;
   sender_is_channel?: boolean;
   is_outgoing: boolean;
+  /** Outgoing delivery/read ticks (private chats use read receipts). */
+  outgoing_status?: MessageOutgoingStatus | null;
   content_kind?: MessageChatContentKind;
   has_media?: boolean;
   media_width?: number | null;

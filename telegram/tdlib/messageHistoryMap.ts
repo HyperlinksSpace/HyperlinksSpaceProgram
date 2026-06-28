@@ -18,6 +18,8 @@ export type MessageContentKind =
   | "sticker"
   | "other";
 
+export type MessageOutgoingStatus = "pending" | "delivered" | "read" | "failed";
+
 export type MappedChatHistoryMessage = {
   telegram_message_id: number;
   text: string;
@@ -27,6 +29,7 @@ export type MappedChatHistoryMessage = {
   sender_chat_id: number | null;
   sender_is_channel: boolean;
   is_outgoing: boolean;
+  outgoing_status: MessageOutgoingStatus | null;
   content_kind: MessageContentKind;
   has_media: boolean;
   media_width?: number | null;
@@ -241,6 +244,27 @@ async function resolveSenderName(
   return { name: chatTitle(chat), isChannel: chatKindFromTdChat(chat) === "channel" };
 }
 
+function resolveOutgoingStatus(message: TdMessage, chat: TdChat): MessageOutgoingStatus | null {
+  if (!message.is_outgoing) return null;
+
+  const sendingState = message.sending_state?._;
+  if (sendingState === "messageSendingStateFailed") return "failed";
+  if (sendingState === "messageSendingStatePending") return "pending";
+
+  const messageId = Number(message.id);
+  const lastReadOutbox = Number(chat.last_read_outbox_message_id);
+  if (
+    Number.isFinite(messageId) &&
+    messageId > 0 &&
+    Number.isFinite(lastReadOutbox) &&
+    lastReadOutbox >= messageId
+  ) {
+    return "read";
+  }
+
+  return "delivered";
+}
+
 export async function mapHistoryMessage(
   client: Client,
   message: TdMessage,
@@ -269,6 +293,7 @@ export async function mapHistoryMessage(
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
     is_outgoing: Boolean(message.is_outgoing),
+    outgoing_status: resolveOutgoingStatus(message, chat),
     content_kind: messageContentKind(message),
     has_media: hasMedia,
     media_width: dimensions.width,

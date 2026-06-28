@@ -24,6 +24,9 @@ import {
   MessageChatMediaContent,
   resolveMessageMediaDimensions,
 } from "./MessageChatMediaContent";
+import {
+  MessageChatOutgoingChecks,
+} from "./MessageChatOutgoingChecks";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 
 type Props = {
@@ -40,13 +43,20 @@ function resolveMediaUrl(chatId: number, messageId: number): string {
   );
 }
 
-function webTimeTail(timeLabel: string, colors: ThemeColors) {
+function webTimeTail(
+  timeLabel: string,
+  colors: ThemeColors,
+  outgoingStatus: Props["item"]["outgoing_status"],
+) {
+  const showChecks =
+    outgoingStatus === "delivered" || outgoingStatus === "read";
   return createElement(
     "span",
     {
       className: "hsp-message-bubble-time-tail",
       style: {
-        display: "inline-block",
+        display: "inline-flex",
+        alignItems: "center",
         verticalAlign: "bottom",
         height: 0,
         float: "right",
@@ -58,7 +68,8 @@ function webTimeTail(timeLabel: string, colors: ThemeColors) {
       {
         className: "hsp-message-bubble-time",
         style: {
-          display: "inline-block",
+          display: "inline-flex",
+          alignItems: "center",
           marginLeft: 6,
           fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
           lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
@@ -68,6 +79,12 @@ function webTimeTail(timeLabel: string, colors: ThemeColors) {
         },
       },
       timeLabel,
+      showChecks
+        ? createElement(MessageChatOutgoingChecks, {
+            status: outgoingStatus!,
+            colors,
+          })
+        : null,
     ),
   );
 }
@@ -77,6 +94,7 @@ function webBubbleTextBlock(
   timeLabel: string,
   maxWidthPx: number,
   colors: ThemeColors,
+  outgoingStatus: Props["item"]["outgoing_status"],
 ) {
   return createElement(
     "div",
@@ -95,7 +113,48 @@ function webBubbleTextBlock(
       },
     },
     bodyText || null,
-    timeLabel ? webTimeTail(timeLabel, colors) : null,
+    timeLabel ? webTimeTail(timeLabel, colors, outgoingStatus) : null,
+  );
+}
+
+function MessageChatBubbleTimeRow({
+  timeLabel,
+  colors,
+  outgoingStatus,
+  alignSelf = "flex-end",
+  marginTop = 0,
+  lightOnMedia = false,
+}: {
+  timeLabel: string;
+  colors: ThemeColors;
+  outgoingStatus: Props["item"]["outgoing_status"];
+  alignSelf?: "flex-end" | "flex-start";
+  marginTop?: number;
+  lightOnMedia?: boolean;
+}) {
+  const showChecks =
+    outgoingStatus === "delivered" || outgoingStatus === "read";
+  const metaStyle = {
+    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+    lineHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
+    color: lightOnMedia ? "rgba(255,255,255,0.92)" : colors.secondary,
+    fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
+  } as const;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        alignSelf,
+        marginTop,
+      }}
+    >
+      <Text style={metaStyle}>{timeLabel}</Text>
+      {showChecks ? (
+        <MessageChatOutgoingChecks status={outgoingStatus!} colors={colors} />
+      ) : null}
+    </View>
   );
 }
 
@@ -167,6 +226,7 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
   const { t } = useAppStrings();
   const { colorScheme } = useTelegram();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
+  const outgoingStatus = item.is_outgoing ? (item.outgoing_status ?? null) : null;
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) && !item.is_outgoing && item.sender_name.trim().length > 0;
   const showChannelBadge = Boolean(item.sender_is_channel);
@@ -262,35 +322,51 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
             heightPx={mediaHeightPx}
             colors={colors}
           />
-          {Platform.OS === "web" && timeLabel && !bodyText
-            ? createElement(
-                "div",
-                {
-                  style: {
-                    position: "absolute",
-                    right: 8,
-                    bottom: 6,
-                    fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-                    lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
-                    color: "rgba(255,255,255,0.92)",
-                    fontFamily: WEB_UI_SANS_STACK,
-                    userSelect: "none",
-                    textShadow: "0 1px 2px rgba(0,0,0,0.65)",
-                    pointerEvents: "none",
-                  },
+          {Platform.OS === "web" && timeLabel && !bodyText ? (
+            createElement(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  right: 8,
+                  bottom: 6,
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  fontSize: MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
+                  lineHeight: `${MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX}px`,
+                  color: "rgba(255,255,255,0.92)",
+                  fontFamily: WEB_UI_SANS_STACK,
+                  userSelect: "none",
+                  textShadow: "0 1px 2px rgba(0,0,0,0.65)",
+                  pointerEvents: "none",
                 },
-                timeLabel,
-              )
-            : null}
+              },
+              timeLabel,
+              outgoingStatus === "delivered" || outgoingStatus === "read"
+                ? createElement(MessageChatOutgoingChecks, {
+                    status: outgoingStatus,
+                    colors,
+                    onMedia: true,
+                  })
+                : null,
+            )
+          ) : null}
         </View>
       ) : null}
 
       {Platform.OS !== "web" && showMedia && timeLabel && !bodyText ? (
-        <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: 4 }]}>{timeLabel}</Text>
+        <MessageChatBubbleTimeRow
+          timeLabel={timeLabel}
+          colors={colors}
+          outgoingStatus={outgoingStatus}
+          alignSelf="flex-end"
+          marginTop={4}
+        />
       ) : null}
 
       {Platform.OS === "web" && (bodyText || (timeLabel && !showMedia))
-        ? webBubbleTextBlock(bodyText, timeLabel, maxWidthPx, colors)
+        ? webBubbleTextBlock(bodyText, timeLabel, maxWidthPx, colors, outgoingStatus)
         : null}
 
       {Platform.OS !== "web" && (bodyText || (timeLabel && !showMedia)) ? (
@@ -299,9 +375,13 @@ export function MessageChatBubbleBody({ chatId, item, chatKind, colors, maxWidth
             <Text style={[...textStyle, { textAlign: "left" }]}>{bodyText}</Text>
           ) : null}
           {timeLabel ? (
-            <Text style={[metaStyle, { alignSelf: "flex-end", marginTop: bodyText ? 2 : 0 }]}>
-              {timeLabel}
-            </Text>
+            <MessageChatBubbleTimeRow
+              timeLabel={timeLabel}
+              colors={colors}
+              outgoingStatus={outgoingStatus}
+              alignSelf="flex-end"
+              marginTop={bodyText ? 2 : 0}
+            />
           ) : null}
         </View>
       ) : null}

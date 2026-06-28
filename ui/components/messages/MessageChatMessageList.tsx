@@ -18,6 +18,7 @@ import type {
   MessageChatContentKind,
   MessageChatHistoryItem,
   MessageChatKind,
+  MessageOutgoingStatus,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -50,6 +51,16 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!text.trim() && !hasMedia) return null;
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
+  let outgoingStatus: MessageOutgoingStatus | null = null;
+  const outgoingRaw = row.outgoing_status;
+  if (
+    outgoingRaw === "pending" ||
+    outgoingRaw === "delivered" ||
+    outgoingRaw === "read" ||
+    outgoingRaw === "failed"
+  ) {
+    outgoingStatus = outgoingRaw;
+  }
   let replyTo: MessageChatHistoryItem["reply_to"] = null;
   const replyRaw = row.reply_to;
   if (replyRaw && typeof replyRaw === "object" && !Array.isArray(replyRaw)) {
@@ -75,6 +86,7 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     sender_chat_id: Number.isFinite(senderChatId) ? senderChatId : null,
     sender_is_channel: Boolean(row.sender_is_channel),
     is_outgoing: Boolean(row.is_outgoing),
+    outgoing_status: outgoingStatus,
     content_kind: contentKind,
     has_media: hasMedia,
     media_width: Number.isFinite(Number(row.media_width)) ? Number(row.media_width) : null,

@@ -123,6 +123,7 @@ export function shouldInlineBubbleTime(
   bodyText: string,
   timeLabel: string,
   maxContentWidth: number,
+  metaExtraWidthPx = 0,
 ): boolean {
   if (!bodyText.trim() || !timeLabel) return false;
   const lines = countWrappedBodyLines(bodyText, maxContentWidth);
@@ -133,7 +134,7 @@ export function shouldInlineBubbleTime(
     MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
     MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
   );
-  return textWidth + timeWidth + 10 <= maxContentWidth;
+  return textWidth + timeWidth + metaExtraWidthPx + 10 <= maxContentWidth;
 }
 
 /** Outer bubble width from longest wrapped line (AI prompt chip pattern). */
@@ -142,6 +143,7 @@ export function measureMessageBubbleOuterWidth(
   maxColumnWidth: number,
   extraInnerWidthPx = 0,
   timeLabel = "",
+  metaExtraWidthPx = 0,
 ): number {
   if (maxColumnWidth <= 0) return 0;
   const maxContentWidth = Math.max(
@@ -158,11 +160,12 @@ export function measureMessageBubbleOuterWidth(
       MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
       MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
     );
-    if (shouldInlineBubbleTime(trimmed, timeLabel, maxContentWidth)) {
+    const metaWidth = timeWidth + metaExtraWidthPx;
+    if (shouldInlineBubbleTime(trimmed, timeLabel, maxContentWidth, metaExtraWidthPx)) {
       const textWidth = measureLongestWrappedBodyLineWidth(trimmed, maxContentWidth);
-      inner = Math.max(inner, textWidth + timeWidth + 10);
+      inner = Math.max(inner, textWidth + metaWidth + 10);
     } else {
-      inner = Math.max(inner, timeWidth);
+      inner = Math.max(inner, metaWidth);
     }
   } else if (!trimmed && timeLabel) {
     const timeWidth = measureTextGlyphWidth(
@@ -170,7 +173,7 @@ export function measureMessageBubbleOuterWidth(
       MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
       MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
     );
-    inner = Math.max(inner, timeWidth);
+    inner = Math.max(inner, timeWidth + metaExtraWidthPx);
   }
 
   if (inner <= 0) {

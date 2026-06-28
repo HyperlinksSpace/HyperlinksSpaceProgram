@@ -26,6 +26,7 @@ import {
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
 } from "./messageChatLayout";
 import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
+import { messageChatOutgoingChecksWidthPx } from "./MessageChatOutgoingChecks";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
 
@@ -91,6 +92,9 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
 
   const bodyText = item.text.trim();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
+  const checksWidthPx = messageChatOutgoingChecksWidthPx(
+    item.is_outgoing ? item.outgoing_status : null,
+  );
   const showMedia =
     Boolean(item.has_media) &&
     (item.content_kind === "photo" ||
@@ -139,8 +143,9 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
       bubbleMaxWidth,
       extraInnerWidthPx,
       timeLabel,
+      checksWidthPx,
     );
-  }, [bodyText, bubbleMaxWidth, extraInnerWidthPx, timeLabel]);
+  }, [bodyText, bubbleMaxWidth, checksWidthPx, extraInnerWidthPx, timeLabel]);
 
   const onMeasureTextLayout = useCallback(
     (event: TextLayoutEvent) => {
@@ -159,7 +164,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
 
   useEffect(() => {
     setNativeBubbleWidth(null);
-  }, [bodyText, bubbleMaxWidth, extraInnerWidthPx, timeLabel]);
+  }, [bodyText, bubbleMaxWidth, checksWidthPx, extraInnerWidthPx, timeLabel]);
 
   const bubbleWidth = Platform.OS === "web" ? webBubbleWidth : nativeBubbleWidth;
   const measureText = bodyText || " ";
