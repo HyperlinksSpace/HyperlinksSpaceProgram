@@ -17,7 +17,31 @@ export const MESSAGE_CHAT_CHECKMARK_SIZE_PX = 14;
 export const MESSAGE_CHAT_CHECKMARK_GAP_PX = 3;
 /** Horizontal gap between message text and time/checks when sharing a line. */
 export const MESSAGE_BUBBLE_META_GAP_PX = 6;
+/**
+ * Time + checks sit this far above the bubble (or bare-media frame) bottom edge —
+ * same inset on text, media-overlay, inline, and stacked layouts.
+ */
+export const MESSAGE_BUBBLE_META_BOTTOM_INSET_PX = MESSAGE_BUBBLE_PADDING_VERTICAL_PX;
+/** Body baseline within a {@link MESSAGE_BUBBLE_LINE_HEIGHT_PX} line box (from line bottom). */
+export const MESSAGE_BUBBLE_BODY_BASELINE_FROM_LINE_BOTTOM_PX = 6;
+/** Time baseline within a {@link MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX} line box (from line bottom). */
+export const MESSAGE_BUBBLE_TIME_BASELINE_FROM_LINE_BOTTOM_PX = 3;
+/** Nudge inline meta so time baseline matches body text baseline on one row. */
+export const MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX =
+  MESSAGE_BUBBLE_BODY_BASELINE_FROM_LINE_BOTTOM_PX -
+  MESSAGE_BUBBLE_TIME_BASELINE_FROM_LINE_BOTTOM_PX;
+
+export function messageBubbleMediaMetaBottomPx(hasProgressBar: boolean): number {
+  return (
+    (hasProgressBar ? MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX : 0) +
+    MESSAGE_BUBBLE_META_BOTTOM_INSET_PX
+  );
+}
 export const MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX = 360;
+/** In-chat sticker cap (Telegram ~192px). */
+export const MESSAGE_BUBBLE_STICKER_MAX_PX = 192;
+/** GIF / animation native cap — never upscale beyond source dimensions. */
+export const MESSAGE_BUBBLE_GIF_MAX_PX = 320;
 /** Playback progress strip under in-chat video / GIF. */
 export const MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX = 1;
 

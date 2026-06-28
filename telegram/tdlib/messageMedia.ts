@@ -93,34 +93,25 @@ function pickPhotoFileId(content: Record<string, unknown>): number | null {
   const photo = content.photo as { sizes?: PhotoSizeRow[] } | undefined;
   const sizes = photo?.sizes;
   if (!Array.isArray(sizes) || sizes.length === 0) return null;
-
-  const preferred = ["w", "x", "y", "m", "s"];
-  for (const key of preferred) {
-    const match = sizes.find((row) => row.type === key);
-    const id = match?.photo?.id;
-    if (typeof id === "number") return id;
-  }
   return pickLargestPhotoFileId(sizes);
 }
 
-function pickThumbnailFileId(thumbnail: unknown): number | null {
-  if (!thumbnail || typeof thumbnail !== "object") return null;
-  const row = thumbnail as { file?: { id?: number } };
-  const id = row.file?.id;
+function pickFileIdFromTdFile(file: unknown): number | null {
+  if (!file || typeof file !== "object") return null;
+  const id = (file as { id?: number }).id;
   return typeof id === "number" ? id : null;
 }
 
 function pickNestedFileId(media: unknown): number | null {
   if (!media || typeof media !== "object") return null;
-  const row = media as {
-    id?: number;
-    video?: { id?: number };
-    animation?: { id?: number };
-    sticker?: { id?: number };
-  };
-  const nested = row.video?.id ?? row.animation?.id ?? row.sticker?.id;
-  if (typeof nested === "number") return nested;
-  if (typeof row.id === "number") return row.id;
+  const row = media as Record<string, unknown>;
+  const direct = pickFileIdFromTdFile(row);
+  if (direct != null) return direct;
+  for (const key of ["video", "animation", "sticker", "document", "photo"]) {
+    const nested = row[key];
+    const id = pickFileIdFromTdFile(nested);
+    if (id != null) return id;
+  }
   return null;
 }
 
@@ -160,15 +151,15 @@ function mediaFileIdFromMessage(message: TdMessage): number | null {
   if (type === "messagePhoto") return pickPhotoFileId(row);
   if (type === "messageVideo") {
     const video = row.video as { video?: { id?: number }; thumbnail?: unknown } | undefined;
-    return pickNestedFileId(video) ?? pickThumbnailFileId(video?.thumbnail);
+    return pickNestedFileId(video);
   }
   if (type === "messageAnimation") {
     const animation = row.animation as { animation?: { id?: number }; thumbnail?: unknown } | undefined;
-    return pickNestedFileId(animation) ?? pickThumbnailFileId(animation?.thumbnail);
+    return pickNestedFileId(animation);
   }
   if (type === "messageSticker") {
     const sticker = row.sticker as { sticker?: { id?: number }; thumbnail?: unknown } | undefined;
-    return pickNestedFileId(sticker) ?? pickThumbnailFileId(sticker?.thumbnail);
+    return pickNestedFileId(sticker);
   }
   return null;
 }
@@ -190,12 +181,7 @@ export async function readMessageMediaBytes(
   }
 
   const content = message.content;
-  if (content && typeof content === "object" && content._ === "messagePhoto") {
-    const mini = readMinithumbnailJpeg(content as Record<string, unknown>);
-    if (mini && mini.length > 0) {
-      return { data: mini, mime: "image/jpeg" };
-    }
-  }
+  if (!content || typeof content !== "object") return null;
 
   const fileId = mediaFileIdFromMessage(message);
   if (fileId == null) return null;
@@ -203,7 +189,7 @@ export async function readMessageMediaBytes(
   const file = await waitForLocalFile(client, fileId);
   const path = file?.local?.path;
   if (!path || !fs.existsSync(path)) {
-    if (content && typeof content === "object") {
+    if (content._ === "messagePhoto") {
       const mini = readMinithumbnailJpeg(content as Record<string, unknown>);
       if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
     }

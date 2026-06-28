@@ -12,6 +12,10 @@ type Props = {
   onMedia?: boolean;
 };
 
+const SINGLE_CHECK_PATH = "M1 7.5 L4.5 11 L10 2";
+const READ_CHECK_OFFSET = 4;
+const READ_VIEW_WIDTH = 14;
+
 /** Telegram-style delivery ticks beside bubble time (outgoing only). */
 export function MessageChatOutgoingChecks({
   status,
@@ -41,7 +45,7 @@ export function MessageChatOutgoingChecks({
     return (
       <View style={{ marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX }}>
         <Svg width={size * 0.62} height={size} viewBox="0 0 11 14">
-          <Path d="M1 7.5 L4.5 11 L10 2" {...stroke} />
+          <Path d={SINGLE_CHECK_PATH} {...stroke} />
         </Svg>
       </View>
     );
@@ -49,9 +53,13 @@ export function MessageChatOutgoingChecks({
 
   return (
     <View style={{ marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX }}>
-      <Svg width={size} height={size} viewBox="0 0 18 14">
-        <Path d="M1 7.5 L4.5 11 L10 2" {...stroke} />
-        <Path d="M5 7.5 L8.5 11 L17 2" {...stroke} />
+      <Svg
+        width={(size * READ_VIEW_WIDTH) / 14}
+        height={size}
+        viewBox={`0 0 ${READ_VIEW_WIDTH} 14`}
+      >
+        <Path d={SINGLE_CHECK_PATH} {...stroke} />
+        <Path d={SINGLE_CHECK_PATH} transform={`translate(${READ_CHECK_OFFSET} 0)`} {...stroke} />
       </Svg>
     </View>
   );
@@ -61,6 +69,9 @@ export function messageChatOutgoingChecksWidthPx(
   status: MessageOutgoingStatus | null | undefined,
 ): number {
   if (status !== "delivered" && status !== "read") return 0;
-  const markWidth = status === "read" ? MESSAGE_CHAT_CHECKMARK_SIZE_PX : MESSAGE_CHAT_CHECKMARK_SIZE_PX * 0.62;
+  const markWidth =
+    status === "read"
+      ? (MESSAGE_CHAT_CHECKMARK_SIZE_PX * READ_VIEW_WIDTH) / 14
+      : MESSAGE_CHAT_CHECKMARK_SIZE_PX * 0.62;
   return markWidth + MESSAGE_CHAT_CHECKMARK_GAP_PX;
 }

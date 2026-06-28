@@ -1,11 +1,11 @@
 import { View } from "react-native";
 import Svg, { Path } from "react-native-svg";
+import { HYPERLINKS_SPACE_LOGO_GREEN } from "../HyperlinksSpaceLogo";
 
 export const MESSAGE_CHAT_CALL_ARROW_SIZE_PX = 12;
 export const MESSAGE_CHAT_CALL_ARROW_GAP_PX = 4;
 
-const CALL_ARROW_SUCCESS_COLOR = "#e53935";
-const CALL_ARROW_UNSUCCESSFUL_COLOR = "#43a047";
+const CALL_ARROW_FAILED_COLOR = "#e53935";
 
 type Props = {
   outgoing: boolean;
@@ -19,7 +19,7 @@ export function MessageChatCallArrow({
   successful,
   size = MESSAGE_CHAT_CALL_ARROW_SIZE_PX,
 }: Props) {
-  const color = successful ? CALL_ARROW_SUCCESS_COLOR : CALL_ARROW_UNSUCCESSFUL_COLOR;
+  const color = successful ? HYPERLINKS_SPACE_LOGO_GREEN : CALL_ARROW_FAILED_COLOR;
   const stroke = {
     stroke: color,
     strokeWidth: 1.75,

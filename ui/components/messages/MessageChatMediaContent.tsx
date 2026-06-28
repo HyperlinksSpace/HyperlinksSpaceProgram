@@ -5,8 +5,10 @@ import { Image } from "expo-image";
 import type { ThemeColors } from "../../theme";
 import type { MessageChatContentKind } from "./messageChatHistoryTypes";
 import {
+  MESSAGE_BUBBLE_GIF_MAX_PX,
   MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX,
   MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+  MESSAGE_BUBBLE_STICKER_MAX_PX,
 } from "./messageChatLayout";
 import { bytesLookLikeTgs, bytesLookLikeVideo } from "./loadTgsAnimation";
 import { MessageChatTgsSticker } from "./MessageChatTgsSticker";
@@ -66,7 +68,8 @@ function resolveMediaKind(
   if (
     normalizedMime.startsWith("video/") ||
     bytesLookLikeVideo(bytes) ||
-    (contentKind === "video" && !normalizedMime.startsWith("image/"))
+    contentKind === "video" ||
+    (contentKind === "animation" && bytesLookLikeVideo(bytes))
   ) {
     return "video";
   }
@@ -154,6 +157,8 @@ function WebMessageChatVideo({
     video.addEventListener("timeupdate", syncProgress);
     video.addEventListener("seeking", syncProgress);
     video.addEventListener("ended", onEnded);
+    video.load();
+    playIfVisible();
 
     return () => {
       observer.disconnect();
@@ -366,7 +371,9 @@ export function MessageChatMediaContent({
           width: widthPx,
           height: heightPx,
         }}
-        contentFit={pixelPerfect ? "contain" : "cover"}
+        contentFit={
+          contentKind === "photo" ? "contain" : pixelPerfect ? "contain" : "cover"
+        }
       />
       {showProgress ? (
         <MediaProgressBar widthPx={widthPx} progress={0} colors={colors} />
@@ -379,24 +386,45 @@ function scaleMediaDimensions(
   sourceW: number,
   sourceH: number,
   maxWidthPx: number,
-  pixelPerfect: boolean,
+  contentKind?: MessageChatContentKind,
 ): { widthPx: number; heightPx: number } {
-  const maxW = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
+  const pixelPerfect = contentKind === "animation" || contentKind === "sticker";
+  let maxW = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
+  if (contentKind === "sticker") {
+    maxW = Math.min(maxW, MESSAGE_BUBBLE_STICKER_MAX_PX);
+  } else if (contentKind === "animation") {
+    maxW = Math.min(maxW, MESSAGE_BUBBLE_GIF_MAX_PX);
+  }
+
+  if (pixelPerfect) {
+    if (sourceW <= maxW) {
+      return {
+        widthPx: Math.max(1, Math.round(sourceW)),
+        heightPx: Math.max(1, Math.round(sourceH)),
+      };
+    }
+    const scale = maxW / sourceW;
+    return {
+      widthPx: Math.max(1, Math.round(sourceW * scale)),
+      heightPx: Math.max(1, Math.round(sourceH * scale)),
+    };
+  }
+
   let widthPx = sourceW;
   let heightPx = sourceH;
-
   if (widthPx > maxW) {
     const scale = maxW / widthPx;
     widthPx = Math.max(1, Math.round(sourceW * scale));
     heightPx = Math.max(1, Math.round(sourceH * scale));
-  } else if (pixelPerfect) {
-    widthPx = Math.max(1, Math.round(widthPx));
-    heightPx = Math.max(1, Math.round(heightPx));
   } else {
     widthPx = Math.min(maxW, Math.max(120, Math.round(widthPx)));
-    heightPx = Math.max(120, Math.min(480, Math.round(heightPx)));
+    heightPx = Math.max(80, Math.min(480, Math.round(heightPx)));
   }
-
+  if (contentKind === "photo" && heightPx > 480) {
+    const scale = 480 / heightPx;
+    widthPx = Math.max(1, Math.round(widthPx * scale));
+    heightPx = 480;
+  }
   return { widthPx, heightPx };
 }
 
@@ -406,15 +434,19 @@ export function resolveMessageMediaDimensions(
   mediaHeight: number | null | undefined,
   contentKind?: MessageChatContentKind,
 ): { widthPx: number; heightPx: number } {
-  const pixelPerfect =
-    contentKind === "animation" || contentKind === "sticker";
   const sourceW = Math.round(Number(mediaWidth));
   const sourceH = Math.round(Number(mediaHeight));
   if (Number.isFinite(sourceW) && Number.isFinite(sourceH) && sourceW > 0 && sourceH > 0) {
-    return scaleMediaDimensions(sourceW, sourceH, maxWidthPx, pixelPerfect);
+    return scaleMediaDimensions(sourceW, sourceH, maxWidthPx, contentKind);
   }
-  const widthPx = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
-  const fallbackHeight = Math.round(widthPx * (pixelPerfect ? 1 : 0.62));
+  const pixelPerfect = contentKind === "animation" || contentKind === "sticker";
+  let widthPx = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
+  if (contentKind === "sticker") {
+    widthPx = Math.min(widthPx, MESSAGE_BUBBLE_STICKER_MAX_PX);
+  } else if (contentKind === "animation") {
+    widthPx = Math.min(widthPx, MESSAGE_BUBBLE_GIF_MAX_PX);
+  }
+  const fallbackHeight = Math.round(widthPx * (pixelPerfect ? 1 : 0.75));
   return { widthPx, heightPx: fallbackHeight };
 }
 

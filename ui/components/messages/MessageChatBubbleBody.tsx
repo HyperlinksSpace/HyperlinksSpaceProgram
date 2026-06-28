@@ -15,11 +15,15 @@ import type {
 } from "./messageChatHistoryTypes";
 import { isDisplayableMediaMessage, isGroupLikeChatKind, resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
 import {
+  MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_META_GAP_PX,
+  MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
+  MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
+  messageBubbleMediaMetaBottomPx,
 } from "./messageChatLayout";
 import type { BubbleMetaPlacement } from "./messageChatBubbleMeasure";
 import {
@@ -27,12 +31,6 @@ import {
   messageMediaShowsProgressBar,
   resolveMessageMediaDimensions,
 } from "./MessageChatMediaContent";
-import {
-  MESSAGE_BUBBLE_BORDER_RADIUS_PX,
-  MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
-  MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
-  MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
-} from "./messageChatLayout";
 import {
   MessageChatOutgoingChecks,
 } from "./MessageChatOutgoingChecks";
@@ -88,7 +86,7 @@ function MessageChatBubbleTextContent({
       colors={colors}
       outgoingStatus={outgoingStatus}
       alignSelf={metaPlacement === "stacked" ? "flex-end" : undefined}
-      marginTop={metaPlacement === "stacked" && bodyText ? 2 : 0}
+      alignWithBodyBaseline={metaPlacement === "inline" || metaPlacement === "lastLine"}
       callIndicator={callIndicator}
     />
   ) : null;
@@ -99,9 +97,10 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           flexDirection: "row",
-          alignItems: "flex-end",
+          alignItems: "baseline",
           alignSelf: "flex-start",
           maxWidth: maxWidthPx,
+          minHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
         }}
       >
         <MessageChatLinkifiedText
@@ -110,10 +109,7 @@ function MessageChatBubbleTextContent({
         />
         <View
           style={{
-            flexDirection: "row",
-            alignItems: "center",
             marginLeft: MESSAGE_BUBBLE_META_GAP_PX,
-            marginBottom: 2,
             flexShrink: 0,
           }}
         >
@@ -138,7 +134,7 @@ function MessageChatBubbleTextContent({
           style={{
             flexDirection: "row",
             justifyContent: "flex-end",
-            alignItems: "center",
+            alignItems: "baseline",
             marginTop: -MESSAGE_BUBBLE_LINE_HEIGHT_PX,
             height: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
           }}
@@ -171,7 +167,7 @@ function MessageChatBubbleTimeRow({
   colors,
   outgoingStatus,
   alignSelf = "flex-end",
-  marginTop = 0,
+  alignWithBodyBaseline = false,
   lightOnMedia = false,
   callIndicator = null,
 }: {
@@ -179,7 +175,7 @@ function MessageChatBubbleTimeRow({
   colors: ThemeColors;
   outgoingStatus: ReturnType<typeof resolveMessageOutgoingStatus>;
   alignSelf?: "flex-end" | "flex-start";
-  marginTop?: number;
+  alignWithBodyBaseline?: boolean;
   lightOnMedia?: boolean;
   callIndicator?: { outgoing: boolean; successful: boolean } | null;
 }) {
@@ -190,33 +186,54 @@ function MessageChatBubbleTimeRow({
     lineHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
     color: lightOnMedia ? "rgba(255,255,255,0.92)" : colors.secondary,
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
+    ...(alignWithBodyBaseline && Platform.OS === "web"
+      ? ({ display: "inline" } as object)
+      : null),
   } as const;
 
   return (
     <View
       style={{
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: alignWithBodyBaseline ? "baseline" : "center",
         alignSelf,
-        marginTop,
         ...(lightOnMedia && Platform.OS === "web"
           ? ({ textShadow: "0 1px 2px rgba(0,0,0,0.65)" } as object)
+          : null),
+        ...(alignWithBodyBaseline && Platform.OS === "web"
+          ? ({ display: "inline-flex", verticalAlign: "baseline" } as object)
           : null),
       }}
     >
       {callIndicator ? (
-        <MessageChatCallArrow
-          outgoing={callIndicator.outgoing}
-          successful={callIndicator.successful}
-        />
+        <View
+          style={
+            alignWithBodyBaseline
+              ? { marginBottom: Platform.OS === "web" ? 0 : 1 }
+              : undefined
+          }
+        >
+          <MessageChatCallArrow
+            outgoing={callIndicator.outgoing}
+            successful={callIndicator.successful}
+          />
+        </View>
       ) : null}
       <Text style={metaStyle}>{timeLabel}</Text>
       {showChecks ? (
-        <MessageChatOutgoingChecks
-          status={outgoingStatus!}
-          colors={colors}
-          onMedia={lightOnMedia}
-        />
+        <View
+          style={
+            alignWithBodyBaseline
+              ? { marginBottom: Platform.OS === "web" ? 0 : 1 }
+              : undefined
+          }
+        >
+          <MessageChatOutgoingChecks
+            status={outgoingStatus!}
+            colors={colors}
+            onMedia={lightOnMedia}
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -435,8 +452,8 @@ export function MessageChatBubbleBody({
               pointerEvents="none"
               style={{
                 position: "absolute",
-                right: 8,
-                bottom: (mediaHasProgress ? MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX : 0) + 6,
+                right: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
+                bottom: messageBubbleMediaMetaBottomPx(mediaHasProgress),
               }}
             >
               <MessageChatBubbleTimeRow
