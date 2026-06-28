@@ -21,12 +21,81 @@ function forgeLog(step, details = "") {
   console.log(`[forge:${ts}] ${step}${suffix}`);
 }
 
+/** Normalize packager paths (forward slashes, no leading slash). */
+function packagerRelPath(raw) {
+  return String(raw || "")
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+}
+
+/**
+ * Desktop shell only needs dist + windows + icon (+ node_modules for main-process requires).
+ * Deny-list server/TDLib trees not used by windows/build.cjs — aligns with electron-builder `files`.
+ */
+function shouldIgnorePackagerPath(raw) {
+  const p = packagerRelPath(raw);
+  if (!p || p === "package.json") return false;
+  if (p === "dist" || p.startsWith("dist/")) return false;
+  if (p === "windows" || p.startsWith("windows/")) return false;
+  if (p === "assets/icon.ico") return false;
+
+  const ignoreExact = new Set([
+    "node_modules/tdl",
+    "node_modules/prebuilt-tdlib",
+    "node_modules/react-native-fast-pbkdf2",
+  ]);
+  if (ignoreExact.has(p)) return true;
+
+  const ignorePrefixes = [
+    "api/",
+    "telegram/",
+    "database/",
+    "deploy/",
+    "infra/",
+    "scripts/",
+    "locales/",
+    "ui/",
+    "auth/",
+    "ai/",
+    "shared/",
+    "backlogs/",
+    "texts/",
+    "node_modules/tdl/",
+    "node_modules/prebuilt-tdlib/",
+    "node_modules/react-native-fast-pbkdf2/",
+    "node_modules/react-native/",
+    "node_modules/@google-cloud/",
+    "node_modules/@neondatabase/",
+    "node_modules/grammy/",
+    "node_modules/openai/",
+    "node_modules/expo/",
+    "node_modules/expo-",
+  ];
+  if (ignorePrefixes.some((prefix) => p.startsWith(prefix))) return true;
+
+  // Other assets (not icon.ico) are not shipped in the desktop bundle.
+  if (p === "assets" || p.startsWith("assets/")) return true;
+
+  return false;
+}
+
+// Native modules not used by the packaged desktop shell. Forge runs @electron/rebuild on
+// copied node_modules; GitHub windows-latest (VS 2026) breaks node-gyp for tdl unless skipped.
+const FORGE_REBUILD_IGNORE_MODULES = [
+  "tdl",
+  "prebuilt-tdlib",
+  "react-native-fast-pbkdf2",
+];
+
 // Forge config focused on Windows NSIS installer output.
 // Note: your current electron-builder setup includes heavy custom NSIS hook files;
 // Forge's stock NSIS maker may not replicate those exact installer pages out of the box.
 export default {
   outDir: path.join(appDir, "releases", "forge", "artifacts"),
   buildIdentifier: "hsp-forge",
+  rebuildConfig: {
+    ignoreModules: FORGE_REBUILD_IGNORE_MODULES,
+  },
   hooks: {
     generateAssets: async () => {
       forgeLog("generateAssets");
@@ -96,6 +165,7 @@ export default {
     name: forgeProductName,
     appBundleId: "com.sraibaby.app",
     icon: ICON_PATH,
+    ignore: shouldIgnorePackagerPath,
     // electron-packager reads this as the main process entry.
     main: MAIN_PROCESS_FILE_REL,
     // Improves exe identity in Properties / some SmartScreen heuristics (does not replace Authenticode signing).
