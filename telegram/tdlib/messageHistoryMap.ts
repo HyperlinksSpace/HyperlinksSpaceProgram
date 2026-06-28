@@ -3,6 +3,8 @@ import {
   chatTitle,
   formattedTextPlain,
   lastReadOutboxMessageIdFromChat,
+  messageIsOutgoing,
+  messageReadDateFromTdMessage,
   previewFromMessage,
   type TdChat,
   type TdMessage,
@@ -128,12 +130,20 @@ function mediaDimensions(message: TdMessage): { width: number | null; height: nu
       return { width: w, height: h };
     }
   }
+  if (type === "messageSticker") {
+    const sticker = row.sticker as { width?: number; height?: number } | undefined;
+    const w = Number(sticker?.width);
+    const h = Number(sticker?.height);
+    if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+      return { width: w, height: h };
+    }
+  }
   return { width: null, height: null };
 }
 
 function hasDisplayableMedia(message: TdMessage): boolean {
   const kind = messageContentKind(message);
-  return kind === "photo" || kind === "video" || kind === "animation";
+  return kind === "photo" || kind === "video" || kind === "animation" || kind === "sticker";
 }
 
 function captionText(message: TdMessage): string | null {
@@ -152,6 +162,7 @@ function bodyText(message: TdMessage): string {
   const caption = captionText(message);
   if (caption) return caption;
   if (hasDisplayableMedia(message)) return "";
+  if (messageContentKind(message) === "sticker") return "";
   return previewFromMessage(message) ?? "";
 }
 
@@ -286,22 +297,52 @@ export async function enrichOutgoingReadStatuses(
   messages: MappedChatHistoryMessage[],
 ): Promise<MappedChatHistoryMessage[]> {
   if (chatKindFromTdChat(chat) !== "private") return messages;
-  const pending = messages.filter(
-    (row) => row.is_outgoing && row.outgoing_status === "delivered",
-  );
-  if (pending.length === 0) return messages;
 
   const readIds = new Set<number>();
+  const lastReadOutbox = lastReadOutboxMessageIdFromChat(chat);
+  if (lastReadOutbox != null) {
+    for (const row of messages) {
+      if (row.is_outgoing && row.telegram_message_id <= lastReadOutbox) {
+        readIds.add(row.telegram_message_id);
+      }
+    }
+  }
+
+  const pending = messages.filter(
+    (row) =>
+      row.is_outgoing &&
+      !readIds.has(row.telegram_message_id) &&
+      row.outgoing_status !== "pending" &&
+      row.outgoing_status !== "failed",
+  );
+  if (pending.length === 0 && readIds.size === 0) return messages;
+
   await Promise.all(
     pending.map(async (row) => {
+      try {
+        const readState = (await client.invoke({
+          _: "getMessageReadDate",
+          chat_id: chat.id,
+          message_id: row.telegram_message_id,
+        })) as { _?: string; date?: number };
+        if (
+          readState._ === "messageReadDateRead" &&
+          typeof readState.date === "number" &&
+          readState.date > 0
+        ) {
+          readIds.add(row.telegram_message_id);
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
       try {
         const full = (await client.invoke({
           _: "getMessage",
           chat_id: chat.id,
           message_id: row.telegram_message_id,
         })) as TdMessage;
-        const readDate = full.interaction_info?.read_date;
-        if (typeof readDate === "number" && readDate > 0) {
+        if (messageReadDateFromTdMessage(full) != null) {
           readIds.add(row.telegram_message_id);
         }
       } catch {
@@ -319,30 +360,49 @@ export async function enrichOutgoingReadStatuses(
 export { lastReadOutboxMessageIdFromChat };
 
 function resolveOutgoingStatus(message: TdMessage, chat: TdChat): MessageOutgoingStatus | null {
-  if (!message.is_outgoing) return null;
+  if (!messageIsOutgoing(message)) return null;
 
   const sendingState = message.sending_state?._;
   if (sendingState === "messageSendingStateFailed") return "failed";
   if (sendingState === "messageSendingStatePending") return "pending";
 
-  const readDate = message.interaction_info?.read_date;
-  if (typeof readDate === "number" && readDate > 0) {
+  if (messageReadDateFromTdMessage(message) != null) {
     return "read";
   }
 
   const messageId = Number(message.id);
-  const lastReadOutbox = Number(chat.last_read_outbox_message_id);
+  const lastReadOutbox = lastReadOutboxMessageIdFromChat(chat);
   if (
     Number.isFinite(messageId) &&
     messageId > 0 &&
-    Number.isFinite(lastReadOutbox) &&
-    lastReadOutbox > 0 &&
+    lastReadOutbox != null &&
     messageId <= lastReadOutbox
   ) {
     return "read";
   }
 
   return "delivered";
+}
+
+/** In private chats, any read outgoing message implies all older outgoing are read. */
+export function applyCumulativeOutgoingReadStatuses(
+  messages: MappedChatHistoryMessage[],
+): MappedChatHistoryMessage[] {
+  let maxReadId: number | null = null;
+  for (const row of messages) {
+    if (!row.is_outgoing || row.outgoing_status !== "read") continue;
+    const id = row.telegram_message_id;
+    if (maxReadId == null || id > maxReadId) maxReadId = id;
+  }
+  if (maxReadId == null) return messages;
+  return messages.map((row) => {
+    if (!row.is_outgoing) return row;
+    if (row.outgoing_status === "pending" || row.outgoing_status === "failed") return row;
+    if (row.telegram_message_id <= maxReadId!) {
+      return { ...row, outgoing_status: "read" };
+    }
+    return row;
+  });
 }
 
 /** Re-apply private-chat read cursor to mapped history rows. */
@@ -391,7 +451,7 @@ export async function mapHistoryMessage(
     sender_user_id: senderUserId(message),
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
-    is_outgoing: Boolean(message.is_outgoing),
+    is_outgoing: messageIsOutgoing(message),
     outgoing_status: resolveOutgoingStatus(message, chat),
     content_kind: messageContentKind(message),
     has_media: hasMedia,

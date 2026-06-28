@@ -104,6 +104,19 @@ export function measureMessageBubbleMetaWidthPx(
   return timeWidth + metaExtraWidthPx;
 }
 
+/** Single-line inline row: body glyphs + gap + time/checks. */
+export function measureInlineBubbleRowWidth(bodyText: string, metaWidthPx: number): number {
+  const trimmed = bodyText.trim();
+  if (!trimmed) return Math.max(0, metaWidthPx);
+  const textWidth = measureTextGlyphWidth(
+    trimmed,
+    MESSAGE_BUBBLE_FONT_SIZE_PX,
+    MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+  );
+  if (metaWidthPx <= 0) return textWidth;
+  return textWidth + MESSAGE_BUBBLE_META_GAP_PX + metaWidthPx;
+}
+
 export function resolveBubbleMetaPlacementFromLineWidths(
   lineWidths: number[],
   maxContentWidth: number,
@@ -114,8 +127,11 @@ export function resolveBubbleMetaPlacementFromLineWidths(
   if (lineWidths.length === 1) {
     return lineWidths[0]! + metaGapPx + metaWidthPx <= maxContentWidth ? "inline" : "stacked";
   }
+  const longest = Math.max(...lineWidths);
   const lastLine = lineWidths[lineWidths.length - 1]!;
-  if (lastLine + metaGapPx + metaWidthPx <= maxContentWidth) {
+  const metaBlock = metaGapPx + metaWidthPx;
+  // Meta sits on the last line only when it fits in the tail of the longest line.
+  if (longest - lastLine >= metaBlock) {
     return "lastLine";
   }
   return "stacked";
@@ -126,15 +142,15 @@ export function measureBubbleInnerContentWidth(
   placement: BubbleMetaPlacement,
   metaWidthPx: number,
   metaGapPx = MESSAGE_BUBBLE_META_GAP_PX,
+  bodyText = "",
 ): number {
   if (lineWidths.length === 0) return Math.max(0, metaWidthPx);
   const longest = Math.max(...lineWidths);
-  const last = lineWidths[lineWidths.length - 1]!;
   switch (placement) {
     case "inline":
-      return lineWidths[0]! + metaGapPx + metaWidthPx;
+      return measureInlineBubbleRowWidth(bodyText, metaWidthPx);
     case "lastLine":
-      return Math.max(longest, last + metaGapPx + metaWidthPx);
+      return longest;
     default:
       return Math.max(longest, metaWidthPx);
   }
@@ -155,13 +171,36 @@ export function resolveMessageBubbleLayout(
     maxColumnWidth - MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
   );
   const trimmed = bodyText.trim();
-  const lineWidths = trimmed ? measureWrappedLineWidths(trimmed, maxContentWidth) : [];
-  const placement = resolveBubbleMetaPlacementFromLineWidths(
+  let contentWidth = maxContentWidth;
+  let lineWidths = trimmed ? measureWrappedLineWidths(trimmed, contentWidth) : [];
+  let placement = resolveBubbleMetaPlacementFromLineWidths(
     lineWidths,
-    maxContentWidth,
+    contentWidth,
     metaWidthPx,
   );
-  let innerWidthPx = measureBubbleInnerContentWidth(lineWidths, placement, metaWidthPx);
+  let innerWidthPx = measureBubbleInnerContentWidth(
+    lineWidths,
+    placement,
+    metaWidthPx,
+    MESSAGE_BUBBLE_META_GAP_PX,
+    trimmed,
+  );
+
+  if (trimmed && innerWidthPx > 0 && innerWidthPx < maxContentWidth) {
+    const remeasured = measureWrappedLineWidths(trimmed, innerWidthPx);
+    if (remeasured.length > 0) {
+      lineWidths = remeasured;
+      placement = resolveBubbleMetaPlacementFromLineWidths(lineWidths, innerWidthPx, metaWidthPx);
+      innerWidthPx = measureBubbleInnerContentWidth(
+        lineWidths,
+        placement,
+        metaWidthPx,
+        MESSAGE_BUBBLE_META_GAP_PX,
+        trimmed,
+      );
+    }
+  }
+
   if (extraInnerWidthPx > 0) innerWidthPx = Math.max(innerWidthPx, extraInnerWidthPx);
   if (!trimmed && metaWidthPx > 0) innerWidthPx = Math.max(innerWidthPx, metaWidthPx);
   innerWidthPx = Math.min(maxContentWidth, innerWidthPx);

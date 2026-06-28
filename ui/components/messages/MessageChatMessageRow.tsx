@@ -12,7 +12,10 @@ import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
-import { resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
+import {
+  isDisplayableMediaMessage,
+  resolveMessageOutgoingStatus,
+} from "./messageChatHistoryTypes";
 import {
   measureBubbleInnerContentWidth,
   measureLongestWrappedBodyLineWidth,
@@ -28,6 +31,7 @@ import {
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+  MESSAGE_BUBBLE_META_GAP_PX,
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
 } from "./messageChatLayout";
@@ -61,24 +65,43 @@ function fittedBubbleLayoutFromTextLayout(
   innerMaxWidth: number,
   metaWidthPx: number,
   extraInnerWidthPx: number,
-): { width: number; placement: BubbleMetaPlacement } {
+  bodyText: string,
+): { width: number; innerWidthPx: number; placement: BubbleMetaPlacement } {
   const lines = event.nativeEvent.lines;
   if (lines.length === 0) {
-    return { width: 0, placement: "stacked" };
+    return { width: 0, innerWidthPx: 0, placement: "stacked" };
   }
-  const lineWidths = lines.map((line) => line.width);
+  const trimmed = bodyText.trim();
+  const lineWidths = lines.map((line, index, all) => {
+    const width = line.width;
+    if (all.length === 1 && trimmed.length > 0) {
+      const glyphWidth = measureTextGlyphWidth(
+        trimmed,
+        MESSAGE_BUBBLE_FONT_SIZE_PX,
+        MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+      );
+      if (glyphWidth > 0) return Math.min(width, glyphWidth);
+    }
+    return width;
+  });
   const placement = resolveBubbleMetaPlacementFromLineWidths(
     lineWidths,
     innerMaxWidth,
     metaWidthPx,
   );
-  let inner = measureBubbleInnerContentWidth(lineWidths, placement, metaWidthPx);
+  let inner = measureBubbleInnerContentWidth(
+    lineWidths,
+    placement,
+    metaWidthPx,
+    MESSAGE_BUBBLE_META_GAP_PX,
+    trimmed,
+  );
   inner = Math.max(inner, extraInnerWidthPx);
   const width = Math.min(
     columnWidth,
     inner + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
   );
-  return { width, placement };
+  return { width, innerWidthPx: inner, placement };
 }
 
 type Props = {
@@ -99,6 +122,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
     width: number;
+    innerWidthPx: number;
     placement: BubbleMetaPlacement;
   } | null>(null);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
@@ -121,23 +145,25 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
   const isCall = item.content_kind === "call";
   const bodyText = isCall ? formatMessageCallLabel(item.is_outgoing, t) : item.text.trim();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
-  const checksWidthPx = messageChatOutgoingChecksWidthPx(resolveMessageOutgoingStatus(item));
+  const outgoingStatusForLayout = (() => {
+    const status = resolveMessageOutgoingStatus(item);
+    if (status === "read" && chatKind !== "private") return "delivered" as const;
+    return status;
+  })();
+  const checksWidthPx = messageChatOutgoingChecksWidthPx(outgoingStatusForLayout);
   const callArrowWidthPx = messageChatCallArrowWidthPx(isCall);
   const metaWidthPx = measureMessageBubbleMetaWidthPx(
     timeLabel,
     checksWidthPx + callArrowWidthPx,
   );
-  const showMedia =
-    Boolean(item.has_media) &&
-    (item.content_kind === "photo" ||
-      item.content_kind === "video" ||
-      item.content_kind === "animation");
+  const showMedia = isDisplayableMediaMessage(item);
   const hasMediaCaption = showMedia && bodyText.length > 0;
   const isBareMediaMessage = showMedia && !hasMediaCaption && !isCall;
   const { widthPx: mediaWidthPx } = resolveMessageMediaDimensions(
     bubbleInnerMaxWidth,
     item.media_width,
     item.media_height,
+    item.content_kind,
   );
 
   const extraInnerWidthPx = useMemo(() => {
@@ -182,6 +208,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
       extraInnerWidthPx,
     );
     return {
+      innerWidthPx,
       width: Math.min(
         bubbleMaxWidth,
         showMedia && hasMediaCaption
@@ -215,13 +242,18 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
         bubbleInnerMaxWidth,
         metaWidthPx,
         extraInnerWidthPx,
+        bodyText,
       );
       if (next.width <= 0) return;
       setNativeBubbleLayout((current) =>
-        current?.width === next.width && current.placement === next.placement ? current : next,
+        current?.width === next.width &&
+        current.innerWidthPx === next.innerWidthPx &&
+        current.placement === next.placement
+          ? current
+          : next,
       );
     },
-    [bubbleInnerMaxWidth, bubbleMaxWidth, extraInnerWidthPx, metaWidthPx],
+    [bodyText, bubbleInnerMaxWidth, bubbleMaxWidth, extraInnerWidthPx, metaWidthPx],
   );
 
   useEffect(() => {
@@ -232,10 +264,16 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     Platform.OS === "web"
       ? webBubbleLayout
       : isBareMediaMessage
-        ? { width: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement }
+        ? { width: mediaWidthPx, innerWidthPx: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement }
         : nativeBubbleLayout;
-  const bubbleWidth = bubbleLayout?.width ?? null;
   const metaPlacement = bubbleLayout?.placement ?? "stacked";
+  const bubbleContentWidthPx = bubbleLayout?.innerWidthPx ?? bubbleInnerMaxWidth;
+  const useWebFitContent =
+    Platform.OS === "web" &&
+    !isBareMediaMessage &&
+    !(showMedia && hasMediaCaption) &&
+    metaPlacement === "inline";
+  const bubbleWidth = useWebFitContent ? null : bubbleLayout?.width ?? null;
   const measureText = bodyText || " ";
 
   return (
@@ -318,7 +356,10 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
                     backgroundColor: colors.undercover,
                   }),
             },
-            bubbleWidth != null && bubbleWidth > 0 ? { width: bubbleWidth } : null,
+            bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,
+            useWebFitContent
+              ? ({ width: "fit-content", maxWidth: bubbleMaxWidth } as object)
+              : null,
           ]}
         >
           <MessageChatBubbleBody
@@ -326,7 +367,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             item={item}
             chatKind={chatKind}
             colors={colors}
-            maxWidthPx={bubbleInnerMaxWidth}
+            maxWidthPx={bubbleContentWidthPx}
             metaPlacement={metaPlacement}
           />
         </View>

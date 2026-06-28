@@ -1,6 +1,7 @@
 import type { Client } from "tdl";
 import {
   applyReadOutboxToHistoryMessages,
+  applyCumulativeOutgoingReadStatuses,
   chatKindFromTdChat,
   effectiveReadOutboxMessageId,
   enrichOutgoingReadStatuses,
@@ -159,6 +160,7 @@ export async function fetchChatHistory(
   if (chatKind === "private") {
     messages = await enrichOutgoingReadStatuses(client, finalChat, messages);
     messages = applyReadOutboxToHistoryMessages(messages, finalChat);
+    messages = applyCumulativeOutgoingReadStatuses(messages);
   }
   const oldestReturnedId = messages[0]?.telegram_message_id ?? null;
   const hasMoreOlder =

@@ -241,8 +241,25 @@ export function normalizeUnreadCount(chat: TdChat): number {
 }
 
 export function lastReadOutboxMessageIdFromChat(chat: TdChat): number | null {
-  const id = Number(chat.last_read_outbox_message_id);
-  return Number.isFinite(id) && id > 0 ? id : null;
+  const row = chat as Record<string, unknown>;
+  for (const key of ["last_read_outbox_message_id", "lastReadOutboxMessageId"] as const) {
+    const id = Number(row[key]);
+    if (Number.isFinite(id) && id > 0) return id;
+  }
+  return null;
+}
+
+export function messageReadDateFromTdMessage(message: TdMessage): number | null {
+  const info = message.interaction_info as Record<string, unknown> | undefined;
+  if (!info) return null;
+  const raw = info.read_date ?? info.readDate;
+  const date = Number(raw);
+  return Number.isFinite(date) && date > 0 ? date : null;
+}
+
+export function messageIsOutgoing(message: TdMessage): boolean {
+  const row = message as Record<string, unknown>;
+  return Boolean(message.is_outgoing ?? row.isOutgoing);
 }
 
 async function fetchLatestMessagePreview(client: Client, chatId: number): Promise<string | null> {

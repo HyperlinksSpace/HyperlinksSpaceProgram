@@ -13,7 +13,7 @@ import type {
   MessageChatKind,
   MessageChatReplyPreview,
 } from "./messageChatHistoryTypes";
-import { isGroupLikeChatKind, resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
+import { isDisplayableMediaMessage, isGroupLikeChatKind, resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
@@ -129,6 +129,7 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           alignSelf: "flex-start",
+          width: maxWidthPx,
           maxWidth: maxWidthPx,
         }}
       >
@@ -153,6 +154,7 @@ function MessageChatBubbleTextContent({
       style={{
         marginTop,
         alignSelf: "flex-start",
+        width: maxWidthPx,
         maxWidth: maxWidthPx,
       }}
     >
@@ -304,7 +306,9 @@ export function MessageChatBubbleBody({
   const { t } = useAppStrings();
   const { colorScheme } = useTelegram();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
-  const outgoingStatus = resolveMessageOutgoingStatus(item);
+  const outgoingStatusRaw = resolveMessageOutgoingStatus(item);
+  const outgoingStatus =
+    outgoingStatusRaw === "read" && chatKind !== "private" ? "delivered" : outgoingStatusRaw;
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) && !item.is_outgoing && item.sender_name.trim().length > 0;
   const showChannelBadge = Boolean(item.sender_is_channel);
@@ -313,14 +317,15 @@ export function MessageChatBubbleBody({
   const bodyText = isCall
     ? formatMessageCallLabel(item.is_outgoing, t)
     : item.text.trim();
-  const showMedia =
-    Boolean(item.has_media) &&
-    (contentKind === "photo" || contentKind === "video" || contentKind === "animation");
+  const showMedia = isDisplayableMediaMessage(item);
   const mediaHasProgress = messageMediaShowsProgressBar(contentKind);
   const overlayMediaMeta =
     showMedia &&
     !bodyText &&
-    (contentKind === "video" || contentKind === "animation" || contentKind === "photo");
+    (contentKind === "video" ||
+      contentKind === "animation" ||
+      contentKind === "photo" ||
+      contentKind === "sticker");
   const mediaUrl = showMedia ? resolveMediaUrl(chatId, item.telegram_message_id) : null;
   const callIndicator = isCall
     ? { outgoing: item.is_outgoing, successful: Boolean(item.call_success) }
@@ -330,6 +335,7 @@ export function MessageChatBubbleBody({
     maxWidthPx,
     item.media_width,
     item.media_height,
+    contentKind,
   );
 
   const senderColor = groupSenderDisplayColor(
@@ -347,6 +353,7 @@ export function MessageChatBubbleBody({
         lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
         fontWeight: "400" as const,
         color: colors.primary,
+        ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
       },
     ],
     [colors.primary],

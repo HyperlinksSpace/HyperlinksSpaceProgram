@@ -5,7 +5,7 @@ Make logs more compact
 Chat history
 My profile
 Emojis rendering, fix time, writing messages, photos and videos, messages loading, checkmarks
-AI column scrolling indicator
+AI column scrolling indicator and AI responce
 Back button on choose currency screen
 Bot instead of the status in bot
 Time in messages

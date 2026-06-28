@@ -1,4 +1,4 @@
-import { inflate } from "pako";
+import { loadTgsAnimationFromBytes } from "./loadTgsAnimation";
 
 const STATUS_TGS_URL = "/status.tgs";
 
@@ -15,8 +15,7 @@ export async function loadStatusTgsAnimation(): Promise<object> {
         throw new Error(`status.tgs fetch failed: ${response.status}`);
       }
       const compressed = new Uint8Array(await response.arrayBuffer());
-      const json = new TextDecoder().decode(inflate(compressed));
-      cachedAnimation = JSON.parse(json) as object;
+      cachedAnimation = await loadTgsAnimationFromBytes(compressed);
       return cachedAnimation;
     })();
   }

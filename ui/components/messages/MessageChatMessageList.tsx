@@ -21,9 +21,12 @@ import type {
   MessageChatKind,
   MessageOutgoingStatus,
 } from "./messageChatHistoryTypes";
+import { patchAuthenticatedHomeSelectedChatReadOutbox } from "../../authenticatedHomeSelectedChat";
 import {
   effectiveReadOutboxMessageId as mergeReadOutboxCursor,
+  enrichHistoryMessageDisplay,
   maxReadOutboxMessageIdFromItems,
+  mergeHistoryMessageRow,
   patchOutgoingStatusesWithReadOutbox,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
@@ -42,8 +45,8 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   const telegramMessageId = Number(row.telegram_message_id);
   if (!Number.isFinite(telegramMessageId)) return null;
   const text = typeof row.text === "string" ? row.text : "";
-  const hasMedia = Boolean(row.has_media);
-  const contentKindRaw = row.content_kind;
+  const hasMedia = Boolean(row.has_media ?? row.hasMedia);
+  const contentKindRaw = row.content_kind ?? row.contentKind;
   const contentKind =
     contentKindRaw === "text" ||
     contentKindRaw === "photo" ||
@@ -59,9 +62,9 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!text.trim() && !hasMedia && !isCall) return null;
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
-  const isOutgoing = Boolean(row.is_outgoing);
+  const isOutgoing = Boolean(row.is_outgoing ?? row.isOutgoing);
   let outgoingStatus: MessageOutgoingStatus | null = null;
-  const outgoingRaw = row.outgoing_status;
+  const outgoingRaw = row.outgoing_status ?? row.outgoingStatus;
   if (
     outgoingRaw === "pending" ||
     outgoingRaw === "delivered" ||
@@ -88,7 +91,7 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
       };
     }
   }
-  return {
+  return enrichHistoryMessageDisplay({
     telegram_message_id: telegramMessageId,
     text,
     sent_at: typeof row.sent_at === "string" ? row.sent_at : "",
@@ -100,11 +103,15 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     outgoing_status: outgoingStatus,
     content_kind: contentKind,
     has_media: hasMedia,
-    media_width: Number.isFinite(Number(row.media_width)) ? Number(row.media_width) : null,
-    media_height: Number.isFinite(Number(row.media_height)) ? Number(row.media_height) : null,
+    media_width: Number.isFinite(Number(row.media_width ?? row.mediaWidth))
+      ? Number(row.media_width ?? row.mediaWidth)
+      : null,
+    media_height: Number.isFinite(Number(row.media_height ?? row.mediaHeight))
+      ? Number(row.media_height ?? row.mediaHeight)
+      : null,
     reply_to: replyTo,
-    call_success: isCall ? Boolean(row.call_success) : undefined,
-  };
+    call_success: isCall ? Boolean(row.call_success ?? row.callSuccess) : undefined,
+  });
 }
 
 function normalizeChatKind(raw: unknown): MessageChatKind | null {
@@ -124,18 +131,12 @@ function mergeHistoryMessages(
   incoming: MessageChatHistoryItem[],
 ): MessageChatHistoryItem[] {
   const byId = new Map<number, MessageChatHistoryItem>();
-  for (const row of existing) byId.set(row.telegram_message_id, row);
+  for (const row of existing) {
+    byId.set(row.telegram_message_id, enrichHistoryMessageDisplay(row));
+  }
   for (const row of incoming) {
     const prev = byId.get(row.telegram_message_id);
-    if (
-      prev?.is_outgoing &&
-      prev.outgoing_status === "read" &&
-      row.outgoing_status === "delivered"
-    ) {
-      byId.set(row.telegram_message_id, { ...row, outgoing_status: "read" });
-      continue;
-    }
-    byId.set(row.telegram_message_id, row);
+    byId.set(row.telegram_message_id, mergeHistoryMessageRow(prev, row));
   }
   return [...byId.values()].sort((a, b) => {
     const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
@@ -258,10 +259,15 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     [chat.last_read_outbox_message_id, lastReadOutboxFromHistory, messages],
   );
 
-  const displayMessages = useMemo(
-    () => patchOutgoingStatusesWithReadOutbox(messages, readOutboxCursor),
-    [messages, readOutboxCursor],
-  );
+  useEffect(() => {
+    patchAuthenticatedHomeSelectedChatReadOutbox(readOutboxCursor);
+  }, [readOutboxCursor]);
+
+  const displayMessages = useMemo(() => {
+    const enriched = messages.map(enrichHistoryMessageDisplay);
+    if (chatKind !== "private") return enriched;
+    return patchOutgoingStatusesWithReadOutbox(enriched, readOutboxCursor);
+  }, [chatKind, messages, readOutboxCursor]);
 
   useEffect(() => {
     return subscribeOutgoingChatMessages(({ chatId, message }) => {

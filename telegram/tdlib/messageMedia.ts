@@ -24,6 +24,7 @@ function mimeFromPath(filePath: string): string {
   if (lower.endsWith(".gif")) return "image/gif";
   if (lower.endsWith(".mp4")) return "video/mp4";
   if (lower.endsWith(".webm")) return "video/webm";
+  if (lower.endsWith(".tgs")) return "application/x-tgsticker";
   return "image/jpeg";
 }
 
@@ -109,6 +110,37 @@ function pickThumbnailFileId(thumbnail: unknown): number | null {
   return typeof id === "number" ? id : null;
 }
 
+function pickNestedFileId(media: unknown): number | null {
+  if (!media || typeof media !== "object") return null;
+  const row = media as {
+    id?: number;
+    video?: { id?: number };
+    animation?: { id?: number };
+    sticker?: { id?: number };
+  };
+  const nested = row.video?.id ?? row.animation?.id ?? row.sticker?.id;
+  if (typeof nested === "number") return nested;
+  if (typeof row.id === "number") return row.id;
+  return null;
+}
+
+function mimeFromMessageContent(content: Record<string, unknown>): string | null {
+  const type = content._;
+  if (type === "messageVideo") {
+    const mime = (content.video as { mime_type?: string } | undefined)?.mime_type;
+    return typeof mime === "string" && mime.trim() ? mime.trim() : null;
+  }
+  if (type === "messageAnimation") {
+    const mime = (content.animation as { mime_type?: string } | undefined)?.mime_type;
+    return typeof mime === "string" && mime.trim() ? mime.trim() : null;
+  }
+  if (type === "messageSticker") {
+    const mime = (content.sticker as { mime_type?: string } | undefined)?.mime_type;
+    return typeof mime === "string" && mime.trim() ? mime.trim() : null;
+  }
+  return null;
+}
+
 function readMinithumbnailJpeg(content: Record<string, unknown>): Buffer | null {
   const photo = content.photo as { minithumbnail?: { data?: string } } | undefined;
   const data = photo?.minithumbnail?.data;
@@ -127,12 +159,16 @@ function mediaFileIdFromMessage(message: TdMessage): number | null {
   const type = row._;
   if (type === "messagePhoto") return pickPhotoFileId(row);
   if (type === "messageVideo") {
-    const video = row.video as { thumbnail?: unknown } | undefined;
-    return pickThumbnailFileId(video?.thumbnail);
+    const video = row.video as { video?: { id?: number }; thumbnail?: unknown } | undefined;
+    return pickNestedFileId(video) ?? pickThumbnailFileId(video?.thumbnail);
   }
   if (type === "messageAnimation") {
-    const animation = row.animation as { thumbnail?: unknown } | undefined;
-    return pickThumbnailFileId(animation?.thumbnail);
+    const animation = row.animation as { animation?: { id?: number }; thumbnail?: unknown } | undefined;
+    return pickNestedFileId(animation) ?? pickThumbnailFileId(animation?.thumbnail);
+  }
+  if (type === "messageSticker") {
+    const sticker = row.sticker as { sticker?: { id?: number }; thumbnail?: unknown } | undefined;
+    return pickNestedFileId(sticker) ?? pickThumbnailFileId(sticker?.thumbnail);
   }
   return null;
 }
@@ -177,7 +213,21 @@ export async function readMessageMediaBytes(
   try {
     const data = fs.readFileSync(path);
     if (data.length === 0) return null;
-    return { data, mime: mimeFromPath(path) };
+    const contentMime =
+      content && typeof content === "object"
+        ? mimeFromMessageContent(content as Record<string, unknown>)
+        : null;
+    const pathMime = mimeFromPath(path);
+    let mime = contentMime ?? pathMime;
+    const contentType = content && typeof content === "object" ? (content as { _?: string })._ : null;
+    if (
+      !contentMime &&
+      (contentType === "messageVideo" || contentType === "messageAnimation") &&
+      pathMime === "image/jpeg"
+    ) {
+      mime = "video/mp4";
+    }
+    return { data, mime };
   } catch {
     return null;
   }

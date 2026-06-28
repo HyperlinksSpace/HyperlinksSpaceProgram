@@ -211,6 +211,18 @@ export function useAuthenticatedHomeHistoryLoadTarget(): AuthenticatedHomeHistor
   );
 }
 
+/** Keep read-receipt cursor in sync after history loads or live updates. */
+export function patchAuthenticatedHomeSelectedChatReadOutbox(messageId: number | null | undefined) {
+  hydrateFromStorageIfNeeded();
+  const id = Number(messageId);
+  if (!Number.isFinite(id) || id <= 0 || selectedChat == null) return;
+  const prev = selectedChat.last_read_outbox_message_id;
+  if (prev != null && prev >= id) return;
+  selectedChat = { ...selectedChat, last_read_outbox_message_id: id };
+  writeStoredChat(selectedChat);
+  emit();
+}
+
 /** Refresh stored selection when poll updates the same chat row. */
 export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRowData[]) {
   hydrateFromStorageIfNeeded();
