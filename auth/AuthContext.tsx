@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../api/_base";
+import { clearDesktopSessionToken } from "./desktopSessionToken";
+import { installDesktopAuthFetch } from "./installDesktopAuthFetch";
 import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
 
@@ -65,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   useLayoutEffect(() => {
+    installDesktopAuthFetch();
     setAuthHydrated(true);
   }, []);
 
@@ -158,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionFeedItems(null);
     setSessionTelegramMessagesConnected(null);
     dispatchAuthLifecycleEvent("hsp-auth-signed-out");
+    clearDesktopSessionToken();
     // App logout clears the OAuth cookie only; Telegram MTProto link stays in DB for relogin.
     void fetch(buildApiUrl("/api/auth/session"), {
       method: "DELETE",

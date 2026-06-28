@@ -2,6 +2,10 @@ import { Alert, View, Text, useWindowDimensions, StyleSheet, Platform } from "re
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  dispatchAuthSessionUpdated,
+  setDesktopSessionToken,
+} from "../../auth/desktopSessionToken";
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -162,12 +166,22 @@ export function WelcomeContent() {
     if (isActuallyInTelegram()) return;
 
     const onOAuthComplete = (event: Event) => {
-      const detail = (event as CustomEvent<{ error?: string | null; success?: boolean }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          error?: string | null;
+          success?: boolean;
+          sessionToken?: string | null;
+        }>
+      ).detail;
+      if (detail?.sessionToken) {
+        setDesktopSessionToken(detail.sessionToken);
+        dispatchAuthSessionUpdated();
+      }
       if (detail?.error) {
         logPageDisplay("welcome_oauth_desktop_callback_error", { reason: detail.error });
         Alert.alert(
-          t("welcome.auth.googleBrowserAlertTitle"),
-          tf("welcome.auth.googleCallbackError", { reason: detail.error }),
+          t("welcome.auth.telegramBrowserAlertTitle"),
+          tf("welcome.auth.telegramCallbackError", { reason: detail.error }),
         );
         return;
       }

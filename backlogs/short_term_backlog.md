@@ -1,4 +1,4 @@
-Shine for me
+Profile & Music
 Rate
 Make logs more compact
 Chat history

@@ -16,9 +16,9 @@ import {
 } from "../../locales/resolveFeedCatalogLocale.js";
 import { upsertUserFromTma } from "../../database/users.js";
 import { authByInitData } from "../wallet/_auth.js";
+import { getSessionTokenFromRequest } from "../_lib/session-auth.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
 
-const SESSION_COOKIE = "hs_auth_session";
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
 function feedLog(payload: Record<string, unknown>): void {
@@ -33,15 +33,6 @@ function getHeader(req: Request, name: string): string | null {
   return null;
 }
 
-function getCookieValue(cookieHeader: string | null, key: string): string | null {
-  if (!cookieHeader) return null;
-  for (const p of cookieHeader.split(";")) {
-    const t = p.trim();
-    if (t.startsWith(`${key}=`)) return decodeURIComponent(t.slice(key.length + 1));
-  }
-  return null;
-}
-
 async function telegramUsernameFromRequest(
   request: Request,
   postBody?: { initData?: unknown },
@@ -50,9 +41,9 @@ async function telegramUsernameFromRequest(
   locale: string | null;
 } | null> {
   const method = request.method ?? "GET";
-  const cookie = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
-  if (cookie) {
-    const hash = sha256Hex(cookie);
+  const sessionToken = getSessionTokenFromRequest(request);
+  if (sessionToken) {
+    const hash = sha256Hex(sessionToken);
     const row = await getSessionByHash(hash);
     if (!row) {
       return null;
@@ -118,8 +109,8 @@ async function handler(request: Request): Promise<Response> {
     phase: "request_start",
     method,
     cookiePresent: (() => {
-      const c = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
-      return typeof c === "string" && c.length > 0;
+      const token = getSessionTokenFromRequest(request);
+      return typeof token === "string" && token.length > 0;
     })(),
     urlSnippet: typeof request.url === "string" ? request.url.slice(0, 120) : null,
   });

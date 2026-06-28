@@ -1,8 +1,14 @@
 const { BrowserWindow } = require("electron");
 
+const SESSION_COOKIE = "hs_auth_session";
+
 /**
  * OAuth in a modal window sharing the main session so `hs_auth_session` cookies land in Electron,
  * not the user's external browser.
+ *
+ * The main UI loads from `app://`, so cross-site fetches to the HTTPS API do not send cookies.
+ * On success we read the session cookie from the shared partition and pass it to the renderer
+ * (see auth/desktopSessionToken.ts + Authorization bearer on /api/*).
  */
 function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
   return new Promise((resolve) => {
@@ -38,14 +44,28 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
       try {
         const payload = JSON.stringify(detail ?? {});
         parentWindow.webContents.executeJavaScript(
-          `window.dispatchEvent(new CustomEvent("hsp-oauth-complete", { detail: ${payload} }))`,
+          `document.dispatchEvent(new CustomEvent("hsp-oauth-complete", { detail: ${payload} }))`,
         );
       } catch (e) {
         log?.(`oauth notifyMain: ${e?.message || e}`);
       }
     };
 
-    const tryFinishFromUrl = (targetUrl, phase) => {
+    const readSessionToken = async () => {
+      try {
+        const cookies = await authWindow.webContents.session.cookies.get({
+          url: `${apiOrigin}/`,
+          name: SESSION_COOKIE,
+        });
+        const value = cookies[0]?.value;
+        return typeof value === "string" && value.trim() ? value.trim() : null;
+      } catch (e) {
+        log?.(`oauth readSessionToken: ${e?.message || e}`);
+        return null;
+      }
+    };
+
+    const tryFinishFromUrl = async (targetUrl, phase) => {
       let u;
       try {
         u = new URL(targetUrl);
@@ -61,10 +81,23 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
       if (u.pathname !== "/") return false;
 
       const oauthError =
-        u.searchParams.get("googleAuthError") || u.searchParams.get("telegramAuthError") || null;
+        u.searchParams.get("googleAuthError") ||
+        u.searchParams.get("telegramAuthError") ||
+        u.searchParams.get("githubAuthError") ||
+        u.searchParams.get("appleAuthError") ||
+        null;
+
+      let sessionToken = null;
+      if (!oauthError) {
+        sessionToken = await readSessionToken();
+        if (!sessionToken) {
+          log?.(`oauth success redirect but no ${SESSION_COOKIE} cookie on ${apiOrigin}`);
+        }
+      }
+
       if (!authWindow.isDestroyed()) authWindow.close();
-      notifyMain({ success: !oauthError, error: oauthError, phase });
-      finish({ ok: !oauthError, error: oauthError });
+      notifyMain({ success: !oauthError, error: oauthError, phase, sessionToken });
+      finish({ ok: !oauthError, error: oauthError, sessionToken });
       return true;
     };
 
@@ -75,11 +108,11 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
     });
 
     authWindow.webContents.on("did-navigate", (_event, targetUrl) => {
-      tryFinishFromUrl(targetUrl, "did-navigate");
+      void tryFinishFromUrl(targetUrl, "did-navigate");
     });
 
     authWindow.webContents.on("did-navigate-in-page", (_event, targetUrl) => {
-      tryFinishFromUrl(targetUrl, "did-navigate-in-page");
+      void tryFinishFromUrl(targetUrl, "did-navigate-in-page");
     });
 
     authWindow.on("closed", () => {
@@ -93,14 +126,12 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
       log?.(`oauth did-fail-load code=${code} ${desc} ${url}`);
     });
 
-    authWindow
-      .loadURL(authUrl)
-      .catch((e) => {
-        log?.(`oauth loadURL failed: ${e?.message || e}`);
-        if (!authWindow.isDestroyed()) authWindow.close();
-        notifyMain({ success: false, error: "oauth_load_failed", phase: "load" });
-        finish({ ok: false, error: "oauth_load_failed" });
-      });
+    authWindow.loadURL(authUrl).catch((e) => {
+      log?.(`oauth loadURL failed: ${e?.message || e}`);
+      if (!authWindow.isDestroyed()) authWindow.close();
+      notifyMain({ success: false, error: "oauth_load_failed", phase: "load" });
+      finish({ ok: false, error: "oauth_load_failed" });
+    });
   });
 }
 
@@ -115,13 +146,15 @@ function registerOAuthIpc({ ipcMain, getMainWindow, log }) {
       return { ok: false, error: "missing_api_origin" };
     }
     const parentWindow = getMainWindow?.();
-    log?.(`oauth start authUrlHost=${(() => {
-      try {
-        return new URL(authUrl).host;
-      } catch {
-        return "?";
-      }
-    })()} apiOrigin=${apiOrigin}`);
+    log?.(
+      `oauth start authUrlHost=${(() => {
+        try {
+          return new URL(authUrl).host;
+        } catch {
+          return "?";
+        }
+      })()} apiOrigin=${apiOrigin}`,
+    );
     return openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log });
   });
 }

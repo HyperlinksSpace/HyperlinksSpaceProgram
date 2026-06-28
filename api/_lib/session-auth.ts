@@ -27,14 +27,26 @@ function getCookieValue(cookieHeader: string | null, key: string): string | null
   return null;
 }
 
+/** Cookie (`hs_auth_session`) or `Authorization: Bearer` (Electron desktop shell). */
+export function getSessionTokenFromRequest(request: AnyRequest): string | null {
+  const fromCookie = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
+  if (fromCookie) return fromCookie;
+  const auth = getHeader(request, "authorization");
+  if (auth?.startsWith("Bearer ")) {
+    const token = auth.slice("Bearer ".length).trim();
+    return token || null;
+  }
+  return null;
+}
+
 /**
- * Resolve authenticated `telegram_username` from `hs_auth_session` cookie.
+ * Resolve authenticated `telegram_username` from session cookie or bearer token.
  * Returns null when missing, invalid, or expired.
  */
 export async function telegramUsernameFromSessionCookie(
   request: AnyRequest,
 ): Promise<string | null> {
-  const token = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
+  const token = getSessionTokenFromRequest(request);
   if (!token) return null;
 
   const hash = sha256Hex(token);

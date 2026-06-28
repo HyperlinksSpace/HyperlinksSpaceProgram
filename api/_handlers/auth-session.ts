@@ -9,6 +9,7 @@ import {
   type FeedCatalogLocale,
 } from "../../locales/resolveFeedCatalogLocale.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
+import { getSessionTokenFromRequest } from "../_lib/session-auth.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 
 type NodeRes = {
@@ -102,7 +103,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   }
 
   const method = (request as { method?: string }).method ?? request.method;
-  const token = getCookieValue(getHeader(request, "cookie"), SESSION_COOKIE);
+  const token = getSessionTokenFromRequest(request);
   const secure = isSecureRequest(request);
 
   if (method === "DELETE") {

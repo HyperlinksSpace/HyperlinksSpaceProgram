@@ -35,6 +35,6 @@ export function applyAuthApiCors(request: AnyRequest, headers: Headers): void {
     headers.set("Access-Control-Allow-Origin", "*");
   }
   headers.set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   headers.set("Vary", "Origin");
 }
