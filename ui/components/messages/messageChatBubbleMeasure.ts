@@ -2,10 +2,13 @@ import { WEB_UI_SANS_STACK } from "../../fonts";
 import {
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+  MESSAGE_BUBBLE_META_GAP_PX,
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
 } from "./messageChatLayout";
+
+export type BubbleMetaPlacement = "inline" | "lastLine" | "stacked";
 
 function applyBodyProbeStyles(element: HTMLElement, maxContentWidth: number) {
   element.style.position = "fixed";
@@ -39,9 +42,9 @@ export function measureTextGlyphWidth(text: string, fontSizePx: number, lineHeig
   return width;
 }
 
-/** Wrapped line count for bubble body text at `maxContentWidth`. */
-export function countWrappedBodyLines(text: string, maxContentWidth: number): number {
-  if (typeof document === "undefined" || maxContentWidth <= 0 || !text.trim()) return 0;
+/** Wrapped line widths for bubble body text at `maxContentWidth`. */
+export function measureWrappedLineWidths(text: string, maxContentWidth: number): number[] {
+  if (typeof document === "undefined" || maxContentWidth <= 0 || !text.trim()) return [];
 
   const probe = document.createElement("div");
   applyBodyProbeStyles(probe, maxContentWidth);
@@ -51,50 +54,13 @@ export function countWrappedBodyLines(text: string, maxContentWidth: number): nu
   const textNode = probe.firstChild;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
     document.body.removeChild(probe);
-    return 1;
+    return text.trim() ? [measureTextGlyphWidth(text, MESSAGE_BUBBLE_FONT_SIZE_PX, MESSAGE_BUBBLE_LINE_HEIGHT_PX)] : [];
   }
 
   const node = textNode as Text;
   const range = document.createRange();
   let lineStart = 0;
-  let lines = 0;
-  let end = 1;
-
-  while (end <= node.length) {
-    range.setStart(node, lineStart);
-    range.setEnd(node, end);
-    if (range.getClientRects().length > 1) {
-      lines += 1;
-      lineStart = end - 1;
-      end = lineStart + 1;
-      continue;
-    }
-    end += 1;
-  }
-  if (lineStart < node.length) lines += 1;
-
-  document.body.removeChild(probe);
-  return Math.max(1, lines);
-}
-
-export function measureLongestWrappedBodyLineWidth(text: string, maxContentWidth: number): number {
-  if (typeof document === "undefined" || maxContentWidth <= 0 || !text.trim()) return 0;
-
-  const probe = document.createElement("div");
-  applyBodyProbeStyles(probe, maxContentWidth);
-  probe.textContent = text;
-  document.body.appendChild(probe);
-
-  const textNode = probe.firstChild;
-  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-    document.body.removeChild(probe);
-    return 0;
-  }
-
-  const node = textNode as Text;
-  const range = document.createRange();
-  let lineStart = 0;
-  let longest = 0;
+  const lineWidths: number[] = [];
   let end = 1;
 
   while (end <= node.length) {
@@ -103,7 +69,7 @@ export function measureLongestWrappedBodyLineWidth(text: string, maxContentWidth
     if (range.getClientRects().length > 1) {
       range.setStart(node, lineStart);
       range.setEnd(node, end - 1);
-      longest = Math.max(longest, range.getBoundingClientRect().width);
+      lineWidths.push(Math.ceil(range.getBoundingClientRect().width));
       lineStart = end - 1;
       end = lineStart + 1;
       continue;
@@ -113,31 +79,96 @@ export function measureLongestWrappedBodyLineWidth(text: string, maxContentWidth
 
   range.setStart(node, lineStart);
   range.setEnd(node, node.length);
-  longest = Math.max(longest, range.getBoundingClientRect().width);
+  lineWidths.push(Math.ceil(range.getBoundingClientRect().width));
 
   document.body.removeChild(probe);
-  return Math.ceil(longest);
+  return lineWidths.length > 0 ? lineWidths : [0];
 }
 
-export function shouldInlineBubbleTime(
-  bodyText: string,
+export function measureLongestWrappedBodyLineWidth(text: string, maxContentWidth: number): number {
+  const lines = measureWrappedLineWidths(text, maxContentWidth);
+  if (lines.length === 0) return 0;
+  return Math.max(...lines);
+}
+
+export function measureMessageBubbleMetaWidthPx(
   timeLabel: string,
-  maxContentWidth: number,
   metaExtraWidthPx = 0,
-): boolean {
-  if (!bodyText.trim() || !timeLabel) return false;
-  const lines = countWrappedBodyLines(bodyText, maxContentWidth);
-  if (lines > 1) return false;
-  const textWidth = measureLongestWrappedBodyLineWidth(bodyText, maxContentWidth);
+): number {
+  if (!timeLabel) return metaExtraWidthPx;
   const timeWidth = measureTextGlyphWidth(
     timeLabel,
     MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
     MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
   );
-  return textWidth + timeWidth + metaExtraWidthPx + 10 <= maxContentWidth;
+  return timeWidth + metaExtraWidthPx;
 }
 
-/** Outer bubble width from longest wrapped line (AI prompt chip pattern). */
+export function resolveBubbleMetaPlacementFromLineWidths(
+  lineWidths: number[],
+  maxContentWidth: number,
+  metaWidthPx: number,
+  metaGapPx = MESSAGE_BUBBLE_META_GAP_PX,
+): BubbleMetaPlacement {
+  if (lineWidths.length === 0 || metaWidthPx <= 0) return "stacked";
+  if (lineWidths.length === 1) {
+    return lineWidths[0]! + metaGapPx + metaWidthPx <= maxContentWidth ? "inline" : "stacked";
+  }
+  const lastLine = lineWidths[lineWidths.length - 1]!;
+  if (lastLine + metaGapPx + metaWidthPx <= maxContentWidth) {
+    return "lastLine";
+  }
+  return "stacked";
+}
+
+export function measureBubbleInnerContentWidth(
+  lineWidths: number[],
+  placement: BubbleMetaPlacement,
+  metaWidthPx: number,
+  metaGapPx = MESSAGE_BUBBLE_META_GAP_PX,
+): number {
+  if (lineWidths.length === 0) return Math.max(0, metaWidthPx);
+  const longest = Math.max(...lineWidths);
+  const last = lineWidths[lineWidths.length - 1]!;
+  switch (placement) {
+    case "inline":
+      return lineWidths[0]! + metaGapPx + metaWidthPx;
+    case "lastLine":
+      return Math.max(longest, last + metaGapPx + metaWidthPx);
+    default:
+      return Math.max(longest, metaWidthPx);
+  }
+}
+
+export function resolveMessageBubbleLayout(
+  bodyText: string,
+  maxColumnWidth: number,
+  metaWidthPx: number,
+  extraInnerWidthPx = 0,
+): {
+  placement: BubbleMetaPlacement;
+  innerWidthPx: number;
+  lineWidths: number[];
+} {
+  const maxContentWidth = Math.max(
+    0,
+    maxColumnWidth - MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+  );
+  const trimmed = bodyText.trim();
+  const lineWidths = trimmed ? measureWrappedLineWidths(trimmed, maxContentWidth) : [];
+  const placement = resolveBubbleMetaPlacementFromLineWidths(
+    lineWidths,
+    maxContentWidth,
+    metaWidthPx,
+  );
+  let innerWidthPx = measureBubbleInnerContentWidth(lineWidths, placement, metaWidthPx);
+  if (extraInnerWidthPx > 0) innerWidthPx = Math.max(innerWidthPx, extraInnerWidthPx);
+  if (!trimmed && metaWidthPx > 0) innerWidthPx = Math.max(innerWidthPx, metaWidthPx);
+  innerWidthPx = Math.min(maxContentWidth, innerWidthPx);
+  return { placement, innerWidthPx, lineWidths };
+}
+
+/** Outer bubble width — shrink-wraps text + adaptive time/checks placement. */
 export function measureMessageBubbleOuterWidth(
   bodyText: string,
   maxColumnWidth: number,
@@ -146,38 +177,18 @@ export function measureMessageBubbleOuterWidth(
   metaExtraWidthPx = 0,
 ): number {
   if (maxColumnWidth <= 0) return 0;
-  const maxContentWidth = Math.max(
-    0,
-    maxColumnWidth - MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+  const metaWidthPx = measureMessageBubbleMetaWidthPx(timeLabel, metaExtraWidthPx);
+  const { innerWidthPx } = resolveMessageBubbleLayout(
+    bodyText,
+    maxColumnWidth,
+    metaWidthPx,
+    extraInnerWidthPx,
   );
-  const longestLine = measureLongestWrappedBodyLineWidth(bodyText, maxContentWidth);
-  let inner = Math.max(longestLine, extraInnerWidthPx);
-
-  const trimmed = bodyText.trim();
-  if (trimmed && timeLabel) {
-    const timeWidth = measureTextGlyphWidth(
-      timeLabel,
-      MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-      MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
+  if (innerWidthPx <= 0) {
+    return Math.min(
+      maxColumnWidth,
+      Math.max(extraInnerWidthPx, metaWidthPx) + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
     );
-    const metaWidth = timeWidth + metaExtraWidthPx;
-    if (shouldInlineBubbleTime(trimmed, timeLabel, maxContentWidth, metaExtraWidthPx)) {
-      const textWidth = measureLongestWrappedBodyLineWidth(trimmed, maxContentWidth);
-      inner = Math.max(inner, textWidth + metaWidth + 10);
-    } else {
-      inner = Math.max(inner, metaWidth);
-    }
-  } else if (!trimmed && timeLabel) {
-    const timeWidth = measureTextGlyphWidth(
-      timeLabel,
-      MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
-      MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
-    );
-    inner = Math.max(inner, timeWidth + metaExtraWidthPx);
   }
-
-  if (inner <= 0) {
-    return Math.min(maxColumnWidth, extraInnerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2);
-  }
-  return Math.min(maxColumnWidth, inner + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2);
+  return Math.min(maxColumnWidth, innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2);
 }

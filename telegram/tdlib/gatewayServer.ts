@@ -16,6 +16,7 @@ import {
   resumeExistingSession,
   searchChatsForUser,
   searchContactsForUser,
+  focusChatForUser,
   startConnectAttempt,
   resendConnectCode,
   submitConnectCode,
@@ -214,6 +215,19 @@ export function startTdlibGatewayServer(): http.Server {
           return;
         }
 
+        if (req.method === "POST" && pathname === "/v1/chats/focus") {
+          const body = (await readJson(req)) as { telegramUsername?: string; chatId?: number };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          if (!telegramUsername || !Number.isFinite(chatId)) {
+            sendJson(res, 400, { ok: false, error: "username_and_chat_id_required" });
+            return;
+          }
+          const result = await focusChatForUser(telegramUsername, chatId);
+          sendJson(res, result.ok ? 200 : 503, { ok: result.ok, error: result.error ?? null });
+          return;
+        }
+
         if (req.method === "GET" && pathname === "/v1/chat/messages") {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const chatId = Number(url.searchParams.get("chatId"));
@@ -253,6 +267,7 @@ export function startTdlibGatewayServer(): http.Server {
             messages: result.messages,
             has_more_older: !result.error && result.has_more_older,
             next_before_message_id: result.next_before_message_id,
+            last_read_outbox_message_id: result.last_read_outbox_message_id,
             error: result.error,
           });
           return;

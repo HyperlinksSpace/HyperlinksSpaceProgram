@@ -48,6 +48,23 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     typeof row.presence_at === "string" || typeof row.presence_at === "number"
       ? String(row.presence_at)
       : null;
+  const chatActionRaw = row.chat_action;
+  const chatAction =
+    chatActionRaw === "typing" ||
+    chatActionRaw === "recording_voice" ||
+    chatActionRaw === "recording_video" ||
+    chatActionRaw === "uploading_photo" ||
+    chatActionRaw === "uploading_video" ||
+    chatActionRaw === "uploading_file"
+      ? chatActionRaw
+      : null;
+  const chatActionUserId = Number(row.chat_action_user_id);
+  const chatActionUserName =
+    typeof row.chat_action_user_name === "string" ? row.chat_action_user_name : null;
+  const chatActionExpiresAt =
+    typeof row.chat_action_expires_at === "string" || typeof row.chat_action_expires_at === "number"
+      ? String(row.chat_action_expires_at)
+      : null;
   return {
     id,
     telegram_chat_id: telegramChatId,
@@ -59,6 +76,14 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
     presence_kind: presenceKind,
     presence_at: presenceAt,
+    chat_action: chatAction,
+    chat_action_user_id: Number.isFinite(chatActionUserId) ? chatActionUserId : null,
+    chat_action_user_name: chatActionUserName,
+    chat_action_expires_at: chatActionExpiresAt,
+    last_read_outbox_message_id: (() => {
+      const raw = Number(row.last_read_outbox_message_id);
+      return Number.isFinite(raw) && raw > 0 ? raw : null;
+    })(),
     is_pinned: Boolean(row.is_pinned),
   };
 }
@@ -79,6 +104,11 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.avatar_url !== b.avatar_url ||
       a.presence_kind !== b.presence_kind ||
       a.presence_at !== b.presence_at ||
+      a.chat_action !== b.chat_action ||
+      a.chat_action_user_id !== b.chat_action_user_id ||
+      a.chat_action_user_name !== b.chat_action_user_name ||
+      a.chat_action_expires_at !== b.chat_action_expires_at ||
+      a.last_read_outbox_message_id !== b.last_read_outbox_message_id ||
       Boolean(a.is_pinned) !== Boolean(b.is_pinned)
     ) {
       return true;

@@ -15,8 +15,11 @@ export const MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX = 15;
 export const MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX = 52;
 export const MESSAGE_CHAT_CHECKMARK_SIZE_PX = 14;
 export const MESSAGE_CHAT_CHECKMARK_GAP_PX = 3;
-export const MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX = 8;
+/** Horizontal gap between message text and time/checks when sharing a line. */
+export const MESSAGE_BUBBLE_META_GAP_PX = 6;
 export const MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX = 360;
+/** Playback progress strip under in-chat video / GIF. */
+export const MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX = 1;
 
 /** Initial / paginated history page size (scroll up to load older). */
 export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;

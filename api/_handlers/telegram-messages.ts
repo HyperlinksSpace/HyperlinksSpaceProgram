@@ -6,7 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -132,8 +132,18 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     peer_user_id: row.peer_user_id ?? null,
     presence_kind: row.presence_kind ?? null,
     presence_at: row.presence_at ?? null,
+    chat_action: row.chat_action ?? null,
+    chat_action_user_id: row.chat_action_user_id ?? null,
+    chat_action_user_name: row.chat_action_user_name ?? null,
+    chat_action_expires_at: row.chat_action_expires_at ?? null,
     is_pinned: Boolean(row.is_pinned),
     pin_order: typeof row.pin_order === "string" ? row.pin_order : "0",
+    last_read_outbox_message_id:
+      typeof row.last_read_outbox_message_id === "number" &&
+      Number.isFinite(row.last_read_outbox_message_id) &&
+      row.last_read_outbox_message_id > 0
+        ? row.last_read_outbox_message_id
+        : null,
   }));
   return { chats, revision: live.revision };
 }
@@ -529,6 +539,7 @@ export async function telegramMessagesHistoryHandler(
       messages: result.messages,
       has_more_older: result.hasMoreOlder,
       next_before_message_id: result.nextBeforeMessageId,
+      last_read_outbox_message_id: result.lastReadOutboxMessageId,
     },
     200,
   );
@@ -686,6 +697,9 @@ export async function telegramMessagesWarmupHandler(
     return finishJson(request, res, { ok: false, connected: false, error: "not_connected" }, 403);
   }
 
+  const body = await parseRequestBody<{ chat_id?: number }>(request);
+  const focusChatId = Number(body.chat_id);
+
   const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: 50_000 });
   if (warm.error === "no_session") {
     await revokeMtprotoSession(userOrRes);
@@ -700,11 +714,18 @@ export async function telegramMessagesWarmupHandler(
     });
   }
 
+  let focusOk: boolean | null = null;
+  if (warm.ok && Number.isFinite(focusChatId) && focusChatId !== 0) {
+    const focus = await gatewayFocusChat(userOrRes, focusChatId);
+    focusOk = focus.ok;
+  }
+
   return finishJson(request, res, {
     ok: warm.ok,
     connected: true,
     gatewayReady: warm.ok,
     authState: warm.authState,
+    focusOk,
     error: warm.error ?? null,
   });
 }

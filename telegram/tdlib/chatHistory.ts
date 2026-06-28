@@ -1,11 +1,14 @@
 import type { Client } from "tdl";
 import {
+  applyReadOutboxToHistoryMessages,
   chatKindFromTdChat,
+  effectiveReadOutboxMessageId,
+  enrichOutgoingReadStatuses,
   mapHistoryMessage,
   type ChatKind,
   type MappedChatHistoryMessage,
 } from "./messageHistoryMap.js";
-import type { TdChat, TdMessage } from "./chatPreview.js";
+import { lastReadOutboxMessageIdFromChat, type TdChat, type TdMessage } from "./chatPreview.js";
 
 export type { ChatKind, MappedChatHistoryMessage };
 
@@ -62,6 +65,7 @@ export async function fetchChatHistory(
   messages: MappedChatHistoryMessage[];
   has_more_older: boolean;
   next_before_message_id: number | null;
+  last_read_outbox_message_id: number | null;
 }> {
   try {
     await client.invoke({ _: "openChat", chat_id: chatId });
@@ -130,7 +134,8 @@ export async function fetchChatHistory(
     }
 
     lastBatchWasFull = raw.length >= rawBatchLimit;
-    const mapped = await mapHistoryBatch(client, raw, chat);
+    const freshChat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+    const mapped = await mapHistoryBatch(client, raw, freshChat);
     for (const row of mapped) {
       mappedById.set(row.telegram_message_id, row);
     }
@@ -149,11 +154,23 @@ export async function fetchChatHistory(
   }
 
   const sorted = sortHistoryMessages([...mappedById.values()]);
-  const messages = sorted.slice(-pageLimit);
+  const finalChat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  let messages = applyReadOutboxToHistoryMessages(sorted.slice(-pageLimit), finalChat);
+  if (chatKind === "private") {
+    messages = await enrichOutgoingReadStatuses(client, finalChat, messages);
+    messages = applyReadOutboxToHistoryMessages(messages, finalChat);
+  }
   const oldestReturnedId = messages[0]?.telegram_message_id ?? null;
   const hasMoreOlder =
     sorted.length > pageLimit ||
     (lastBatchWasFull && oldestReturnedId != null);
+
+  const lastReadOutbox = effectiveReadOutboxMessageId(
+    lastReadOutboxMessageIdFromChat(finalChat),
+    ...messages
+      .filter((row) => row.is_outgoing && row.outgoing_status === "read")
+      .map((row) => row.telegram_message_id),
+  );
 
   return {
     chat_kind: chatKind,
@@ -161,6 +178,7 @@ export async function fetchChatHistory(
     has_more_older: hasMoreOlder,
     next_before_message_id:
       hasMoreOlder && oldestReturnedId != null ? oldestReturnedId : null,
+    last_read_outbox_message_id: lastReadOutbox,
   };
 }
 

@@ -1,11 +1,14 @@
 import {
+  CHAT_ACTION_TTL_MS,
   chatTitle,
   isChatPinnedInMainList,
   lastMessageAtIso,
+  lastReadOutboxMessageIdFromChat,
   mainListOrderKey,
   normalizeUnreadCount,
   peerUserIdFromChat,
   previewFromMessage,
+  type ChatActionKind,
   type ChatPresenceKind,
   type TdChat,
   type TdMessage,
@@ -21,6 +24,11 @@ export type LiveChatRow = {
   peer_user_id: number | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
+  chat_action: ChatActionKind | null;
+  chat_action_user_id: number | null;
+  chat_action_user_name: string | null;
+  chat_action_expires_at: string | null;
+  last_read_outbox_message_id: number | null;
   is_pinned: boolean;
   pin_order: string;
   /** Monotonic version bumped on each update (for client diffing). */
@@ -57,6 +65,24 @@ type UserCache = {
 
 const caches = new Map<string, UserCache>();
 
+function emptyChatActionFields(): Pick<
+  LiveChatRow,
+  "chat_action" | "chat_action_user_id" | "chat_action_user_name" | "chat_action_expires_at"
+> {
+  return {
+    chat_action: null,
+    chat_action_user_id: null,
+    chat_action_user_name: null,
+    chat_action_expires_at: null,
+  };
+}
+
+function expireChatActionIfStale(row: LiveChatRow): LiveChatRow {
+  if (!row.chat_action || !row.chat_action_expires_at) return row;
+  if (Date.parse(row.chat_action_expires_at) > Date.now()) return row;
+  return { ...row, ...emptyChatActionFields() };
+}
+
 function userCache(telegramUsername: string): UserCache {
   let cache = caches.get(telegramUsername);
   if (!cache) {
@@ -82,7 +108,7 @@ export function getLiveChatListRevision(telegramUsername: string): number {
 export function getLiveChatList(telegramUsername: string): LiveChatRow[] | null {
   const cache = caches.get(telegramUsername);
   if (!cache || cache.chats.size === 0) return null;
-  return sortLiveChatRows([...cache.chats.values()]);
+  return sortLiveChatRows([...cache.chats.values()].map(expireChatActionIfStale));
 }
 
 export function seedLiveChatList(
@@ -134,10 +160,53 @@ export function patchLiveChatFromTdlib(
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
+    chat_action: existing?.chat_action ?? null,
+    chat_action_user_id: existing?.chat_action_user_id ?? null,
+    chat_action_user_name: existing?.chat_action_user_name ?? null,
+    chat_action_expires_at: existing?.chat_action_expires_at ?? null,
+    last_read_outbox_message_id:
+      lastReadOutboxMessageIdFromChat(chat) ?? existing?.last_read_outbox_message_id ?? null,
     is_pinned: isChatPinnedInMainList(chat),
     pin_order: mainListOrderKey(chat),
   };
   return upsertLiveChatRow(telegramUsername, row);
+}
+
+export function patchLiveChatAction(
+  telegramUsername: string,
+  chatId: number,
+  input: {
+    action: ChatActionKind | null;
+    userId: number | null;
+    userName: string | null;
+  },
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  const existing = cache.chats.get(chatId);
+  if (!existing) return null;
+
+  const expiresAt =
+    input.action != null ? new Date(Date.now() + CHAT_ACTION_TTL_MS).toISOString() : null;
+
+  return upsertLiveChatRow(telegramUsername, {
+    telegram_chat_id: existing.telegram_chat_id,
+    title: existing.title,
+    subtitle: existing.subtitle,
+    avatar_url: existing.avatar_url,
+    last_message_at: existing.last_message_at,
+    unread_count: existing.unread_count,
+    peer_user_id: existing.peer_user_id,
+    presence_kind: existing.presence_kind,
+    presence_at: existing.presence_at,
+    chat_action: input.action,
+    chat_action_user_id: input.userId,
+    chat_action_user_name: input.userName,
+    chat_action_expires_at: expiresAt,
+    last_read_outbox_message_id: existing.last_read_outbox_message_id,
+    is_pinned: existing.is_pinned,
+    pin_order: existing.pin_order,
+  });
 }
 
 export function patchLiveChatPresence(
@@ -159,6 +228,11 @@ export function patchLiveChatPresence(
       peer_user_id: row.peer_user_id,
       presence_kind: presence.kind,
       presence_at: presence.at,
+      chat_action: row.chat_action,
+      chat_action_user_id: row.chat_action_user_id,
+      chat_action_user_name: row.chat_action_user_name,
+      chat_action_expires_at: row.chat_action_expires_at,
+      last_read_outbox_message_id: row.last_read_outbox_message_id,
       is_pinned: row.is_pinned,
       pin_order: row.pin_order,
     });
@@ -190,6 +264,11 @@ export function applyLiveMessageUpdate(
     peer_user_id: existing?.peer_user_id ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
+    chat_action: existing?.chat_action ?? null,
+    chat_action_user_id: existing?.chat_action_user_id ?? null,
+    chat_action_user_name: existing?.chat_action_user_name ?? null,
+    chat_action_expires_at: existing?.chat_action_expires_at ?? null,
+    last_read_outbox_message_id: existing?.last_read_outbox_message_id ?? null,
     is_pinned: existing?.is_pinned ?? false,
     pin_order: existing?.pin_order ?? "0",
   };

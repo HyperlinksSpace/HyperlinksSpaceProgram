@@ -1,4 +1,5 @@
-Profile & Music
+Profile & Music, Calls
+Balance
 Rate
 Make logs more compact
 Chat history

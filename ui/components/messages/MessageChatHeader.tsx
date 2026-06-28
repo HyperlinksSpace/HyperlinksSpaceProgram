@@ -1,10 +1,9 @@
 import { useMemo } from "react";
-import { Platform, Text, View, type ViewStyle } from "react-native";
+import { Platform, PixelRatio, Text, View, type ViewStyle } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
 import { layout, type ThemeColors } from "../../theme";
-import { formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
+import { formatMessageChatSubheaderLabel, isMessageChatActionLive } from "./formatMessageChatSubheader";
 import type { MessageChatRowData } from "./MessageChatRow";
 import {
   MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
@@ -18,12 +17,24 @@ type Props = {
   colors: ThemeColors;
 };
 
+function menuStripRuleThickness(): number {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined" && window.devicePixelRatio > 0) {
+      return 1 / window.devicePixelRatio;
+    }
+    return 1;
+  }
+  return PixelRatio.roundToNearestPixel(1 / PixelRatio.get());
+}
+
+/** Centered title (name + status badge) and multifunction subheader for the open chat. */
 export function MessageChatHeader({ chat, colors }: Props) {
   const { locale } = useAppStrings();
-  const lineT = hairlineBorderWidthPx();
-  const columnBleedPx = layout.contentSideInsetPx;
+  const lineT = menuStripRuleThickness();
+  const stripPaddingX = layout.contentSideInsetPx;
   const title = chat.title.trim();
-  const presenceLabel = formatMessageChatPresenceLabel(chat, locale);
+  const subheaderLabel = formatMessageChatSubheaderLabel(chat, locale);
+  const subheaderIsLiveAction = isMessageChatActionLive(chat);
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -51,42 +62,47 @@ export function MessageChatHeader({ chat, colors }: Props) {
         alignSelf: "stretch",
         height: MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
         position: "relative",
-        justifyContent: "center",
         overflow: "visible",
       }}
     >
       <View
         style={{
-          width: "100%",
+          ...Platform.select<ViewStyle>({
+            default: {},
+            web: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0 },
+          }),
           justifyContent: "center",
           alignItems: "center",
-          paddingHorizontal: columnBleedPx,
+          paddingHorizontal: stripPaddingX,
         }}
       >
-        <SpecialTelegramUserName
-          name={title}
-          telegramUserId={chat.peer_user_id ?? null}
-          textAlign="center"
-          textStyle={{
-            ...textBase,
-            color: colors.primary,
-          }}
-          containerStyle={{ width: "100%" }}
-        />
-        {presenceLabel ? (
-          <Text
+        <View style={{ maxWidth: "100%", alignItems: "center" }}>
+          <SpecialTelegramUserName
+            name={title}
+            telegramUserId={chat.peer_user_id ?? null}
+            textAlign="center"
             numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{
+            textStyle={{
               ...textBase,
-              color: colors.secondary,
-              textAlign: "center",
-              width: "100%",
+              color: colors.primary,
             }}
-          >
-            {presenceLabel}
-          </Text>
-        ) : null}
+          />
+          {subheaderLabel ? (
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                ...textBase,
+                color: subheaderIsLiveAction ? colors.accent : colors.secondary,
+                textAlign: "center",
+                maxWidth: "100%",
+                marginTop: 0,
+              }}
+            >
+              {subheaderLabel}
+            </Text>
+          ) : null}
+        </View>
       </View>
       <View pointerEvents="none" collapsable={false} style={borderLineStyle} />
     </View>

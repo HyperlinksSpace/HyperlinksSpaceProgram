@@ -3,6 +3,7 @@ import { Platform, Text, View } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../../api/_base";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
+import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { logPageDisplay } from "../../pageDisplayLog";
 import type { ThemeColors } from "../../theme";
@@ -13,6 +14,7 @@ import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
+import { formatMessageChatListSubtitle, isMessageChatActionLive } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import {
   MESSAGE_AVATAR_PX,
@@ -22,6 +24,14 @@ import {
   MESSAGE_ROW_HEIGHT_PX,
   MESSAGE_FONT_SIZE_PX,
 } from "./messageListLayout";
+
+export type MessageChatActionKind =
+  | "typing"
+  | "recording_voice"
+  | "recording_video"
+  | "uploading_photo"
+  | "uploading_video"
+  | "uploading_file";
 
 export type MessageChatRowData = {
   id: number;
@@ -34,6 +44,11 @@ export type MessageChatRowData = {
   peer_user_id?: number | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
   presence_at?: string | null;
+  chat_action?: MessageChatActionKind | null;
+  chat_action_user_id?: number | null;
+  chat_action_user_name?: string | null;
+  chat_action_expires_at?: string | null;
+  last_read_outbox_message_id?: number | null;
   is_pinned?: boolean;
 };
 
@@ -70,8 +85,10 @@ export function MessageChatRow({
   timePendingLabel: string;
   onPress?: () => void;
 }) {
+  const { locale } = useAppStrings();
   const title = item.title.trim();
-  const subtitle = item.subtitle.trim();
+  const subtitle = formatMessageChatListSubtitle(item, locale);
+  const subtitleIsLiveAction = isMessageChatActionLive(item);
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
@@ -228,7 +245,7 @@ export function MessageChatRow({
               ...textBase,
               flex: 1,
               minWidth: 0,
-              color: colors.primary,
+              color: subtitleIsLiveAction ? colors.accent : colors.primary,
             }}
           >
             {subtitle}

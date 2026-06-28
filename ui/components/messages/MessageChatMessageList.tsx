@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View, type LayoutChangeEvent } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
 import { useAuth } from "../../../auth/AuthContext";
@@ -7,6 +7,7 @@ import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSe
 import { subscribeOutgoingChatMessages } from "../../messageChatOutgoing";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
+import { warmupTelegramChatSession } from "../../telegram/warmupTelegramChatSession";
 import { HspScrollColumn, type HspScrollColumnHandle } from "../HspScrollColumn";
 import {
   MESSAGE_BUBBLE_ROW_GAP_PX,
@@ -19,6 +20,11 @@ import type {
   MessageChatHistoryItem,
   MessageChatKind,
   MessageOutgoingStatus,
+} from "./messageChatHistoryTypes";
+import {
+  effectiveReadOutboxMessageId as mergeReadOutboxCursor,
+  maxReadOutboxMessageIdFromItems,
+  patchOutgoingStatusesWithReadOutbox,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -45,12 +51,15 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     contentKindRaw === "document" ||
     contentKindRaw === "animation" ||
     contentKindRaw === "sticker" ||
+    contentKindRaw === "call" ||
     contentKindRaw === "other"
       ? (contentKindRaw as MessageChatContentKind)
       : undefined;
-  if (!text.trim() && !hasMedia) return null;
+  const isCall = contentKind === "call";
+  if (!text.trim() && !hasMedia && !isCall) return null;
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
+  const isOutgoing = Boolean(row.is_outgoing);
   let outgoingStatus: MessageOutgoingStatus | null = null;
   const outgoingRaw = row.outgoing_status;
   if (
@@ -60,6 +69,8 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     outgoingRaw === "failed"
   ) {
     outgoingStatus = outgoingRaw;
+  } else if (isOutgoing) {
+    outgoingStatus = "delivered";
   }
   let replyTo: MessageChatHistoryItem["reply_to"] = null;
   const replyRaw = row.reply_to;
@@ -85,13 +96,14 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     sender_user_id: Number.isFinite(senderUserId) ? senderUserId : null,
     sender_chat_id: Number.isFinite(senderChatId) ? senderChatId : null,
     sender_is_channel: Boolean(row.sender_is_channel),
-    is_outgoing: Boolean(row.is_outgoing),
+    is_outgoing: isOutgoing,
     outgoing_status: outgoingStatus,
     content_kind: contentKind,
     has_media: hasMedia,
     media_width: Number.isFinite(Number(row.media_width)) ? Number(row.media_width) : null,
     media_height: Number.isFinite(Number(row.media_height)) ? Number(row.media_height) : null,
     reply_to: replyTo,
+    call_success: isCall ? Boolean(row.call_success) : undefined,
   };
 }
 
@@ -113,7 +125,18 @@ function mergeHistoryMessages(
 ): MessageChatHistoryItem[] {
   const byId = new Map<number, MessageChatHistoryItem>();
   for (const row of existing) byId.set(row.telegram_message_id, row);
-  for (const row of incoming) byId.set(row.telegram_message_id, row);
+  for (const row of incoming) {
+    const prev = byId.get(row.telegram_message_id);
+    if (
+      prev?.is_outgoing &&
+      prev.outgoing_status === "read" &&
+      row.outgoing_status === "delivered"
+    ) {
+      byId.set(row.telegram_message_id, { ...row, outgoing_status: "read" });
+      continue;
+    }
+    byId.set(row.telegram_message_id, row);
+  }
   return [...byId.values()].sort((a, b) => {
     const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
     if (byTime !== 0) return byTime;
@@ -121,13 +144,8 @@ function mergeHistoryMessages(
   });
 }
 
-async function warmupTelegramSession(): Promise<void> {
-  await fetch(buildApiUrl("/api/telegram-messages-warmup"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  }).catch(() => undefined);
+async function warmupTelegramSession(chatId: number): Promise<void> {
+  await warmupTelegramChatSession(chatId);
 }
 
 async function fetchChatHistoryPage(
@@ -140,6 +158,7 @@ async function fetchChatHistoryPage(
   error: string | null;
   hasMoreOlder: boolean;
   nextBeforeMessageId: number | null;
+  lastReadOutboxMessageId: number | null;
 }> {
   const params = new URLSearchParams({
     chat_id: String(chatId),
@@ -160,6 +179,7 @@ async function fetchChatHistoryPage(
     chat_kind?: unknown;
     has_more_older?: boolean;
     next_before_message_id?: number;
+    last_read_outbox_message_id?: number;
     error?: string;
   };
   if (!response.ok || !json.ok) {
@@ -169,6 +189,7 @@ async function fetchChatHistoryPage(
       error: json.error || `HTTP_${response.status}`,
       hasMoreOlder: false,
       nextBeforeMessageId: null,
+      lastReadOutboxMessageId: null,
     };
   }
   const rows: MessageChatHistoryItem[] = [];
@@ -178,6 +199,7 @@ async function fetchChatHistoryPage(
       if (row) rows.push(row);
     }
   }
+  const lastReadRaw = Number(json.last_read_outbox_message_id);
   return {
     messages: rows,
     chatKind: normalizeChatKind(json.chat_kind),
@@ -189,6 +211,8 @@ async function fetchChatHistoryPage(
       json.next_before_message_id > 0
         ? json.next_before_message_id
         : null,
+    lastReadOutboxMessageId:
+      Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
   };
 }
 
@@ -207,6 +231,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [nextBeforeMessageId, setNextBeforeMessageId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastReadOutboxFromHistory, setLastReadOutboxFromHistory] = useState<number | null>(null);
   const [columnWidthPx, setColumnWidthPx] = useState(0);
   const scrollControllerRef = useRef<HspScrollColumnHandle | null>(null);
   const loadingOlderRef = useRef(false);
@@ -222,6 +247,21 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       requestAnimationFrame(() => scrollControllerRef.current?.scrollToEnd());
     });
   }, []);
+
+  const readOutboxCursor = useMemo(
+    () =>
+      mergeReadOutboxCursor(
+        chat.last_read_outbox_message_id,
+        lastReadOutboxFromHistory,
+        maxReadOutboxMessageIdFromItems(messages),
+      ),
+    [chat.last_read_outbox_message_id, lastReadOutboxFromHistory, messages],
+  );
+
+  const displayMessages = useMemo(
+    () => patchOutgoingStatusesWithReadOutbox(messages, readOutboxCursor),
+    [messages, readOutboxCursor],
+  );
 
   useEffect(() => {
     return subscribeOutgoingChatMessages(({ chatId, message }) => {
@@ -240,6 +280,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       setLoadingOlder(false);
       setHasMoreOlder(false);
       setNextBeforeMessageId(null);
+      setLastReadOutboxFromHistory(null);
       return;
     }
 
@@ -251,10 +292,11 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     setChatKind(null);
     setHasMoreOlder(false);
     setNextBeforeMessageId(null);
+    setLastReadOutboxFromHistory(null);
 
     void (async () => {
       try {
-        await warmupTelegramSession();
+        await warmupTelegramSession(chat.telegram_chat_id);
         let result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
@@ -264,7 +306,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           result.error === "history_unavailable" ||
           result.error === "not_found"
         ) {
-          await warmupTelegramSession();
+          await warmupTelegramSession(chat.telegram_chat_id);
           result = await fetchChatHistoryPage(
             chat.telegram_chat_id,
             MESSAGE_CHAT_HISTORY_PAGE_SIZE,
@@ -278,6 +320,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         setChatKind(result.chatKind);
         setHasMoreOlder(result.hasMoreOlder);
         setNextBeforeMessageId(result.nextBeforeMessageId);
+        setLastReadOutboxFromHistory((prev) =>
+          mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+        );
         scrollToBottom();
       } catch (e) {
         if (cancelled) return;
@@ -331,7 +376,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           result.error === "session_not_ready" ||
           result.error === "history_unavailable"
         ) {
-          await warmupTelegramSession();
+          await warmupTelegramSession(chat.telegram_chat_id);
           result = await fetchChatHistoryPage(
             chat.telegram_chat_id,
             MESSAGE_CHAT_HISTORY_PAGE_SIZE,
@@ -345,6 +390,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         setMessages((prev) => mergeHistoryMessages(prev, result.messages));
         setHasMoreOlder(result.hasMoreOlder);
         setNextBeforeMessageId(result.nextBeforeMessageId);
+        setLastReadOutboxFromHistory((prev) =>
+          mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+        );
 
         keepLoading =
           result.hasMoreOlder &&
@@ -460,7 +508,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           </Text>
         ) : null}
 
-        {messages.map((item, index) => (
+        {displayMessages.map((item, index) => (
           <View key={item.telegram_message_id}>
             {index > 0 ? <View style={{ height: MESSAGE_BUBBLE_ROW_GAP_PX }} /> : null}
             <MessageChatMessageRow

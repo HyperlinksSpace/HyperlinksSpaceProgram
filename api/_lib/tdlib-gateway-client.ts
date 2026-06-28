@@ -217,6 +217,32 @@ export async function gatewayWarmupSession(
   return { ok: false, authState: "session_not_ready", error: "warmup_timeout" };
 }
 
+export async function gatewayFocusChat(
+  telegramUsername: string,
+  chatId: number,
+): Promise<{ ok: boolean; error?: string }> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const url = `${base}/v1/chats/focus`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gateway-Secret": secret,
+      },
+      body: JSON.stringify({ telegramUsername, chatId }),
+    });
+    const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    return { ok: Boolean(json.ok), error: json.error };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "focus_chat_failed",
+    };
+  }
+}
+
 export async function gatewayFetchLiveChats(
   telegramUsername: string,
 ): Promise<{ chats: Record<string, unknown>[]; revision: number } | null> {
@@ -289,6 +315,7 @@ export async function gatewayFetchChatMessages(
   error: string | null;
   hasMoreOlder: boolean;
   nextBeforeMessageId: number | null;
+  lastReadOutboxMessageId: number | null;
 }> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
@@ -316,6 +343,7 @@ export async function gatewayFetchChatMessages(
       chat_kind?: string;
       has_more_older?: boolean;
       next_before_message_id?: number;
+      last_read_outbox_message_id?: number;
       error?: string;
     };
     if (!response.ok || !json.ok) {
@@ -325,8 +353,10 @@ export async function gatewayFetchChatMessages(
         error: json.error ?? "history_unavailable",
         hasMoreOlder: false,
         nextBeforeMessageId: null,
+        lastReadOutboxMessageId: null,
       };
     }
+    const lastReadRaw = Number(json.last_read_outbox_message_id);
     return {
       messages: Array.isArray(json.messages) ? json.messages : [],
       chatKind: typeof json.chat_kind === "string" ? json.chat_kind : null,
@@ -338,6 +368,8 @@ export async function gatewayFetchChatMessages(
         json.next_before_message_id > 0
           ? json.next_before_message_id
           : null,
+      lastReadOutboxMessageId:
+        Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
     };
   } catch (err) {
     return {
@@ -346,6 +378,7 @@ export async function gatewayFetchChatMessages(
       error: err instanceof Error ? err.message : "gateway_unreachable",
       hasMoreOlder: false,
       nextBeforeMessageId: null,
+      lastReadOutboxMessageId: null,
     };
   }
 }

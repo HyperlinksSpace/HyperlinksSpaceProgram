@@ -6,6 +6,10 @@ export type TdMessage = {
   date?: number;
   is_outgoing?: boolean;
   sending_state?: { _?: string };
+  interaction_info?: {
+    _?: string;
+    read_date?: number;
+  };
   sender_id?: { _?: string; user_id?: number; chat_id?: number };
   reply_to?: {
     _?: string;
@@ -56,6 +60,50 @@ export type ChatPresence = {
   kind: ChatPresenceKind;
   at: string | null;
 };
+
+/** TDLib chat action shown in header / list subtitle (typing, recording, …). */
+export type ChatActionKind =
+  | "typing"
+  | "recording_voice"
+  | "recording_video"
+  | "uploading_photo"
+  | "uploading_video"
+  | "uploading_file";
+
+export const CHAT_ACTION_TTL_MS = 6_000;
+
+export function chatActionFromTdlib(action: unknown): ChatActionKind | "cancel" | null {
+  if (!action || typeof action !== "object") return null;
+  const type = (action as { _?: string })._;
+  switch (type) {
+    case "chatActionTyping":
+      return "typing";
+    case "chatActionRecordingVoice":
+      return "recording_voice";
+    case "chatActionRecordingVideoNote":
+    case "chatActionRecordingVideo":
+      return "recording_video";
+    case "chatActionUploadingPhoto":
+      return "uploading_photo";
+    case "chatActionUploadingVideo":
+      return "uploading_video";
+    case "chatActionUploadingDocument":
+    case "chatActionUploadingVoiceNote":
+      return "uploading_file";
+    case "chatActionUploadingVideoNote":
+      return "recording_video";
+    case "chatActionCancel":
+      return "cancel";
+    default:
+      return null;
+  }
+}
+
+export function isChatActionActive(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  const ts = Date.parse(expiresAt);
+  return Number.isFinite(ts) && ts > Date.now();
+}
 
 export function peerUserIdFromChat(chat: TdChat): number | null {
   if (chat.type?._ !== "chatTypePrivate") return null;
@@ -190,6 +238,11 @@ export function normalizeUnreadCount(chat: TdChat): number {
   // Guard corrupt values (e.g. message/chat ids mistaken for unread).
   if (raw > 50_000 || raw === chat.id || raw === Math.abs(chat.id)) return 0;
   return Math.floor(raw);
+}
+
+export function lastReadOutboxMessageIdFromChat(chat: TdChat): number | null {
+  const id = Number(chat.last_read_outbox_message_id);
+  return Number.isFinite(id) && id > 0 ? id : null;
 }
 
 async function fetchLatestMessagePreview(client: Client, chatId: number): Promise<string | null> {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Text, View, type TextLayoutEvent } from "react-native";
 import { Image } from "expo-image";
 import { buildApiUrl } from "../../../api/_base";
+import { useAppStrings } from "../../../locales/AppStringsContext";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
@@ -11,10 +12,15 @@ import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
+import { resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
 import {
+  measureBubbleInnerContentWidth,
   measureLongestWrappedBodyLineWidth,
-  measureMessageBubbleOuterWidth,
+  measureMessageBubbleMetaWidthPx,
   measureTextGlyphWidth,
+  resolveBubbleMetaPlacementFromLineWidths,
+  resolveMessageBubbleLayout,
+  type BubbleMetaPlacement,
 } from "./messageChatBubbleMeasure";
 import {
   MESSAGE_BUBBLE_AVATAR_GAP_PX,
@@ -27,6 +33,8 @@ import {
 } from "./messageChatLayout";
 import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
 import { messageChatOutgoingChecksWidthPx } from "./MessageChatOutgoingChecks";
+import { messageChatCallArrowWidthPx } from "./MessageChatCallArrow";
+import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
 
@@ -47,14 +55,30 @@ function resolveMessageAvatarUrl(
   return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
 }
 
-function fittedBubbleWidthFromTextLayout(event: TextLayoutEvent, columnWidth: number): number {
+function fittedBubbleLayoutFromTextLayout(
+  event: TextLayoutEvent,
+  columnWidth: number,
+  innerMaxWidth: number,
+  metaWidthPx: number,
+  extraInnerWidthPx: number,
+): { width: number; placement: BubbleMetaPlacement } {
   const lines = event.nativeEvent.lines;
-  if (lines.length === 0) return 0;
-  const longestLine = Math.max(...lines.map((line) => line.width));
-  return Math.min(
-    columnWidth,
-    Math.ceil(longestLine) + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+  if (lines.length === 0) {
+    return { width: 0, placement: "stacked" };
+  }
+  const lineWidths = lines.map((line) => line.width);
+  const placement = resolveBubbleMetaPlacementFromLineWidths(
+    lineWidths,
+    innerMaxWidth,
+    metaWidthPx,
   );
+  let inner = measureBubbleInnerContentWidth(lineWidths, placement, metaWidthPx);
+  inner = Math.max(inner, extraInnerWidthPx);
+  const width = Math.min(
+    columnWidth,
+    inner + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+  );
+  return { width, placement };
 }
 
 type Props = {
@@ -66,13 +90,17 @@ type Props = {
 };
 
 export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidthPx }: Props) {
+  const { t } = useAppStrings();
   const iconUrl = resolveMessageAvatarUrl(chat, item);
   const avatarInitials = useMemo(
     () => extractChatAvatarInitials(item.sender_name || chat.title),
     [item.sender_name, chat.title],
   );
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
-  const [nativeBubbleWidth, setNativeBubbleWidth] = useState<number | null>(null);
+  const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
+    width: number;
+    placement: BubbleMetaPlacement;
+  } | null>(null);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
 
@@ -90,16 +118,22 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     bubbleMaxWidth - MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
   );
 
-  const bodyText = item.text.trim();
+  const isCall = item.content_kind === "call";
+  const bodyText = isCall ? formatMessageCallLabel(item.is_outgoing, t) : item.text.trim();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
-  const checksWidthPx = messageChatOutgoingChecksWidthPx(
-    item.is_outgoing ? item.outgoing_status : null,
+  const checksWidthPx = messageChatOutgoingChecksWidthPx(resolveMessageOutgoingStatus(item));
+  const callArrowWidthPx = messageChatCallArrowWidthPx(isCall);
+  const metaWidthPx = measureMessageBubbleMetaWidthPx(
+    timeLabel,
+    checksWidthPx + callArrowWidthPx,
   );
   const showMedia =
     Boolean(item.has_media) &&
     (item.content_kind === "photo" ||
       item.content_kind === "video" ||
       item.content_kind === "animation");
+  const hasMediaCaption = showMedia && bodyText.length > 0;
+  const isBareMediaMessage = showMedia && !hasMediaCaption && !isCall;
   const { widthPx: mediaWidthPx } = resolveMessageMediaDimensions(
     bubbleInnerMaxWidth,
     item.media_width,
@@ -136,37 +170,72 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     return extra;
   }, [bubbleInnerMaxWidth, item.reply_to, item.sender_name, mediaWidthPx, showMedia]);
 
-  const webBubbleWidth = useMemo(() => {
+  const webBubbleLayout = useMemo(() => {
     if (Platform.OS !== "web" || bubbleMaxWidth <= 0) return null;
-    return measureMessageBubbleOuterWidth(
+    if (isBareMediaMessage) {
+      return { width: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement };
+    }
+    const { placement, innerWidthPx } = resolveMessageBubbleLayout(
       bodyText,
       bubbleMaxWidth,
+      metaWidthPx,
       extraInnerWidthPx,
-      timeLabel,
-      checksWidthPx,
     );
-  }, [bodyText, bubbleMaxWidth, checksWidthPx, extraInnerWidthPx, timeLabel]);
+    return {
+      width: Math.min(
+        bubbleMaxWidth,
+        showMedia && hasMediaCaption
+          ? Math.max(
+              mediaWidthPx,
+              innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+            )
+          : showMedia
+            ? Math.max(mediaWidthPx, innerWidthPx)
+            : innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+      ),
+      placement,
+    };
+  }, [
+    bodyText,
+    bubbleMaxWidth,
+    extraInnerWidthPx,
+    hasMediaCaption,
+    isBareMediaMessage,
+    mediaWidthPx,
+    metaWidthPx,
+    showMedia,
+  ]);
 
   const onMeasureTextLayout = useCallback(
     (event: TextLayoutEvent) => {
       if (Platform.OS === "web" || bubbleMaxWidth <= 0) return;
-      const measured = fittedBubbleWidthFromTextLayout(event, bubbleMaxWidth);
-      const fromExtra = Math.min(
+      const next = fittedBubbleLayoutFromTextLayout(
+        event,
         bubbleMaxWidth,
-        extraInnerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+        bubbleInnerMaxWidth,
+        metaWidthPx,
+        extraInnerWidthPx,
       );
-      const next = Math.max(measured, fromExtra);
-      if (next <= 0) return;
-      setNativeBubbleWidth((current) => (current === next ? current : next));
+      if (next.width <= 0) return;
+      setNativeBubbleLayout((current) =>
+        current?.width === next.width && current.placement === next.placement ? current : next,
+      );
     },
-    [bubbleMaxWidth, extraInnerWidthPx],
+    [bubbleInnerMaxWidth, bubbleMaxWidth, extraInnerWidthPx, metaWidthPx],
   );
 
   useEffect(() => {
-    setNativeBubbleWidth(null);
-  }, [bodyText, bubbleMaxWidth, checksWidthPx, extraInnerWidthPx, timeLabel]);
+    setNativeBubbleLayout(null);
+  }, [bodyText, bubbleMaxWidth, extraInnerWidthPx, metaWidthPx, timeLabel]);
 
-  const bubbleWidth = Platform.OS === "web" ? webBubbleWidth : nativeBubbleWidth;
+  const bubbleLayout =
+    Platform.OS === "web"
+      ? webBubbleLayout
+      : isBareMediaMessage
+        ? { width: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement }
+        : nativeBubbleLayout;
+  const bubbleWidth = bubbleLayout?.width ?? null;
+  const metaPlacement = bubbleLayout?.placement ?? "stacked";
   const measureText = bodyText || " ";
 
   return (
@@ -235,10 +304,19 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
           style={[
             {
               alignSelf: "flex-start",
-              borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
-              paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
-              paddingVertical: MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
-              backgroundColor: colors.undercover,
+              ...(showMedia
+                ? {
+                    backgroundColor: "transparent",
+                    paddingHorizontal: 0,
+                    paddingVertical: 0,
+                    borderRadius: 0,
+                  }
+                : {
+                    borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
+                    paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
+                    paddingVertical: MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
+                    backgroundColor: colors.undercover,
+                  }),
             },
             bubbleWidth != null && bubbleWidth > 0 ? { width: bubbleWidth } : null,
           ]}
@@ -249,6 +327,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             chatKind={chatKind}
             colors={colors}
             maxWidthPx={bubbleInnerMaxWidth}
+            metaPlacement={metaPlacement}
           />
         </View>
       </View>

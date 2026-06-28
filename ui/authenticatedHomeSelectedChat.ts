@@ -47,6 +47,29 @@ function readStoredChat(): MessageChatRowData | null {
           typeof row.presence_at === "string" || typeof row.presence_at === "number"
             ? String(row.presence_at)
             : null,
+        chat_action:
+          row.chat_action === "typing" ||
+          row.chat_action === "recording_voice" ||
+          row.chat_action === "recording_video" ||
+          row.chat_action === "uploading_photo" ||
+          row.chat_action === "uploading_video" ||
+          row.chat_action === "uploading_file"
+            ? row.chat_action
+            : null,
+        chat_action_user_id: Number.isFinite(Number(row.chat_action_user_id))
+          ? Number(row.chat_action_user_id)
+          : null,
+        chat_action_user_name:
+          typeof row.chat_action_user_name === "string" ? row.chat_action_user_name : null,
+        chat_action_expires_at:
+          typeof row.chat_action_expires_at === "string" ||
+          typeof row.chat_action_expires_at === "number"
+            ? String(row.chat_action_expires_at)
+            : null,
+        last_read_outbox_message_id: (() => {
+          const raw = Number(row.last_read_outbox_message_id);
+          return Number.isFinite(raw) && raw > 0 ? raw : null;
+        })(),
       };
     }
   } catch {
@@ -120,7 +143,12 @@ export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
     selectedChat.subtitle === chat.subtitle &&
     selectedChat.last_message_at === chat.last_message_at &&
     selectedChat.presence_kind === chat.presence_kind &&
-    selectedChat.presence_at === chat.presence_at
+    selectedChat.presence_at === chat.presence_at &&
+    selectedChat.chat_action === chat.chat_action &&
+    selectedChat.chat_action_user_id === chat.chat_action_user_id &&
+    selectedChat.chat_action_user_name === chat.chat_action_user_name &&
+    selectedChat.chat_action_expires_at === chat.chat_action_expires_at &&
+    selectedChat.last_read_outbox_message_id === chat.last_read_outbox_message_id
   ) {
     return;
   }
@@ -199,7 +227,12 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.unread_count !== selectedChat.unread_count ||
     fresh.avatar_url !== selectedChat.avatar_url ||
     fresh.presence_kind !== selectedChat.presence_kind ||
-    fresh.presence_at !== selectedChat.presence_at
+    fresh.presence_at !== selectedChat.presence_at ||
+    fresh.chat_action !== selectedChat.chat_action ||
+    fresh.chat_action_user_id !== selectedChat.chat_action_user_id ||
+    fresh.chat_action_user_name !== selectedChat.chat_action_user_name ||
+    fresh.chat_action_expires_at !== selectedChat.chat_action_expires_at ||
+    fresh.last_read_outbox_message_id !== selectedChat.last_read_outbox_message_id
   ) {
     selectedChat = fresh;
     writeStoredChat(fresh);

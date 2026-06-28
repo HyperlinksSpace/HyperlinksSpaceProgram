@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { View } from "react-native";
 import { layout, type ThemeColors } from "../../theme";
+import { warmupTelegramChatSession } from "../../telegram/warmupTelegramChatSession";
 import { MessageChatHeader } from "./MessageChatHeader";
 import { MessageChatMessageList } from "./MessageChatMessageList";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -12,6 +14,11 @@ type Props = {
 /** Wide-layout chat pane (middle column). */
 export function MessageChatPanel({ chat, colors }: Props) {
   const columnBleedPx = layout.contentSideInsetPx;
+
+  useEffect(() => {
+    void warmupTelegramChatSession(chat.telegram_chat_id);
+  }, [chat.telegram_chat_id]);
+
   return (
     <View
       style={{

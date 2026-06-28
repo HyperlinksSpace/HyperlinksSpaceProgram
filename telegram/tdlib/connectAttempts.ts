@@ -1135,6 +1135,7 @@ export async function getChatHistoryForUser(
   messages: Awaited<ReturnType<typeof fetchChatHistory>>["messages"];
   has_more_older: boolean;
   next_before_message_id: number | null;
+  last_read_outbox_message_id: number | null;
   error: string | null;
 }> {
   let record = getActiveRecord(telegramUsername);
@@ -1147,6 +1148,7 @@ export async function getChatHistoryForUser(
       messages: [],
       has_more_older: false,
       next_before_message_id: null,
+      last_read_outbox_message_id: null,
       error: "session_not_ready",
     };
   }
@@ -1157,6 +1159,7 @@ export async function getChatHistoryForUser(
       messages: result.messages,
       has_more_older: result.has_more_older,
       next_before_message_id: result.next_before_message_id,
+      last_read_outbox_message_id: result.last_read_outbox_message_id,
       error: null,
     };
   } catch (err) {
@@ -1166,6 +1169,7 @@ export async function getChatHistoryForUser(
       messages: [],
       has_more_older: false,
       next_before_message_id: null,
+      last_read_outbox_message_id: null,
       error: message,
     };
   }
@@ -1201,6 +1205,31 @@ export async function sendChatMessageForUser(
   } catch (err) {
     const message = err instanceof Error ? err.message : "send_failed";
     return { message: null, error: message };
+  }
+}
+
+export async function focusChatForUser(
+  telegramUsername: string,
+  chatId: number,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!Number.isFinite(chatId)) {
+    return { ok: false, error: "invalid_chat_id" };
+  }
+
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 15_000);
+  }
+  if (!record?.client || record.authState !== "ready") {
+    return { ok: false, error: "session_not_ready" };
+  }
+
+  try {
+    await record.client.invoke({ _: "openChat", chat_id: chatId });
+    return { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "open_chat_failed";
+    return { ok: false, error: message };
   }
 }
 

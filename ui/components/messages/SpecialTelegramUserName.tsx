@@ -111,11 +111,20 @@ export function SpecialTelegramUserName({
           minWidth: 0,
           maxWidth: "100%",
         },
-        textAlign === "center" ? { alignSelf: "center" } : null,
+        textAlign === "center" ? { alignSelf: "center", justifyContent: "center" } : null,
         containerStyle,
       ]}
     >
-      <View style={{ flexShrink: 1, minWidth: 0, maxWidth: "100%" }}>{nameText}</View>
+      <View
+        style={{
+          flexShrink: 1,
+          minWidth: 0,
+          maxWidth: "100%",
+          alignItems: textAlign === "center" ? "center" : undefined,
+        }}
+      >
+        {nameText}
+      </View>
       <View style={{ width: SPECIAL_USER_BADGE_GAP_PX, flexShrink: 0 }} />
       <View
         style={{

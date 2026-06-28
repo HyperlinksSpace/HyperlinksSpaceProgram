@@ -1,6 +1,6 @@
 import type { Client } from "tdl";
-import { clearLiveChatCache, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
-import { presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
+import { clearLiveChatCache, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
+import { chatActionFromTdlib, presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -15,6 +15,8 @@ const LIVE_UPDATE_TYPES = new Set([
   "updateMessageEdited",
   "updateDeleteMessages",
   "updateUserStatus",
+  "updateUserChatAction",
+  "updateChatReadOutbox",
 ]);
 
 type LiveSyncRecord = {
@@ -122,6 +124,22 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     return;
   }
 
+  if (type === "updateChatReadOutbox") {
+    const chatId = update.chat_id;
+    if (typeof chatId !== "number") return;
+    try {
+      const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+      patchLiveChatFromTdlib(record.telegramUsername, chat, {});
+      logLiveSync(record, "live_chat_read_outbox_applied", {
+        chatId,
+        lastReadOutbox: chat.last_read_outbox_message_id ?? null,
+      });
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
   if (type === "updateNewChat") {
     const chat = update.chat as TdChat | undefined;
     if (!chat?.id) return;
@@ -140,6 +158,47 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
       peerUserId: userId,
       kind: presence.kind,
     });
+    return;
+  }
+
+  if (type === "updateUserChatAction") {
+    const chatId = update.chat_id;
+    const userId = update.user_id;
+    const actionRaw = update.action;
+    if (typeof chatId !== "number" || typeof userId !== "number") return;
+    const parsed = chatActionFromTdlib(actionRaw);
+    if (parsed === null) return;
+
+    if (parsed === "cancel") {
+      patchLiveChatAction(record.telegramUsername, chatId, {
+        action: null,
+        userId: null,
+        userName: null,
+      });
+      logLiveSync(record, "live_chat_action_cleared", { chatId, userId });
+      return;
+    }
+
+    let userName: string | null = null;
+    try {
+      const user = (await client.invoke({ _: "getUser", user_id: userId })) as {
+        first_name?: string;
+        last_name?: string;
+        username?: string;
+      };
+      const parts = [user.first_name, user.last_name].filter(Boolean);
+      userName = parts.join(" ").trim();
+      if (!userName && user.username) userName = `@${user.username}`;
+    } catch {
+      /* optional display name */
+    }
+
+    patchLiveChatAction(record.telegramUsername, chatId, {
+      action: parsed,
+      userId,
+      userName,
+    });
+    logLiveSync(record, "live_chat_action_applied", { chatId, userId, action: parsed });
     return;
   }
 
@@ -188,7 +247,7 @@ export function attachLiveChatSync(record: LiveSyncRecord): void {
     const type = update._;
     if (typeof type !== "string" || !LIVE_UPDATE_TYPES.has(type)) return;
 
-    if (type === "updateNewMessage" || type === "updateChatLastMessage" || type === "updateUserStatus") {
+    if (type === "updateNewMessage" || type === "updateChatLastMessage" || type === "updateUserStatus" || type === "updateUserChatAction" || type === "updateChatReadOutbox") {
       void applyLiveUpdate(record, update);
       return;
     }

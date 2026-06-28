@@ -2,6 +2,7 @@ import type { Client } from "tdl";
 import {
   chatTitle,
   formattedTextPlain,
+  lastReadOutboxMessageIdFromChat,
   previewFromMessage,
   type TdChat,
   type TdMessage,
@@ -16,6 +17,7 @@ export type MessageContentKind =
   | "document"
   | "animation"
   | "sticker"
+  | "call"
   | "other";
 
 export type MessageOutgoingStatus = "pending" | "delivered" | "read" | "failed";
@@ -39,6 +41,8 @@ export type MappedChatHistoryMessage = {
     sender_user_id: number | null;
     text: string;
   } | null;
+  /** Ended call was answered / had duration (messageCall only). */
+  call_success?: boolean | null;
 };
 
 type TdUser = {
@@ -72,7 +76,26 @@ function messageContentKind(message: TdMessage): MessageContentKind {
   if (type === "messageDocument") return "document";
   if (type === "messageAnimation") return "animation";
   if (type === "messageSticker") return "sticker";
+  if (type === "messageCall") return "call";
   return "other";
+}
+
+function isCallMessage(message: TdMessage): boolean {
+  return message.content?._ === "messageCall";
+}
+
+function parseCallSuccess(message: TdMessage): boolean {
+  const content = message.content;
+  if (!content || typeof content !== "object" || (content as { _?: string })._ !== "messageCall") {
+    return false;
+  }
+  const row = content as Record<string, unknown>;
+  const duration = Number(row.duration);
+  if (Number.isFinite(duration) && duration > 0) return true;
+  const reason = (row.discard_reason as { _?: string } | undefined)?._;
+  return (
+    reason === "callDiscardReasonHungUp" || reason === "callDiscardReasonDisconnected"
+  );
 }
 
 function mediaDimensions(message: TdMessage): { width: number | null; height: number | null } {
@@ -244,6 +267,57 @@ async function resolveSenderName(
   return { name: chatTitle(chat), isChannel: chatKindFromTdChat(chat) === "channel" };
 }
 
+export function effectiveReadOutboxMessageId(
+  ...candidates: Array<number | null | undefined>
+): number | null {
+  let max: number | null = null;
+  for (const raw of candidates) {
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0 && (max == null || id > max)) {
+      max = id;
+    }
+  }
+  return max;
+}
+
+export async function enrichOutgoingReadStatuses(
+  client: Client,
+  chat: TdChat,
+  messages: MappedChatHistoryMessage[],
+): Promise<MappedChatHistoryMessage[]> {
+  if (chatKindFromTdChat(chat) !== "private") return messages;
+  const pending = messages.filter(
+    (row) => row.is_outgoing && row.outgoing_status === "delivered",
+  );
+  if (pending.length === 0) return messages;
+
+  const readIds = new Set<number>();
+  await Promise.all(
+    pending.map(async (row) => {
+      try {
+        const full = (await client.invoke({
+          _: "getMessage",
+          chat_id: chat.id,
+          message_id: row.telegram_message_id,
+        })) as TdMessage;
+        const readDate = full.interaction_info?.read_date;
+        if (typeof readDate === "number" && readDate > 0) {
+          readIds.add(row.telegram_message_id);
+        }
+      } catch {
+        /* per-message read info unavailable */
+      }
+    }),
+  );
+
+  if (readIds.size === 0) return messages;
+  return messages.map((row) =>
+    readIds.has(row.telegram_message_id) ? { ...row, outgoing_status: "read" } : row,
+  );
+}
+
+export { lastReadOutboxMessageIdFromChat };
+
 function resolveOutgoingStatus(message: TdMessage, chat: TdChat): MessageOutgoingStatus | null {
   if (!message.is_outgoing) return null;
 
@@ -251,18 +325,42 @@ function resolveOutgoingStatus(message: TdMessage, chat: TdChat): MessageOutgoin
   if (sendingState === "messageSendingStateFailed") return "failed";
   if (sendingState === "messageSendingStatePending") return "pending";
 
+  const readDate = message.interaction_info?.read_date;
+  if (typeof readDate === "number" && readDate > 0) {
+    return "read";
+  }
+
   const messageId = Number(message.id);
   const lastReadOutbox = Number(chat.last_read_outbox_message_id);
   if (
     Number.isFinite(messageId) &&
     messageId > 0 &&
     Number.isFinite(lastReadOutbox) &&
-    lastReadOutbox >= messageId
+    lastReadOutbox > 0 &&
+    messageId <= lastReadOutbox
   ) {
     return "read";
   }
 
   return "delivered";
+}
+
+/** Re-apply private-chat read cursor to mapped history rows. */
+export function applyReadOutboxToHistoryMessages(
+  messages: MappedChatHistoryMessage[],
+  chat: TdChat,
+): MappedChatHistoryMessage[] {
+  const lastReadOutbox = lastReadOutboxMessageIdFromChat(chat);
+  if (lastReadOutbox == null) return messages;
+  return messages.map((row) => {
+    if (!row.is_outgoing) return row;
+    if (row.outgoing_status === "pending" || row.outgoing_status === "failed") return row;
+    if (row.telegram_message_id <= lastReadOutbox) {
+      return { ...row, outgoing_status: "read" };
+    }
+    if (row.outgoing_status === "read") return row;
+    return { ...row, outgoing_status: "delivered" };
+  });
 }
 
 export async function mapHistoryMessage(
@@ -275,9 +373,10 @@ export async function mapHistoryMessage(
   const telegramMessageId = Number(message.id);
   if (!Number.isFinite(telegramMessageId)) return null;
 
+  const isCall = isCallMessage(message);
   const text = bodyText(message).trim();
   const hasMedia = hasDisplayableMedia(message);
-  if (!text && !hasMedia) return null;
+  if (!text && !hasMedia && !isCall) return null;
 
   const sender = await resolveSenderName(client, message, chat, userCache, chatCache);
   const senderChatIdValue = senderChatId(message);
@@ -299,5 +398,6 @@ export async function mapHistoryMessage(
     media_width: dimensions.width,
     media_height: dimensions.height,
     reply_to: replyTo,
+    ...(isCall ? { call_success: parseCallSuccess(message) } : {}),
   };
 }

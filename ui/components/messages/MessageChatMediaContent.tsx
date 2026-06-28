@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createElement } from "react";
 import { ActivityIndicator, Platform, Text, View } from "react-native";
 import { Image } from "expo-image";
 import type { ThemeColors } from "../../theme";
-import { WEB_UI_SANS_STACK } from "../../fonts";
 import type { MessageChatContentKind } from "./messageChatHistoryTypes";
 import {
-  MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX,
+  MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
 } from "./messageChatLayout";
 
 type Props = {
@@ -17,6 +16,137 @@ type Props = {
   heightPx: number;
   colors: ThemeColors;
 };
+
+export function messageMediaShowsProgressBar(contentKind: MessageChatContentKind): boolean {
+  return contentKind === "video" || contentKind === "animation";
+}
+
+function MediaProgressBar({
+  widthPx,
+  progress,
+  colors,
+}: {
+  widthPx: number;
+  progress: number;
+  colors: ThemeColors;
+}) {
+  const clamped = Math.max(0, Math.min(1, progress));
+  return (
+    <View
+      style={{
+        width: widthPx,
+        height: MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+        backgroundColor: colors.highlight,
+      }}
+    >
+      <View
+        style={{
+          width: widthPx * clamped,
+          height: MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+          backgroundColor: colors.accent,
+        }}
+      />
+    </View>
+  );
+}
+
+function WebMessageChatVideo({
+  src,
+  widthPx,
+  heightPx,
+  colors,
+  loop,
+}: {
+  src: string;
+  widthPx: number;
+  heightPx: number;
+  colors: ThemeColors;
+  loop: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const container = containerRef.current;
+    if (!video || !container) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.35) {
+          void video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: [0, 0.35, 0.6, 1] },
+    );
+    observer.observe(container);
+
+    const onTimeUpdate = () => {
+      const duration = video.duration;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        setProgress(0);
+        return;
+      }
+      setProgress(video.currentTime / duration);
+    };
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    return () => {
+      observer.disconnect();
+      video.removeEventListener("timeupdate", onTimeUpdate);
+    };
+  }, [src]);
+
+  return createElement(
+    "div",
+    {
+      ref: containerRef,
+      style: {
+        width: widthPx,
+        display: "flex",
+        flexDirection: "column",
+      },
+    },
+    createElement("video", {
+      ref: videoRef,
+      src,
+      playsInline: true,
+      muted: true,
+      loop,
+      preload: "auto",
+      style: {
+        width: widthPx,
+        height: heightPx,
+        objectFit: "cover",
+        display: "block",
+      },
+    }),
+    createElement(
+      "div",
+      {
+        style: {
+          width: widthPx,
+          height: MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+          backgroundColor: colors.highlight,
+          position: "relative",
+          overflow: "hidden",
+        },
+      },
+      createElement("div", {
+        style: {
+          width: `${Math.max(0, Math.min(100, progress * 100))}%`,
+          height: MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+          backgroundColor: colors.accent,
+        },
+      }),
+    ),
+  );
+}
 
 export function MessageChatMediaContent({
   uri,
@@ -29,7 +159,9 @@ export function MessageChatMediaContent({
   const [mime, setMime] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const isVideo = contentKind === "video" || contentKind === "animation";
+  const [nativeProgress, setNativeProgress] = useState(0);
+  const isVideoKind = contentKind === "video" || contentKind === "animation";
+  const showProgress = messageMediaShowsProgressBar(contentKind);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,6 +169,7 @@ export function MessageChatMediaContent({
     setFailed(false);
     setBlobUri(null);
     setMime(null);
+    setNativeProgress(0);
 
     void (async () => {
       try {
@@ -71,9 +204,8 @@ export function MessageChatMediaContent({
   const frameStyle = {
     width: widthPx,
     height: heightPx,
-    borderRadius: MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
     overflow: "hidden" as const,
-    backgroundColor: colors.highlight,
+    backgroundColor: "transparent",
   };
 
   if (loading) {
@@ -85,78 +217,75 @@ export function MessageChatMediaContent({
   }
 
   if (failed || !blobUri) {
-    return <View style={frameStyle} />;
+    return (
+      <View>
+        <View style={[frameStyle, { backgroundColor: colors.highlight }]} />
+        {showProgress ? (
+          <MediaProgressBar widthPx={widthPx} progress={0} colors={colors} />
+        ) : null}
+      </View>
+    );
   }
 
   const resolvedMime = mime ?? "";
   const showVideo =
-    isVideo &&
+    isVideoKind &&
     (resolvedMime.startsWith("video/") || contentKind === "video" || contentKind === "animation");
 
   if (showVideo && Platform.OS === "web") {
-    return createElement(
-      "div",
-      {
-        style: {
-          ...frameStyle,
-          position: "relative",
-        },
-      },
-      createElement("video", {
-        src: blobUri,
-        playsInline: true,
-        muted: true,
-        controls: true,
-        preload: "metadata",
-        style: {
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          display: "block",
-          borderRadius: MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
-        },
-      }),
+    return (
+      <WebMessageChatVideo
+        src={blobUri}
+        widthPx={widthPx}
+        heightPx={heightPx}
+        colors={colors}
+        loop={contentKind === "animation"}
+      />
     );
   }
 
   return (
-    <View style={{ position: "relative" }}>
-      <Image
-        source={{ uri: blobUri }}
-        accessibilityIgnoresInvertColors
-        style={{
-          width: widthPx,
-          height: heightPx,
-          borderRadius: MESSAGE_BUBBLE_MEDIA_BORDER_RADIUS_PX,
-        }}
-        contentFit="cover"
-      />
-      {isVideo ? (
-        <View
-          pointerEvents="none"
+    <View>
+      <View style={{ position: "relative" }}>
+        <Image
+          source={{ uri: blobUri }}
+          accessibilityIgnoresInvertColors
           style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            alignItems: "center",
-            justifyContent: "center",
+            width: widthPx,
+            height: heightPx,
           }}
-        >
+          contentFit="cover"
+        />
+        {showVideo ? (
           <View
+            pointerEvents="none"
             style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              backgroundColor: "rgba(0,0,0,0.45)",
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Text style={{ color: "#fff", fontSize: 18, lineHeight: 20, marginLeft: 2 }}>▶</Text>
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 21,
+                backgroundColor: "rgba(0,0,0,0.45)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 18, lineHeight: 20, marginLeft: 2 }}>▶</Text>
+            </View>
           </View>
-        </View>
+        ) : null}
+      </View>
+      {showProgress ? (
+        <MediaProgressBar widthPx={widthPx} progress={nativeProgress} colors={colors} />
       ) : null}
     </View>
   );
@@ -176,4 +305,14 @@ export function resolveMessageMediaDimensions(
   }
   const fallbackHeight = Math.round(widthPx * 0.62);
   return { widthPx, heightPx: fallbackHeight };
+}
+
+export function messageMediaBlockHeightPx(
+  mediaHeightPx: number,
+  contentKind: MessageChatContentKind,
+): number {
+  return (
+    mediaHeightPx +
+    (messageMediaShowsProgressBar(contentKind) ? MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX : 0)
+  );
 }
