@@ -474,6 +474,15 @@ function WebBottomBar({
     });
   }, [router, pathname, value, setValue, premadePrompts, onSubmitOverride]);
 
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+      e.preventDefault();
+      handleSend();
+    },
+    [handleSend],
+  );
+
   return (
     <View
       style={[
@@ -502,6 +511,7 @@ function WebBottomBar({
               data-global-bottom-bar-web
               value={value}
               onInput={handleInput}
+              onKeyDown={handleKeyDown}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               rows={1}
@@ -742,6 +752,7 @@ function NativeBottomBar({
                     value={value}
                     onChangeText={setValue}
                     onSubmitEditing={onSubmitEditing}
+                    submitBehavior="submit"
                     returnKeyType="send"
                     blurOnSubmit={false}
                     multiline

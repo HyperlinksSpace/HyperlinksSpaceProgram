@@ -4,6 +4,7 @@ import { MessageChatRussianFlagIcon } from "./MessageChatRussianFlagIcon";
 import { MessageChatArtSignIcon } from "./MessageChatArtSignIcon";
 import { MessageChatPeaceIcon } from "./MessageChatPeaceIcon";
 import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
+import { MessageChatSIcon } from "./MessageChatSIcon";
 import { MessageChatStatusTgsBadge } from "./MessageChatStatusTgsBadge";
 import {
   SPECIAL_USER_BADGE_GAP_PX,
@@ -45,6 +46,9 @@ function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof 
   }
   if (kind === "russian_flag") {
     return <MessageChatRussianFlagIcon size={size} />;
+  }
+  if (kind === "s_sign") {
+    return <MessageChatSIcon size={size} />;
   }
   return <MessageChatStatusTgsBadge size={size} />;
 }
