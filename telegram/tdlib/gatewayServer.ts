@@ -21,6 +21,7 @@ import {
   submitConnectCode,
   submitConnectPassword,
   submitConnectPhoneNumber,
+  sendChatMessageForUser,
 } from "./connectAttempts.js";
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -252,6 +253,40 @@ export function startTdlibGatewayServer(): http.Server {
             messages: result.messages,
             has_more_older: !result.error && result.has_more_older,
             next_before_message_id: result.next_before_message_id,
+            error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/chat/messages/send") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            text?: string;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const text = typeof body.text === "string" ? body.text : "";
+          if (!telegramUsername || !Number.isFinite(chatId)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await sendChatMessageForUser(telegramUsername, chatId, text);
+          console.log(
+            `[tdlib-gateway] ${JSON.stringify({
+              event: "chat_message_sent",
+              telegramUsername,
+              chatId,
+              ok: !result.error,
+              messageId: result.message?.telegram_message_id ?? null,
+              error: result.error,
+              elapsedMs: Date.now() - started,
+            })}`,
+          );
+          sendJson(res, result.error ? 503 : 200, {
+            ok: !result.error,
+            message: result.message,
             error: result.error,
           });
           return;

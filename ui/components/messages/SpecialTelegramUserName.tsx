@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from "react";
 import { Platform, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { MessageChatRussianFlagIcon } from "./MessageChatRussianFlagIcon";
-import { MessageChatMonaLisaIcon } from "./MessageChatMonaLisaIcon";
+import { MessageChatArtSignIcon } from "./MessageChatArtSignIcon";
 import { MessageChatPeaceIcon } from "./MessageChatPeaceIcon";
 import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
 import { MessageChatStatusTgsBadge } from "./MessageChatStatusTgsBadge";
@@ -40,8 +40,8 @@ function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof 
   if (kind === "peace_sign") {
     return <MessageChatPeaceIcon size={size} />;
   }
-  if (kind === "mona_lisa") {
-    return <MessageChatMonaLisaIcon size={size} />;
+  if (kind === "art_sign") {
+    return <MessageChatArtSignIcon size={size} />;
   }
   if (kind === "russian_flag") {
     return <MessageChatRussianFlagIcon size={size} />;

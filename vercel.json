@@ -22,6 +22,10 @@
       "destination": "/api/telegram-messages-chats"
     },
     {
+      "source": "/api/telegram/messages/send",
+      "destination": "/api/telegram-messages-send"
+    },
+    {
       "source": "/api/telegram/mtproto/connect/start",
       "destination": "/api/telegram-mtproto-connect-start"
     },

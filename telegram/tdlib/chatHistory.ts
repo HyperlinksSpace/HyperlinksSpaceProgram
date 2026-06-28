@@ -163,3 +163,36 @@ export async function fetchChatHistory(
       hasMoreOlder && oldestReturnedId != null ? oldestReturnedId : null,
   };
 }
+
+const MAX_OUTGOING_TEXT_LENGTH = 4096;
+
+export async function sendChatTextMessage(
+  client: Client,
+  chatId: number,
+  text: string,
+): Promise<MappedChatHistoryMessage | null> {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > MAX_OUTGOING_TEXT_LENGTH) return null;
+
+  try {
+    await client.invoke({ _: "openChat", chat_id: chatId });
+  } catch {
+    /* already open or TDLib will reject send with a clearer error */
+  }
+
+  const message = (await client.invoke({
+    _: "sendMessage",
+    chat_id: chatId,
+    input_message_content: {
+      _: "inputMessageText",
+      text: {
+        _: "formattedText",
+        text: trimmed,
+        entities: [],
+      },
+    },
+  })) as TdMessage;
+
+  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  return mapHistoryMessage(client, message, chat, new Map(), new Map());
+}

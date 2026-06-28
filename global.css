@@ -376,3 +376,88 @@ textarea[data-ai-input="true"] {
     opacity: 0;
   }
 }
+
+/*
+ * Natalya Lavrenova art badge: gentle 3D orbit of the palette icon (web).
+ */
+.hsp-art-sign-3d {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.hsp-art-sign-3d-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  perspective: 72px;
+  perspective-origin: 50% 46%;
+}
+
+.hsp-art-sign-3d-shadow {
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -1px;
+  height: 4px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(93, 64, 55, 0.38) 0%, transparent 72%);
+  transform: translateZ(-6px);
+  pointer-events: none;
+}
+
+.hsp-art-sign-3d-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  animation: hsp-art-sign-3d-orbit 6s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+}
+
+.hsp-art-sign-3d-face {
+  width: 100%;
+  height: 100%;
+  transform: translateZ(4px);
+  backface-visibility: hidden;
+  filter: drop-shadow(0 1px 1.5px rgba(93, 64, 55, 0.28));
+  animation: hsp-art-sign-3d-glow 3.2s ease-in-out infinite;
+}
+
+@keyframes hsp-art-sign-3d-orbit {
+  0%,
+  100% {
+    transform: rotateY(-24deg) rotateX(11deg) rotateZ(0deg) translateY(0);
+  }
+  25% {
+    transform: rotateY(34deg) rotateX(-7deg) rotateZ(4deg) translateY(-0.5px);
+  }
+  50% {
+    transform: rotateY(182deg) rotateX(9deg) rotateZ(0deg) translateY(0);
+  }
+  75% {
+    transform: rotateY(312deg) rotateX(-8deg) rotateZ(-3deg) translateY(-0.4px);
+  }
+}
+
+@keyframes hsp-art-sign-3d-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 1px 1.5px rgba(93, 64, 55, 0.28));
+  }
+  50% {
+    filter: drop-shadow(0 1px 2px rgba(201, 166, 107, 0.55)) brightness(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hsp-art-sign-3d-inner,
+  .hsp-art-sign-3d-face {
+    animation: none;
+  }
+
+  .hsp-art-sign-3d-inner {
+    transform: rotateY(-12deg) rotateX(8deg);
+  }
+}

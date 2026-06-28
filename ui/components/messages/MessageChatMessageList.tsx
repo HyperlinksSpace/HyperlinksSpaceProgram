@@ -4,6 +4,7 @@ import { buildApiUrl } from "../../../api/_base";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSelectedChat";
+import { subscribeOutgoingChatMessages } from "../../messageChatOutgoing";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { HspScrollColumn, type HspScrollColumnHandle } from "../HspScrollColumn";
@@ -209,6 +210,14 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       requestAnimationFrame(() => scrollControllerRef.current?.scrollToEnd());
     });
   }, []);
+
+  useEffect(() => {
+    return subscribeOutgoingChatMessages(({ chatId, message }) => {
+      if (chatId !== chat.telegram_chat_id) return;
+      setMessages((prev) => mergeHistoryMessages(prev, [message]));
+      scrollToBottom();
+    });
+  }, [chat.telegram_chat_id, scrollToBottom]);
 
   useEffect(() => {
     if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {

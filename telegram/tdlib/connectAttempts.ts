@@ -7,7 +7,7 @@ import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
-import { fetchChatHistory } from "./chatHistory.js";
+import { fetchChatHistory, sendChatTextMessage } from "./chatHistory.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
@@ -1168,6 +1168,39 @@ export async function getChatHistoryForUser(
       next_before_message_id: null,
       error: message,
     };
+  }
+}
+
+export async function sendChatMessageForUser(
+  telegramUsername: string,
+  chatId: number,
+  text: string,
+): Promise<{ message: Awaited<ReturnType<typeof sendChatTextMessage>>; error: string | null }> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { message: null, error: "text_required" };
+  }
+  if (trimmed.length > 4096) {
+    return { message: null, error: "text_too_long" };
+  }
+
+  let record = getActiveRecord(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    record = await waitForUserSessionReady(telegramUsername, 30_000);
+  }
+  if (!record?.client || record.authState !== "ready") {
+    return { message: null, error: "session_not_ready" };
+  }
+
+  try {
+    const message = await sendChatTextMessage(record.client, chatId, trimmed);
+    if (!message) {
+      return { message: null, error: "send_failed" };
+    }
+    return { message, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "send_failed";
+    return { message: null, error: message };
   }
 }
 

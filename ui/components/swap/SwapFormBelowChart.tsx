@@ -3,7 +3,6 @@ import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { SWAP_BUY_AMOUNT_TON } from "../../swap/fetchSwapAmount";
 import { formatSwapPrice, formatSwapTokenAmount } from "../../swap/swapChartFormat";
-import { useSwapAmount } from "../../swap/useSwapAmount";
 import { layout, typographyAeroport15, typographyAeroport20, useColors } from "../../theme";
 import { navigateToSwapCurrencyPicker } from "../../swap/navigateToSwapCurrencyPicker";
 import { useResolvedPathname } from "../../useResolvedPathname";
@@ -32,7 +31,8 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
   const showSwapActionBlock = windowWidth <= layout.authenticatedHome.secondBreakpoint;
-  const { sellAmount, isLoading, error } = useSwapAmount();
+  const sellDllrAmount =
+    effectiveTonPriceUsd != null ? effectiveTonPriceUsd * SWAP_BUY_AMOUNT_TON : null;
 
   const openBuyCurrency = () => navigateToSwapCurrencyPicker(router, "buy", windowWidth, pathname);
   const openSellCurrency = () => navigateToSwapCurrencyPicker(router, "sell", windowWidth, pathname);
@@ -41,15 +41,9 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
   const buyPriceText =
     effectiveTonPriceUsd != null ? `${formatSwapPrice(effectiveTonPriceUsd)}$` : "…";
 
-  let sellAmountText = formatSwapTokenAmount(1);
-  if (isLoading) sellAmountText = "...";
-  else if (error) sellAmountText = "Error";
-  else if (sellAmount != null) sellAmountText = formatSwapTokenAmount(sellAmount);
-
-  const sellPriceText =
-    sellAmount != null && !isLoading && !error
-      ? `${formatSwapPrice(sellAmount)}$`
-      : "…";
+  const sellAmountText =
+    sellDllrAmount != null ? formatSwapTokenAmount(sellDllrAmount) : "…";
+  const sellPriceText = buyPriceText;
 
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>
@@ -174,7 +168,7 @@ export function SwapFormBelowChart({ effectiveTonPriceUsd }: Props) {
           <View style={{ height: SECTION_GAP_PX }} />
           <SmartGradientDivider />
           <View style={{ height: SECTION_GAP_PX }} />
-          <SwapActionRow dllrAmount={!isLoading && !error ? sellAmount : null} />
+          <SwapActionRow dllrAmount={sellDllrAmount} />
           <View style={{ height: SECTION_GAP_PX }} />
         </>
       ) : null}

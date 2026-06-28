@@ -1,8 +1,9 @@
-Cross
+Shine for me
 Rate
 Make logs more compact
 Chat history
-Emojis rendering, fix time, writing messages, photos and videos, messages loading
+My profile
+Emojis rendering, fix time, writing messages, photos and videos, messages loading, checkmarks
 AI column scrolling indicator
 Back button on choose currency screen
 Bot instead of the status in bot

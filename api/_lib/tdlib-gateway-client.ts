@@ -350,6 +350,28 @@ export async function gatewayFetchChatMessages(
   }
 }
 
+export async function gatewaySendChatMessage(
+  telegramUsername: string,
+  chatId: number,
+  text: string,
+): Promise<{ message: Record<string, unknown> | null; error: string | null }> {
+  const { response, json } = await gatewayFetch("/v1/chat/messages/send", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername, chatId, text }),
+  });
+  const message =
+    json.message && typeof json.message === "object" && !Array.isArray(json.message)
+      ? (json.message as Record<string, unknown>)
+      : null;
+  if (!response.ok || !json.ok) {
+    return {
+      message: null,
+      error: typeof json.error === "string" ? json.error : "send_failed",
+    };
+  }
+  return { message, error: null };
+}
+
 export async function gatewayFetchMessageMedia(
   telegramUsername: string,
   chatId: number,

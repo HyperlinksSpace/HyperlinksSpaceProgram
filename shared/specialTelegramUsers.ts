@@ -12,7 +12,7 @@ export const NATALYA_LAVRENOVA_TELEGRAM_USER_ID = 86649762;
 export const SPECIAL_USER_BADGE_GAP_PX = 5;
 export const SPECIAL_USER_BADGE_SIZE_PX = 20;
 
-export type SpecialUserBadgeKind = "cross" | "status_tgs" | "peace_sign" | "mona_lisa" | "russian_flag";
+export type SpecialUserBadgeKind = "cross" | "status_tgs" | "peace_sign" | "art_sign" | "russian_flag";
 
 type SpecialUserRule = {
   displayName?: string;
@@ -31,7 +31,7 @@ const SPECIAL_USER_RULES: Record<number, SpecialUserRule> = {
   [MMI_TELEGRAM_USER_ID]: { displayName: "Petr Ignatyev", shine: true, badge: "status_tgs" },
   [MAMA_TELEGRAM_USER_ID]: { displayName: "Olga Valentinovna", shine: true, badge: "status_tgs" },
   [ALEXEY_TELEGRAM_USER_ID]: { displayName: "Alexey Ignatyev", shine: true, badge: "peace_sign" },
-  [NATALYA_LAVRENOVA_TELEGRAM_USER_ID]: { shine: true, badge: "mona_lisa" },
+  [NATALYA_LAVRENOVA_TELEGRAM_USER_ID]: { shine: true, badge: "art_sign" },
 };
 
 /** Contact-name queries used during TDLib sync to surface hidden/blocked private chats. */

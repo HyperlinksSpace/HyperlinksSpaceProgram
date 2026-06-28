@@ -6,6 +6,7 @@
 !scripts/run-tdlib-gateway.ts
 !telegram/tdlib/**
 !shared/telegramThreadConstants.ts
+!shared/specialTelegramUsers.ts
 !database/start.ts
 !database/telegramMessages.ts
 !database/telegramMtproto.ts

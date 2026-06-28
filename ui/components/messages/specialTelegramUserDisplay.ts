@@ -12,9 +12,9 @@ export {
   specialUserRule,
   specialUserShowsShineName,
   type SpecialUserBadgeKind,
-} from "../../../shared/specialTelegramUsers.js";
+} from "../../../shared/specialTelegramUsers";
 
-import { specialUserBadgeExtraWidthPx, specialUserBadgeKind } from "../../../shared/specialTelegramUsers.js";
+import { specialUserBadgeExtraWidthPx, specialUserBadgeKind } from "../../../shared/specialTelegramUsers";
 
 /** @deprecated Use specialUserBadgeKind / specialUserBadgeExtraWidthPx. */
 export function specialUserShowsCrossBadge(

@@ -6,7 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayResyncChats, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -78,6 +78,46 @@ async function requireUser(request: AnyRequest): Promise<string | Response> {
     return sendJson({ ok: false, error: "unauthorized" }, 401, request);
   }
   return username;
+}
+
+async function parseRequestBody<T extends Record<string, unknown> = Record<string, unknown>>(
+  request: AnyRequest,
+): Promise<T> {
+  const raw = request as {
+    body?: unknown;
+    json?: () => Promise<unknown>;
+    text?: () => Promise<string>;
+  };
+  if (raw.body !== undefined && raw.body !== null) {
+    if (typeof raw.body === "object" && !Buffer.isBuffer(raw.body)) {
+      return raw.body as T;
+    }
+    if (typeof raw.body === "string" && raw.body.trim()) {
+      try {
+        return JSON.parse(raw.body) as T;
+      } catch {
+        return {} as T;
+      }
+    }
+  }
+  const webReq = request as Request;
+  if (typeof raw.json === "function") {
+    try {
+      const parsed = await raw.json();
+      return (parsed && typeof parsed === "object" ? parsed : {}) as T;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof webReq.text === "function") {
+    try {
+      const text = await webReq.text();
+      return (text ? JSON.parse(text) : {}) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+  return {} as T;
 }
 
 function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number }) {
@@ -546,6 +586,78 @@ export async function telegramMessagesMediaHandler(
     return;
   }
   return new Response(new Uint8Array(media.data), { status: 200, headers });
+}
+
+export async function telegramMessagesSendHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const body = await parseRequestBody<{ chat_id?: unknown; text?: unknown }>(request);
+
+  const chatId = Number(body.chat_id);
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!Number.isFinite(chatId) || chatId === 0) {
+    logTelegramMessagesApi("messages_send_bad_request", {
+      telegramUsername: userOrRes,
+      chatIdRaw: body.chat_id,
+      textLength: typeof body.text === "string" ? body.text.length : null,
+      error: "chat_id_required",
+    });
+    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+  }
+  if (!text) {
+    return finishJson(request, res, { ok: false, error: "text_required" }, 400);
+  }
+  if (text.length > 4096) {
+    return finishJson(request, res, { ok: false, error: "text_too_long" }, 400);
+  }
+
+  const started = Date.now();
+  const result = await gatewaySendChatMessage(userOrRes, chatId, text);
+  logTelegramMessagesApi("messages_send", {
+    telegramUsername: userOrRes,
+    chatId,
+    ok: !result.error,
+    messageId:
+      result.message && typeof result.message.telegram_message_id === "number"
+        ? result.message.telegram_message_id
+        : null,
+    error: result.error,
+    elapsedMs: Date.now() - started,
+  });
+
+  if (result.error) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: result.error, message: null },
+      result.error === "session_not_ready" ? 503 : 502,
+    );
+  }
+
+  return finishJson(request, res, { ok: true, message: result.message }, 200);
 }
 
 export async function telegramMessagesWarmupHandler(
