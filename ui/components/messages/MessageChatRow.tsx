@@ -14,7 +14,7 @@ import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
-import { formatMessageChatListSubtitle, isMessageChatActionLive } from "./formatMessageChatSubheader";
+import { formatMessageChatListSubtitle } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import {
   MESSAGE_AVATAR_PX,
@@ -88,14 +88,12 @@ export function MessageChatRow({
   const { locale } = useAppStrings();
   const title = item.title.trim();
   const subtitle = formatMessageChatListSubtitle(item, locale);
-  const subtitleIsLiveAction = isMessageChatActionLive(item);
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
   const iconUrl = resolveAvatarUrl(item);
   const parsedClock = formatMessageChatWallClock(item.last_message_at);
   const timeLabel = parsedClock || timePendingLabel;
-  const timeIsProvisional = !parsedClock;
   const gapTitleTime = !!(title && timeLabel.trim());
   const avatarLogOnceRef = useRef(false);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
@@ -245,7 +243,7 @@ export function MessageChatRow({
               ...textBase,
               flex: 1,
               minWidth: 0,
-              color: subtitleIsLiveAction ? colors.accent : colors.primary,
+              color: colors.accent,
             }}
           >
             {subtitle}

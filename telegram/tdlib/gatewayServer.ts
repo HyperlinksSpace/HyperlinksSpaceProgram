@@ -315,11 +315,32 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
+          const started = Date.now();
           const media = await getMessageMediaForUser(telegramUsername, chatId, messageId);
           if (!media) {
+            console.log(
+              `[tdlib-gateway] ${JSON.stringify({
+                event: "message_media_unavailable",
+                telegramUsername,
+                chatId,
+                messageId,
+                elapsedMs: Date.now() - started,
+              })}`,
+            );
             sendJson(res, 404, { ok: false, error: "media_unavailable" });
             return;
           }
+          console.log(
+            `[tdlib-gateway] ${JSON.stringify({
+              event: "message_media_ok",
+              telegramUsername,
+              chatId,
+              messageId,
+              bytes: media.data.length,
+              mime: media.mime,
+              elapsedMs: Date.now() - started,
+            })}`,
+          );
           res.statusCode = 200;
           res.setHeader("Content-Type", media.mime);
           res.setHeader("Cache-Control", "public, max-age=86400");

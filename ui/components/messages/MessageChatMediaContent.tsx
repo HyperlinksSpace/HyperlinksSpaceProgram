@@ -18,8 +18,50 @@ type Props = {
   contentKind: MessageChatContentKind;
   widthPx: number;
   heightPx: number;
+  /** Column cap — used to pixel-fit GIFs/stickers from intrinsic file dimensions. */
+  maxWidthPx?: number;
   colors: ThemeColors;
 };
+
+function isPixelPerfectMediaKind(contentKind: MessageChatContentKind): boolean {
+  return contentKind === "animation" || contentKind === "sticker";
+}
+
+function measureWebMediaIntrinsicSize(
+  url: string,
+  kind: ResolvedMediaKind,
+): Promise<{ width: number; height: number } | null> {
+  if (Platform.OS !== "web") return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    if (kind === "video") {
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.muted = true;
+      video.playsInline = true;
+      const finish = (width: number, height: number) => {
+        video.removeAttribute("src");
+        video.load();
+        video.remove();
+        resolve(width > 0 && height > 0 ? { width, height } : null);
+      };
+      video.onloadedmetadata = () => finish(video.videoWidth, video.videoHeight);
+      video.onerror = () => finish(0, 0);
+      video.src = url;
+      return;
+    }
+
+    const img = document.createElement("img");
+    const finish = (width: number, height: number) => {
+      img.removeAttribute("src");
+      img.remove();
+      resolve(width > 0 && height > 0 ? { width, height } : null);
+    };
+    img.onload = () => finish(img.naturalWidth, img.naturalHeight);
+    img.onerror = () => finish(0, 0);
+    img.src = url;
+  });
+}
 
 type ResolvedMediaKind = "tgs" | "video" | "gif" | "image";
 
@@ -68,13 +110,11 @@ function resolveMediaKind(
   if (
     normalizedMime.startsWith("video/") ||
     bytesLookLikeVideo(bytes) ||
-    contentKind === "video" ||
     (contentKind === "animation" && bytesLookLikeVideo(bytes))
   ) {
     return "video";
   }
   if (normalizedMime === "image/gif") return "gif";
-  if (contentKind === "animation" && bytesLookLikeVideo(bytes)) return "video";
   if (contentKind === "sticker" && bytesLookLikeVideo(bytes)) return "video";
   return "image";
 }
@@ -170,8 +210,6 @@ function WebMessageChatVideo({
     };
   }, [src, loop]);
 
-  const objectFit = pixelPerfect ? "contain" : "cover";
-
   return createElement(
     "div",
     {
@@ -193,9 +231,10 @@ function WebMessageChatVideo({
       style: {
         width: widthPx,
         height: heightPx,
-        objectFit,
         display: "block",
-        ...(pixelPerfect ? ({ imageRendering: "crisp-edges" } as object) : null),
+        ...(pixelPerfect
+          ? ({ imageRendering: "crisp-edges" } as object)
+          : ({ objectFit: "cover" } as object)),
       },
     }),
     showProgress
@@ -239,7 +278,6 @@ function WebMessageChatGifImage({
     style: {
       width: widthPx,
       height: heightPx,
-      objectFit: "contain",
       display: "block",
       imageRendering: "crisp-edges",
     },
@@ -251,15 +289,18 @@ export function MessageChatMediaContent({
   contentKind,
   widthPx,
   heightPx,
+  maxWidthPx,
   colors,
 }: Props) {
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [mediaBytes, setMediaBytes] = useState<Uint8Array | null>(null);
   const [mediaKind, setMediaKind] = useState<ResolvedMediaKind | null>(null);
+  const [displayWidthPx, setDisplayWidthPx] = useState(widthPx);
+  const [displayHeightPx, setDisplayHeightPx] = useState(heightPx);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const showProgress = messageMediaShowsProgressBar(contentKind);
-  const pixelPerfect = contentKind === "animation" || contentKind === "sticker";
+  const pixelPerfect = isPixelPerfectMediaKind(contentKind);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +310,8 @@ export function MessageChatMediaContent({
     setMediaUri(null);
     setMediaBytes(null);
     setMediaKind(null);
+    setDisplayWidthPx(widthPx);
+    setDisplayHeightPx(heightPx);
 
     void (async () => {
       try {
@@ -289,9 +332,27 @@ export function MessageChatMediaContent({
               ? "application/x-tgsticker"
               : resolvedMime || "application/octet-stream";
         objectUrl = URL.createObjectURL(new Blob([bytes], { type: blobType }));
+        let nextWidthPx = widthPx;
+        let nextHeightPx = heightPx;
+        if (pixelPerfect) {
+          const intrinsic = await measureWebMediaIntrinsicSize(objectUrl, kind);
+          if (!cancelled && intrinsic) {
+            const fitted = scaleMediaDimensions(
+              intrinsic.width,
+              intrinsic.height,
+              maxWidthPx ?? widthPx,
+              contentKind,
+            );
+            nextWidthPx = fitted.widthPx;
+            nextHeightPx = fitted.heightPx;
+          }
+        }
+        if (cancelled) return;
         setMediaBytes(bytes);
         setMediaKind(kind);
         setMediaUri(objectUrl);
+        setDisplayWidthPx(nextWidthPx);
+        setDisplayHeightPx(nextHeightPx);
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -303,11 +364,11 @@ export function MessageChatMediaContent({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [uri, contentKind]);
+  }, [contentKind, heightPx, maxWidthPx, pixelPerfect, uri, widthPx]);
 
   const frameStyle = {
-    width: widthPx,
-    height: heightPx,
+    width: displayWidthPx,
+    height: displayHeightPx,
     overflow: "hidden" as const,
     backgroundColor: "transparent",
   };
@@ -325,7 +386,7 @@ export function MessageChatMediaContent({
       <View>
         <View style={[frameStyle, { backgroundColor: colors.highlight }]} />
         {showProgress ? (
-          <MediaProgressBar widthPx={widthPx} progress={0} colors={colors} />
+          <MediaProgressBar widthPx={displayWidthPx} progress={0} colors={colors} />
         ) : null}
       </View>
     );
@@ -333,7 +394,11 @@ export function MessageChatMediaContent({
 
   if (mediaKind === "tgs" && mediaBytes) {
     return (
-      <MessageChatTgsSticker data={mediaBytes} widthPx={widthPx} heightPx={heightPx} />
+      <MessageChatTgsSticker
+        data={mediaBytes}
+        widthPx={displayWidthPx}
+        heightPx={displayHeightPx}
+      />
     );
   }
 
@@ -341,8 +406,8 @@ export function MessageChatMediaContent({
     return (
       <WebMessageChatVideo
         src={mediaUri}
-        widthPx={widthPx}
-        heightPx={heightPx}
+        widthPx={displayWidthPx}
+        heightPx={displayHeightPx}
         colors={colors}
         loop
         showProgress={showProgress}
@@ -354,9 +419,13 @@ export function MessageChatMediaContent({
   if (mediaKind === "gif" && Platform.OS === "web") {
     return (
       <View>
-        <WebMessageChatGifImage src={mediaUri} widthPx={widthPx} heightPx={heightPx} />
+        <WebMessageChatGifImage
+          src={mediaUri}
+          widthPx={displayWidthPx}
+          heightPx={displayHeightPx}
+        />
         {showProgress ? (
-          <MediaProgressBar widthPx={widthPx} progress={0} colors={colors} />
+          <MediaProgressBar widthPx={displayWidthPx} progress={0} colors={colors} />
         ) : null}
       </View>
     );
@@ -368,15 +437,13 @@ export function MessageChatMediaContent({
         source={{ uri: mediaUri }}
         accessibilityIgnoresInvertColors
         style={{
-          width: widthPx,
-          height: heightPx,
+          width: displayWidthPx,
+          height: displayHeightPx,
         }}
-        contentFit={
-          contentKind === "photo" ? "contain" : pixelPerfect ? "contain" : "cover"
-        }
+        contentFit={contentKind === "photo" ? "contain" : pixelPerfect ? "fill" : "cover"}
       />
       {showProgress ? (
-        <MediaProgressBar widthPx={widthPx} progress={0} colors={colors} />
+        <MediaProgressBar widthPx={displayWidthPx} progress={0} colors={colors} />
       ) : null}
     </View>
   );
@@ -388,7 +455,7 @@ function scaleMediaDimensions(
   maxWidthPx: number,
   contentKind?: MessageChatContentKind,
 ): { widthPx: number; heightPx: number } {
-  const pixelPerfect = contentKind === "animation" || contentKind === "sticker";
+  const pixelPerfect = isPixelPerfectMediaKind(contentKind ?? "other");
   let maxW = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
   if (contentKind === "sticker") {
     maxW = Math.min(maxW, MESSAGE_BUBBLE_STICKER_MAX_PX);
@@ -397,16 +464,15 @@ function scaleMediaDimensions(
   }
 
   if (pixelPerfect) {
-    if (sourceW <= maxW) {
-      return {
-        widthPx: Math.max(1, Math.round(sourceW)),
-        heightPx: Math.max(1, Math.round(sourceH)),
-      };
+    const nativeW = Math.max(1, Math.round(sourceW));
+    const nativeH = Math.max(1, Math.round(sourceH));
+    if (nativeW <= maxW) {
+      return { widthPx: nativeW, heightPx: nativeH };
     }
-    const scale = maxW / sourceW;
+    const scale = maxW / nativeW;
     return {
-      widthPx: Math.max(1, Math.round(sourceW * scale)),
-      heightPx: Math.max(1, Math.round(sourceH * scale)),
+      widthPx: Math.max(1, Math.round(nativeW * scale)),
+      heightPx: Math.max(1, Math.round(nativeH * scale)),
     };
   }
 
@@ -439,14 +505,17 @@ export function resolveMessageMediaDimensions(
   if (Number.isFinite(sourceW) && Number.isFinite(sourceH) && sourceW > 0 && sourceH > 0) {
     return scaleMediaDimensions(sourceW, sourceH, maxWidthPx, contentKind);
   }
-  const pixelPerfect = contentKind === "animation" || contentKind === "sticker";
+  const pixelPerfect = isPixelPerfectMediaKind(contentKind ?? "other");
+  if (pixelPerfect) {
+    return { widthPx: 1, heightPx: 1 };
+  }
   let widthPx = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);
   if (contentKind === "sticker") {
     widthPx = Math.min(widthPx, MESSAGE_BUBBLE_STICKER_MAX_PX);
   } else if (contentKind === "animation") {
     widthPx = Math.min(widthPx, MESSAGE_BUBBLE_GIF_MAX_PX);
   }
-  const fallbackHeight = Math.round(widthPx * (pixelPerfect ? 1 : 0.75));
+  const fallbackHeight = Math.round(widthPx * 0.75);
   return { widthPx, heightPx: fallbackHeight };
 }
 

@@ -16,6 +16,10 @@ const SINGLE_CHECK_PATH = "M1 7.5 L4.5 11 L10 2";
 const READ_CHECK_OFFSET = 4;
 const READ_VIEW_WIDTH = 14;
 
+function outgoingChecksSvgWidthPx(size = MESSAGE_CHAT_CHECKMARK_SIZE_PX): number {
+  return (size * READ_VIEW_WIDTH) / 14;
+}
+
 /** Telegram-style delivery ticks beside bubble time (outgoing only). */
 export function MessageChatOutgoingChecks({
   status,
@@ -41,9 +45,17 @@ export function MessageChatOutgoingChecks({
     strokeLinejoin: "round" as const,
   };
 
+  const reserveWidthPx = outgoingChecksSvgWidthPx(size);
+
   if (status === "delivered") {
     return (
-      <View style={{ marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX }}>
+      <View
+        style={{
+          marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
+          width: reserveWidthPx,
+          alignItems: "flex-start",
+        }}
+      >
         <Svg width={size * 0.62} height={size} viewBox="0 0 11 14">
           <Path d={SINGLE_CHECK_PATH} {...stroke} />
         </Svg>
@@ -52,9 +64,15 @@ export function MessageChatOutgoingChecks({
   }
 
   return (
-    <View style={{ marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX }}>
+    <View
+      style={{
+        marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
+        width: reserveWidthPx,
+        alignItems: "flex-start",
+      }}
+    >
       <Svg
-        width={(size * READ_VIEW_WIDTH) / 14}
+        width={reserveWidthPx}
         height={size}
         viewBox={`0 0 ${READ_VIEW_WIDTH} 14`}
       >
@@ -69,9 +87,6 @@ export function messageChatOutgoingChecksWidthPx(
   status: MessageOutgoingStatus | null | undefined,
 ): number {
   if (status !== "delivered" && status !== "read") return 0;
-  const markWidth =
-    status === "read"
-      ? (MESSAGE_CHAT_CHECKMARK_SIZE_PX * READ_VIEW_WIDTH) / 14
-      : MESSAGE_CHAT_CHECKMARK_SIZE_PX * 0.62;
-  return markWidth + MESSAGE_CHAT_CHECKMARK_GAP_PX;
+  // Always reserve two-checkmark width so read ticks are not clipped by bubble padding.
+  return outgoingChecksSvgWidthPx() + MESSAGE_CHAT_CHECKMARK_GAP_PX;
 }

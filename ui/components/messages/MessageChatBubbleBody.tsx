@@ -384,7 +384,7 @@ export function MessageChatBubbleBody({
   } as const;
 
   return (
-    <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start", width: showMedia ? mediaWidthPx : undefined }}>
+    <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start", width: showMedia && bodyText ? mediaWidthPx : undefined }}>
       {replyTo ? (
         <MessageChatReplyBlock reply={replyTo} colors={colors} maxWidthPx={maxWidthPx} />
       ) : null}
@@ -433,6 +433,7 @@ export function MessageChatBubbleBody({
             contentKind={contentKind}
             widthPx={mediaWidthPx}
             heightPx={mediaHeightPx}
+            maxWidthPx={maxWidthPx}
             colors={colors}
           />
           {contentKind === "animation" && overlayMediaMeta ? (

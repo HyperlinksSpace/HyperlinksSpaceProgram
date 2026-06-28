@@ -89,6 +89,32 @@ function pickLargestPhotoFileId(sizes: PhotoSizeRow[]): number | null {
   return bestId;
 }
 
+function photoFileIdsBySizeDesc(content: Record<string, unknown>): number[] {
+  const photo = content.photo as { sizes?: PhotoSizeRow[] } | undefined;
+  const sizes = photo?.sizes;
+  if (!Array.isArray(sizes) || sizes.length === 0) return [];
+  return sizes
+    .map((row) => {
+      const id = row.photo?.id;
+      const w = Number(row.width);
+      const h = Number(row.height);
+      return {
+        id: typeof id === "number" ? id : null,
+        area: Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? w * h : 0,
+      };
+    })
+    .filter((row): row is { id: number; area: number } => row.id != null && row.area > 0)
+    .sort((a, b) => b.area - a.area)
+    .map((row) => row.id);
+}
+
+function pickThumbnailFileId(media: unknown): number | null {
+  if (!media || typeof media !== "object") return null;
+  const thumb = (media as { thumbnail?: { file?: { id?: number } } }).thumbnail;
+  const id = thumb?.file?.id;
+  return typeof id === "number" ? id : null;
+}
+
 function pickPhotoFileId(content: Record<string, unknown>): number | null {
   const photo = content.photo as { sizes?: PhotoSizeRow[] } | undefined;
   const sizes = photo?.sizes;
@@ -164,6 +190,63 @@ function mediaFileIdFromMessage(message: TdMessage): number | null {
   return null;
 }
 
+async function readLocalFileBytes(
+  client: Client,
+  fileId: number,
+): Promise<{ data: Buffer; path: string } | null> {
+  const file = await waitForLocalFile(client, fileId);
+  const path = file?.local?.path;
+  if (!path || !fs.existsSync(path)) return null;
+  try {
+    const data = fs.readFileSync(path);
+    if (data.length === 0) return null;
+    return { data, path };
+  } catch {
+    return null;
+  }
+}
+
+function resolveMediaMime(
+  content: Record<string, unknown>,
+  path: string,
+  preferVideoMime: boolean,
+): string {
+  const contentMime = mimeFromMessageContent(content);
+  const pathMime = mimeFromPath(path);
+  let mime = contentMime ?? pathMime;
+  const contentType = (content as { _?: string })._;
+  if (
+    preferVideoMime &&
+    !contentMime &&
+    (contentType === "messageVideo" || contentType === "messageAnimation") &&
+    pathMime === "image/jpeg"
+  ) {
+    mime = "video/mp4";
+  }
+  return mime;
+}
+
+function mediaFileIdsFromMessage(message: TdMessage): number[] {
+  const content = message.content;
+  if (!content || typeof content !== "object") return [];
+  const row = content as Record<string, unknown>;
+  const type = row._;
+  if (type === "messagePhoto") return photoFileIdsBySizeDesc(row);
+  const primary = mediaFileIdFromMessage(message);
+  return primary != null ? [primary] : [];
+}
+
+function mediaThumbnailFileIdFromMessage(message: TdMessage): number | null {
+  const content = message.content;
+  if (!content || typeof content !== "object") return null;
+  const row = content as Record<string, unknown>;
+  const type = row._;
+  if (type === "messageVideo") return pickThumbnailFileId(row.video);
+  if (type === "messageAnimation") return pickThumbnailFileId(row.animation);
+  if (type === "messageSticker") return pickThumbnailFileId(row.sticker);
+  return null;
+}
+
 export async function readMessageMediaBytes(
   client: Client,
   chatId: number,
@@ -182,39 +265,32 @@ export async function readMessageMediaBytes(
 
   const content = message.content;
   if (!content || typeof content !== "object") return null;
+  const contentRow = content as Record<string, unknown>;
+  const contentType = contentRow._;
 
-  const fileId = mediaFileIdFromMessage(message);
-  if (fileId == null) return null;
-
-  const file = await waitForLocalFile(client, fileId);
-  const path = file?.local?.path;
-  if (!path || !fs.existsSync(path)) {
-    if (content._ === "messagePhoto") {
-      const mini = readMinithumbnailJpeg(content as Record<string, unknown>);
-      if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
-    }
-    return null;
+  for (const fileId of mediaFileIdsFromMessage(message)) {
+    const local = await readLocalFileBytes(client, fileId);
+    if (!local) continue;
+    const mime = resolveMediaMime(
+      contentRow,
+      local.path,
+      contentType === "messageVideo" || contentType === "messageAnimation",
+    );
+    return { data: local.data, mime };
   }
 
-  try {
-    const data = fs.readFileSync(path);
-    if (data.length === 0) return null;
-    const contentMime =
-      content && typeof content === "object"
-        ? mimeFromMessageContent(content as Record<string, unknown>)
-        : null;
-    const pathMime = mimeFromPath(path);
-    let mime = contentMime ?? pathMime;
-    const contentType = content && typeof content === "object" ? (content as { _?: string })._ : null;
-    if (
-      !contentMime &&
-      (contentType === "messageVideo" || contentType === "messageAnimation") &&
-      pathMime === "image/jpeg"
-    ) {
-      mime = "video/mp4";
+  const thumbnailId = mediaThumbnailFileIdFromMessage(message);
+  if (thumbnailId != null) {
+    const local = await readLocalFileBytes(client, thumbnailId);
+    if (local) {
+      return { data: local.data, mime: mimeFromPath(local.path) };
     }
-    return { data, mime };
-  } catch {
-    return null;
   }
+
+  if (contentType === "messagePhoto") {
+    const mini = readMinithumbnailJpeg(contentRow);
+    if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
+  }
+
+  return null;
 }

@@ -199,7 +199,11 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
   const webBubbleLayout = useMemo(() => {
     if (Platform.OS !== "web" || bubbleMaxWidth <= 0) return null;
     if (isBareMediaMessage) {
-      return { width: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement };
+      return {
+        width: undefined,
+        innerWidthPx: bubbleInnerMaxWidth,
+        placement: "stacked" as BubbleMetaPlacement,
+      };
     }
     const { placement, innerWidthPx } = resolveMessageBubbleLayout(
       bodyText,
@@ -224,6 +228,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     };
   }, [
     bodyText,
+    bubbleInnerMaxWidth,
     bubbleMaxWidth,
     extraInnerWidthPx,
     hasMediaCaption,
