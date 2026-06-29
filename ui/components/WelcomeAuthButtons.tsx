@@ -20,6 +20,7 @@ import { isActuallyInTelegram } from "./telegramWebApp";
 import { getApiBaseUrl } from "../../api/_base";
 import { navigateExternalAuthUrl } from "../openExternalUrl";
 import { logPageDisplay } from "../pageDisplayLog";
+import { appError } from "../../shared/appLog";
 import { isDesktopAppShell } from "../appShell";
 
 const BUTTON_HEIGHT = 40;
@@ -207,7 +208,7 @@ export function WelcomeAuthButtons() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[welcome] ${provider} browser auth start failed`, error);
+      appError("[welcome]", `${provider}_auth_start_failed`, { message }, error);
       logPageDisplay(`${cfg.logPrefix}_error`, {
         message,
         startUrl,

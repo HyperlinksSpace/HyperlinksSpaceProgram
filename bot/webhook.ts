@@ -13,6 +13,7 @@
 
 import { waitUntil } from '@vercel/functions';
 import { createBot } from './grammy.js';
+import { appError, appLog } from '../shared/appLog.js';
 
 interface TelegramUpdate {
   update_id: number;
@@ -93,7 +94,7 @@ async function getWebhookInfo(): Promise<{ url?: string }> {
 
 export async function handleRequest(request: Request): Promise<Response> {
   const method = request.method;
-  console.log('[webhook]', method, new Date().toISOString());
+  appLog('[webhook]', 'request', { method, at: new Date().toISOString() });
 
   if (method === 'OPTIONS') return jsonResponse({}, 200);
 
@@ -139,11 +140,11 @@ export async function handleRequest(request: Request): Promise<Response> {
         ? (JSON.parse(body) as TelegramUpdate)
         : (body as TelegramUpdate);
   } catch {
-    console.error('[webhook] invalid_body');
+    appError('[webhook]', 'invalid_body');
     return jsonResponse({ ok: false, error: 'invalid_body' }, 400);
   }
   if (!update || typeof update !== 'object') {
-    console.error('[webhook] invalid update');
+    appError('[webhook]', 'invalid_update');
     return jsonResponse({ ok: false, error: 'invalid_update' }, 400);
   }
 
@@ -157,10 +158,10 @@ export async function handleRequest(request: Request): Promise<Response> {
     .then(() => ensureBotInit())
     .then(() => bot!.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]))
     .then(() => {
-      console.log('[webhook] handled update', updateId);
+      appLog('[webhook]', 'handled', { updateId });
     })
     .catch((err) => {
-      console.error('[bot]', err);
+      appError('[bot]', 'handler_error', undefined, err);
     });
   const tail = work.then(() => {}, () => {});
   if (chatId !== undefined) {
@@ -244,7 +245,7 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
       chatQueue.set(chatIdLegacy, Promise.resolve());
     }
   } catch (err) {
-    console.error('[bot]', err);
+    appError('[bot]', 'handler_error', undefined, err);
     res.status(500).json({ ok: false, error: 'handler_error' });
     return;
   }

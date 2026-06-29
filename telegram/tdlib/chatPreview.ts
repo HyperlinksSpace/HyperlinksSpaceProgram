@@ -33,7 +33,7 @@ export type TdChat = {
   last_message?: TdMessage;
   unread_count?: number;
   last_read_outbox_message_id?: number;
-  photo?: { small?: { id?: number } };
+  photo?: { small?: { id?: number }; big?: { id?: number } };
   positions?: Array<{
     list?: { _?: string };
     order?: string;

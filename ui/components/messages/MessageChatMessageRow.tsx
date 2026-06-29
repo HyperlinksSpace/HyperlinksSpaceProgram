@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Text, View, type TextLayoutEvent } from "react-native";
 import { Image } from "expo-image";
-import { buildApiUrl } from "../../../api/_base";
 import { useAppStrings } from "../../../locales/AppStringsContext";
-import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
@@ -40,24 +38,8 @@ import { messageChatOutgoingChecksWidthPx } from "./MessageChatOutgoingChecks";
 import { messageChatCallArrowWidthPx } from "./MessageChatCallArrow";
 import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import type { MessageChatRowData } from "./MessageChatRow";
+import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
-
-function resolveMessageAvatarUrl(
-  chat: MessageChatRowData,
-  item: MessageChatHistoryItem,
-): string | null {
-  if (item.sender_user_id != null) {
-    return buildApiUrl(`/api/telegram-messages-avatar?user_id=${item.sender_user_id}`);
-  }
-  const avatarUrl = chat.avatar_url;
-  if (avatarUrl === TELEGRAM_THREAD_NO_AVATAR) return null;
-  if (!avatarUrl) {
-    return buildApiUrl(`/api/telegram-messages-avatar?chat_id=${chat.telegram_chat_id}`);
-  }
-  if (avatarUrl.startsWith("data:")) return avatarUrl;
-  if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) return avatarUrl;
-  return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
-}
 
 function fittedBubbleLayoutFromTextLayout(
   event: TextLayoutEvent,
@@ -114,10 +96,13 @@ type Props = {
 
 export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidthPx }: Props) {
   const { t } = useAppStrings();
-  const iconUrl = resolveMessageAvatarUrl(chat, item);
+  const iconUrl = resolveTelegramThreadAvatarUrl(chat, item, chatKind);
   const avatarInitials = useMemo(
-    () => extractChatAvatarInitials(item.sender_name || chat.title),
-    [item.sender_name, chat.title],
+    () =>
+      extractChatAvatarInitials(
+        chatKind === "channel" ? chat.title : item.sender_name || chat.title,
+      ),
+    [chatKind, item.sender_name, chat.title],
   );
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
@@ -125,6 +110,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     innerWidthPx: number;
     placement: BubbleMetaPlacement;
   } | null>(null);
+  const [liveMediaWidthPx, setLiveMediaWidthPx] = useState<number | null>(null);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
 
@@ -165,11 +151,15 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     item.media_height,
     item.content_kind,
   );
+  const effectiveMediaWidthPx = liveMediaWidthPx ?? mediaWidthPx;
 
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;
-    if (showMedia) extra = Math.max(extra, mediaWidthPx);
-    const senderName = specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
+    if (showMedia) extra = Math.max(extra, effectiveMediaWidthPx);
+    const senderName =
+      chatKind === "channel"
+        ? ""
+        : specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
     if (senderName) {
       extra = Math.max(
         extra,
@@ -194,14 +184,18 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
       extra = Math.max(extra, replySenderWidth + 12, replyTextWidth + 12);
     }
     return extra;
-  }, [bubbleInnerMaxWidth, item.reply_to, item.sender_name, mediaWidthPx, showMedia]);
+  }, [bubbleInnerMaxWidth, chatKind, effectiveMediaWidthPx, item.reply_to, item.sender_name, showMedia]);
+
+  useEffect(() => {
+    setLiveMediaWidthPx(null);
+  }, [item.telegram_message_id, item.content_kind, item.media_width, item.media_height]);
 
   const webBubbleLayout = useMemo(() => {
     if (Platform.OS !== "web" || bubbleMaxWidth <= 0) return null;
     if (isBareMediaMessage) {
       return {
-        width: undefined,
-        innerWidthPx: bubbleInnerMaxWidth,
+        width: effectiveMediaWidthPx,
+        innerWidthPx: effectiveMediaWidthPx,
         placement: "stacked" as BubbleMetaPlacement,
       };
     }
@@ -217,11 +211,11 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
         bubbleMaxWidth,
         showMedia && hasMediaCaption
           ? Math.max(
-              mediaWidthPx,
+              effectiveMediaWidthPx,
               innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
             )
           : showMedia
-            ? Math.max(mediaWidthPx, innerWidthPx)
+            ? Math.max(effectiveMediaWidthPx, innerWidthPx)
             : innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
       ),
       placement,
@@ -231,6 +225,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     bubbleInnerMaxWidth,
     bubbleMaxWidth,
     extraInnerWidthPx,
+    effectiveMediaWidthPx,
     hasMediaCaption,
     isBareMediaMessage,
     mediaWidthPx,
@@ -269,7 +264,11 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     Platform.OS === "web"
       ? webBubbleLayout
       : isBareMediaMessage
-        ? { width: mediaWidthPx, innerWidthPx: mediaWidthPx, placement: "stacked" as BubbleMetaPlacement }
+        ? {
+            width: effectiveMediaWidthPx,
+            innerWidthPx: effectiveMediaWidthPx,
+            placement: "stacked" as BubbleMetaPlacement,
+          }
         : nativeBubbleLayout;
   const metaPlacement = bubbleLayout?.placement ?? "stacked";
   const bubbleContentWidthPx = bubbleLayout?.innerWidthPx ?? bubbleInnerMaxWidth;
@@ -375,6 +374,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             colors={colors}
             maxWidthPx={bubbleContentWidthPx}
             metaPlacement={metaPlacement}
+            onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
           />
         </View>
       </View>

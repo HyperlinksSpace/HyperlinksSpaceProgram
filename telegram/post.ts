@@ -18,19 +18,16 @@ import { getDefaultWalletByUsername } from '../database/wallets.js';
 import { isTelegramMessagesConnected } from '../database/telegramMessages.js';
 import { issueAuthSession } from '../api/_lib/auth-session-issue.js';
 
+import { appError, appLog } from '../shared/appLog.js';
+
 const LOG_TAG = '[api/telegram]';
 
 function log(msg: string, detail?: Record<string, unknown>) {
-  const payload = detail ? ` ${JSON.stringify(detail)}` : '';
-  console.log(`${LOG_TAG} ${msg}${payload}`);
+  appLog(LOG_TAG, msg, detail);
 }
 
 function logErr(msg: string, err: unknown) {
-  console.error(
-    `${LOG_TAG} ${msg}`,
-    err instanceof Error ? err.message : err,
-  );
-  if (err instanceof Error && err.stack) console.error(err.stack);
+  appError(LOG_TAG, msg, undefined, err);
 }
 
 /** Same orchestration as `/api/feed`: schema → deliver missing catalogue rows (`sent_at = NOW()`) → list. */

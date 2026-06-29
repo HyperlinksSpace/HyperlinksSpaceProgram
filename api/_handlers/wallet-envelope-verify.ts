@@ -3,6 +3,7 @@ import { upsertUserFromTma } from '../../database/users.js';
 import { authByInitData } from '../wallet/_auth.js';
 import { kmsDecrypt } from '../_lib/envelope-crypto.js';
 import { decryptWalletPayloadAesGcmV1 } from '../_lib/wallet-envelope-payload.js';
+import { appLog } from '../../shared/appLog.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -103,9 +104,9 @@ async function handler(request: Request): Promise<Response> {
 
     const dek = await kmsDecrypt(wrapped);
     if (dek.length !== 32) {
-      console.error('[wallet-envelope-verify] kms_unwrap_bad_dek_len', {
+      appLog('[wallet-envelope-verify]', 'kms_unwrap_bad_dek_len', {
         user: auth.telegramUsername,
-        wallet_id: wallet.id,
+        walletId: wallet.id,
         dekLen: dek.length,
       });
       return jsonResponse({ ok: false, error: 'kms_unwrap_bad_dek_len' }, 500);
@@ -116,9 +117,9 @@ async function handler(request: Request): Promise<Response> {
     try {
       parsed = JSON.parse(plain.toString('utf8')) as { v?: number; m?: string };
     } catch {
-      console.error('[wallet-envelope-verify] plaintext_not_json', {
+      appLog('[wallet-envelope-verify]', 'plaintext_not_json', {
         user: auth.telegramUsername,
-        wallet_id: wallet.id,
+        walletId: wallet.id,
         plainLen: plain.length,
       });
       return jsonResponse({ ok: false, error: 'plaintext_not_json' }, 500);
@@ -128,12 +129,12 @@ async function handler(request: Request): Promise<Response> {
     const wordCount = mnemonic ? mnemonic.split(/\s+/).filter(Boolean).length : 0;
     const valid = parsed.v === 1 && wordCount >= 12;
 
-    console.error('[wallet-envelope-verify] roundtrip_ok', {
+    appLog('[wallet-envelope-verify]', 'roundtrip_ok', {
       user: auth.telegramUsername,
-      wallet_id: wallet.id,
-      plaintext_byte_length: plain.length,
-      mnemonic_word_count: wordCount,
-      plaintext_json_valid: valid,
+      walletId: wallet.id,
+      plainBytes: plain.length,
+      wordCount,
+      valid,
     });
 
     return jsonResponse(
@@ -149,7 +150,7 @@ async function handler(request: Request): Promise<Response> {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'internal_error';
-    console.error('[wallet-envelope-verify] failed', { error: msg });
+    appLog('[wallet-envelope-verify]', 'failed', { error: msg });
     const status =
       msg === 'bot_token_not_configured' ? 500 : msg === 'invalid_initdata' ? 401 : 500;
     return jsonResponse({ ok: false, error: msg }, status);

@@ -4,6 +4,7 @@ import { useAuthenticatedHomeSelectedChat } from "../../authenticatedHomeSelecte
 import { publishOutgoingChatMessage } from "../../messageChatOutgoing";
 import { sendTelegramChatMessage } from "../../telegram/sendTelegramChatMessage";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
+import { appWarn } from "../../../shared/appLog";
 import { GlobalBottomBar } from "../GlobalBottomBar";
 
 /** Chat compose bar in wide three-column layout — same chrome as {@link GlobalBottomBar}. */
@@ -24,7 +25,7 @@ export function MessageChatWriteBottomBar() {
         if (result.ok) {
           publishOutgoingChatMessage(selectedChat.telegram_chat_id, result.message);
         } else {
-          console.warn("[message-send]", result.error, {
+          appWarn("[message-send]", String(result.error), {
             chatId: selectedChat.telegram_chat_id,
           });
         }

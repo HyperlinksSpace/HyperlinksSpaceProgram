@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
+import { appError } from "../shared/appLog.js";
 
 // Local-only: try to load .env / .env.local when running tools like db:migrate.
 // In Vercel Lambdas these files don't exist, so these calls are harmless no-ops.
@@ -372,7 +373,7 @@ let schemaInitPromise: Promise<void> | null = null;
 export function ensureSchema(): Promise<void> {
   if (!schemaInitPromise) {
     schemaInitPromise = runSchemaMigrations().catch((err) => {
-      console.error("[db] schema init failed", err);
+      appError("[db]", "schema_init_failed", undefined, err);
       schemaInitPromise = null;
       throw err;
     });

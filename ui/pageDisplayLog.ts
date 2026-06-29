@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
+import { appLog } from "../shared/appLog";
 
 /** Console prefix — filter devtools with `[page-display]`. */
 export const PAGE_DISPLAY_LOG_PREFIX = "[page-display]";
@@ -71,29 +72,11 @@ export function getBuildDisplaySnapshot(): BuildDisplaySnapshot {
   return cachedSnapshot;
 }
 
-function stringifyForConsole(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    try {
-      return String(value);
-    } catch {
-      return "[page-display] stringify failed";
-    }
-  }
-}
-
 export function logPageDisplay(
   event: string,
   details?: Record<string, unknown>,
 ): void {
-  // details may contain `event` (e.g. flow sub-steps); first arg is always the page-display key.
-  const line = {
-    ...details,
-    event,
-  };
-  // One string so minified builds / collapsed DevTools still show payload (not only "Object").
-  console.log(`${PAGE_DISPLAY_LOG_PREFIX} ${stringifyForConsole(line)}`);
+  appLog(PAGE_DISPLAY_LOG_PREFIX, event, details);
 }
 
 export function logBuildSnapshotOnce(reason: string): void {

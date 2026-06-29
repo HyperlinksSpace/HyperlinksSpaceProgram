@@ -11,6 +11,7 @@ import {
   type LiquidGlassShape,
 } from "../glass/liquidGlassThreeSession";
 import { logPageDisplay } from "../pageDisplayLog";
+import { appLog } from "../../shared/appLog";
 
 type Props = {
   /** Square chip side (px). Default when `width` / `height` omitted. */
@@ -128,13 +129,10 @@ export function LiquidGlassShaderUndercover({
   const onContextCreate = useCallback((gl: ExpoWebGLRenderingContext) => {
     disposeRef.current?.();
     if (liquidGlassDebugLogging()) {
-      console.log(
-        "[LiquidGlassGL] onContextCreate",
-        JSON.stringify({
-          ...optsRef.current,
-          note: "If you never see this, GLView did not create a context (web/TMA block or zero-size view).",
-        }),
-      );
+      appLog("[LiquidGlassGL]", "onContextCreate", {
+        ...optsRef.current,
+        note: "If missing, GLView did not create a context (web/TMA block or zero-size view).",
+      });
     }
     disposeRef.current = startLiquidGlassGl(gl, () => optsRef.current);
     logPageDisplay("liquid_glass_context_created", {

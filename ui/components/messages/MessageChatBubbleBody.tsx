@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Platform, Text, View, type StyleProp, type TextStyle } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -21,6 +21,7 @@ import {
   MESSAGE_BUBBLE_META_GAP_PX,
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
+  MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
   MESSAGE_CHAT_CHECKMARK_SIZE_PX,
@@ -50,6 +51,7 @@ type Props = {
   colors: ThemeColors;
   maxWidthPx: number;
   metaPlacement?: BubbleMetaPlacement;
+  onMediaDisplaySizeChange?: (widthPx: number, heightPx: number) => void;
 };
 
 function resolveMediaUrl(chatId: number, messageId: number): string {
@@ -98,7 +100,7 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           flexDirection: "row",
-          alignItems: "baseline",
+          alignItems: callIndicator ? "center" : "baseline",
           alignSelf: "flex-start",
           maxWidth: maxWidthPx,
           minHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
@@ -151,7 +153,6 @@ function MessageChatBubbleTextContent({
       style={{
         marginTop,
         alignSelf: "flex-start",
-        width: maxWidthPx,
         maxWidth: maxWidthPx,
         overflow: "visible",
       }}
@@ -159,7 +160,9 @@ function MessageChatBubbleTextContent({
       {bodyText ? (
         <MessageChatLinkifiedText text={bodyText} style={[textStyle, { textAlign: "left" }]} />
       ) : null}
-      {timeRow}
+      {timeRow ? (
+        <View style={{ marginTop: bodyText ? 2 : 0, alignSelf: "stretch" }}>{timeRow}</View>
+      ) : null}
     </View>
   );
 }
@@ -197,7 +200,7 @@ function MessageChatBubbleTimeRow({
     <View
       style={{
         flexDirection: "row",
-        alignItems: "flex-end",
+        alignItems: callIndicator ? "center" : "flex-end",
         alignSelf,
         minHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
         overflow: "visible",
@@ -210,7 +213,7 @@ function MessageChatBubbleTimeRow({
       }}
     >
       {callIndicator ? (
-        <View style={{ overflow: "visible", marginBottom: 0 }}>
+        <View style={{ overflow: "visible", justifyContent: "center" }}>
           <MessageChatCallArrow
             outgoing={callIndicator.outgoing}
             successful={callIndicator.successful}
@@ -320,16 +323,23 @@ export function MessageChatBubbleBody({
   colors,
   maxWidthPx,
   metaPlacement = "stacked",
+  onMediaDisplaySizeChange,
 }: Props) {
   const { t } = useAppStrings();
   const { colorScheme } = useTelegram();
+  const [liveMediaSize, setLiveMediaSize] = useState<{ widthPx: number; heightPx: number } | null>(
+    null,
+  );
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
   const outgoingStatusRaw = resolveMessageOutgoingStatus(item);
   const outgoingStatus =
     outgoingStatusRaw === "read" && chatKind !== "private" ? "delivered" : outgoingStatusRaw;
   const showSenderHeader =
-    isGroupLikeChatKind(chatKind) && !item.is_outgoing && item.sender_name.trim().length > 0;
-  const showChannelBadge = Boolean(item.sender_is_channel);
+    isGroupLikeChatKind(chatKind) &&
+    chatKind !== "channel" &&
+    !item.is_outgoing &&
+    item.sender_name.trim().length > 0;
+  const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
   const contentKind: MessageChatContentKind = item.content_kind ?? "other";
   const isCall = contentKind === "call";
   const bodyText = isCall
@@ -355,6 +365,24 @@ export function MessageChatBubbleBody({
     item.media_height,
     contentKind,
   );
+  const displayMediaWidthPx = liveMediaSize?.widthPx ?? mediaWidthPx;
+  const displayMediaHeightPx = liveMediaSize?.heightPx ?? mediaHeightPx;
+  const mediaBlockHeightPx =
+    displayMediaHeightPx +
+    (mediaHasProgress ? MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX : 0);
+
+  useEffect(() => {
+    setLiveMediaSize(null);
+  }, [item.telegram_message_id, contentKind, mediaUrl]);
+
+  const handleMediaDisplaySizeChange = (widthPx: number, heightPx: number) => {
+    setLiveMediaSize((current) =>
+      current?.widthPx === widthPx && current?.heightPx === heightPx
+        ? current
+        : { widthPx, heightPx },
+    );
+    onMediaDisplaySizeChange?.(widthPx, heightPx);
+  };
 
   const senderColor = groupSenderDisplayColor(
     item.sender_user_id,
@@ -385,7 +413,13 @@ export function MessageChatBubbleBody({
   } as const;
 
   return (
-    <View style={{ maxWidth: maxWidthPx, alignSelf: "flex-start", width: showMedia && bodyText ? mediaWidthPx : undefined }}>
+    <View
+      style={{
+        maxWidth: maxWidthPx,
+        alignSelf: "flex-start",
+        width: showMedia && !bodyText ? displayMediaWidthPx : showMedia && bodyText ? mediaWidthPx : undefined,
+      }}
+    >
       {replyTo ? (
         <MessageChatReplyBlock reply={replyTo} colors={colors} maxWidthPx={maxWidthPx} />
       ) : null}
@@ -427,6 +461,10 @@ export function MessageChatBubbleBody({
             marginBottom: bodyText ? 6 : 0,
             position: "relative",
             alignSelf: "flex-start",
+            width: displayMediaWidthPx,
+            minHeight: mediaBlockHeightPx,
+            overflow: "hidden",
+            borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
           }}
         >
           <MessageChatMediaContent
@@ -436,6 +474,7 @@ export function MessageChatBubbleBody({
             heightPx={mediaHeightPx}
             maxWidthPx={maxWidthPx}
             colors={colors}
+            onDisplaySizeChange={handleMediaDisplaySizeChange}
           />
           {contentKind === "animation" && overlayMediaMeta ? (
             <View

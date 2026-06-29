@@ -1,6 +1,7 @@
 import http from "http";
 import { URL } from "url";
 import { getGatewayBindHost, getGatewayPort, getGatewaySecret } from "./env.js";
+import { logGateway } from "./gatewayLog.js";
 import {
   disconnectUserSession,
   gatewayHealth,
@@ -71,26 +72,17 @@ export function startTdlibGatewayServer(): http.Server {
 
         if (req.method === "GET" && (pathname === "/" || pathname === "/v1/health")) {
           const body = { ...gatewayHealth(), hint: "TDLib gateway is running" };
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "health",
-              method: req.method,
-              pathname,
-              remoteAddress: req.socket.remoteAddress ?? null,
-            })}`,
-          );
+          logGateway("health", {
+            method: req.method,
+            path: pathname,
+            remote: req.socket.remoteAddress ?? null,
+          });
           sendJson(res, 200, body);
           return;
         }
 
         if (!authorized(req)) {
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "unauthorized",
-              method: req.method,
-              pathname,
-            })}`,
-          );
+          logGateway("unauthorized", { method: req.method, path: pathname });
           sendJson(res, 401, { ok: false, error: "unauthorized" });
           return;
         }
@@ -105,15 +97,12 @@ export function startTdlibGatewayServer(): http.Server {
           };
           const telegramUsername = (body.telegramUsername || "").trim();
           const authMethod = body.authMethod === "phone" ? "phone" : "qr";
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "connect_start",
-              telegramUsername: telegramUsername || null,
-              resume: Boolean(body.resume),
-              fresh: Boolean(body.fresh),
-              authMethod,
-            })}`,
-          );
+          logGateway("connect_start", {
+            telegramUsername: telegramUsername || null,
+            resume: Boolean(body.resume),
+            fresh: Boolean(body.fresh),
+            authMethod,
+          });
           if (!telegramUsername) {
             sendJson(res, 400, { ok: false, error: "username_required" });
             return;
@@ -125,23 +114,15 @@ export function startTdlibGatewayServer(): http.Server {
                 authMethod,
               });
           if (body.resume && snap.authState === "failed" && snap.error === "no_session" && !body.resumeOnly) {
-            console.log(
-              `[tdlib-gateway] ${JSON.stringify({
-                event: "connect_start_no_session_fallback",
-                telegramUsername,
-              })}`,
-            );
+            logGateway("connect_start_no_session_fallback", { telegramUsername });
             snap = await startConnectAttempt(telegramUsername, { authMethod });
           }
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "connect_start_result",
-              telegramUsername,
-              authState: snap.authState,
-              error: snap.error,
-              hasQrLink: Boolean(snap.qrLink),
-            })}`,
-          );
+          logGateway("connect_start_result", {
+            telegramUsername,
+            authState: snap.authState,
+            error: snap.error,
+            hasQrLink: Boolean(snap.qrLink),
+          });
           sendJson(res, 200, { ok: snap.authState !== "failed" || Boolean(snap.attemptId), ...snap });
           return;
         }
@@ -196,16 +177,13 @@ export function startTdlibGatewayServer(): http.Server {
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
           ).length;
           const missingAvatarCount = (chats ?? []).filter((row) => !row.avatar_url).length;
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "chats_list_served",
-              telegramUsername,
-              count: chats?.length ?? 0,
-              revision,
-              missingPreviewCount,
-              missingAvatarCount,
-            })}`,
-          );
+          logGateway("chats_list_served", {
+            telegramUsername,
+            count: chats?.length ?? 0,
+            revision,
+            missingPreviewCount,
+            missingAvatarCount,
+          });
           sendJson(res, 200, {
             ok: true,
             source: "live",
@@ -248,19 +226,16 @@ export function startTdlibGatewayServer(): http.Server {
             limit,
             Number.isFinite(beforeMessageId) ? beforeMessageId : null,
           );
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "chat_history_served",
-              telegramUsername,
-              chatId,
-              beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
-              count: result.messages.length,
-              hasMoreOlder: result.has_more_older,
-              nextBeforeMessageId: result.next_before_message_id,
-              error: result.error,
-              elapsedMs: Date.now() - started,
-            })}`,
-          );
+          logGateway("chat_history_served", {
+            telegramUsername,
+            chatId,
+            beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
+            count: result.messages.length,
+            hasMoreOlder: result.has_more_older,
+            nextBeforeMessageId: result.next_before_message_id,
+            error: result.error,
+            ms: Date.now() - started,
+          });
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             chat_kind: result.chat_kind,
@@ -288,17 +263,14 @@ export function startTdlibGatewayServer(): http.Server {
           }
           const started = Date.now();
           const result = await sendChatMessageForUser(telegramUsername, chatId, text);
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "chat_message_sent",
-              telegramUsername,
-              chatId,
-              ok: !result.error,
-              messageId: result.message?.telegram_message_id ?? null,
-              error: result.error,
-              elapsedMs: Date.now() - started,
-            })}`,
-          );
+          logGateway("chat_message_sent", {
+            telegramUsername,
+            chatId,
+            ok: !result.error,
+            messageId: result.message?.telegram_message_id ?? null,
+            error: result.error,
+            ms: Date.now() - started,
+          });
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             message: result.message,
@@ -320,29 +292,23 @@ export function startTdlibGatewayServer(): http.Server {
           const mode = previewParam === "1" || previewParam === "true" ? "preview" : "full";
           const media = await getMessageMediaForUser(telegramUsername, chatId, messageId, mode);
           if (!media) {
-            console.log(
-              `[tdlib-gateway] ${JSON.stringify({
-                event: "message_media_unavailable",
-                telegramUsername,
-                chatId,
-                messageId,
-                elapsedMs: Date.now() - started,
-              })}`,
-            );
-            sendJson(res, 404, { ok: false, error: "media_unavailable" });
-            return;
-          }
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "message_media_ok",
+            logGateway("message_media_unavailable", {
               telegramUsername,
               chatId,
               messageId,
-              bytes: media.data.length,
-              mime: media.mime,
-              elapsedMs: Date.now() - started,
-            })}`,
-          );
+              ms: Date.now() - started,
+            });
+            sendJson(res, 404, { ok: false, error: "media_unavailable" });
+            return;
+          }
+          logGateway("message_media_ok", {
+            telegramUsername,
+            chatId,
+            messageId,
+            bytes: media.data.length,
+            mime: media.mime,
+            ms: Date.now() - started,
+          });
           res.statusCode = 200;
           res.setHeader("Content-Type", media.mime);
           res.setHeader("Cache-Control", "public, max-age=86400");
@@ -367,15 +333,12 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 503, { ok: false, error: "avatar_unavailable" });
             return;
           }
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "user_avatar_ok",
-              telegramUsername,
-              userId,
-              bytes: avatar.data.length,
-              elapsedMs: Date.now() - started,
-            })}`,
-          );
+          logGateway("user_avatar_ok", {
+            telegramUsername,
+            userId,
+            bytes: avatar.data.length,
+            ms: Date.now() - started,
+          });
           res.statusCode = 200;
           res.setHeader("Content-Type", avatar.mime);
           res.setHeader("Cache-Control", "public, max-age=86400");
@@ -387,52 +350,32 @@ export function startTdlibGatewayServer(): http.Server {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const chatId = Number(url.searchParams.get("chatId"));
           if (!telegramUsername || !Number.isFinite(chatId)) {
-            console.log(
-              `[tdlib-gateway] ${JSON.stringify({
-                event: "chat_avatar_invalid_params",
-                telegramUsername: telegramUsername || null,
-                chatId: Number.isFinite(chatId) ? chatId : null,
-              })}`,
-            );
+            logGateway("chat_avatar_invalid_params", {
+              telegramUsername: telegramUsername || null,
+              chatId: Number.isFinite(chatId) ? chatId : null,
+            });
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
           const started = Date.now();
           const avatar = await getChatAvatarImageForUser(telegramUsername, chatId);
           if (avatar === "no_avatar") {
-            console.log(
-              `[tdlib-gateway] ${JSON.stringify({
-                event: "chat_avatar_no_avatar",
-                telegramUsername,
-                chatId,
-                elapsedMs: Date.now() - started,
-              })}`,
-            );
+            logGateway("chat_avatar_no_avatar", { telegramUsername, chatId, ms: Date.now() - started });
             sendJson(res, 404, { ok: false, error: "no_avatar" });
             return;
           }
           if (!avatar) {
-            console.log(
-              `[tdlib-gateway] ${JSON.stringify({
-                event: "chat_avatar_unavailable",
-                telegramUsername,
-                chatId,
-                elapsedMs: Date.now() - started,
-              })}`,
-            );
+            logGateway("chat_avatar_unavailable", { telegramUsername, chatId, ms: Date.now() - started });
             sendJson(res, 503, { ok: false, error: "avatar_unavailable" });
             return;
           }
-          console.log(
-            `[tdlib-gateway] ${JSON.stringify({
-              event: "chat_avatar_ok",
-              telegramUsername,
-              chatId,
-              bytes: avatar.data.length,
-              mime: avatar.mime,
-              elapsedMs: Date.now() - started,
-            })}`,
-          );
+          logGateway("chat_avatar_ok", {
+            telegramUsername,
+            chatId,
+            bytes: avatar.data.length,
+            mime: avatar.mime,
+            ms: Date.now() - started,
+          });
           res.statusCode = 200;
           res.setHeader("Content-Type", avatar.mime);
           res.setHeader("Cache-Control", "public, max-age=86400");
@@ -551,7 +494,7 @@ export function startTdlibGatewayServer(): http.Server {
   const port = getGatewayPort();
   const host = getGatewayBindHost();
   server.listen(port, host, () => {
-    console.log(`[tdlib-gateway] listening on http://${host}:${port}`);
+    logGateway("listening", { url: `http://${host}:${port}` });
     restorePersistedGatewaySessions();
   });
 

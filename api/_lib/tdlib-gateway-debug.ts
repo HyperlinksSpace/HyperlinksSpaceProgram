@@ -1,3 +1,4 @@
+import { appLog } from "../../shared/appLog.js";
 import {
   getGatewayBaseUrl,
   getGatewaySecret,
@@ -10,12 +11,7 @@ export function logTdlibGatewayApi(
   step: string,
   details?: Record<string, unknown>,
 ): void {
-  const payload = details ? { step, ...details } : { step };
-  try {
-    console.log(`${TDLIB_GATEWAY_LOG_PREFIX} ${JSON.stringify(payload)}`);
-  } catch {
-    console.log(TDLIB_GATEWAY_LOG_PREFIX, step, details ?? "");
-  }
+  appLog(TDLIB_GATEWAY_LOG_PREFIX, step, details);
 }
 
 export function gatewayEnvDiagnostics(): Record<string, unknown> {

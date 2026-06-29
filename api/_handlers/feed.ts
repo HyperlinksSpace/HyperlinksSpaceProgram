@@ -18,13 +18,14 @@ import { upsertUserFromTma } from "../../database/users.js";
 import { authByInitData } from "../wallet/_auth.js";
 import { getSessionTokenFromRequest } from "../_lib/session-auth.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
+import { appLog } from "../../shared/appLog.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
+const FEED_LOG_TAG = "[api/feed]";
 
 function feedLog(payload: Record<string, unknown>): void {
-  console.log(
-    `[api/feed] ${JSON.stringify({ t: new Date().toISOString(), ...payload })}`,
-  );
+  const { phase, ...rest } = payload;
+  appLog(FEED_LOG_TAG, typeof phase === "string" ? phase : "log", rest);
 }
 
 function getHeader(req: Request, name: string): string | null {

@@ -1,4 +1,5 @@
 import type { Client } from "tdl";
+import { logGateway } from "./gatewayLog.js";
 import { clearLiveChatCache, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
 
@@ -30,15 +31,12 @@ const refreshTimers = new Map<string, Map<number, ReturnType<typeof setTimeout>>
 const attachedClients = new WeakSet<Client>();
 
 function logLiveSync(record: LiveSyncRecord, event: string, extra?: Record<string, unknown>): void {
-  console.log(
-    `[tdlib-gateway] ${JSON.stringify({
-      event,
-      attemptId: record.attemptId,
-      telegramUsername: record.telegramUsername,
-      authState: record.authState,
-      ...extra,
-    })}`,
-  );
+  logGateway(event, {
+    attemptId: record.attemptId,
+    telegramUsername: record.telegramUsername,
+    authState: record.authState,
+    ...extra,
+  });
 }
 
 function chatIdFromUpdate(update: Record<string, unknown>): number | null {

@@ -100,27 +100,44 @@ function parseCallSuccess(message: TdMessage): boolean {
   );
 }
 
+function collectPhotoSizeRows(raw: unknown): Array<{ width?: number; height?: number }> {
+  if (!raw || typeof raw !== "object") return [];
+  const row = raw as { _?: string; width?: number; height?: number; sizes?: unknown[] };
+  if (row._ === "photoSizeProgressive" && Array.isArray(row.sizes)) {
+    return row.sizes.flatMap((inner) => collectPhotoSizeRows(inner));
+  }
+  if (Number.isFinite(Number(row.width)) && Number.isFinite(Number(row.height))) {
+    return [row];
+  }
+  return [];
+}
+
 function mediaDimensions(message: TdMessage): { width: number | null; height: number | null } {
   const content = message.content;
   if (!content || typeof content !== "object") return { width: null, height: null };
   const row = content as Record<string, unknown>;
   const type = row._;
   if (type === "messagePhoto") {
-    const photo = row.photo as { sizes?: Array<{ width?: number; height?: number }> } | undefined;
+    const photo = row.photo as { sizes?: unknown[] } | undefined;
     const sizes = photo?.sizes;
     if (!Array.isArray(sizes) || sizes.length === 0) return { width: null, height: null };
     let bestW = 0;
     let bestH = 0;
-    for (const size of sizes) {
-      const w = Number(size.width);
-      const h = Number(size.height);
-      if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
-      if (w * h > bestW * bestH) {
-        bestW = w;
-        bestH = h;
+    let bestArea = 0;
+    for (const raw of sizes) {
+      for (const size of collectPhotoSizeRows(raw)) {
+        const w = Number(size.width);
+        const h = Number(size.height);
+        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
+        const area = w * h;
+        if (area > bestArea) {
+          bestArea = area;
+          bestW = w;
+          bestH = h;
+        }
       }
     }
-    return bestW > 0 ? { width: bestW, height: bestH } : { width: null, height: null };
+    return bestArea > 0 ? { width: bestW, height: bestH } : { width: null, height: null };
   }
   if (type === "messageVideo" || type === "messageAnimation") {
     const media = (row.video ?? row.animation) as { width?: number; height?: number } | undefined;

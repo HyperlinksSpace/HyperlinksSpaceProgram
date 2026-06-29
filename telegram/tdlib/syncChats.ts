@@ -247,34 +247,38 @@ async function downloadChatAvatarBytes(
       }
     }
 
-    const fileId = current.photo?.small?.id;
-    if (typeof fileId !== "number") return TELEGRAM_THREAD_NO_AVATAR;
+    const fileIds = [current.photo?.small?.id, current.photo?.big?.id].filter(
+      (id): id is number => typeof id === "number",
+    );
+    if (fileIds.length === 0) return TELEGRAM_THREAD_NO_AVATAR;
 
-    try {
-      let file = current.photo?.small as TdFile | undefined;
-      const useSync = attempt >= 1;
-      if (!file?.local?.is_downloading_completed || !file.local.path) {
-        await client.invoke({
-          _: "downloadFile",
-          file_id: fileId,
-          priority: 16,
-          offset: 0,
-          limit: 0,
-          synchronous: useSync,
-        });
-        if (!useSync) {
-          file = (await waitForLocalFile(client, fileId)) ?? undefined;
-        } else {
-          file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+    for (const fileId of fileIds) {
+      try {
+        let file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        const useSync = attempt >= 1;
+        if (!file?.local?.is_downloading_completed || !file.local.path) {
+          await client.invoke({
+            _: "downloadFile",
+            file_id: fileId,
+            priority: 16,
+            offset: 0,
+            limit: 0,
+            synchronous: useSync,
+          });
+          if (!useSync) {
+            file = (await waitForLocalFile(client, fileId)) ?? undefined;
+          } else {
+            file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+          }
         }
+        const filePath = file?.local?.path;
+        if (!filePath) continue;
+        const buf = await fs.promises.readFile(filePath);
+        if (buf.length === 0) continue;
+        return { data: buf, mime: mimeFromPath(filePath) };
+      } catch {
+        /* try next size / attempt */
       }
-      const filePath = file?.local?.path;
-      if (!filePath) continue;
-      const buf = await fs.promises.readFile(filePath);
-      if (buf.length === 0) continue;
-      return { data: buf, mime: mimeFromPath(filePath) };
-    } catch {
-      /* retry */
     }
   }
   return null;

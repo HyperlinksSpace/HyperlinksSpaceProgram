@@ -2,6 +2,7 @@ import { registerWallet } from '../../database/wallets.js';
 import { upsertUserFromTma } from '../../database/users.js';
 import { authWalletRequest } from '../wallet/_auth.js';
 import { kmsEncrypt } from '../_lib/envelope-crypto.js';
+import { appLog } from '../../shared/appLog.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -131,7 +132,7 @@ async function handler(request: Request): Promise<Response> {
     wrappedDekBuf = await kmsEncrypt(dekPlain);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'kms_encrypt_failed';
-    console.error('[wallet-register] kms_wrap_failed', { err: msg });
+    appLog('[wallet-register]', 'kms_wrap_failed', { err: msg });
     return jsonResponse({ ok: false, error: 'kms_wrap_failed', detail: msg }, 502);
   } finally {
     dekPlain.fill(0);
@@ -184,10 +185,10 @@ async function handler(request: Request): Promise<Response> {
     }
 
     if (process.env.WALLET_ENVELOPE_DEBUG === '1') {
-      console.error('[wallet-register] envelope_persisted', {
-        telegram_username: auth.telegramUsername,
-        wallet_id: wallet.id,
-        has_envelope: Boolean(wallet.envelope_ciphertext && wallet.wrapped_dek),
+      appLog('[wallet-register]', 'envelope_persisted', {
+        user: auth.telegramUsername,
+        walletId: wallet.id,
+        hasEnvelope: Boolean(wallet.envelope_ciphertext && wallet.wrapped_dek),
       });
     }
 

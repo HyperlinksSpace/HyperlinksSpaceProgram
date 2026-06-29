@@ -1,3 +1,5 @@
+import { appError } from '../../shared/appLog.js';
+
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 function jsonResponse(body: object, status: number): Response {
@@ -50,7 +52,7 @@ async function handler(
     return response;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[api/telegram] POST error:', message, err instanceof Error ? err.stack : '');
+    appError('[api/telegram]', 'POST_error', { message }, err);
     const body = { ok: false, error: message || 'internal_error' };
     if (res) {
       sendViaRes(res, body, 500);

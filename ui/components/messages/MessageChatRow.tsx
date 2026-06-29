@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { Image } from "expo-image";
-import { buildApiUrl } from "../../../api/_base";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
@@ -16,6 +15,7 @@ import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { formatMessageChatListSubtitle } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
+import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import {
   MESSAGE_AVATAR_PX,
   MESSAGE_ICON_TEXT_GAP_PX,
@@ -53,14 +53,7 @@ export type MessageChatRowData = {
 };
 
 function resolveAvatarUrl(item: MessageChatRowData): string | null {
-  const avatarUrl = item.avatar_url;
-  if (avatarUrl === TELEGRAM_THREAD_NO_AVATAR) return null;
-  if (!avatarUrl) {
-    return buildApiUrl(`/api/telegram-messages-avatar?chat_id=${item.telegram_chat_id}`);
-  }
-  if (avatarUrl.startsWith("data:")) return avatarUrl;
-  if (avatarUrl.startsWith("http://") || avatarUrl.startsWith("https://")) return avatarUrl;
-  return buildApiUrl(avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`);
+  return resolveTelegramThreadAvatarUrl(item);
 }
 
 function formatUnreadBadge(count: number, chatId: number): string {

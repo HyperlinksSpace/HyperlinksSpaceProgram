@@ -27,6 +27,7 @@ import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessa
 import { SettingsProvider } from "../ui/settings/SettingsContext";
 import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
+import { appWarn } from "../shared/appLog";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
@@ -58,7 +59,7 @@ export default function RootLayout() {
       void SplashScreen.hideAsync();
     }
     if (fontError) {
-      console.warn("[fonts] UI font load failed", fontError);
+      appWarn("[fonts]", "ui_font_load_failed", undefined, fontError);
     }
   }, [fontsLoaded, fontError]);
 
@@ -190,7 +191,7 @@ function RootContent() {
           },
         ]);
       } catch (error) {
-        console.warn("[updates] OTA check failed", error);
+        appWarn("[updates]", "ota_check_failed", undefined, error);
       }
     };
 

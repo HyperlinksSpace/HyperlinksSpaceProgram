@@ -6,6 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
+import { appLog } from "../../shared/appLog.js";
 import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
@@ -20,12 +21,7 @@ const JSON_HEADERS = { "Content-Type": "application/json" };
 const TELEGRAM_MESSAGES_API_LOG_PREFIX = "[telegram-messages-api]";
 
 function logTelegramMessagesApi(event: string, details?: Record<string, unknown>): void {
-  const payload = details ? { event, ...details } : { event };
-  try {
-    console.log(`${TELEGRAM_MESSAGES_API_LOG_PREFIX} ${JSON.stringify(payload)}`);
-  } catch {
-    console.log(TELEGRAM_MESSAGES_API_LOG_PREFIX, event, details ?? "");
-  }
+  appLog(TELEGRAM_MESSAGES_API_LOG_PREFIX, event, details);
 }
 
 function requestMethod(request: AnyRequest): string {

@@ -4,6 +4,8 @@
  * - POST /api/releases -> accepts release publish events from CI
  */
 
+import { appError, appWarn } from "../../shared/appLog.js";
+
 type NodeRes = {
   setHeader(name: string, value: string): void;
   status(code: number): void;
@@ -124,7 +126,7 @@ async function handleWebRequest(request: Request): Promise<Response> {
       return jsonResponse({ ok: false, error: "Unauthorized" }, 401);
     }
   } else {
-    console.warn("[releases] RELEASE_WEBHOOK_TOKEN is not set; endpoint is open");
+    appWarn("[releases]", "webhook_token_missing");
   }
 
   const payload = await readPayload(request);
@@ -140,7 +142,7 @@ async function handleWebRequest(request: Request): Promise<Response> {
   try {
     await notifyReleaseSignal(payload);
   } catch (error) {
-    console.error("[releases] notify error", error);
+    appError("[releases]", "notify_error", undefined, error);
     return jsonResponse({ ok: false, error: "Failed to notify downstream service" }, 502);
   }
 

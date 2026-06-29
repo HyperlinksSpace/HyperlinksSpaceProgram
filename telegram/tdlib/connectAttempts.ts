@@ -5,6 +5,7 @@ import type { Client } from "tdl";
 import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
+import { logGateway } from "./gatewayLog.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
 import { fetchChatHistory, sendChatTextMessage } from "./chatHistory.js";
@@ -142,16 +143,13 @@ function snapshot(record: AttemptRecord): ConnectAttemptSnapshot {
 }
 
 function logConnectEvent(record: AttemptRecord, event: string, extra?: Record<string, unknown>): void {
-  console.log(
-    `[tdlib-gateway] ${JSON.stringify({
-      event,
-      attemptId: record.attemptId,
-      telegramUsername: record.telegramUsername,
-      authState: record.authState,
-      connectionState: record.connectionState,
-      ...extra,
-    })}`,
-  );
+  logGateway(event, {
+    attemptId: record.attemptId,
+    telegramUsername: record.telegramUsername,
+    authState: record.authState,
+    connectionState: record.connectionState,
+    ...extra,
+  });
 }
 
 const QR_INVOKE_TIMEOUT_MS = 30_000;
@@ -372,12 +370,7 @@ export async function purgeTdlibUserData(telegramUsername: string): Promise<void
     fs.rmSync(base, { recursive: true, force: true });
   }
   await new Promise((r) => setTimeout(r, 400));
-  console.log(
-    `[tdlib-gateway] ${JSON.stringify({
-      event: "connect_purge_user_data",
-      telegramUsername,
-    })}`,
-  );
+  logGateway("connect_purge_user_data", { telegramUsername });
 }
 
 const AUTH_METHOD_MARKER = "connect-auth-method.json";
@@ -418,14 +411,7 @@ function resolveConnectAuthMethod(
   if (fresh) return requested;
   const stored = readStoredAuthMethod(telegramUsername);
   if (stored === "phone" && requested === "qr") {
-    console.log(
-      `[tdlib-gateway] ${JSON.stringify({
-        event: "connect_auth_method_override",
-        telegramUsername,
-        requested,
-        stored,
-      })}`,
-    );
+    logGateway("connect_auth_method_override", { telegramUsername, requested, stored });
     return "phone";
   }
   return requested;
@@ -988,26 +974,18 @@ export async function resyncUserChats(
   telegramUsername: string,
   options?: { chatIds?: number[] },
 ): Promise<{ chatCount: number; backfillCount: number; error: string | null }> {
-  console.log(
-    `[tdlib-gateway] ${JSON.stringify({
-      event: "connect_resync_start",
-      telegramUsername,
-      hasActiveRecord: Boolean(getActiveRecord(telegramUsername)),
-      backfillOnly: Boolean(options?.chatIds?.length),
-      backfillTargets: options?.chatIds?.length ?? 0,
-    })}`,
-  );
+  logGateway("connect_resync_start", {
+    telegramUsername,
+    hasActiveRecord: Boolean(getActiveRecord(telegramUsername)),
+    backfillOnly: Boolean(options?.chatIds?.length),
+    backfillTargets: options?.chatIds?.length ?? 0,
+  });
 
   let record = getActiveRecord(telegramUsername);
   if (!record?.client || record.authState !== "ready") {
     const base = getTdlibUserDir(telegramUsername);
     if (!fs.existsSync(path.join(base, "db"))) {
-      console.log(
-        `[tdlib-gateway] ${JSON.stringify({
-          event: "connect_resync_no_session",
-          telegramUsername,
-        })}`,
-      );
+      logGateway("connect_resync_no_session", { telegramUsername });
       return { chatCount: 0, backfillCount: 0, error: "no_session" };
     }
     await startConnectAttempt(telegramUsername);
@@ -1016,14 +994,11 @@ export async function resyncUserChats(
 
   if (!record?.client || record.authState !== "ready") {
     const error = record?.error ?? "session_not_ready";
-    console.log(
-      `[tdlib-gateway] ${JSON.stringify({
-        event: "connect_resync_not_ready",
-        telegramUsername,
-        authState: record?.authState ?? null,
-        error,
-      })}`,
-    );
+    logGateway("connect_resync_not_ready", {
+      telegramUsername,
+      authState: record?.authState ?? null,
+      error,
+    });
     return { chatCount: 0, backfillCount: 0, error };
   }
 
@@ -1060,34 +1035,20 @@ export function restorePersistedGatewaySessions(): void {
 
   if (usernames.length === 0) return;
 
-  console.log(
-    `[tdlib-gateway] ${JSON.stringify({
-      event: "connect_restore_sessions_start",
-      count: usernames.length,
-    })}`,
-  );
+  logGateway("connect_restore_sessions_start", { count: usernames.length });
 
   for (const telegramUsername of usernames) {
     void (async () => {
       try {
         const result = await resyncUserChats(telegramUsername);
-        console.log(
-          `[tdlib-gateway] ${JSON.stringify({
-            event: "connect_restore_session_done",
-            telegramUsername,
-            chatCount: result.chatCount,
-            error: result.error,
-          })}`,
-        );
+        logGateway("connect_restore_session_done", {
+          telegramUsername,
+          chatCount: result.chatCount,
+          error: result.error,
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.log(
-          `[tdlib-gateway] ${JSON.stringify({
-            event: "connect_restore_session_error",
-            telegramUsername,
-            message,
-          })}`,
-        );
+        logGateway("connect_restore_session_error", { telegramUsername, message });
       }
     })();
   }

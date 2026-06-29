@@ -4,6 +4,7 @@ import {
   sha256Base64Url,
   sha256Hex,
 } from "../_lib/telegram-oidc.js";
+import { appError, appLogEvent, appWarn } from "../../shared/appLog.js";
 import { createEphemeralAttempt } from "../_lib/telegram-attempt-store.js";
 import { createLoginAttempt } from "../../database/telegramAuth.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
@@ -75,7 +76,7 @@ function getRedirectUri(request: AnyRequest): string {
     const normalized = normalizeRedirectEnvValue(explicitRaw);
     const parsed = normalized ? tryParseClientRedirectUri(normalized) : null;
     if (parsed) return parsed;
-    console.warn("[auth-telegram-start] ignoring invalid TELEGRAM_OIDC_REDIRECT_URI");
+    appWarn("[auth-telegram-start]", "invalid_env", { key: "TELEGRAM_OIDC_REDIRECT_URI" });
   }
   const origin = getRequestOrigin(request);
   return `${origin}/api/auth/telegram/callback`;
@@ -189,17 +190,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
 
   const requestOrigin = getRequestOrigin(request);
   const { ip, userAgent } = getClientMeta(request);
-  console.log(
-    "[auth-telegram-start]",
-    JSON.stringify({
+  appLogEvent("[auth-telegram-start]", {
       event: "request",
       origin: requestOrigin,
       source: typeof bodyJson.source === "string" ? bodyJson.source : null,
       hasClientRedirectUri: Boolean(tryParseClientRedirectUri(bodyJson.redirect_uri)),
       ip,
       userAgent: userAgent ? userAgent.slice(0, 120) : null,
-    }),
-  );
+    });
 
   const clientId =
     process.env.TELEGRAM_CLIENT_ID?.trim() ??
@@ -247,7 +245,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       userAgent,
     });
   } catch (err) {
-    console.error("[auth-telegram-start] createLoginAttempt failed:", err);
+    appError("[auth-telegram-start]", "createLoginAttempt_failed", undefined, err);
     const body = { ok: false, error: "login_attempt_persist_failed" };
     if (res) return sendJsonViaRes(res, body, 500, request);
     return sendJson(body, 500, request);
@@ -269,9 +267,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   } catch {
     authUrlHost = null;
   }
-  console.log(
-    "[auth-telegram-start]",
-    JSON.stringify({
+  appLogEvent("[auth-telegram-start]", {
       event: "issued",
       attemptId: id,
       redirectUriHost: (() => {
@@ -283,8 +279,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       })(),
       authUrlHost,
       expiresAtIso,
-    }),
-  );
+    });
   if (res) return sendJsonViaRes(res, body, 200, request);
   return sendJson(body, 200, request);
 }

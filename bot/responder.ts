@@ -1,4 +1,5 @@
 import type { Context } from "grammy";
+import { appError } from "../shared/appLog.js";
 import { normalizeSymbol } from "../blockchain/coffee.js";
 import { transmit, transmitStream } from "../ai/transmitter.js";
 import { normalizeUsername } from "../database/users.js";
@@ -66,7 +67,7 @@ async function sendLongMessage(
       const id = (sent as { message_id?: number }).message_id;
       if (typeof id === "number") lastSentId = id;
     } catch (e) {
-      console.error("[bot][sendLongMessage]", (e as Error)?.message ?? e);
+      appError("[bot][sendLongMessage]", "failed", undefined, e);
       try {
         const markdown = toTelegramMarkdown(chunks[i]);
         const sent = await api.sendMessage(chatId, markdown, {
@@ -231,7 +232,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         try {
           await ctx.api.editMessageText(chatId, sentMessageId, toEdit, { parse_mode: "HTML" });
         } catch (e) {
-          console.error("[bot][edit] interrupted reply", (e as Error)?.message ?? e);
+          appError("[bot][edit]", "interrupted_reply", undefined, e);
         }
       } else if (opts.sendToChat && content.length > 0) {
         const toSend = truncateTelegramHtmlSafe(
@@ -243,7 +244,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         try {
           await ctx.reply(toSend, replyOptionsWithHtml);
         } catch (e) {
-          console.error("[bot][reply] interrupted", (e as Error)?.message ?? e);
+          appError("[bot][reply]", "interrupted", undefined, e);
         }
       } else if (opts.sendToChat && sentMessageId === null) {
         try {
@@ -307,11 +308,13 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
                 await ctx.api.editMessageText(chatId, sentMessageId, text, { parse_mode: "HTML" });
               }
             } catch (e2) {
-              console.error("[bot][edit] 429 retry failed", (e2 as Error)?.message ?? e2);
+              appError("[bot][edit]", "429_retry_failed", undefined, e2);
               editsDisabled = true;
             }
           } else {
-            console.error("[bot][edit] HTML rejected", err?.description ?? (e as Error)?.message ?? e);
+            appError("[bot][edit]", "html_rejected", {
+              detail: err?.description ?? (e as Error)?.message ?? e,
+            });
             editsDisabled = true;
           }
         }
@@ -402,7 +405,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       );
     } catch (e) {
       const errMsg = (e as Error)?.message ?? "AI streaming failed unexpectedly.";
-      console.error("[bot][stream]", errMsg);
+      appError("[bot][stream]", "failed", { err: errMsg });
       result = {
         ok: false,
         provider: "openai",
@@ -456,7 +459,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         );
       } catch (e) {
         const errMsg = (e as Error)?.message ?? "AI fallback streaming failed unexpectedly.";
-        console.error("[bot][stream][fallback]", errMsg);
+        appError("[bot][stream]", "fallback_failed", { err: errMsg });
         result = {
           ok: false,
           provider: "openai",
@@ -504,12 +507,16 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
           } catch (e: unknown) {
             const err = e as { description?: string; message?: string };
             if (err?.description?.includes("not modified")) return;
-            console.error("[bot][edit] final completion edit", err?.description ?? err?.message ?? e);
+            appError("[bot][edit]", "final_completion_edit", {
+              detail: err?.description ?? err?.message ?? e,
+            });
             try {
               await ctx.api.editMessageText(chatId, streamSentMessageId!, fullSlice, {});
             } catch (e2: unknown) {
               const d2 = (e2 as { description?: string })?.description;
-              console.error("[bot][edit] final completion plain fallback", d2 ?? (e2 as Error)?.message ?? e2);
+              appError("[bot][edit]", "final_completion_plain_fallback", {
+                detail: d2 ?? (e2 as Error)?.message ?? e2,
+              });
             }
           }
         });
@@ -547,7 +554,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     if (await shouldAbortSend()) return;
     if (isCancelled()) return;
     const errMsg = result.error ?? "AI returned no output.";
-    console.error("[bot][ai]", errMsg);
+    appError("[bot][ai]", "failed", { err: errMsg });
     const message: string =
       mode === "token_info" && result.error
         ? result.error
@@ -601,7 +608,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     try {
       await ctx.reply(formatted, replyOptionsWithHtml);
     } catch (e) {
-      console.error("[bot][reply] HTML reply failed", (e as Error)?.message ?? e);
+      appError("[bot][reply]", "html_reply_failed", undefined, e);
       try {
         await ctx.reply(toTelegramMarkdown(textToFormat), { ...replyOptions, parse_mode: "Markdown" });
       } catch {

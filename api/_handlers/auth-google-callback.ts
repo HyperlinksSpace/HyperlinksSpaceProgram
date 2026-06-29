@@ -4,6 +4,7 @@ import {
   sha256Hex,
   validateGoogleIdToken,
 } from "../_lib/google-oidc.js";
+import { appError, appLogEvent, appWarn } from "../../shared/appLog.js";
 import {
   createSession,
   getLoginAttemptByStateHash,
@@ -166,17 +167,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   const state = url.searchParams.get("state") ?? "";
   const { ip, userAgent } = getClientMeta(request);
 
-  console.log(
-    "[auth-google-callback]",
-    JSON.stringify({
+  appLogEvent("[auth-google-callback]", {
       event: "request",
       origin: url.origin,
       hasCode: Boolean(code),
       hasState: Boolean(state),
       ip,
       userAgent: userAgent ? userAgent.slice(0, 120) : null,
-    }),
-  );
+    });
 
   if (!code || !state) {
     const response = failRedirect(request, "missing_code_or_state");
@@ -332,15 +330,12 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       Location: resolvePostAuthRedirectFromCallback(request, attempt.redirectUri),
     });
     appendSetCookie(headers, buildSessionCookie(sessionToken, url.protocol === "https:"));
-    console.log(
-      "[auth-google-callback]",
-      JSON.stringify({
+    appLogEvent("[auth-google-callback]", {
         event: "success",
         attemptId: attempt.id,
         telegramUsername,
         redirectTo: headers.get("Location"),
-      }),
-    );
+      });
     const response = new Response(null, { status: 302, headers });
     if (res) {
       res.status(response.status);
@@ -351,14 +346,11 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     return response;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "callback_failed";
-    console.log(
-      "[auth-google-callback]",
-      JSON.stringify({
+    appLogEvent("[auth-google-callback]", {
         event: "failure",
         attemptId: attempt.id,
         reason,
-      }),
-    );
+      });
     markAttemptStatus(stateHash, attempt.id, "failed", reason);
     await logLoginEvent({
       attemptId: attempt.id,

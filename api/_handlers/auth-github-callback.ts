@@ -4,6 +4,7 @@ import {
   randomUrlSafe,
   sha256Hex,
 } from "../_lib/github-oauth.js";
+import { appError, appLogEvent, appWarn } from "../../shared/appLog.js";
 import {
   createSession,
   getLoginAttemptByStateHash,
@@ -178,9 +179,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   const oauthErrorDescription = url.searchParams.get("error_description") ?? "";
   const { ip, userAgent } = getClientMeta(request);
 
-  console.log(
-    "[auth-github-callback]",
-    JSON.stringify({
+  appLogEvent("[auth-github-callback]", {
       event: "request",
       origin: url.origin,
       hasCode: Boolean(code),
@@ -188,8 +187,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       oauthError: oauthError || null,
       ip,
       userAgent: userAgent ? userAgent.slice(0, 120) : null,
-    }),
-  );
+    });
 
   if (oauthError) {
     if (!state) {
@@ -216,15 +214,12 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       },
     }).catch(() => {});
 
-    console.log(
-      "[auth-github-callback]",
-      JSON.stringify({
+    appLogEvent("[auth-github-callback]", {
         event: "oauth_denied",
         attemptId: deniedAttempt.id,
         reason,
         errorDescription: oauthErrorDescription || null,
-      }),
-    );
+      });
     return sendRedirect(failRedirect(request, reason), res);
   }
 
@@ -362,15 +357,12 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
       Location: resolvePostAuthRedirectFromCallback(request, attempt.redirectUri),
     });
     appendSetCookie(headers, buildSessionCookie(sessionToken, url.protocol === "https:"));
-    console.log(
-      "[auth-github-callback]",
-      JSON.stringify({
+    appLogEvent("[auth-github-callback]", {
         event: "success",
         attemptId: attempt.id,
         telegramUsername,
         redirectTo: headers.get("Location"),
-      }),
-    );
+      });
     const response = new Response(null, { status: 302, headers });
     if (res) {
       res.status(response.status);
@@ -381,14 +373,11 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     return response;
   } catch (error) {
     const reason = error instanceof Error ? error.message : "callback_failed";
-    console.log(
-      "[auth-github-callback]",
-      JSON.stringify({
+    appLogEvent("[auth-github-callback]", {
         event: "failure",
         attemptId: attempt.id,
         reason,
-      }),
-    );
+      });
     markAttemptStatus(stateHash, attempt.id, "failed", reason);
     await logLoginEvent({
       attemptId: attempt.id,

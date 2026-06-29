@@ -8,6 +8,7 @@ import {
   upsertUserFromBot,
 } from '../database/users.js';
 import { handleBotAiResponse } from './responder.js';
+import { appError } from '../shared/appLog.js';
 
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
@@ -25,7 +26,7 @@ export function createBot(token: string): Bot {
 
       await upsertUserFromBot({ telegramUsername, locale });
     } catch (err) {
-      console.error('[bot] upsert user failed', err);
+      appError('[bot]', 'upsert_user_failed', undefined, err);
     }
   }
 
@@ -45,7 +46,7 @@ export function createBot(token: string): Bot {
   });
 
   bot.catch((err) => {
-    console.error('[bot]', err);
+    appError('[bot]', 'unhandled_error', undefined, err);
   });
 
   return bot;

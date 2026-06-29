@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { appLog } from "../../shared/appLog";
 import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LogoWordmark } from "./LogoWordmark";
@@ -203,11 +204,7 @@ export function GlobalLogoBar() {
       ),
       initAndWebApp: getTmaInitAndWebAppDebugSnapshot(),
     };
-    try {
-      console.log("[GlobalLogoBar] welcome header variant", JSON.stringify(payload));
-    } catch {
-      console.log("[GlobalLogoBar] welcome header variant", payload);
-    }
+    appLog("[GlobalLogoBar]", "welcome_header_variant", payload);
   }, [isWelcomeLayout, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
 
   /**

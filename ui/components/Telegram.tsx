@@ -35,6 +35,7 @@ import {
 } from "./telegramWebApp";
 import type { TelegramLayoutStartupSnapshot } from "./telegramWebApp";
 import { buildApiUrl } from "../../api/_base";
+import { appError, appLog } from "../../shared/appLog";
 
 let sdkInitialized = false;
 function ensureSdkInitialized() {
@@ -135,7 +136,7 @@ function classifyThemeFromBgColor(bgColor: string | undefined | null): "dark" | 
   const b = parseInt(hex.slice(4, 6), 16);
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   const scheme = luminance < 128 ? "dark" : "light";
-  console.log("[TMA theme] classify", { bgColor: bgColor.trim(), luminance, scheme });
+  appLog("[TMA theme]", "classify", { bgColor: bgColor.trim(), luminance, scheme });
   return scheme;
 }
 
@@ -432,7 +433,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function updateScheme(next: "dark" | "light") {
       setColorScheme((prev) => {
         if (prev === next) return prev;
-        console.log("[TMA theme] update colorScheme", { from: prev, to: next });
+        appLog("[TMA theme]", "update_colorScheme", { from: prev, to: next });
         return next;
       });
     }
@@ -440,7 +441,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     function markThemeBgReady(): void {
       setThemeBgReady((prev) => {
         if (prev) return prev;
-        console.log("[TMA theme] themeBgReady=true");
+        appLog("[TMA theme]", "themeBgReady");
         return true;
       });
     }
@@ -565,7 +566,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         const sdkFs = readTmaSdkViewportIsFullscreen();
         const merged = getIsImmersiveFullscreenMerged(sdkFs);
         setIsFullscreen(merged);
-        console.log("[TMA fullscreen] WebApp fullscreenChanged (or initial attach)", {
+        appLog("[TMA fullscreen]", "sync", {
           webAppIsFullscreen: getIsFullscreen(),
           sdkViewportIsFullscreen: sdkFs,
           mergedImmersiveFullscreen: merged,
@@ -633,7 +634,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         } else {
           setIsExpanded(getIsExpanded());
         }
-        console.log("[TMA viewport] sync", {
+        appLog("[TMA viewport]", "sync", {
           sdkViewportIsFullscreen: sdkFs,
           bridgeViewportChangedFullscreen: bridgeFs,
           webAppIsFullscreen: getIsFullscreen(),
@@ -712,7 +713,6 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     ensureTelegramScript();
 
     const API_TIMEOUT_MS = 30000;
-    const LOG_PREFIX = "[TMA register]";
 
     function registerWithBackend(initData: string) {
       if (hasRegisteredRef.current) return;
@@ -731,7 +731,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           lastLog: "fetch start",
         }),
       );
-      console.log(`${LOG_PREFIX} fetch start url=${url} initDataLength=${initData.length}`);
+      appLog("[TMA register]", "fetch_start", { url, initDataLength: initData.length });
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
@@ -757,7 +757,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
               lastLog: `status ${res.status} ${durationMs}ms`,
             }),
           );
-          console.log(`${LOG_PREFIX} response status=${res.status} durationMs=${durationMs} body=${apiMsg}`);
+          appLog("[TMA register]", "response", { status: res.status, ms: durationMs, body: apiMsg });
 
           if (!res.ok || !json?.ok) {
             throw new Error(json?.error || `HTTP ${res.status}`);
@@ -797,7 +797,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
               lastLog,
             }),
           );
-          console.error(`${LOG_PREFIX} failed ${lastLog}`, e);
+          appError("[TMA register]", "failed", { step: lastLog }, e);
 
           setError(isTimeout ? "Request timed out" : (e?.message ?? "Failed to register Telegram user"));
           setStatus("error");
@@ -820,20 +820,16 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         setIsFullscreen(mergedImmersive);
         setIsExpanded(getIsExpanded());
 
-        console.log("[TMA init] launch hash + WebApp snapshot", getTmaInitAndWebAppDebugSnapshot());
-        console.log(
-          "[TMA theme] initial themeParams",
-          {
-            launch: launchTp,
-            web: webTp,
-            webAppIsFullscreen: getIsFullscreen(),
-            viewportSdkIsFullscreen: viewportFs,
-            mergedImmersiveFullscreen: mergedImmersive,
-            isExpanded: getIsExpanded(),
-          },
-          "bg:",
+        appLog("[TMA init]", "snapshot", getTmaInitAndWebAppDebugSnapshot());
+        appLog("[TMA theme]", "initial_themeParams", {
+          launch: launchTp,
+          web: webTp,
+          webAppIsFullscreen: getIsFullscreen(),
+          viewportSdkIsFullscreen: viewportFs,
+          mergedImmersiveFullscreen: mergedImmersive,
+          isExpanded: getIsExpanded(),
           bg,
-        );
+        });
         if (bg) {
           setColorScheme(classifyThemeFromBgColor(bg));
         }
@@ -845,7 +841,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         // themeBgReady false forever (opacity:0 root).
         setThemeBgReady((prev) => {
           if (prev) return prev;
-          console.log("[TMA theme] themeBgReady=true");
+          appLog("[TMA theme]", "themeBgReady");
           return true;
         });
       }

@@ -13,6 +13,7 @@ import {
   resolveServiceAccountKeyPath,
 } from '../_lib/envelope-env.js';
 import { kmsDecrypt, kmsEncrypt } from '../_lib/envelope-crypto.js';
+import { appLog } from '../../shared/appLog.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
@@ -148,7 +149,7 @@ async function handler(
   try {
     const plain = Buffer.from('kms-ping', 'utf8');
     const transport = getKmsUsesRestTransport() ? 'rest' : 'grpc';
-    console.error('[wallet-envelope-roundtrip] encrypt start', {
+    appLog('[wallet-envelope-roundtrip]', 'encrypt_start', {
       keyName,
       transport,
       quick: wantsQuick,
@@ -159,7 +160,7 @@ async function handler(
       'kms_encrypt',
     );
     if (wantsQuick) {
-      console.error('[wallet-envelope-roundtrip] quick done', {
+      appLog('[wallet-envelope-roundtrip]', 'quick_done', {
         ciphertextBytes: wrapped.length,
       });
       return sendJson(
@@ -175,14 +176,14 @@ async function handler(
         200,
       );
     }
-    console.error('[wallet-envelope-roundtrip] decrypt start');
+    appLog('[wallet-envelope-roundtrip]', 'decrypt_start');
     const unwrapped = await withTimeout(
       kmsDecrypt(wrapped),
       KMS_PING_MS,
       'kms_decrypt',
     );
     const match = plain.equals(unwrapped);
-    console.error('[wallet-envelope-roundtrip] done', {
+    appLog('[wallet-envelope-roundtrip]', 'done', {
       match,
       ciphertextBytes: wrapped.length,
     });

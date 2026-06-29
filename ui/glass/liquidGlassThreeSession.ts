@@ -1,6 +1,7 @@
 import type { ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
 import { logPageDisplay } from "../pageDisplayLog";
+import { appLog } from "../../shared/appLog";
 
 export type LiquidGlassShape = "circle" | "pill";
 
@@ -528,8 +529,10 @@ export function startLiquidGlassGl(
   const wantLogs = liquidGlassDebugLogging();
   const logEveryMs = wantLogs ? 2000 : 0;
   if (wantLogs) {
-    console.log(
-      "[LiquidGlassGL] debug logging enabled: JSON every 2s per chip. Prod: EXPO_PUBLIC_LIQUID_GL_DEBUG=1 or add liquidGlDebug=1 to URL search/hash (TMA).",
+    appLog(
+      "[LiquidGlassGL]",
+      "debug_enabled",
+      { hint: "JSON every 2s per chip. Set EXPO_PUBLIC_LIQUID_GL_DEBUG=1 or liquidGlDebug=1 in URL." },
     );
   }
   let frameIdx = 0;
@@ -615,21 +618,16 @@ export function startLiquidGlassGl(
       const duTime = uTimeSec - uTimeAtLastLog;
       uTimeAtLastLog = uTimeSec;
       lastLogWallMs = wallMs;
-      console.log(
-        "[LiquidGlassGL]",
-        JSON.stringify({
-          phaseOffset,
-          frameIdx,
-          uTimeSec: Math.round(uTimeSec * 1000) / 1000,
-          duTimePerLogInterval: Math.round(duTime * 1000) / 1000,
-          drawingBuffer: { w, h },
-          chipPx: chipRefPx,
-          shape,
-          isLightTheme,
-          hint:
-            "uTimeSec must grow each frame; duTimePerLogInterval should be ~2.0 when logging every 2s. Lightning uses uniform float uTime in FRAG (ltTime, ltBreathe).",
-        }),
-      );
+      appLog("[LiquidGlassGL]", "frame", {
+        phaseOffset,
+        frameIdx,
+        uTimeSec: Math.round(uTimeSec * 1000) / 1000,
+        duTime: Math.round(duTime * 1000) / 1000,
+        drawingBuffer: { w, h },
+        chipPx: chipRefPx,
+        shape,
+        isLightTheme,
+      });
     }
 
     renderer.render(scene, camera);
