@@ -1,6 +1,22 @@
 /** Compact one-line logs: `[tag] event k=v …` — filter DevTools by tag, easy to copy. */
 export type AppLogDetails = Record<string, unknown>;
 
+/** Telegram user ids are safe to log; omit null/0/NaN (invalid or placeholder). */
+export function safeTelegramUserIdForLog(userId: unknown): number | undefined {
+  const id = typeof userId === "bigint" ? Number(userId) : Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return undefined;
+  return Math.trunc(id);
+}
+
+/** `{ userId: 123 }` or `{}` when the id is not a valid Telegram user id. */
+export function telegramUserIdLogField(
+  userId: unknown,
+  key = "userId",
+): Record<string, number> {
+  const id = safeTelegramUserIdForLog(userId);
+  return id != null ? { [key]: id } : {};
+}
+
 function serializeValue(value: unknown): string {
   if (value === true) return "true";
   if (value === false) return "false";

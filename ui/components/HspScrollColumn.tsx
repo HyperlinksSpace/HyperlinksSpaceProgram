@@ -25,6 +25,7 @@ import {
   scrollIndicatorThumbSpanAndOffset,
   snapScrollIndicatorCoordPx,
 } from "../scrollIndicatorPx";
+import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { layout, useColors } from "../theme";
 import { SCROLL_INDICATOR_SCROLL_EPS } from "../scrollIndicatorPx";
 import { ScrollIndicatorDragHandle } from "./ScrollIndicatorDragHandle";
@@ -205,6 +206,7 @@ export function HspScrollColumn({
 
       scrollEl = el;
       onWheel = (e: WheelEvent) => {
+        if (isBrowserZoomWheelEvent(e)) return;
         const { scrollTop, scrollHeight, clientHeight } = el;
         if (scrollHeight <= clientHeight + 0.5) return;
         const atTop = scrollTop <= SCROLL_INDICATOR_SCROLL_EPS;

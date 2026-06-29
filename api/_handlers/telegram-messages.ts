@@ -6,7 +6,7 @@ import {
 import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
-import { appLog } from "../../shared/appLog.js";
+import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
 import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
@@ -260,6 +260,7 @@ export async function telegramMessagesChatsHandler(
     (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
   ).length;
   const missingAvatarCount = mapped.chats.filter((row) => !row.avatar_url).length;
+  const first = mapped.chats[0];
   logTelegramMessagesApi("messages_chats_served", {
     telegramUsername: userOrRes,
     count: mapped.chats.length,
@@ -267,6 +268,9 @@ export async function telegramMessagesChatsHandler(
     source: live ? "live" : "live_empty",
     missingPreviewCount,
     missingAvatarCount,
+    firstId: first?.telegram_chat_id ?? null,
+    firstUserId: safeTelegramUserIdForLog(first?.peer_user_id) ?? null,
+    firstTitle: typeof first?.title === "string" ? first.title.trim() || null : null,
     elapsedMs: Date.now() - started,
   });
   return finishJson(
@@ -418,7 +422,7 @@ export async function telegramMessagesAvatarHandler(
     logTelegramMessagesApi("messages_avatar_no_avatar", {
       telegramUsername: userOrRes,
       chatId: hasUserId ? null : chatId,
-      userId: hasUserId ? userId : null,
+      ...telegramUserIdLogField(hasUserId ? userId : null),
       elapsedMs: Date.now() - started,
     });
     return finishJson(request, res, { ok: false, error: "no_avatar" }, 404);
@@ -427,7 +431,7 @@ export async function telegramMessagesAvatarHandler(
     logTelegramMessagesApi("messages_avatar_unavailable", {
       telegramUsername: userOrRes,
       chatId: hasUserId ? null : chatId,
-      userId: hasUserId ? userId : null,
+      ...telegramUserIdLogField(hasUserId ? userId : null),
       elapsedMs: Date.now() - started,
     });
     return finishJson(request, res, { ok: false, error: "avatar_unavailable" }, 503);
@@ -435,7 +439,7 @@ export async function telegramMessagesAvatarHandler(
   logTelegramMessagesApi("messages_avatar_ok", {
     telegramUsername: userOrRes,
     chatId: hasUserId ? null : chatId,
-    userId: hasUserId ? userId : null,
+    ...telegramUserIdLogField(hasUserId ? userId : null),
     mime: avatar.mime,
     bytes: avatar.data.byteLength,
     elapsedMs: Date.now() - started,

@@ -28,6 +28,7 @@ import { SettingsProvider } from "../ui/settings/SettingsContext";
 import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
 import { appWarn } from "../shared/appLog";
+import { syncWebDocumentOverflowForZoom } from "../ui/browserZoom";
 import { isWelcomeLayoutRoute } from "../ui/isWelcomeLayoutRoute";
 import { authenticatedHomeBottomBarDock, layout, useColors } from "../ui/theme";
 import { useResolvedPathname } from "../ui/useResolvedPathname";
@@ -246,16 +247,23 @@ function RootContent() {
     };
   }, [backgroundColor, colors.accent, shellPaintReady]);
 
-  /** Panel routes + home: clip document scroll so only column scrollers show indicators. */
+  /** Panel routes + home: clip document scroll unless the page is zoomed (then allow pan). */
   useLayoutEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    const expoRoot =
-      document.getElementById("root") ?? document.querySelector("[data-expo-root]");
-    if (expoRoot instanceof HTMLElement) {
-      expoRoot.style.overflow = "hidden";
-    }
+
+    syncWebDocumentOverflowForZoom();
+
+    const viewport = window.visualViewport;
+    const onViewportChange = () => syncWebDocumentOverflowForZoom();
+    viewport?.addEventListener("resize", onViewportChange);
+    viewport?.addEventListener("scroll", onViewportChange);
+    window.addEventListener("resize", onViewportChange);
+
+    return () => {
+      viewport?.removeEventListener("resize", onViewportChange);
+      viewport?.removeEventListener("scroll", onViewportChange);
+      window.removeEventListener("resize", onViewportChange);
+    };
   }, [shellPaintReady]);
 
   useEffect(() => {

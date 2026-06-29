@@ -1,6 +1,7 @@
 import type { Client } from "tdl";
+import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
-import { clearLiveChatCache, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
+import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
@@ -83,6 +84,11 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
       });
       logLiveSync(record, "live_chat_message_applied", {
         chatId: message.chat_id,
+        userId: safeTelegramUserIdForLog(
+          getLiveChatList(record.telegramUsername)?.find(
+            (row) => row.telegram_chat_id === message.chat_id,
+          )?.peer_user_id,
+        ) ?? null,
         preview,
         previewMissing: !preview,
       });

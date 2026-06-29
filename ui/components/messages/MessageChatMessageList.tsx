@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View, type LayoutChangeEvent } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
+import { safeTelegramUserIdForLog } from "../../../shared/appLog";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSelectedChat";
+import { chatLogFields, logPageDisplay } from "../../pageDisplayLog";
 import { subscribeOutgoingChatMessages } from "../../messageChatOutgoing";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -86,7 +88,7 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
       const replySenderUserId = Number(replyRow.sender_user_id);
       replyTo = {
         sender_name: replySenderName,
-        sender_user_id: Number.isFinite(replySenderUserId) ? replySenderUserId : null,
+        sender_user_id: safeTelegramUserIdForLog(replySenderUserId) ?? null,
         text: replyText,
       };
     }
@@ -96,7 +98,7 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
     text,
     sent_at: typeof row.sent_at === "string" ? row.sent_at : "",
     sender_name: typeof row.sender_name === "string" ? row.sender_name : "",
-    sender_user_id: Number.isFinite(senderUserId) ? senderUserId : null,
+    sender_user_id: safeTelegramUserIdForLog(senderUserId) ?? null,
     sender_chat_id: Number.isFinite(senderChatId) ? senderChatId : null,
     sender_is_channel: Boolean(row.sender_is_channel),
     is_outgoing: isOutgoing,
@@ -300,6 +302,12 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     setNextBeforeMessageId(null);
     setLastReadOutboxFromHistory(null);
 
+    logPageDisplay("messages_history_load_start", chatLogFields({
+      chatId: chat.telegram_chat_id,
+      peerUserId: chat.peer_user_id,
+      title: chat.title,
+    }));
+
     void (async () => {
       try {
         await warmupTelegramSession(chat.telegram_chat_id);
@@ -329,10 +337,28 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         setLastReadOutboxFromHistory((prev) =>
           mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
         );
+        logPageDisplay("messages_history_load_ok", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          count: result.messages.length,
+          chatKind: result.chatKind,
+          hasMoreOlder: result.hasMoreOlder,
+        });
         scrollToBottom();
       } catch (e) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : String(e);
+        logPageDisplay("messages_history_load_error", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          message,
+        });
         setError(message);
         setMessages([]);
         setHasMoreOlder(false);
@@ -347,6 +373,8 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     };
   }, [
     chat.telegram_chat_id,
+    chat.peer_user_id,
+    chat.title,
     historyLoad.generation,
     isAuthenticated,
     isTelegramMessagesConnected,

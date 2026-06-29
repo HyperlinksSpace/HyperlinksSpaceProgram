@@ -10,6 +10,8 @@ export const ALEXEY_TELEGRAM_USER_ID = 1843695608;
 export const NATALYA_LAVRENOVA_TELEGRAM_USER_ID = 86649762;
 /** Telegram user id for @anriltine (Vsevolod Ignatyev). */
 export const ANRILTINE_TELEGRAM_USER_ID = 7221481736;
+/** Telegram user id for @thedevs_admin ("The Devs." private chat). */
+export const THE_DEVS_TELEGRAM_USER_ID = 7048804505;
 
 export const SPECIAL_USER_BADGE_GAP_PX = 5;
 export const SPECIAL_USER_BADGE_SIZE_PX = 20;
@@ -35,6 +37,7 @@ const SPECIAL_USER_RULES: Record<number, SpecialUserRule> = {
   [ALEXEY_TELEGRAM_USER_ID]: { displayName: "Alexey Ignatyev", shine: true, badge: "peace_sign" },
   [NATALYA_LAVRENOVA_TELEGRAM_USER_ID]: { shine: true, badge: "art_sign" },
   [ANRILTINE_TELEGRAM_USER_ID]: { shine: true, badge: "s_sign" },
+  [THE_DEVS_TELEGRAM_USER_ID]: { shine: true, badge: "status_tgs" },
 };
 
 /** Contact-name queries used during TDLib sync to surface hidden/blocked private chats. */

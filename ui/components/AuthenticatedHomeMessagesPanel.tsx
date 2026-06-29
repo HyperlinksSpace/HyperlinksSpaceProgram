@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, Vi
 import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { logPageDisplay } from "../pageDisplayLog";
+import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import {
@@ -239,7 +239,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (changed) {
             logPageDisplay("messages_chats_poll_updated", {
               count: rows.length,
-              firstId: rows[0]?.telegram_chat_id ?? null,
+              ...firstChatListLogFields(rows),
               poll: pollCountRef.current,
               source: json.source ?? null,
               revision: json.revision ?? null,
@@ -264,6 +264,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
           count: rows.length,
+          ...firstChatListLogFields(rows),
           source: json.source ?? null,
           revision: json.revision ?? null,
           status: response.status,
@@ -321,6 +322,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const handleChatPress = useCallback(
     (item: MessageChatRowData) => {
       if (!chatSelectionEnabled) return;
+      logPageDisplay("messages_chat_open", chatLogFields({
+        chatId: item.telegram_chat_id,
+        peerUserId: item.peer_user_id,
+        title: item.title,
+      }));
       openAuthenticatedHomeChatHistory(item);
     },
     [chatSelectionEnabled],

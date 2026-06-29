@@ -2,6 +2,7 @@ import http from "http";
 import { URL } from "url";
 import { getGatewayBindHost, getGatewayPort, getGatewaySecret } from "./env.js";
 import { logGateway } from "./gatewayLog.js";
+import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import {
   disconnectUserSession,
   gatewayHealth,
@@ -57,6 +58,11 @@ function authorized(req: http.IncomingMessage): boolean {
   const secret = getGatewaySecret();
   const header = req.headers["x-gateway-secret"];
   return typeof header === "string" && header === secret;
+}
+
+function liveChatPeerUserIdForLog(telegramUsername: string, chatId: number): number | undefined {
+  const row = getLiveChatList(telegramUsername)?.find((c) => c.telegram_chat_id === chatId);
+  return safeTelegramUserIdForLog(row?.peer_user_id);
 }
 
 export function startTdlibGatewayServer(): http.Server {
@@ -161,6 +167,20 @@ export function startTdlibGatewayServer(): http.Server {
             searchContactsForUser(telegramUsername, query),
             searchChatsForUser(telegramUsername, query),
           ]);
+          logGateway("users_search_served", {
+            telegramUsername,
+            query,
+            contactCount: contacts.length,
+            chatCount: chats.length,
+            userIds: contacts
+              .map((row) => safeTelegramUserIdForLog(row.userId))
+              .filter((id): id is number => id != null)
+              .join(","),
+            chatPeerUserIds: chats
+              .map((row) => safeTelegramUserIdForLog(row.peerUserId))
+              .filter((id): id is number => id != null)
+              .join(","),
+          });
           sendJson(res, 200, { ok: true, contacts, chats });
           return;
         }
@@ -177,12 +197,16 @@ export function startTdlibGatewayServer(): http.Server {
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
           ).length;
           const missingAvatarCount = (chats ?? []).filter((row) => !row.avatar_url).length;
+          const first = chats?.[0];
           logGateway("chats_list_served", {
             telegramUsername,
             count: chats?.length ?? 0,
             revision,
             missingPreviewCount,
             missingAvatarCount,
+            firstId: first?.telegram_chat_id ?? null,
+            firstUserId: safeTelegramUserIdForLog(first?.peer_user_id) ?? null,
+            firstTitle: first?.title?.trim() || null,
           });
           sendJson(res, 200, {
             ok: true,
@@ -229,6 +253,7 @@ export function startTdlibGatewayServer(): http.Server {
           logGateway("chat_history_served", {
             telegramUsername,
             chatId,
+            userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
             beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
             count: result.messages.length,
             hasMoreOlder: result.has_more_older,
@@ -266,6 +291,7 @@ export function startTdlibGatewayServer(): http.Server {
           logGateway("chat_message_sent", {
             telegramUsername,
             chatId,
+            userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
             ok: !result.error,
             messageId: result.message?.telegram_message_id ?? null,
             error: result.error,
@@ -360,18 +386,29 @@ export function startTdlibGatewayServer(): http.Server {
           const started = Date.now();
           const avatar = await getChatAvatarImageForUser(telegramUsername, chatId);
           if (avatar === "no_avatar") {
-            logGateway("chat_avatar_no_avatar", { telegramUsername, chatId, ms: Date.now() - started });
+            logGateway("chat_avatar_no_avatar", {
+              telegramUsername,
+              chatId,
+              userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
+              ms: Date.now() - started,
+            });
             sendJson(res, 404, { ok: false, error: "no_avatar" });
             return;
           }
           if (!avatar) {
-            logGateway("chat_avatar_unavailable", { telegramUsername, chatId, ms: Date.now() - started });
+            logGateway("chat_avatar_unavailable", {
+              telegramUsername,
+              chatId,
+              userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
+              ms: Date.now() - started,
+            });
             sendJson(res, 503, { ok: false, error: "avatar_unavailable" });
             return;
           }
           logGateway("chat_avatar_ok", {
             telegramUsername,
             chatId,
+            userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
             bytes: avatar.data.length,
             mime: avatar.mime,
             ms: Date.now() - started,

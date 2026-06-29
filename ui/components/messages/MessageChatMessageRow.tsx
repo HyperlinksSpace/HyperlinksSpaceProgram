@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Text, View, type TextLayoutEvent } from "react-native";
-import { Image } from "expo-image";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
+import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
@@ -299,16 +299,10 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
         }}
       >
         {showAvatarImage ? (
-          <Image
-            source={{ uri: iconUrl }}
-            accessibilityIgnoresInvertColors
+          <MessageChatAvatarImage
+            uri={iconUrl}
+            sizePx={MESSAGE_BUBBLE_AVATAR_PX}
             onError={() => setAvatarLoadFailed(true)}
-            style={{
-              width: MESSAGE_BUBBLE_AVATAR_PX,
-              height: MESSAGE_BUBBLE_AVATAR_PX,
-              borderRadius: MESSAGE_BUBBLE_AVATAR_PX / 2,
-            }}
-            contentFit="cover"
           />
         ) : (
           <ChatAvatarFallback

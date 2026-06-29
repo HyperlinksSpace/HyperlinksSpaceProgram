@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Text, View } from "react-native";
-import { Image } from "expo-image";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { logPageDisplay } from "../../pageDisplayLog";
+import { logPageDisplay, chatLogFields } from "../../pageDisplayLog";
 import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { HomeListRowShell } from "../HomeListRowShell";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
+import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
@@ -102,7 +102,11 @@ export function MessageChatRow({
     if (avatarLogOnceRef.current) return;
     avatarLogOnceRef.current = true;
     logPageDisplay("messages_avatar_source", {
-      chatId: item.telegram_chat_id,
+      ...chatLogFields({
+        chatId: item.telegram_chat_id,
+        peerUserId: item.peer_user_id,
+        title: item.title,
+      }),
       hasAvatarField: typeof item.avatar_url === "string" && item.avatar_url.length > 0,
       sourceType: item.avatar_url
         ? item.avatar_url === TELEGRAM_THREAD_NO_AVATAR
@@ -113,9 +117,15 @@ export function MessageChatRow({
               ? "absolute_url"
               : "relative_url"
         : "avatar_proxy_endpoint",
-      resolvedUrl: iconUrl,
+      resolvedSource: iconUrl?.startsWith("data:")
+        ? "data_url"
+        : iconUrl?.includes("/api/telegram-messages-avatar")
+          ? "avatar_proxy"
+          : iconUrl
+            ? "url"
+            : "none",
     });
-  }, [iconUrl, item.avatar_url, item.telegram_chat_id]);
+  }, [iconUrl, item.avatar_url, item.peer_user_id, item.telegram_chat_id, item.title]);
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -150,35 +160,29 @@ export function MessageChatRow({
         }}
       >
         {showAvatarImage ? (
-          <Image
-            source={{ uri: iconUrl }}
-            accessibilityIgnoresInvertColors
-            onLoadStart={() => {
-              logPageDisplay("messages_avatar_load_start", {
-                chatId: item.telegram_chat_id,
-                uri: iconUrl,
-              });
-            }}
+          <MessageChatAvatarImage
+            uri={iconUrl}
+            sizePx={MESSAGE_AVATAR_PX}
             onLoad={() => {
               logPageDisplay("messages_avatar_load_ok", {
-                chatId: item.telegram_chat_id,
-                uri: iconUrl,
+                ...chatLogFields({
+                  chatId: item.telegram_chat_id,
+                  peerUserId: item.peer_user_id,
+                  title: item.title,
+                }),
               });
             }}
-            onError={(event) => {
+            onError={(error) => {
               setAvatarLoadFailed(true);
               logPageDisplay("messages_avatar_load_error", {
-                chatId: item.telegram_chat_id,
-                uri: iconUrl,
-                error: event.error ?? "unknown_avatar_error",
+                ...chatLogFields({
+                  chatId: item.telegram_chat_id,
+                  peerUserId: item.peer_user_id,
+                  title: item.title,
+                }),
+                error: error ?? "unknown_avatar_error",
               });
             }}
-            style={{
-              width: MESSAGE_AVATAR_PX,
-              height: MESSAGE_AVATAR_PX,
-              borderRadius: MESSAGE_AVATAR_PX / 2,
-            }}
-            contentFit="cover"
           />
         ) : (
           <ChatAvatarFallback

@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Updates from "expo-updates";
-import { appLog } from "../shared/appLog";
+import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../shared/appLog";
 
 /** Console prefix — filter devtools with `[page-display]`. */
 export const PAGE_DISPLAY_LOG_PREFIX = "[page-display]";
@@ -77,6 +77,37 @@ export function logPageDisplay(
   details?: Record<string, unknown>,
 ): void {
   appLog(PAGE_DISPLAY_LOG_PREFIX, event, details);
+}
+
+/** chatId + optional peer userId (+ title for grep) — Telegram ids only, no secrets. */
+export function chatLogFields(input: {
+  chatId?: number | null;
+  peerUserId?: number | null;
+  title?: string | null;
+  userIdKey?: string;
+}): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  const chatId = Number(input.chatId);
+  if (Number.isFinite(chatId) && chatId !== 0) fields.chatId = Math.trunc(chatId);
+  Object.assign(fields, telegramUserIdLogField(input.peerUserId, input.userIdKey ?? "userId"));
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  if (title) fields.title = title;
+  return fields;
+}
+
+export function firstChatListLogFields(
+  rows: ReadonlyArray<{ telegram_chat_id: number; peer_user_id?: number | null; title?: string }>,
+): Record<string, unknown> {
+  const first = rows[0];
+  if (!first) return {};
+  const fields: Record<string, unknown> = {
+    firstId: first.telegram_chat_id,
+  };
+  const firstUserId = safeTelegramUserIdForLog(first.peer_user_id);
+  if (firstUserId != null) fields.firstUserId = firstUserId;
+  const title = typeof first.title === "string" ? first.title.trim() : "";
+  if (title) fields.firstTitle = title;
+  return fields;
 }
 
 export function logBuildSnapshotOnce(reason: string): void {
