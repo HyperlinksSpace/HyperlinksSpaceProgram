@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
 
 function needsAuthenticatedFetch(uri: string): boolean {
   return uri.includes("/api/telegram-messages-avatar");
+}
+
+/** Reuse blob URLs so avatar proxy images do not refetch on every list re-render. */
+const avatarBlobCache = new Map<string, string>();
+
+function readCachedDisplayUri(uri: string): string | null {
+  if (!needsAuthenticatedFetch(uri)) return uri;
+  return avatarBlobCache.get(uri) ?? null;
 }
 
 type Props = {
@@ -16,9 +24,14 @@ type Props = {
 
 /** Renders chat avatars; API proxy URLs are fetched with session cookies (required on web). */
 export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: Props) {
-  const [displayUri, setDisplayUri] = useState<string | null>(
-    needsAuthenticatedFetch(uri) ? null : uri,
-  );
+  const [displayUri, setDisplayUri] = useState<string | null>(() => readCachedDisplayUri(uri));
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
+
+  useEffect(() => {
+    onLoadRef.current = onLoad;
+    onErrorRef.current = onError;
+  }, [onLoad, onError]);
 
   useEffect(() => {
     if (!needsAuthenticatedFetch(uri)) {
@@ -26,27 +39,31 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
       return;
     }
 
+    const cached = avatarBlobCache.get(uri);
+    if (cached) {
+      setDisplayUri(cached);
+      return;
+    }
+
     let cancelled = false;
-    let objectUrl: string | null = null;
-    setDisplayUri(null);
 
     void (async () => {
       try {
         const response = await fetch(uri, { method: "GET", credentials: "include" });
         if (!response.ok) throw new Error(`HTTP_${response.status}`);
         const blob = await response.blob();
-        objectUrl = URL.createObjectURL(blob);
+        const objectUrl = URL.createObjectURL(blob);
+        avatarBlobCache.set(uri, objectUrl);
         if (!cancelled) setDisplayUri(objectUrl);
       } catch (err) {
-        if (!cancelled) onError?.(err);
+        if (!cancelled) onErrorRef.current?.(err);
       }
     })();
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [uri, onError]);
+  }, [uri]);
 
   if (!displayUri) return null;
 
@@ -54,8 +71,8 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
     <Image
       source={{ uri: displayUri }}
       accessibilityIgnoresInvertColors
-      onLoad={onLoad}
-      onError={(event) => onError?.(event.error ?? "unknown_avatar_error")}
+      onLoad={() => onLoadRef.current?.()}
+      onError={(event) => onErrorRef.current?.(event.error ?? "unknown_avatar_error")}
       style={[{ width: sizePx, height: sizePx, borderRadius: 0 }, style]}
       contentFit="cover"
     />

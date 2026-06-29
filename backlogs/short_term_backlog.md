@@ -1,5 +1,8 @@
-Desktop, log in methods
+Loading on program start (chat + messages), no chats yet bug
 Messages history
+Emoji statuses
+profile
+Desktop, log in methods
 Time style, second checmark, photos and videos
 pined chats to feed
 Messages in 2 clumns, 1 column

@@ -12,6 +12,7 @@ import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
 import {
   isDisplayableMediaMessage,
+  isGroupLikeChatKind,
   resolveMessageOutgoingStatus,
 } from "./messageChatHistoryTypes";
 import {
@@ -26,6 +27,7 @@ import {
 import {
   MESSAGE_BUBBLE_AVATAR_GAP_PX,
   MESSAGE_BUBBLE_AVATAR_PX,
+  MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
@@ -107,6 +109,9 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     return extractChatAvatarInitials(name);
   }, [chatKind, chat.title, item.is_outgoing, item.sender_name]);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const onAvatarError = useCallback(() => {
+    setAvatarLoadFailed(true);
+  }, []);
   const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
     width: number;
     innerWidthPx: number;
@@ -262,6 +267,30 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     setNativeBubbleLayout(null);
   }, [bodyText, bubbleMaxWidth, extraInnerWidthPx, metaWidthPx, timeLabel]);
 
+  const syncTextBubbleLayout = useMemo(() => {
+    if (Platform.OS === "web" || bubbleMaxWidth <= 0 || isBareMediaMessage) return null;
+    const { placement, innerWidthPx } = resolveMessageBubbleLayout(
+      bodyText,
+      bubbleMaxWidth,
+      metaWidthPx,
+      extraInnerWidthPx,
+    );
+    return {
+      innerWidthPx,
+      width: Math.min(
+        bubbleMaxWidth,
+        innerWidthPx + MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2,
+      ),
+      placement,
+    };
+  }, [
+    bodyText,
+    bubbleMaxWidth,
+    extraInnerWidthPx,
+    isBareMediaMessage,
+    metaWidthPx,
+  ]);
+
   const bubbleLayout =
     Platform.OS === "web"
       ? webBubbleLayout
@@ -271,22 +300,53 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             innerWidthPx: effectiveMediaWidthPx,
             placement: "stacked" as BubbleMetaPlacement,
           }
-        : nativeBubbleLayout;
+        : nativeBubbleLayout ?? syncTextBubbleLayout;
   const metaPlacement = bubbleLayout?.placement ?? "stacked";
   const bubbleContentWidthPx = bubbleLayout?.innerWidthPx ?? bubbleInnerMaxWidth;
   const useWebFitContent =
     Platform.OS === "web" &&
+    columnWidthPx > 0 &&
     !isBareMediaMessage &&
     !(showMedia && hasMediaCaption) &&
     metaPlacement === "inline";
   const bubbleWidth = useWebFitContent ? null : bubbleLayout?.width ?? null;
   const measureText = bodyText || " ";
+  const showSenderHeader =
+    isGroupLikeChatKind(chatKind) &&
+    chatKind !== "channel" &&
+    !item.is_outgoing &&
+    item.sender_name.trim().length > 0;
+  const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
+  const isCompactSingleLineRow =
+    !showMedia &&
+    !item.reply_to &&
+    !showSenderHeader &&
+    !showChannelBadge &&
+    metaPlacement === "inline" &&
+    bodyText.length > 0;
+
+  if (columnWidthPx <= 0) {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          width: "100%",
+          alignSelf: "stretch",
+          minHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+        }}
+      >
+        <View style={{ width: MESSAGE_BUBBLE_AVATAR_PX, height: MESSAGE_BUBBLE_AVATAR_PX, flexShrink: 0 }} />
+        <View style={{ width: MESSAGE_BUBBLE_AVATAR_GAP_PX }} />
+      </View>
+    );
+  }
 
   return (
     <View
       style={{
         flexDirection: "row",
-        alignItems: "flex-start",
+        alignItems: isCompactSingleLineRow ? "center" : "flex-start",
         width: "100%",
         alignSelf: "stretch",
       }}
@@ -304,7 +364,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
           <MessageChatAvatarImage
             uri={iconUrl}
             sizePx={MESSAGE_BUBBLE_AVATAR_PX}
-            onError={() => setAvatarLoadFailed(true)}
+            onError={onAvatarError}
           />
         ) : (
           <ChatAvatarFallback
@@ -352,9 +412,18 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
                 : {
                     borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
                     paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
-                    paddingVertical: MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
+                    paddingVertical: isCompactSingleLineRow
+                      ? 0
+                      : MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
+                    ...(isCompactSingleLineRow
+                      ? {
+                          height: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
+                          minHeight: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
+                          justifyContent: "center",
+                        }
+                      : null),
                     backgroundColor: colors.undercover,
-                    overflow: "visible",
+                    overflow: "hidden",
                   }),
             },
             bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,
@@ -371,6 +440,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             maxWidthPx={bubbleContentWidthPx}
             mediaColumnMaxWidthPx={bubbleInnerMaxWidth}
             metaPlacement={metaPlacement}
+            compactSingleLine={isCompactSingleLineRow}
             onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
           />
         </View>

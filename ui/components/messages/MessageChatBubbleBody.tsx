@@ -26,6 +26,7 @@ import {
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
   messageBubbleMediaMetaBottomPx,
+  messageChatBubbleTextWebWrapStyle,
 } from "./messageChatLayout";
 import type { BubbleMetaPlacement } from "./messageChatBubbleMeasure";
 import {
@@ -52,6 +53,8 @@ type Props = {
   maxWidthPx: number;
   mediaColumnMaxWidthPx?: number;
   metaPlacement?: BubbleMetaPlacement;
+  /** One-line inline text + time; row uses avatar height. */
+  compactSingleLine?: boolean;
   onMediaDisplaySizeChange?: (widthPx: number, heightPx: number) => void;
 };
 
@@ -103,12 +106,15 @@ function MessageChatBubbleTextContent({
           flexDirection: "row",
           alignItems: "baseline",
           alignSelf: "flex-start",
+          width: maxWidthPx,
           maxWidth: maxWidthPx,
+          minWidth: 0,
+          overflow: "hidden",
         }}
       >
         <MessageChatLinkifiedText
           text={bodyText}
-          style={[textStyle, { textAlign: "left", flexShrink: 1 }]}
+          style={[textStyle, { textAlign: "left", flexShrink: 1, minWidth: 0 }]}
         />
         <View
           style={{
@@ -133,9 +139,14 @@ function MessageChatBubbleTextContent({
           alignSelf: "flex-start",
           width: maxWidthPx,
           maxWidth: maxWidthPx,
+          minWidth: 0,
+          overflow: "hidden",
         }}
       >
-        <MessageChatLinkifiedText text={bodyText} style={[textStyle, { textAlign: "left" }]} />
+        <MessageChatLinkifiedText
+          text={bodyText}
+          style={[textStyle, { textAlign: "left", width: maxWidthPx, maxWidth: maxWidthPx }]}
+        />
         <View
           style={{
             flexDirection: "row",
@@ -143,6 +154,8 @@ function MessageChatBubbleTextContent({
             alignItems: "baseline",
             marginTop: -MESSAGE_BUBBLE_LINE_HEIGHT_PX,
             height: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+            width: maxWidthPx,
+            maxWidth: maxWidthPx,
             paddingBottom: MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
           }}
         >
@@ -157,8 +170,10 @@ function MessageChatBubbleTextContent({
       style={{
         marginTop,
         alignSelf: "flex-start",
+        width: maxWidthPx,
         maxWidth: maxWidthPx,
-        overflow: "visible",
+        minWidth: 0,
+        overflow: "hidden",
       }}
     >
       {bodyText ? (
@@ -272,7 +287,7 @@ function MessageChatReplyBlock({
         flexDirection: "row",
         maxWidth: maxWidthPx,
         marginBottom: 6,
-        borderRadius: 6,
+        borderRadius: 0,
         overflow: "hidden",
         backgroundColor: colors.highlight,
       }}
@@ -320,6 +335,7 @@ export function MessageChatBubbleBody({
   maxWidthPx,
   mediaColumnMaxWidthPx,
   metaPlacement = "stacked",
+  compactSingleLine = false,
   onMediaDisplaySizeChange,
 }: Props) {
   const { t } = useAppStrings();
@@ -398,7 +414,9 @@ export function MessageChatBubbleBody({
         fontWeight: "400" as const,
         color: colors.primary,
         includeFontPadding: false,
-        ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
+        ...(Platform.OS === "web"
+          ? ({ fontFamily: WEB_UI_SANS_STACK, ...messageChatBubbleTextWebWrapStyle } as object)
+          : null),
       },
     ],
     [colors.primary],
@@ -533,11 +551,13 @@ export function MessageChatBubbleBody({
             maxWidthPx={maxWidthPx}
             textStyle={textStyle}
             marginTop={
-              showMedia && bodyText
+              compactSingleLine
                 ? 0
-                : showSenderHeader || showChannelBadge || showMedia
-                  ? 4
-                  : 0
+                : showMedia && bodyText
+                  ? 0
+                  : showSenderHeader || showChannelBadge || showMedia
+                    ? 4
+                    : 0
             }
             metaPlacement={metaPlacement}
             callIndicator={callIndicator}

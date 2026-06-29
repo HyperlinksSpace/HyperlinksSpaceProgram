@@ -481,15 +481,25 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       return;
     }
 
+    const beforeMessageId = nextBeforeMessageId;
     loadingOlderRef.current = true;
     setLoadingOlder(true);
     const scrollAnchor = scrollControllerRef.current?.captureScrollAnchor();
+
+    logPageDisplay("messages_history_load_older_start", {
+      ...chatLogFields({
+        chatId: chat.telegram_chat_id,
+        peerUserId: chat.peer_user_id,
+        title: chat.title,
+      }),
+      beforeMessageId,
+    });
 
     try {
       let result = await fetchChatHistoryPage(
         chat.telegram_chat_id,
         MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-        nextBeforeMessageId,
+        beforeMessageId,
       );
       if (
         result.error === "session_not_ready" ||
@@ -499,31 +509,91 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-          nextBeforeMessageId,
+          beforeMessageId,
         );
       }
-      if (result.error) return;
+      if (result.error) {
+        logPageDisplay("messages_history_load_older_error", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          beforeMessageId,
+          message: result.error,
+        });
+        return;
+      }
 
       if (result.messages.length === 0) {
         setHasMoreOlder(result.hasMoreOlder);
         setNextBeforeMessageId(result.nextBeforeMessageId);
+        logPageDisplay("messages_history_load_older_empty", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          beforeMessageId,
+          hasMoreOlder: result.hasMoreOlder,
+          nextBeforeMessageId: result.nextBeforeMessageId,
+        });
         return;
       }
 
+      let addedCount = 0;
+      setMessages((prev) => {
+        const merged = mergeHistoryMessages(prev, result.messages);
+        addedCount = merged.length - prev.length;
+        return merged;
+      });
+      if (addedCount === 0) {
+        pendingScrollAnchorRef.current = null;
+        setHasMoreOlder(false);
+        setNextBeforeMessageId(null);
+        logPageDisplay("messages_history_load_older_duplicate_page", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          beforeMessageId,
+          fetchedCount: result.messages.length,
+        });
+        return;
+      }
       if (scrollAnchor) {
         pendingScrollAnchorRef.current = scrollAnchor;
       }
-      setMessages((prev) => mergeHistoryMessages(prev, result.messages));
       setHasMoreOlder(result.hasMoreOlder);
       setNextBeforeMessageId(result.nextBeforeMessageId);
       setLastReadOutboxFromHistory((prev) =>
         mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
       );
+      logPageDisplay("messages_history_load_older_ok", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        beforeMessageId,
+        fetchedCount: result.messages.length,
+        addedCount,
+        hasMoreOlder: result.hasMoreOlder,
+        nextBeforeMessageId: result.nextBeforeMessageId,
+      });
     } finally {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
     }
-  }, [chat.telegram_chat_id, hasMoreOlder, loadingInitial, nextBeforeMessageId]);
+  }, [
+    chat.peer_user_id,
+    chat.telegram_chat_id,
+    chat.title,
+    hasMoreOlder,
+    loadingInitial,
+    nextBeforeMessageId,
+  ]);
 
   const handleNearTop = useCallback(() => {
     void loadOlderMessages();

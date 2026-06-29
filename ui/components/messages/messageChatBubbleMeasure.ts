@@ -149,8 +149,10 @@ export function measureBubbleInnerContentWidth(
   switch (placement) {
     case "inline":
       return measureInlineBubbleRowWidth(bodyText, metaWidthPx);
-    case "lastLine":
-      return longest;
+    case "lastLine": {
+      const lastLine = lineWidths[lineWidths.length - 1] ?? 0;
+      return Math.max(longest, lastLine + metaGapPx + metaWidthPx);
+    }
     default:
       return Math.max(longest, metaWidthPx);
   }

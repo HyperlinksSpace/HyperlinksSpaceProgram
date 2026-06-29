@@ -4,8 +4,10 @@ export const MESSAGE_BUBBLE_AVATAR_PX = 40;
 export const MESSAGE_BUBBLE_AVATAR_GAP_PX = 15;
 export const MESSAGE_BUBBLE_ROW_GAP_PX = 15;
 
-/** Matches {@link AiSearchPromptButton} chip typography and padding. */
-export const MESSAGE_BUBBLE_BORDER_RADIUS_PX = 10;
+/** Text/media message bubble corners (square). */
+export const MESSAGE_BUBBLE_BORDER_RADIUS_PX = 0;
+/** Single-line inline rows match {@link MESSAGE_BUBBLE_AVATAR_PX} height. */
+export const MESSAGE_BUBBLE_COMPACT_HEIGHT_PX = MESSAGE_BUBBLE_AVATAR_PX;
 export const MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX = 15;
 export const MESSAGE_BUBBLE_PADDING_VERTICAL_PX = 10;
 export const MESSAGE_BUBBLE_FONT_SIZE_PX = 15;
@@ -49,6 +51,12 @@ export const MESSAGE_BUBBLE_GIF_MAX_PX = 320;
 export const MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX = 1;
 /** Progress strip under video/GIF while poster preview is visible (before playback). */
 export const MESSAGE_BUBBLE_MEDIA_PREVIEW_PROGRESS_HEIGHT_PX = 5;
+
+/** Web-only: match {@link measureWrappedLineWidths} probe so long URLs/hashtags wrap inside bubbles. */
+export const messageChatBubbleTextWebWrapStyle = {
+  overflowWrap: "break-word",
+  wordBreak: "break-word",
+} as const;
 
 /** Initial / paginated history page size (scroll up to load older). */
 export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;

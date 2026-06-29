@@ -85,21 +85,19 @@ export async function fetchChatHistory(
   const chatKind = chatKindFromTdChat(chat);
 
   const loadPage = async (cursorMessageId?: number | null): Promise<TdMessage[]> => {
+    const fromMessageId =
+      typeof cursorMessageId === "number" &&
+      Number.isFinite(cursorMessageId) &&
+      cursorMessageId > 0
+        ? cursorMessageId
+        : 0;
+    // TDLib: offset 0 starts at from_message_id; negative offset adds *newer* messages.
+    // Older history must use offset 0 and skip the anchor id below.
     const history = (await client.invoke({
       _: "getChatHistory",
       chat_id: chatId,
-      from_message_id:
-        typeof cursorMessageId === "number" &&
-        Number.isFinite(cursorMessageId) &&
-        cursorMessageId > 0
-          ? cursorMessageId
-          : 0,
-      offset:
-        typeof cursorMessageId === "number" &&
-        Number.isFinite(cursorMessageId) &&
-        cursorMessageId > 0
-          ? -rawBatchLimit
-          : 0,
+      from_message_id: fromMessageId,
+      offset: 0,
       limit: rawBatchLimit,
       only_local: false,
     })) as { messages?: TdMessage[] };
