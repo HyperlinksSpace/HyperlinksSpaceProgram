@@ -29,45 +29,37 @@ function avatarProxyUrl(params: { userId?: number | null; chatId?: number | null
   return null;
 }
 
-function isPrivateChatContext(
-  chat: MessageChatRowData,
-  chatKind: MessageChatKind | null | undefined,
-): boolean {
-  if (chatKind === "private") return true;
-  if (chatKind != null) return false;
-  return safeTelegramUserIdForLog(chat.peer_user_id) != null;
-}
-
 /** Avatar for a chat list row or an open-thread message bubble. */
 export function resolveTelegramThreadAvatarUrl(
   chat: MessageChatRowData,
   item?: Pick<
     MessageChatHistoryItem,
-    "sender_user_id" | "sender_chat_id" | "sender_is_channel"
+    "sender_user_id" | "sender_chat_id" | "sender_is_channel" | "is_outgoing"
   > | null,
   chatKind?: MessageChatKind | null,
 ): string | null {
   const inChannelThread = chatKind === "channel";
   const storedChatAvatar = resolveStoredAvatarUrl(chat.avatar_url);
-  const privateChat = isPrivateChatContext(chat, chatKind);
 
   if (inChannelThread || item?.sender_is_channel) {
     if (storedChatAvatar) return storedChatAvatar;
     return avatarProxyUrl({ chatId: chat.telegram_chat_id });
   }
 
-  if (privateChat && storedChatAvatar) {
-    return storedChatAvatar;
-  }
+  if (item) {
+    const senderChatId = validChatIdForAvatar(item.sender_chat_id);
+    if (senderChatId != null) {
+      return avatarProxyUrl({ chatId: senderChatId });
+    }
 
-  const senderChatId = validChatIdForAvatar(item?.sender_chat_id);
-  if (senderChatId != null) {
-    return avatarProxyUrl({ chatId: senderChatId });
-  }
+    const senderUserId = safeTelegramUserIdForLog(item.sender_user_id);
+    if (senderUserId != null) {
+      return avatarProxyUrl({ userId: senderUserId });
+    }
 
-  const senderUserId = safeTelegramUserIdForLog(item?.sender_user_id);
-  if (senderUserId != null) {
-    return avatarProxyUrl({ userId: senderUserId });
+    if (item.is_outgoing) {
+      return null;
+    }
   }
 
   if (storedChatAvatar) return storedChatAvatar;

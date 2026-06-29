@@ -97,13 +97,15 @@ type Props = {
 export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidthPx }: Props) {
   const { t } = useAppStrings();
   const iconUrl = resolveTelegramThreadAvatarUrl(chat, item, chatKind);
-  const avatarInitials = useMemo(
-    () =>
-      extractChatAvatarInitials(
-        chatKind === "channel" ? chat.title : item.sender_name || chat.title,
-      ),
-    [chatKind, item.sender_name, chat.title],
-  );
+  const avatarInitials = useMemo(() => {
+    const name =
+      chatKind === "channel"
+        ? chat.title
+        : item.is_outgoing
+          ? item.sender_name || chat.title
+          : item.sender_name || chat.title;
+    return extractChatAvatarInitials(name);
+  }, [chatKind, chat.title, item.is_outgoing, item.sender_name]);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
   const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
     width: number;

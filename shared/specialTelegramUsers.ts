@@ -38,6 +38,7 @@ const SPECIAL_USER_RULES: Record<number, SpecialUserRule> = {
   [NATALYA_LAVRENOVA_TELEGRAM_USER_ID]: { shine: true, badge: "art_sign" },
   [ANRILTINE_TELEGRAM_USER_ID]: { shine: true, badge: "s_sign" },
   [THE_DEVS_TELEGRAM_USER_ID]: { shine: true, badge: "status_tgs" },
+  1653333875: { shine: true, badge: "status_tgs" },
 };
 
 /** Contact-name queries used during TDLib sync to surface hidden/blocked private chats. */

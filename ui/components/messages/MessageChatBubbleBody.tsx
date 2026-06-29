@@ -19,12 +19,12 @@ import {
   MESSAGE_BUBBLE_FONT_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_META_GAP_PX,
+  MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
   MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
   MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
-  MESSAGE_CHAT_CHECKMARK_SIZE_PX,
   messageBubbleMediaMetaBottomPx,
 } from "./messageChatLayout";
 import type { BubbleMetaPlacement } from "./messageChatBubbleMeasure";
@@ -100,20 +100,22 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           flexDirection: "row",
-          alignItems: callIndicator ? "center" : "baseline",
+          alignItems: "baseline",
           alignSelf: "flex-start",
           maxWidth: maxWidthPx,
-          minHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
         }}
       >
         <MessageChatLinkifiedText
           text={bodyText}
-          style={[textStyle, { textAlign: "left", flexShrink: 0 }]}
+          style={[textStyle, { textAlign: "left", flexShrink: 1 }]}
         />
         <View
           style={{
             marginLeft: MESSAGE_BUBBLE_META_GAP_PX,
             flexShrink: 0,
+            ...(Platform.OS === "web"
+              ? ({ display: "inline-flex", verticalAlign: "baseline" } as object)
+              : { paddingBottom: MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX }),
           }}
         >
           {timeRow}
@@ -140,6 +142,7 @@ function MessageChatBubbleTextContent({
             alignItems: "baseline",
             marginTop: -MESSAGE_BUBBLE_LINE_HEIGHT_PX,
             height: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+            paddingBottom: MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
           }}
         >
           {timeRow}
@@ -191,6 +194,7 @@ function MessageChatBubbleTimeRow({
     lineHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
     color: lightOnMedia ? "rgba(255,255,255,0.92)" : colors.secondary,
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
+    includeFontPadding: false,
     ...(alignWithBodyBaseline && Platform.OS === "web"
       ? ({ display: "inline" } as object)
       : null),
@@ -200,9 +204,8 @@ function MessageChatBubbleTimeRow({
     <View
       style={{
         flexDirection: "row",
-        alignItems: callIndicator ? "center" : "flex-end",
+        alignItems: "center",
         alignSelf,
-        minHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
         overflow: "visible",
         ...(lightOnMedia && Platform.OS === "web"
           ? ({ textShadow: "0 1px 2px rgba(0,0,0,0.65)" } as object)
@@ -210,10 +213,13 @@ function MessageChatBubbleTimeRow({
         ...(alignWithBodyBaseline && Platform.OS === "web"
           ? ({ display: "inline-flex", verticalAlign: "baseline" } as object)
           : null),
+        ...(!alignWithBodyBaseline
+          ? { minHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX }
+          : null),
       }}
     >
       {callIndicator ? (
-        <View style={{ overflow: "visible", justifyContent: "center" }}>
+        <View style={{ marginRight: 2, justifyContent: "center" }}>
           <MessageChatCallArrow
             outgoing={callIndicator.outgoing}
             successful={callIndicator.successful}
@@ -222,22 +228,11 @@ function MessageChatBubbleTimeRow({
       ) : null}
       <Text style={metaStyle}>{timeLabel}</Text>
       {showChecks ? (
-        <View
-          style={{
-            overflow: "visible",
-            height: MESSAGE_CHAT_CHECKMARK_SIZE_PX,
-            justifyContent: "flex-end",
-            ...(Platform.OS === "web"
-              ? ({ display: "flex", alignItems: "flex-end" } as object)
-              : null),
-          }}
-        >
-          <MessageChatOutgoingChecks
-            status={outgoingStatus!}
-            colors={colors}
-            onMedia={lightOnMedia}
-          />
-        </View>
+        <MessageChatOutgoingChecks
+          status={outgoingStatus!}
+          colors={colors}
+          onMedia={lightOnMedia}
+        />
       ) : null}
     </View>
   );
@@ -399,6 +394,7 @@ export function MessageChatBubbleBody({
         lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
         fontWeight: "400" as const,
         color: colors.primary,
+        includeFontPadding: false,
         ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
       },
     ],

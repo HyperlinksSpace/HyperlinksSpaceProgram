@@ -54,7 +54,8 @@ export function MessageChatOutgoingChecks({
         style={{
           marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
           width: reserveWidthPx,
-          alignItems: "flex-start",
+          alignItems: "center",
+          justifyContent: "center",
           overflow: "visible",
         }}
       >
@@ -70,7 +71,8 @@ export function MessageChatOutgoingChecks({
       style={{
         marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
         width: reserveWidthPx,
-        alignItems: "flex-start",
+        alignItems: "center",
+        justifyContent: "center",
         overflow: "visible",
       }}
     >
