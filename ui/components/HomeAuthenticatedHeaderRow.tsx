@@ -28,7 +28,7 @@ import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
-import { clearAuthenticatedHomeSelectedChat } from "../authenticatedHomeSelectedChat";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../authenticatedHomeSelectedChat";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
@@ -201,15 +201,15 @@ export function HomeAuthenticatedHeaderRow({
 
   const handleMenuKeyPress = useCallback(
     (key: (typeof WIDE_MENU_ITEM_KEYS)[number]["key"]) => {
-      const route = `/${key}`;
       if (atOrAboveFirstBreakpoint) {
-        clearAuthenticatedHomeSelectedChat();
         openAuthenticatedHomeRightPanel(key);
-        if (pathname === route) {
+        focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
+        if (pathname !== "/" && pathname !== "" && pathname != null) {
           router.replace("/");
         }
         return;
       }
+      const route = `/${key}`;
       if (pathname !== route) {
         router.push(route as any);
       }

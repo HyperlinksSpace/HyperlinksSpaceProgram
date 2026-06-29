@@ -1,5 +1,8 @@
-test
+Desktop, log in methods
+Messages history
 Time style, second checmark, photos and videos
+pined chats to feed
+Messages in 2 clumns, 1 column
 Reactions, reactions notifications
 Profile & Music, Calls
 Balance
@@ -121,6 +124,7 @@ README.md: Project news, discussions, where to learn for contributions<br>
 Smart AI analitics
 Arbitration?
 Multi-tokenization (link with multiple protocols)
+svg icons
 
 Issues:<br>
 Several chats async streaming<br>

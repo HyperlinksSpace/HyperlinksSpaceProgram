@@ -56,7 +56,7 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
       accessibilityIgnoresInvertColors
       onLoad={onLoad}
       onError={(event) => onError?.(event.error ?? "unknown_avatar_error")}
-      style={[{ width: sizePx, height: sizePx, borderRadius: sizePx / 2 }, style]}
+      style={[{ width: sizePx, height: sizePx, borderRadius: 0 }, style]}
       contentFit="cover"
     />
   );

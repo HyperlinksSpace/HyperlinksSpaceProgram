@@ -50,6 +50,7 @@ type Props = {
   chatKind: MessageChatKind | null;
   colors: ThemeColors;
   maxWidthPx: number;
+  mediaColumnMaxWidthPx?: number;
   metaPlacement?: BubbleMetaPlacement;
   onMediaDisplaySizeChange?: (widthPx: number, heightPx: number) => void;
 };
@@ -317,6 +318,7 @@ export function MessageChatBubbleBody({
   chatKind,
   colors,
   maxWidthPx,
+  mediaColumnMaxWidthPx,
   metaPlacement = "stacked",
   onMediaDisplaySizeChange,
 }: Props) {
@@ -354,8 +356,9 @@ export function MessageChatBubbleBody({
     ? { outgoing: item.is_outgoing, successful: Boolean(item.call_success) }
     : null;
   const replyTo = item.reply_to ?? null;
+  const mediaLayoutMaxWidthPx = Math.max(mediaColumnMaxWidthPx ?? maxWidthPx, maxWidthPx);
   const { widthPx: mediaWidthPx, heightPx: mediaHeightPx } = resolveMessageMediaDimensions(
-    maxWidthPx,
+    mediaLayoutMaxWidthPx,
     item.media_width,
     item.media_height,
     contentKind,
@@ -460,7 +463,7 @@ export function MessageChatBubbleBody({
             width: displayMediaWidthPx,
             minHeight: mediaBlockHeightPx,
             overflow: "hidden",
-            borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
+            borderRadius: 0,
           }}
         >
           <MessageChatMediaContent
@@ -468,7 +471,7 @@ export function MessageChatBubbleBody({
             contentKind={contentKind}
             widthPx={mediaWidthPx}
             heightPx={mediaHeightPx}
-            maxWidthPx={maxWidthPx}
+            maxWidthPx={mediaLayoutMaxWidthPx}
             colors={colors}
             onDisplaySizeChange={handleMediaDisplaySizeChange}
           />

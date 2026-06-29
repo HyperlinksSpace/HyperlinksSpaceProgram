@@ -38,10 +38,18 @@ export type HspScrollMetrics = {
   scrollY: number;
 };
 
+/** Snapshot before prepending content above the viewport (infinite scroll up). */
+export type HspScrollAnchor = {
+  scrollTop: number;
+  scrollHeight: number;
+};
+
 export type HspScrollColumnHandle = {
   scrollToEnd: () => void;
   scrollToY: (y: number) => void;
   getMetrics: () => HspScrollMetrics;
+  captureScrollAnchor: () => HspScrollAnchor | null;
+  restoreScrollAnchor: (anchor: HspScrollAnchor) => void;
   /** Allow {@link onNearTop} to fire again after prepending content near the top. */
   clearNearTopLatch: () => void;
 };
@@ -99,6 +107,14 @@ export function HspScrollColumn({
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
   scrollMetricsRef.current = scroll;
 
+  const getScrollElement = useCallback((): HTMLElement | null => {
+    if (Platform.OS !== "web") return null;
+    const instance = scrollRef.current as unknown as {
+      getScrollableNode?: () => HTMLElement | null | undefined;
+    } | null;
+    return instance?.getScrollableNode?.() ?? null;
+  }, []);
+
   const syncNearTopLatch = useCallback(
     (scrollY: number) => {
       if (!onNearTop) {
@@ -114,10 +130,7 @@ export function HspScrollColumn({
 
   const syncScrollMetricsFromDom = useCallback(() => {
     if (Platform.OS !== "web") return;
-    const instance = scrollRef.current as unknown as {
-      getScrollableNode?: () => HTMLElement | null | undefined;
-    } | null;
-    const el = instance?.getScrollableNode?.();
+    const el = getScrollElement();
     if (!el) return;
     const layoutH = el.clientHeight;
     const contentH = el.scrollHeight;
@@ -131,7 +144,7 @@ export function HspScrollColumn({
       scrollY,
       ...(contentH > 0 ? { contentH } : {}),
     }));
-  }, [syncNearTopLatch]);
+  }, [getScrollElement, syncNearTopLatch]);
 
   /** Reset scroll only on first mount — not when `children` change (e.g. split-pane resize reflow). */
   const didMountScrollResetRef = useRef(false);
@@ -334,10 +347,7 @@ export function HspScrollColumn({
 
   const scrollToEnd = useCallback(() => {
     if (Platform.OS === "web") {
-      const instance = scrollRef.current as unknown as {
-        getScrollableNode?: () => HTMLElement | null | undefined;
-      } | null;
-      const el = instance?.getScrollableNode?.();
+      const el = getScrollElement();
       if (el) {
         const layoutH = el.clientHeight;
         const contentH = el.scrollHeight;
@@ -354,7 +364,67 @@ export function HspScrollColumn({
       }
     }
     scrollRef.current?.scrollToEnd({ animated: false });
-  }, [syncNearTopLatch]);
+  }, [getScrollElement, syncNearTopLatch]);
+
+  const captureScrollAnchor = useCallback((): HspScrollAnchor | null => {
+    if (Platform.OS === "web") {
+      const el = getScrollElement();
+      if (!el) return null;
+      return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight };
+    }
+    const metrics = scrollMetricsRef.current;
+    if (metrics.contentH <= 0) return null;
+    return { scrollTop: metrics.scrollY, scrollHeight: metrics.contentH };
+  }, [getScrollElement]);
+
+  const applyScrollAnchorRestore = useCallback(
+    (anchor: HspScrollAnchor) => {
+      if (Platform.OS === "web") {
+        const el = getScrollElement();
+        if (!el) return false;
+        const delta = el.scrollHeight - anchor.scrollHeight;
+        if (delta <= 0) return false;
+        const nextTop = anchor.scrollTop + delta;
+        el.scrollTop = nextTop;
+        setScroll((prev) => ({
+          ...prev,
+          layoutH: el.clientHeight > 0 ? el.clientHeight : prev.layoutH,
+          contentH: el.scrollHeight > 0 ? el.scrollHeight : prev.contentH,
+          scrollY: nextTop,
+        }));
+        syncNearTopLatch(nextTop);
+        return true;
+      }
+      const metrics = scrollMetricsRef.current;
+      const delta = metrics.contentH - anchor.scrollHeight;
+      if (delta <= 0) return false;
+      const nextTop = anchor.scrollTop + delta;
+      scrollRef.current?.scrollTo({ y: nextTop, animated: false });
+      setScroll((prev) => ({ ...prev, scrollY: nextTop, contentH: metrics.contentH }));
+      syncNearTopLatch(nextTop);
+      return true;
+    },
+    [getScrollElement, syncNearTopLatch],
+  );
+
+  const restoreScrollAnchor = useCallback(
+    (anchor: HspScrollAnchor) => {
+      let attempts = 0;
+      const maxAttempts = 12;
+
+      const run = () => {
+        const restored = applyScrollAnchorRestore(anchor);
+        if (restored || ++attempts >= maxAttempts) return;
+        requestAnimationFrame(run);
+      };
+
+      requestAnimationFrame(() => {
+        run();
+        requestAnimationFrame(run);
+      });
+    },
+    [applyScrollAnchorRestore],
+  );
 
   useEffect(() => {
     if (!scrollControllerRef) return;
@@ -366,6 +436,8 @@ export function HspScrollColumn({
         contentH: scrollMetricsRef.current.contentH,
         scrollY: scrollMetricsRef.current.scrollY,
       }),
+      captureScrollAnchor,
+      restoreScrollAnchor,
       clearNearTopLatch: () => {
         nearTopFiredRef.current = false;
       },
@@ -376,7 +448,7 @@ export function HspScrollColumn({
         scrollControllerRef.current = null;
       }
     };
-  }, [scrollControllerRef, scrollToEnd, scrollToY]);
+  }, [scrollControllerRef, scrollToEnd, scrollToY, captureScrollAnchor, restoreScrollAnchor]);
 
   useLayoutEffect(() => {
     if (initialScrollPosition !== "bottom" || didInitialBottomScrollRef.current) return;

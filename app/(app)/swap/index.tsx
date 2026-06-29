@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../../ui/authenticatedHomeSelectedChat";
 import { SwapScreen } from "../../../ui/screens/SwapScreen";
 
 export default function SwapRoute() {
@@ -12,6 +13,7 @@ export default function SwapRoute() {
   useLayoutEffect(() => {
     if (isWide) {
       openAuthenticatedHomeRightPanel("swap");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
   }, [isWide]);
 

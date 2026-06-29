@@ -31,9 +31,12 @@ export const MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX =
   MESSAGE_BUBBLE_BODY_BASELINE_FROM_LINE_BOTTOM_PX -
   MESSAGE_BUBBLE_TIME_BASELINE_FROM_LINE_BOTTOM_PX;
 
-export function messageBubbleMediaMetaBottomPx(hasProgressBar: boolean): number {
+export function messageBubbleMediaMetaBottomPx(
+  hasProgressBar: boolean,
+  progressHeightPx = MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX,
+): number {
   return (
-    (hasProgressBar ? MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX : 0) +
+    (hasProgressBar ? progressHeightPx : 0) +
     MESSAGE_BUBBLE_META_BOTTOM_INSET_PX
   );
 }
@@ -44,6 +47,8 @@ export const MESSAGE_BUBBLE_STICKER_MAX_PX = 192;
 export const MESSAGE_BUBBLE_GIF_MAX_PX = 320;
 /** Playback progress strip under in-chat video / GIF. */
 export const MESSAGE_BUBBLE_MEDIA_PROGRESS_HEIGHT_PX = 1;
+/** Progress strip under video/GIF while poster preview is visible (before playback). */
+export const MESSAGE_BUBBLE_MEDIA_PREVIEW_PROGRESS_HEIGHT_PX = 5;
 
 /** Initial / paginated history page size (scroll up to load older). */
 export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;

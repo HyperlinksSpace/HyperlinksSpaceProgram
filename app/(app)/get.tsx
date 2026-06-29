@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../ui/authenticatedHomeSelectedChat";
 import { GetScreen } from "../../ui/screens/GetScreen";
 
 export default function GetRoute() {
@@ -12,6 +13,7 @@ export default function GetRoute() {
   useLayoutEffect(() => {
     if (isWide) {
       openAuthenticatedHomeRightPanel("get");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
   }, [isWide]);
 

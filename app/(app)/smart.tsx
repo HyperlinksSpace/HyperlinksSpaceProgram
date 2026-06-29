@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../ui/authenticatedHomeSelectedChat";
 import { SmartScreen } from "../../ui/screens/SmartScreen";
 
 export default function SmartRoute() {
@@ -12,6 +13,7 @@ export default function SmartRoute() {
   useLayoutEffect(() => {
     if (isWide) {
       openAuthenticatedHomeRightPanel("smart");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
   }, [isWide]);
 

@@ -1,6 +1,12 @@
 import fs from "fs";
 import type { Client } from "tdl";
 import type { TdMessage } from "./chatPreview.js";
+import { logGateway } from "./gatewayLog.js";
+import {
+  listPhotoSizeCandidates,
+  readPhotoMinithumbnail,
+  type PhotoSizeCandidate,
+} from "./photoParse.js";
 
 type TdFile = {
   id?: number;
@@ -13,6 +19,9 @@ type TdFile = {
 
 const MEDIA_DOWNLOAD_TIMEOUT_MS = 45_000;
 const MEDIA_VIDEO_DOWNLOAD_TIMEOUT_MS = 60_000;
+/** Reject minithumbnail-sized downloads masquerading as full photo.sizes files. */
+const PHOTO_MIN_FULL_DIMENSION_PX = 120;
+const PHOTO_MIN_FULL_BYTES = 12_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -72,54 +81,41 @@ async function waitForLocalFile(
   return null;
 }
 
-type PhotoSizeRow = {
-  _?: string;
-  type?: string;
-  photo?: { id?: number };
-  width?: number;
-  height?: number;
-  sizes?: PhotoSizeRow[];
-};
-
-function photoSizeArea(row: PhotoSizeRow): number {
-  const w = Number(row.width);
-  const h = Number(row.height);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 0;
-  return w * h;
-}
-
-function photoSizeFileId(row: PhotoSizeRow): number | null {
-  const id = row.photo?.id;
-  return typeof id === "number" ? id : null;
-}
-
-function collectPhotoSizeRows(raw: unknown): PhotoSizeRow[] {
-  if (!raw || typeof raw !== "object") return [];
-  const row = raw as Record<string, unknown> & PhotoSizeRow;
-  if (row._ === "photoSizeProgressive" && Array.isArray(row.sizes)) {
-    return row.sizes.flatMap((inner) => collectPhotoSizeRows(inner));
-  }
-  if (photoSizeFileId(row) != null) return [row];
-  return [];
-}
-
-function photoFileIdsBySizeDesc(content: Record<string, unknown>): number[] {
-  const photo = content.photo as { sizes?: unknown[] } | undefined;
-  const sizes = photo?.sizes;
-  if (!Array.isArray(sizes) || sizes.length === 0) return [];
-  const deduped = new Map<number, number>();
-  for (const raw of sizes) {
-    for (const row of collectPhotoSizeRows(raw)) {
-      const id = photoSizeFileId(row);
-      const area = photoSizeArea(row);
-      if (id == null || area <= 0) continue;
-      const prev = deduped.get(id);
-      if (prev == null || area > prev) deduped.set(id, area);
+function readJpegDimensions(data: Buffer): { width: number; height: number } | null {
+  if (data.length < 4 || data[0] !== 0xff || data[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < data.length) {
+    if (data[offset] !== 0xff) {
+      offset += 1;
+      continue;
     }
+    const marker = data[offset + 1];
+    if (marker === 0xd8 || marker === 0xd9) {
+      offset += 2;
+      continue;
+    }
+    const segmentLength = data.readUInt16BE(offset + 2);
+    if (segmentLength < 2 || offset + 2 + segmentLength > data.length) return null;
+    if (marker >= 0xc0 && marker <= 0xc3) {
+      const height = data.readUInt16BE(offset + 5);
+      const width = data.readUInt16BE(offset + 7);
+      if (width > 0 && height > 0) return { width, height };
+      return null;
+    }
+    offset += 2 + segmentLength;
   }
-  return [...deduped.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([id]) => id);
+  return null;
+}
+
+function photoBytesLookFullSize(
+  data: Buffer,
+  declaredWidth?: number | null,
+  declaredHeight?: number | null,
+): boolean {
+  if (data.length >= PHOTO_MIN_FULL_BYTES) return true;
+  const w = declaredWidth ?? readJpegDimensions(data)?.width ?? 0;
+  const h = declaredHeight ?? readJpegDimensions(data)?.height ?? 0;
+  return w >= PHOTO_MIN_FULL_DIMENSION_PX || h >= PHOTO_MIN_FULL_DIMENSION_PX;
 }
 
 function pickThumbnailFileId(media: unknown): number | null {
@@ -130,8 +126,7 @@ function pickThumbnailFileId(media: unknown): number | null {
 }
 
 function pickPhotoFileId(content: Record<string, unknown>): number | null {
-  const ids = photoFileIdsBySizeDesc(content);
-  return ids[0] ?? null;
+  return listPhotoSizeCandidates(content)[0]?.fileId ?? null;
 }
 
 function pickFileIdFromTdFile(file: unknown): number | null {
@@ -168,17 +163,6 @@ function mimeFromMessageContent(content: Record<string, unknown>): string | null
     return typeof mime === "string" && mime.trim() ? mime.trim() : null;
   }
   return null;
-}
-
-function readMinithumbnailJpeg(content: Record<string, unknown>): Buffer | null {
-  const photo = content.photo as { minithumbnail?: { data?: string } } | undefined;
-  const data = photo?.minithumbnail?.data;
-  if (typeof data !== "string" || data.length === 0) return null;
-  try {
-    return Buffer.from(data, "base64");
-  } catch {
-    return null;
-  }
 }
 
 function mediaFileIdFromMessage(message: TdMessage): number | null {
@@ -242,12 +226,19 @@ function resolveMediaMime(
   return mime;
 }
 
-function mediaFileIdsFromMessage(message: TdMessage): number[] {
+function mediaPhotoCandidatesFromMessage(message: TdMessage): PhotoSizeCandidate[] {
   const content = message.content;
   if (!content || typeof content !== "object") return [];
   const row = content as Record<string, unknown>;
-  const type = row._;
-  if (type === "messagePhoto") return photoFileIdsBySizeDesc(row);
+  if (row._ !== "messagePhoto") return [];
+  return listPhotoSizeCandidates(row);
+}
+
+function mediaFileIdsFromMessage(message: TdMessage): number[] {
+  const photoCandidates = mediaPhotoCandidatesFromMessage(message);
+  if (photoCandidates.length > 0) {
+    return photoCandidates.map((row) => row.fileId);
+  }
   const primary = mediaFileIdFromMessage(message);
   return primary != null ? [primary] : [];
 }
@@ -286,12 +277,12 @@ async function readMessageMediaPreviewBytes(
   }
 
   if (contentType === "messagePhoto") {
-    const mini = readMinithumbnailJpeg(contentRow);
-    if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
-    const photoIds = photoFileIdsBySizeDesc(contentRow);
-    const smallestId = photoIds[photoIds.length - 1];
-    if (smallestId != null) {
-      const local = await readLocalFileBytes(client, smallestId, 15_000);
+    const mini = readPhotoMinithumbnail(contentRow);
+    if (mini) return { data: mini.data, mime: "image/jpeg" };
+    const candidates = listPhotoSizeCandidates(contentRow);
+    const smallest = candidates[candidates.length - 1];
+    if (smallest != null) {
+      const local = await readLocalFileBytes(client, smallest.fileId, 15_000);
       if (local) {
         return { data: local.data, mime: mimeFromPath(local.path) };
       }
@@ -332,13 +323,42 @@ export async function readMessageMediaBytes(
   const contentType = contentRow._;
 
   if (mode === "preview") {
-    return readMessageMediaPreviewBytes(
+    const preview = await readMessageMediaPreviewBytes(
       client,
       message,
       contentRow,
       typeof contentType === "string" ? contentType : undefined,
     );
+    logGateway("message_media_preview", {
+      chatId,
+      messageId,
+      contentType,
+      ok: preview != null,
+      bytes: preview?.data.length ?? 0,
+      mime: preview?.mime ?? null,
+    });
+    return preview;
   }
+
+  const photoCandidates = mediaPhotoCandidatesFromMessage(message);
+  const candidates: Array<{ fileId: number; width: number | null; height: number | null; type: string }> =
+    photoCandidates.length > 0
+      ? photoCandidates
+      : mediaFileIdsFromMessage(message).map((fileId) => ({
+          fileId,
+          width: null,
+          height: null,
+          type: "",
+        }));
+
+  logGateway("message_media_full_start", {
+    chatId,
+    messageId,
+    contentType,
+    photoFileIdCount: candidates.length,
+    photoFileIds: candidates.slice(0, 5).map((row) => row.fileId),
+    photoSizeTypes: candidates.slice(0, 5).map((row) => row.type || null),
+  });
 
   const downloadTimeoutMs = mediaDownloadTimeoutMs(
     typeof contentType === "string" ? contentType : undefined,
@@ -346,35 +366,51 @@ export async function readMessageMediaBytes(
   const preferVideoMime =
     contentType === "messageVideo" || contentType === "messageAnimation";
 
-  for (const fileId of mediaFileIdsFromMessage(message)) {
-    const local = await readLocalFileBytes(client, fileId, downloadTimeoutMs);
+  for (const candidate of candidates) {
+    const local = await readLocalFileBytes(client, candidate.fileId, downloadTimeoutMs);
     if (!local) continue;
     const mime = resolveMediaMime(contentRow, local.path, preferVideoMime);
     if (preferVideoMime && mime.startsWith("image/")) continue;
+    if (
+      contentType === "messagePhoto" &&
+      !photoBytesLookFullSize(local.data, candidate.width, candidate.height)
+    ) {
+      const dims = readJpegDimensions(local.data);
+      logGateway("message_media_full_skip_thumbnail", {
+        chatId,
+        messageId,
+        fileId: candidate.fileId,
+        photoSizeType: candidate.type || null,
+        declaredWidth: candidate.width,
+        declaredHeight: candidate.height,
+        bytes: local.data.length,
+        mime,
+        width: dims?.width ?? null,
+        height: dims?.height ?? null,
+      });
+      continue;
+    }
+    logGateway("message_media_full_ok", {
+      chatId,
+      messageId,
+      fileId: candidate.fileId,
+      photoSizeType: candidate.type || null,
+      declaredWidth: candidate.width,
+      declaredHeight: candidate.height,
+      bytes: local.data.length,
+      mime,
+      pathExt: local.path.split(".").pop() ?? null,
+    });
     return { data: local.data, mime };
   }
 
-  const thumbnailId = mediaThumbnailFileIdFromMessage(message);
-  if (thumbnailId != null && !preferVideoMime) {
-    const local = await readLocalFileBytes(client, thumbnailId, downloadTimeoutMs);
-    if (local) {
-      return { data: local.data, mime: mimeFromPath(local.path) };
-    }
-  }
-
-  if (contentType === "messagePhoto") {
-    const mini = readMinithumbnailJpeg(contentRow);
-    if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
-  }
-
-  if (preferVideoMime) {
-    const videoThumbId = mediaThumbnailFileIdFromMessage(message);
-    if (videoThumbId != null) {
-      const local = await readLocalFileBytes(client, videoThumbId, 15_000);
-      if (local) {
-        return { data: local.data, mime: mimeFromPath(local.path) };
-      }
-    }
+  if (contentType === "messagePhoto" || preferVideoMime) {
+    logGateway("message_media_full_unavailable", {
+      chatId,
+      messageId,
+      contentType,
+      photoFileIdCount: candidates.length,
+    });
   }
 
   return null;

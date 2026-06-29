@@ -581,10 +581,28 @@ export async function telegramMessagesMediaHandler(
   const previewParam = (url.searchParams.get("preview") || "").trim();
   const preview = previewParam === "1" || previewParam === "true";
 
+  const started = Date.now();
   const media = await gatewayFetchMessageMedia(userOrRes, chatId, messageId, preview);
   if (!media) {
+    logTelegramMessagesApi("messages_media_unavailable", {
+      telegramUsername: userOrRes,
+      chatId,
+      messageId,
+      preview,
+      elapsedMs: Date.now() - started,
+    });
     return finishJson(request, res, { ok: false, error: "media_unavailable" }, 404);
   }
+
+  logTelegramMessagesApi("messages_media_ok", {
+    telegramUsername: userOrRes,
+    chatId,
+    messageId,
+    preview,
+    mime: media.mime,
+    bytes: media.data.byteLength,
+    elapsedMs: Date.now() - started,
+  });
 
   const headers = new Headers({
     "Content-Type": media.mime,

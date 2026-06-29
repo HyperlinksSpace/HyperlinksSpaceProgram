@@ -214,5 +214,8 @@ export async function sendChatTextMessage(
   })) as TdMessage;
 
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  return mapHistoryMessage(client, message, chat, new Map(), new Map());
+  const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map());
+  if (!mapped || !mapped.is_outgoing) return mapped;
+  if (mapped.outgoing_status === "failed") return mapped;
+  return { ...mapped, outgoing_status: "delivered" };
 }

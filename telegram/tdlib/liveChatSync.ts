@@ -2,7 +2,7 @@ import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
 import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
-import { chatActionFromTdlib, presenceFromTdlibStatus, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
+import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -75,12 +75,29 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
   if (type === "updateNewMessage") {
     const message = update.message as TdMessage & { chat_id?: number };
     if (typeof message?.chat_id !== "number") return;
-    const preview = previewFromMessage(message);
+    let preview = previewFromMessage(message);
+    let lastMessage: TdMessage = message;
     try {
+      if (!preview || isGenericMessagePreviewLabel(preview)) {
+        const messageId = Number(message.id);
+        if (Number.isFinite(messageId) && messageId > 0) {
+          try {
+            const full = (await client.invoke({
+              _: "getMessage",
+              chat_id: message.chat_id,
+              message_id: messageId,
+            })) as TdMessage;
+            lastMessage = full;
+            preview = previewFromMessage(full);
+          } catch {
+            /* keep partial update payload */
+          }
+        }
+      }
       const chat = (await client.invoke({ _: "getChat", chat_id: message.chat_id })) as TdChat;
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
         subtitle: preview,
-        last_message: message,
+        last_message: lastMessage,
       });
       logLiveSync(record, "live_chat_message_applied", {
         chatId: message.chat_id,

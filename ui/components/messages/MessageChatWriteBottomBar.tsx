@@ -3,6 +3,7 @@ import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeSelectedChat } from "../../authenticatedHomeSelectedChat";
 import { publishOutgoingChatMessage } from "../../messageChatOutgoing";
 import { sendTelegramChatMessage } from "../../telegram/sendTelegramChatMessage";
+import { enrichHistoryMessageDisplay } from "../messages/messageChatHistoryTypes";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { appWarn } from "../../../shared/appLog";
 import { GlobalBottomBar } from "../GlobalBottomBar";
@@ -23,7 +24,10 @@ export function MessageChatWriteBottomBar() {
       try {
         const result = await sendTelegramChatMessage(selectedChat.telegram_chat_id, text);
         if (result.ok) {
-          publishOutgoingChatMessage(selectedChat.telegram_chat_id, result.message);
+          publishOutgoingChatMessage(
+            selectedChat.telegram_chat_id,
+            enrichHistoryMessageDisplay(result.message),
+          );
         } else {
           appWarn("[message-send]", String(result.error), {
             chatId: selectedChat.telegram_chat_id,

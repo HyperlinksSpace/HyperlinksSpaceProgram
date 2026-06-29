@@ -2,13 +2,16 @@ import type { Client } from "tdl";
 import {
   chatTitle,
   formattedTextPlain,
+  isGenericMessagePreviewLabel,
   lastReadOutboxMessageIdFromChat,
+  messageBodyText,
   messageIsOutgoing,
   messageReadDateFromTdMessage,
   previewFromMessage,
   type TdChat,
   type TdMessage,
 } from "./chatPreview.js";
+import { largestPhotoDimensions } from "./photoParse.js";
 
 export type ChatKind = "private" | "group" | "supergroup" | "channel";
 
@@ -100,44 +103,13 @@ function parseCallSuccess(message: TdMessage): boolean {
   );
 }
 
-function collectPhotoSizeRows(raw: unknown): Array<{ width?: number; height?: number }> {
-  if (!raw || typeof raw !== "object") return [];
-  const row = raw as { _?: string; width?: number; height?: number; sizes?: unknown[] };
-  if (row._ === "photoSizeProgressive" && Array.isArray(row.sizes)) {
-    return row.sizes.flatMap((inner) => collectPhotoSizeRows(inner));
-  }
-  if (Number.isFinite(Number(row.width)) && Number.isFinite(Number(row.height))) {
-    return [row];
-  }
-  return [];
-}
-
 function mediaDimensions(message: TdMessage): { width: number | null; height: number | null } {
   const content = message.content;
   if (!content || typeof content !== "object") return { width: null, height: null };
   const row = content as Record<string, unknown>;
   const type = row._;
   if (type === "messagePhoto") {
-    const photo = row.photo as { sizes?: unknown[] } | undefined;
-    const sizes = photo?.sizes;
-    if (!Array.isArray(sizes) || sizes.length === 0) return { width: null, height: null };
-    let bestW = 0;
-    let bestH = 0;
-    let bestArea = 0;
-    for (const raw of sizes) {
-      for (const size of collectPhotoSizeRows(raw)) {
-        const w = Number(size.width);
-        const h = Number(size.height);
-        if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) continue;
-        const area = w * h;
-        if (area > bestArea) {
-          bestArea = area;
-          bestW = w;
-          bestH = h;
-        }
-      }
-    }
-    return bestArea > 0 ? { width: bestW, height: bestH } : { width: null, height: null };
+    return largestPhotoDimensions(row);
   }
   if (type === "messageVideo" || type === "messageAnimation") {
     const media = (row.video ?? row.animation) as { width?: number; height?: number } | undefined;
@@ -171,16 +143,41 @@ function captionText(message: TdMessage): string | null {
 }
 
 function bodyText(message: TdMessage): string {
-  const c = message.content;
-  if (!c || typeof c !== "object") return "";
-  if (c._ === "messageText") {
-    return formattedTextPlain((c as { text?: unknown }).text) ?? "";
+  return messageBodyText(message);
+}
+
+function messageNeedsFullFetch(message: TdMessage): boolean {
+  const text = bodyText(message).trim();
+  if (text && !isGenericMessagePreviewLabel(text)) return false;
+  const content = message.content;
+  if (!content || typeof content !== "object") return true;
+  const type = content._;
+  if (type === "messageText") {
+    return !formattedTextPlain((content as { text?: unknown }).text);
   }
-  const caption = captionText(message);
-  if (caption) return caption;
-  if (hasDisplayableMedia(message)) return "";
-  if (messageContentKind(message) === "sticker") return "";
-  return previewFromMessage(message) ?? "";
+  if (typeof type === "string" && type.startsWith("message")) {
+    return !text || isGenericMessagePreviewLabel(text);
+  }
+  return false;
+}
+
+async function resolveFullMessage(
+  client: Client,
+  message: TdMessage,
+  chatId: number,
+): Promise<TdMessage> {
+  if (!messageNeedsFullFetch(message)) return message;
+  const messageId = Number(message.id);
+  if (!Number.isFinite(messageId) || messageId <= 0) return message;
+  try {
+    return (await client.invoke({
+      _: "getMessage",
+      chat_id: chatId,
+      message_id: messageId,
+    })) as TdMessage;
+  } catch {
+    return message;
+  }
 }
 
 async function resolveReplyPreview(
@@ -447,34 +444,35 @@ export async function mapHistoryMessage(
   userCache: Map<number, string>,
   chatCache: Map<number, { title: string; isChannel: boolean }>,
 ): Promise<MappedChatHistoryMessage | null> {
-  const telegramMessageId = Number(message.id);
+  const resolved = await resolveFullMessage(client, message, chat.id);
+  const telegramMessageId = Number(resolved.id);
   if (!Number.isFinite(telegramMessageId)) return null;
 
-  const isCall = isCallMessage(message);
-  const text = bodyText(message).trim();
-  const hasMedia = hasDisplayableMedia(message);
+  const isCall = isCallMessage(resolved);
+  const text = bodyText(resolved).trim();
+  const hasMedia = hasDisplayableMedia(resolved);
   if (!text && !hasMedia && !isCall) return null;
 
-  const sender = await resolveSenderName(client, message, chat, userCache, chatCache);
-  const senderChatIdValue = senderChatId(message);
-  const replyTo = await resolveReplyPreview(client, message, userCache, chatCache);
-  const dimensions = mediaDimensions(message);
+  const sender = await resolveSenderName(client, resolved, chat, userCache, chatCache);
+  const senderChatIdValue = senderChatId(resolved);
+  const replyTo = await resolveReplyPreview(client, resolved, userCache, chatCache);
+  const dimensions = mediaDimensions(resolved);
 
   return {
     telegram_message_id: telegramMessageId,
     text,
-    sent_at: messageSentAtIso(message),
+    sent_at: messageSentAtIso(resolved),
     sender_name: sender.name,
-    sender_user_id: senderUserId(message),
+    sender_user_id: senderUserId(resolved),
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
-    is_outgoing: messageIsOutgoing(message),
-    outgoing_status: resolveOutgoingStatus(message, chat),
-    content_kind: messageContentKind(message),
+    is_outgoing: messageIsOutgoing(resolved),
+    outgoing_status: resolveOutgoingStatus(resolved, chat),
+    content_kind: messageContentKind(resolved),
     has_media: hasMedia,
     media_width: dimensions.width,
     media_height: dimensions.height,
     reply_to: replyTo,
-    ...(isCall ? { call_success: parseCallSuccess(message) } : {}),
+    ...(isCall ? { call_success: parseCallSuccess(resolved) } : {}),
   };
 }

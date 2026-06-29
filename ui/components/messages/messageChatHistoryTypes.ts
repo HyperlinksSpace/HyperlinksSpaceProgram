@@ -43,15 +43,21 @@ export type MessageChatHistoryItem = {
   call_success?: boolean | null;
 };
 
+/** Outgoing ticks: TDLib may briefly report `pending` after send; show delivered in UI. */
+export function coalesceOutgoingStatus(
+  raw: unknown,
+  isOutgoing: boolean,
+): MessageOutgoingStatus | null {
+  if (!isOutgoing) return null;
+  if (raw === "failed") return "failed";
+  if (raw === "read") return "read";
+  return "delivered";
+}
+
 export function resolveMessageOutgoingStatus(
   item: Pick<MessageChatHistoryItem, "is_outgoing" | "outgoing_status">,
 ): MessageOutgoingStatus | null {
-  if (!item.is_outgoing) return null;
-  const status = item.outgoing_status;
-  if (status === "pending" || status === "delivered" || status === "read" || status === "failed") {
-    return status;
-  }
-  return "delivered";
+  return coalesceOutgoingStatus(item.outgoing_status, item.is_outgoing);
 }
 
 /** Highest known private-chat read cursor (outgoing messages with id <= cursor are read). */
@@ -148,6 +154,31 @@ const MEDIA_PREVIEW_LABEL_TO_KIND: Record<string, MessageChatContentKind> = {
   Sticker: "sticker",
 };
 
+const GENERIC_BODY_TEXT_LABEL = "Message";
+
+function isPlaceholderBodyText(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (trimmed === GENERIC_BODY_TEXT_LABEL) return true;
+  return MEDIA_PREVIEW_LABEL_TO_KIND[trimmed] != null;
+}
+
+function mergeTextFields(
+  preferred: MessageChatHistoryItem,
+  fallback: MessageChatHistoryItem,
+): MessageChatHistoryItem {
+  const preferredText = preferred.text.trim();
+  const fallbackText = fallback.text.trim();
+  const preferredOk = !isPlaceholderBodyText(preferredText);
+  const fallbackOk = !isPlaceholderBodyText(fallbackText);
+  if (preferredOk) return preferred;
+  if (fallbackOk) return { ...preferred, text: fallback.text };
+  if (preferredText === GENERIC_BODY_TEXT_LABEL) {
+    return { ...preferred, text: "" };
+  }
+  return preferred;
+}
+
 function mediaPlaceholderLabel(kind: MessageChatContentKind): string | null {
   if (kind === "photo") return "Photo";
   if (kind === "video") return "Video";
@@ -193,6 +224,10 @@ export function enrichHistoryMessageDisplay(item: MessageChatHistoryItem): Messa
     if (placeholder && text.trim() === placeholder) {
       text = "";
     }
+  }
+
+  if (text.trim() === GENERIC_BODY_TEXT_LABEL) {
+    text = "";
   }
 
   if (
@@ -250,7 +285,7 @@ export function mergeHistoryMessageRow(
   }
 
   return enrichHistoryMessageDisplay({
-    ...mergeMediaFields(incomingEnriched, prevEnriched),
+    ...mergeTextFields(mergeMediaFields(incomingEnriched, prevEnriched), prevEnriched),
     outgoing_status: outgoingStatus,
   });
 }

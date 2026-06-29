@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../ui/authenticatedHomeSelectedChat";
 import { TradeScreen } from "../../ui/screens/TradeScreen";
 
 export default function TradeRoute() {
@@ -12,6 +13,7 @@ export default function TradeRoute() {
   useLayoutEffect(() => {
     if (isWide) {
       openAuthenticatedHomeRightPanel("trade");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
   }, [isWide]);
 

@@ -159,26 +159,122 @@ export function formattedTextPlain(value: unknown): string | null {
   return typeof text === "string" && text.trim() ? text.trim() : null;
 }
 
+/** Generic chat-list / history fallback when TDLib content is not yet mapped. */
+export const GENERIC_MESSAGE_PREVIEW_LABEL = "Message";
+
+export function isGenericMessagePreviewLabel(text: string | null | undefined): boolean {
+  return text?.trim() === GENERIC_MESSAGE_PREVIEW_LABEL;
+}
+
+function truncatePreview(text: string, maxLen = 240): string {
+  return text.length > maxLen ? text.slice(0, maxLen) : text;
+}
+
+function captionPlain(content: Record<string, unknown>): string | null {
+  return formattedTextPlain(content.caption);
+}
+
+function webPagePlainText(content: Record<string, unknown>): string | null {
+  const caption = captionPlain(content);
+  if (caption) return caption;
+  const webPage = content.web_page as Record<string, unknown> | undefined;
+  if (!webPage || typeof webPage !== "object") return null;
+  for (const key of ["title", "description", "site_name", "display_url", "url"] as const) {
+    const value = webPage[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function animatedEmojiPlainText(content: Record<string, unknown>): string | null {
+  const animated = content.animated_emoji as { emoji?: string } | undefined;
+  if (typeof animated?.emoji === "string" && animated.emoji.trim()) {
+    return animated.emoji.trim();
+  }
+  const custom = content.emoji as { emoji?: string } | undefined;
+  if (typeof custom?.emoji === "string" && custom.emoji.trim()) {
+    return custom.emoji.trim();
+  }
+  return null;
+}
+
+function venuePlainText(content: Record<string, unknown>): string | null {
+  const venue = content.venue as { title?: string; address?: string } | undefined;
+  const title = typeof venue?.title === "string" ? venue.title.trim() : "";
+  const address = typeof venue?.address === "string" ? venue.address.trim() : "";
+  if (title && address) return `${title} · ${address}`;
+  return title || address || null;
+}
+
+function extractPrimaryMessageText(content: Record<string, unknown>, type: string): string | null {
+  if (type === "messageText") {
+    return formattedTextPlain(content.text);
+  }
+  if (type === "messageForwardedMessage") {
+    const nested = content.message as TdMessage | undefined;
+    return nested ? messageBodyText(nested) || null : null;
+  }
+  if (
+    type === "messagePhoto" ||
+    type === "messageVideo" ||
+    type === "messageDocument" ||
+    type === "messageAnimation" ||
+    type === "messageAudio" ||
+    type === "messageVoiceNote" ||
+    type === "messagePaidMedia"
+  ) {
+    return captionPlain(content);
+  }
+  if (type === "messageWebPage") {
+    return webPagePlainText(content);
+  }
+  if (type === "messageAnimatedEmoji") {
+    return animatedEmojiPlainText(content);
+  }
+  if (type === "messageVenue") {
+    return venuePlainText(content);
+  }
+  return null;
+}
+
+/** Full bubble text for chat history (never returns the generic \"Message\" placeholder). */
+export function messageBodyText(msg: TdMessage | undefined | null): string {
+  const c = msg?.content;
+  if (!c || typeof c !== "object") return "";
+  const type = c._;
+  if (typeof type !== "string") return "";
+
+  const primary = extractPrimaryMessageText(c as Record<string, unknown>, type);
+  if (primary) return primary;
+
+  if (
+    type === "messagePhoto" ||
+    type === "messageVideo" ||
+    type === "messageDocument" ||
+    type === "messageAnimation" ||
+    type === "messageSticker" ||
+    type === "messagePaidMedia"
+  ) {
+    return "";
+  }
+
+  const preview = previewFromMessage(msg);
+  if (preview && !isGenericMessagePreviewLabel(preview)) return preview;
+  return "";
+}
+
 export function previewFromMessage(msg: TdMessage | undefined | null): string | null {
   const c = msg?.content;
   if (!c || typeof c !== "object") return null;
   const type = c._;
   if (typeof type !== "string") return null;
 
-  if (type === "messageText") {
-    const text = formattedTextPlain(c.text);
-    return text ? text.slice(0, 240) : null;
-  }
-
-  if (type === "messageForwardedMessage") {
-    const nested = c.message as TdMessage | undefined;
-    const inner = previewFromMessage(nested);
-    if (inner) return inner;
-  }
+  const primary = extractPrimaryMessageText(c as Record<string, unknown>, type);
+  if (primary) return truncatePreview(primary);
 
   if (type === "messagePhoto" || type === "messageVideo" || type === "messageDocument") {
-    const caption = formattedTextPlain(c.caption);
-    if (caption) return caption.slice(0, 240);
+    const caption = captionPlain(c as Record<string, unknown>);
+    if (caption) return truncatePreview(caption);
   }
 
   if (type === "messagePhoto") return "Photo";
@@ -211,17 +307,15 @@ export function previewFromMessage(msg: TdMessage | undefined | null): string | 
   if (type === "messageChatDeleteMember") return "Member left";
   if (type === "messageChatJoinByLink") return "Joined via link";
   if (type === "messageChatUpgradeTo") return "Group upgraded";
-  if (type.startsWith("message")) return "Message";
+  if (type === "messagePaidMedia") return "Paid media";
+  if (type.startsWith("message")) return GENERIC_MESSAGE_PREVIEW_LABEL;
   return null;
 }
 
 /** Full text for chat body (no preview truncation on plain text messages). */
 export function messageDisplayText(msg: TdMessage | undefined | null): string | null {
-  const c = msg?.content;
-  if (!c || typeof c !== "object") return null;
-  if (c._ !== "messageText") return null;
-  const text = formattedTextPlain(c.text);
-  return text ?? null;
+  const text = messageBodyText(msg);
+  return text || null;
 }
 
 export function lastMessageAtIso(chat: TdChat, message?: TdMessage | null): string {

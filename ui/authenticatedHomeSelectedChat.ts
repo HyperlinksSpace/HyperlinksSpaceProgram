@@ -91,6 +91,8 @@ function writeStoredChat(chat: MessageChatRowData | null): void {
 }
 
 let selectedChat: MessageChatRowData | null = null;
+/** Which pane occupies the wide middle column: message thread vs header menu panel. */
+let middleColumnFocus: "chat" | "headerPanel" = "headerPanel";
 /** Persisted: restore the opened chat and resume its history on reload. */
 let historyLoadChatId: number | null = null;
 let historyLoadGeneration = 0;
@@ -117,6 +119,7 @@ function hydrateFromStorageIfNeeded() {
   if (selectedChat && historyLoadGeneration === 0) {
     historyLoadChatId = selectedChat.telegram_chat_id;
     historyLoadGeneration = 1;
+    middleColumnFocus = "chat";
     syncHistoryLoadSnapshot();
   }
 }
@@ -160,11 +163,23 @@ export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
 /** Select chat and start (or restart) paginated history load for that chat. */
 export function openAuthenticatedHomeChatHistory(chat: MessageChatRowData) {
   hydrateFromStorageIfNeeded();
+  const sameChat = selectedChat?.telegram_chat_id === chat.telegram_chat_id;
   selectedChat = chat;
+  middleColumnFocus = "chat";
   writeStoredChat(chat);
-  historyLoadChatId = chat.telegram_chat_id;
-  historyLoadGeneration += 1;
-  syncHistoryLoadSnapshot();
+  if (!sameChat) {
+    historyLoadChatId = chat.telegram_chat_id;
+    historyLoadGeneration += 1;
+    syncHistoryLoadSnapshot();
+  }
+  emit();
+}
+
+/** Show header menu panels (swap/smart/…) in the wide middle column. */
+export function focusAuthenticatedHomeMiddleColumnOnHeaderPanel() {
+  hydrateFromStorageIfNeeded();
+  if (middleColumnFocus === "headerPanel") return;
+  middleColumnFocus = "headerPanel";
   emit();
 }
 
@@ -191,6 +206,23 @@ function subscribe(onStoreChange: () => void) {
 
 export function useAuthenticatedHomeSelectedChat(): MessageChatRowData | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+function getMiddleColumnFocusSnapshot(): "chat" | "headerPanel" {
+  hydrateFromStorageIfNeeded();
+  return middleColumnFocus;
+}
+
+function getMiddleColumnFocusServerSnapshot(): "chat" | "headerPanel" {
+  return "headerPanel";
+}
+
+export function useAuthenticatedHomeMiddleColumnFocus(): "chat" | "headerPanel" {
+  return useSyncExternalStore(
+    subscribe,
+    getMiddleColumnFocusSnapshot,
+    getMiddleColumnFocusServerSnapshot,
+  );
 }
 
 function getHistoryLoadSnapshot(): AuthenticatedHomeHistoryLoadTarget {

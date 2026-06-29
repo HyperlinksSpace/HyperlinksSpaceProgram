@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../ui/authenticatedHomeSelectedChat";
 import { SendScreen } from "../../ui/screens/SendScreen";
 
 export default function SendRoute() {
@@ -12,6 +13,7 @@ export default function SendRoute() {
   useLayoutEffect(() => {
     if (isWide) {
       openAuthenticatedHomeRightPanel("send");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
   }, [isWide]);
 

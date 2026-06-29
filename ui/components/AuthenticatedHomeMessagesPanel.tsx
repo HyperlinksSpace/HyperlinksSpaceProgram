@@ -296,7 +296,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     lastGatewayResyncRef.current = 0;
     pollCountRef.current = 0;
     void (async () => {
-      await loadChats();
+      await loadChats({ silent: true });
       await triggerGatewayResync("initial_mount");
       await loadChats({ silent: true });
     })();
@@ -386,7 +386,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }
 
   const list = (
-    <Pressable style={{ width: "100%", alignSelf: "stretch" }} onPress={handleClearSelection}>
+    <View style={{ width: "100%", alignSelf: "stretch" }} pointerEvents="box-none">
       <View style={listShellStyle} pointerEvents="box-none">
         {chats.map((item, index) => (
           <MessageChatRow
@@ -400,7 +400,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           />
         ))}
       </View>
-    </Pressable>
+    </View>
   );
 
   if (!scrollable) {

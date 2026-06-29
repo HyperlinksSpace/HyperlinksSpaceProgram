@@ -3,6 +3,7 @@ import { useLayoutEffect } from "react";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAuthenticatedHomeRouteWideLayout } from "../../../ui/authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../../../ui/authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../../../ui/authenticatedHomeSelectedChat";
 import { ChooseCurrencyScreen } from "../../../ui/screens/ChooseCurrencyScreen";
 import {
   closeSwapCurrencyPicker,
@@ -25,6 +26,7 @@ export default function SwapChooseCurrencyRoute() {
     openSwapCurrencyPicker(side);
     if (isWide) {
       openAuthenticatedHomeRightPanel("swap");
+      focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
     }
     return () => {
       closeSwapCurrencyPicker();

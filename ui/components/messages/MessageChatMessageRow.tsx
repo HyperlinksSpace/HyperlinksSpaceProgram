@@ -369,6 +369,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
             chatKind={chatKind}
             colors={colors}
             maxWidthPx={bubbleContentWidthPx}
+            mediaColumnMaxWidthPx={bubbleInnerMaxWidth}
             metaPlacement={metaPlacement}
             onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
           />

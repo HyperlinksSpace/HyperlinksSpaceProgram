@@ -14,7 +14,6 @@ export function ChatAvatarFallback({
   colors: ThemeColors;
   scheme: ThemeName;
 }) {
-  const radius = sizePx / 2;
   const backgroundColor = chatAvatarFallbackBackground(colors, scheme);
 
   if (initials.length === 0) {
@@ -23,7 +22,7 @@ export function ChatAvatarFallback({
         style={{
           width: sizePx,
           height: sizePx,
-          borderRadius: radius,
+          borderRadius: 0,
           backgroundColor,
         }}
       />
@@ -39,7 +38,7 @@ export function ChatAvatarFallback({
       style={{
         width: sizePx,
         height: sizePx,
-        borderRadius: radius,
+        borderRadius: 0,
         backgroundColor,
         flexDirection: "row",
         alignItems: "center",

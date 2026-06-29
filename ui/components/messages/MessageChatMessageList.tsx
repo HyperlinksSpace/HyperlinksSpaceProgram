@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Text, View, type LayoutChangeEvent } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
 import { safeTelegramUserIdForLog } from "../../../shared/appLog";
@@ -10,7 +10,7 @@ import { subscribeOutgoingChatMessages } from "../../messageChatOutgoing";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { warmupTelegramChatSession } from "../../telegram/warmupTelegramChatSession";
-import { HspScrollColumn, type HspScrollColumnHandle } from "../HspScrollColumn";
+import { HspScrollColumn, type HspScrollAnchor, type HspScrollColumnHandle } from "../HspScrollColumn";
 import {
   MESSAGE_BUBBLE_ROW_GAP_PX,
   MESSAGE_CHAT_BODY_PADDING_PX,
@@ -21,10 +21,10 @@ import type {
   MessageChatContentKind,
   MessageChatHistoryItem,
   MessageChatKind,
-  MessageOutgoingStatus,
 } from "./messageChatHistoryTypes";
 import { patchAuthenticatedHomeSelectedChatReadOutbox } from "../../authenticatedHomeSelectedChat";
 import {
+  coalesceOutgoingStatus,
   effectiveReadOutboxMessageId as mergeReadOutboxCursor,
   enrichHistoryMessageDisplay,
   maxReadOutboxMessageIdFromItems,
@@ -39,7 +39,7 @@ type Props = {
   colors: ThemeColors;
 };
 
-const MESSAGE_CHAT_OLDER_REVEAL_PX = 220;
+const MESSAGE_CHAT_LIVE_POLL_MS = 2_000;
 
 function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -65,18 +65,8 @@ function normalizeHistoryMessage(raw: unknown): MessageChatHistoryItem | null {
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
   const isOutgoing = Boolean(row.is_outgoing ?? row.isOutgoing);
-  let outgoingStatus: MessageOutgoingStatus | null = null;
   const outgoingRaw = row.outgoing_status ?? row.outgoingStatus;
-  if (
-    outgoingRaw === "pending" ||
-    outgoingRaw === "delivered" ||
-    outgoingRaw === "read" ||
-    outgoingRaw === "failed"
-  ) {
-    outgoingStatus = outgoingRaw;
-  } else if (isOutgoing) {
-    outgoingStatus = "delivered";
-  }
+  const outgoingStatus = coalesceOutgoingStatus(outgoingRaw, isOutgoing);
   let replyTo: MessageChatHistoryItem["reply_to"] = null;
   const replyRaw = row.reply_to;
   if (replyRaw && typeof replyRaw === "object" && !Array.isArray(replyRaw)) {
@@ -238,6 +228,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [columnWidthPx, setColumnWidthPx] = useState(0);
   const scrollControllerRef = useRef<HspScrollColumnHandle | null>(null);
   const loadingOlderRef = useRef(false);
+  const pendingScrollAnchorRef = useRef<HspScrollAnchor | null>(null);
 
   const onColumnLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.round(event.nativeEvent.layout.width);
@@ -270,6 +261,14 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     if (chatKind !== "private") return enriched;
     return patchOutgoingStatusesWithReadOutbox(enriched, readOutboxCursor);
   }, [chatKind, messages, readOutboxCursor]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    if (!anchor) return;
+    pendingScrollAnchorRef.current = null;
+    scrollControllerRef.current?.restoreScrollAnchor(anchor);
+    scrollControllerRef.current?.clearNearTopLatch();
+  }, [messages]);
 
   useEffect(() => {
     return subscribeOutgoingChatMessages(({ chatId, message }) => {
@@ -382,6 +381,96 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     shouldLoadHistory,
   ]);
 
+  useEffect(() => {
+    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected || loadingInitial) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const pollLatest = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const result = await fetchChatHistoryPage(
+        chat.telegram_chat_id,
+        MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+      );
+      if (cancelled || result.error) return;
+
+      setMessages((prev) => {
+        const merged = mergeHistoryMessages(prev, result.messages);
+        const prevMaxId = prev.length > 0 ? prev[prev.length - 1]!.telegram_message_id : 0;
+        const mergedMaxId =
+          merged.length > 0 ? merged[merged.length - 1]!.telegram_message_id : 0;
+        if (mergedMaxId > prevMaxId) {
+          scrollToBottom();
+        }
+        return merged;
+      });
+      setLastReadOutboxFromHistory((prev) =>
+        mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+      );
+    };
+
+    const timer = setInterval(() => {
+      void pollLatest();
+    }, MESSAGE_CHAT_LIVE_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    chat.telegram_chat_id,
+    isAuthenticated,
+    isTelegramMessagesConnected,
+    loadingInitial,
+    scrollToBottom,
+    shouldLoadHistory,
+  ]);
+
+  useEffect(() => {
+    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected || loadingInitial) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const result = await fetchChatHistoryPage(
+        chat.telegram_chat_id,
+        MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+      );
+      if (cancelled || result.error) return;
+
+      setMessages((prev) => {
+        const merged = mergeHistoryMessages(prev, result.messages);
+        const prevMaxId = prev.length > 0 ? prev[prev.length - 1]!.telegram_message_id : 0;
+        const mergedMaxId =
+          merged.length > 0 ? merged[merged.length - 1]!.telegram_message_id : 0;
+        if (mergedMaxId > prevMaxId) {
+          scrollToBottom();
+        }
+        return merged;
+      });
+      setLastReadOutboxFromHistory((prev) =>
+        mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    chat.last_message_at,
+    chat.subtitle,
+    chat.telegram_chat_id,
+    isAuthenticated,
+    isTelegramMessagesConnected,
+    loadingInitial,
+    scrollToBottom,
+    shouldLoadHistory,
+  ]);
+
   const loadOlderMessages = useCallback(async () => {
     if (
       loadingInitial ||
@@ -394,66 +483,42 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
     loadingOlderRef.current = true;
     setLoadingOlder(true);
-    const metricsBefore = scrollControllerRef.current?.getMetrics();
-    let cursorBeforeMessageId = nextBeforeMessageId;
-    let keepLoading = true;
-    let totalAdded = 0;
+    const scrollAnchor = scrollControllerRef.current?.captureScrollAnchor();
 
     try {
-      while (keepLoading && cursorBeforeMessageId != null) {
-        let result = await fetchChatHistoryPage(
+      let result = await fetchChatHistoryPage(
+        chat.telegram_chat_id,
+        MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+        nextBeforeMessageId,
+      );
+      if (
+        result.error === "session_not_ready" ||
+        result.error === "history_unavailable"
+      ) {
+        await warmupTelegramSession(chat.telegram_chat_id);
+        result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-          cursorBeforeMessageId,
+          nextBeforeMessageId,
         );
-        if (
-          result.error === "session_not_ready" ||
-          result.error === "history_unavailable"
-        ) {
-          await warmupTelegramSession(chat.telegram_chat_id);
-          result = await fetchChatHistoryPage(
-            chat.telegram_chat_id,
-            MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-            cursorBeforeMessageId,
-          );
-        }
-        if (result.error) break;
+      }
+      if (result.error) return;
 
-        const addedThisBatch = result.messages.length;
-        totalAdded += addedThisBatch;
-        setMessages((prev) => mergeHistoryMessages(prev, result.messages));
+      if (result.messages.length === 0) {
         setHasMoreOlder(result.hasMoreOlder);
         setNextBeforeMessageId(result.nextBeforeMessageId);
-        setLastReadOutboxFromHistory((prev) =>
-          mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
-        );
-
-        keepLoading =
-          result.hasMoreOlder &&
-          result.nextBeforeMessageId != null &&
-          addedThisBatch > 0 &&
-          addedThisBatch < MESSAGE_CHAT_HISTORY_PAGE_SIZE &&
-          totalAdded < MESSAGE_CHAT_HISTORY_PAGE_SIZE;
-        cursorBeforeMessageId = result.nextBeforeMessageId;
+        return;
       }
 
-      if (metricsBefore && totalAdded > 0) {
-        requestAnimationFrame(() => {
-          const metricsAfter = scrollControllerRef.current?.getMetrics();
-          if (!metricsAfter) return;
-          const delta = metricsAfter.contentH - metricsBefore.contentH;
-          if (delta > 0) {
-            const revealPx =
-              metricsBefore.scrollY <= MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX
-                ? MESSAGE_CHAT_OLDER_REVEAL_PX
-                : 0;
-            scrollControllerRef.current?.scrollToY(
-              Math.max(0, metricsBefore.scrollY + delta - revealPx),
-            );
-          }
-          scrollControllerRef.current?.clearNearTopLatch();
-        });
+      if (scrollAnchor) {
+        pendingScrollAnchorRef.current = scrollAnchor;
       }
+      setMessages((prev) => mergeHistoryMessages(prev, result.messages));
+      setHasMoreOlder(result.hasMoreOlder);
+      setNextBeforeMessageId(result.nextBeforeMessageId);
+      setLastReadOutboxFromHistory((prev) =>
+        mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+      );
     } finally {
       loadingOlderRef.current = false;
       setLoadingOlder(false);
@@ -488,6 +553,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         flex: 1,
         minHeight: 0,
         alignSelf: "stretch",
+        position: "relative",
       }}
       onLayout={onColumnLayout}
     >
@@ -504,12 +570,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           padding: MESSAGE_CHAT_BODY_PADDING_PX,
         }}
       >
-        {loadingOlder ? (
-          <View style={{ paddingBottom: 12, alignItems: "center" }}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
-        ) : null}
-
         {loadingInitial && messages.length === 0 ? (
           <View style={{ paddingVertical: 24, alignItems: "center" }}>
             <ActivityIndicator size="small" color={colors.primary} />
@@ -555,6 +615,21 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           </View>
         ))}
       </HspScrollColumn>
+
+      {loadingOlder ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: MESSAGE_CHAT_BODY_PADDING_PX,
+            left: 0,
+            right: 0,
+            alignItems: "center",
+          }}
+        >
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      ) : null}
     </View>
   );
 }
