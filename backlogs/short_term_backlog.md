@@ -1,7 +1,12 @@
+test
+Time style, second checmark, photos and videos
+Reactions, reactions notifications
 Profile & Music, Calls
 Balance
+Sign in with email,desktop, updates
 Rate
 Make logs more compact
+Switch to Claude Code + Design, hmmm.
 Chat history
 My profile
 Emojis rendering, fix time, writing messages, photos and videos, messages loading, checkmarks

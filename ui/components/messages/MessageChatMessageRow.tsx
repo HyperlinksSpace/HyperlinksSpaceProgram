@@ -359,6 +359,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
                     paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
                     paddingVertical: MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
                     backgroundColor: colors.undercover,
+                    overflow: "visible",
                   }),
             },
             bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,

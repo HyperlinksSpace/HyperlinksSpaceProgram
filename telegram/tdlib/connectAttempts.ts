@@ -1237,6 +1237,7 @@ export async function getMessageMediaForUser(
   telegramUsername: string,
   chatId: number,
   messageId: number,
+  mode: "full" | "preview" = "full",
 ): Promise<{ data: Buffer; mime: string } | null> {
   let record = getActiveRecord(telegramUsername);
   if (!record?.client || record.authState !== "ready") {
@@ -1244,7 +1245,7 @@ export async function getMessageMediaForUser(
   }
   if (!record?.client || record.authState !== "ready") return null;
   const { readMessageMediaBytes } = await import("./messageMedia.js");
-  return readMessageMediaBytes(record.client, chatId, messageId);
+  return readMessageMediaBytes(record.client, chatId, messageId, mode);
 }
 
 export function gatewayHealth(): { ok: boolean; tdlibConfigured: boolean; hasApiCredentials: boolean } {

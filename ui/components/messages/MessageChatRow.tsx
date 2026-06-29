@@ -222,7 +222,7 @@ export function MessageChatRow({
               style={{
                 ...textBase,
                 flexShrink: 0,
-                color: colors.secondary,
+                color: colors.accent,
               }}
             >
               {timeLabel}
@@ -243,7 +243,7 @@ export function MessageChatRow({
               ...textBase,
               flex: 1,
               minWidth: 0,
-              color: colors.accent,
+              color: colors.secondary,
             }}
           >
             {subtitle}

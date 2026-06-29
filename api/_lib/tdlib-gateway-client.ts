@@ -409,6 +409,7 @@ export async function gatewayFetchMessageMedia(
   telegramUsername: string,
   chatId: number,
   messageId: number,
+  preview = false,
 ): Promise<{ data: ArrayBuffer; mime: string } | null> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
@@ -417,6 +418,7 @@ export async function gatewayFetchMessageMedia(
     chatId: String(chatId),
     messageId: String(messageId),
   });
+  if (preview) params.set("preview", "1");
   const url = `${base}/v1/chat/message-media?${params.toString()}`;
   try {
     const response = await fetch(url, {

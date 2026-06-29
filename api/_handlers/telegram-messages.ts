@@ -578,7 +578,10 @@ export async function telegramMessagesMediaHandler(
     return finishJson(request, res, { ok: false, error: "chat_id_and_message_id_required" }, 400);
   }
 
-  const media = await gatewayFetchMessageMedia(userOrRes, chatId, messageId);
+  const previewParam = (url.searchParams.get("preview") || "").trim();
+  const preview = previewParam === "1" || previewParam === "true";
+
+  const media = await gatewayFetchMessageMedia(userOrRes, chatId, messageId, preview);
   if (!media) {
     return finishJson(request, res, { ok: false, error: "media_unavailable" }, 404);
   }

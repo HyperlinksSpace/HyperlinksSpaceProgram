@@ -316,7 +316,9 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           const started = Date.now();
-          const media = await getMessageMediaForUser(telegramUsername, chatId, messageId);
+          const previewParam = (url.searchParams.get("preview") || "").trim();
+          const mode = previewParam === "1" || previewParam === "true" ? "preview" : "full";
+          const media = await getMessageMediaForUser(telegramUsername, chatId, messageId, mode);
           if (!media) {
             console.log(
               `[tdlib-gateway] ${JSON.stringify({

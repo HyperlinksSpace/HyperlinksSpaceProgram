@@ -11,10 +11,19 @@ type TdFile = {
   };
 };
 
-const MEDIA_DOWNLOAD_TIMEOUT_MS = 30_000;
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 45_000;
+const MEDIA_VIDEO_DOWNLOAD_TIMEOUT_MS = 60_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function mediaDownloadTimeoutMs(contentType: string | undefined): number {
+  if (contentType === "messageVideo" || contentType === "messageAnimation") {
+    return MEDIA_VIDEO_DOWNLOAD_TIMEOUT_MS;
+  }
+  if (contentType === "messagePhoto") return MEDIA_DOWNLOAD_TIMEOUT_MS;
+  return 30_000;
 }
 
 function mimeFromPath(filePath: string): string {
@@ -28,25 +37,20 @@ function mimeFromPath(filePath: string): string {
   return "image/jpeg";
 }
 
-async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile | null> {
-  const deadline = Date.now() + MEDIA_DOWNLOAD_TIMEOUT_MS;
+async function waitForLocalFile(
+  client: Client,
+  fileId: number,
+  timeoutMs = MEDIA_DOWNLOAD_TIMEOUT_MS,
+  forceSync = false,
+): Promise<TdFile | null> {
+  const deadline = Date.now() + timeoutMs;
+  let syncAttempted = forceSync;
+
   while (Date.now() < deadline) {
     try {
       const file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
       if (file.local?.is_downloading_completed && file.local.path) return file;
-      if (file.local?.is_downloading_active === false && !file.local?.is_downloading_completed) {
-        await client.invoke({
-          _: "downloadFile",
-          file_id: fileId,
-          priority: 32,
-          offset: 0,
-          limit: 0,
-          synchronous: true,
-        });
-        const retry = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
-        if (retry.local?.is_downloading_completed && retry.local.path) return retry;
-        return null;
-      }
+
       if (!file.local?.is_downloading_active) {
         await client.invoke({
           _: "downloadFile",
@@ -54,11 +58,14 @@ async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile 
           priority: 32,
           offset: 0,
           limit: 0,
-          synchronous: false,
+          synchronous: !syncAttempted,
         });
+        syncAttempted = true;
+        const refreshed = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        if (refreshed.local?.is_downloading_completed && refreshed.local.path) return refreshed;
       }
     } catch {
-      return null;
+      /* keep polling until deadline */
     }
     await sleep(200);
   }
@@ -66,46 +73,53 @@ async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile 
 }
 
 type PhotoSizeRow = {
+  _?: string;
   type?: string;
   photo?: { id?: number };
   width?: number;
   height?: number;
+  sizes?: PhotoSizeRow[];
 };
 
-function pickLargestPhotoFileId(sizes: PhotoSizeRow[]): number | null {
-  let bestId: number | null = null;
-  let bestArea = 0;
-  for (const row of sizes) {
-    const id = row.photo?.id;
-    const w = Number(row.width);
-    const h = Number(row.height);
-    if (typeof id !== "number" || !Number.isFinite(w) || !Number.isFinite(h)) continue;
-    const area = w * h;
-    if (area > bestArea) {
-      bestArea = area;
-      bestId = id;
-    }
+function photoSizeArea(row: PhotoSizeRow): number {
+  const w = Number(row.width);
+  const h = Number(row.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 0;
+  return w * h;
+}
+
+function photoSizeFileId(row: PhotoSizeRow): number | null {
+  const id = row.photo?.id;
+  return typeof id === "number" ? id : null;
+}
+
+function collectPhotoSizeRows(raw: unknown): PhotoSizeRow[] {
+  if (!raw || typeof raw !== "object") return [];
+  const row = raw as Record<string, unknown> & PhotoSizeRow;
+  if (row._ === "photoSizeProgressive" && Array.isArray(row.sizes)) {
+    return row.sizes.flatMap((inner) => collectPhotoSizeRows(inner));
   }
-  return bestId;
+  if (photoSizeFileId(row) != null) return [row];
+  return [];
 }
 
 function photoFileIdsBySizeDesc(content: Record<string, unknown>): number[] {
-  const photo = content.photo as { sizes?: PhotoSizeRow[] } | undefined;
+  const photo = content.photo as { sizes?: unknown[] } | undefined;
   const sizes = photo?.sizes;
   if (!Array.isArray(sizes) || sizes.length === 0) return [];
-  return sizes
-    .map((row) => {
-      const id = row.photo?.id;
-      const w = Number(row.width);
-      const h = Number(row.height);
-      return {
-        id: typeof id === "number" ? id : null,
-        area: Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0 ? w * h : 0,
-      };
-    })
-    .filter((row): row is { id: number; area: number } => row.id != null && row.area > 0)
-    .sort((a, b) => b.area - a.area)
-    .map((row) => row.id);
+  const deduped = new Map<number, number>();
+  for (const raw of sizes) {
+    for (const row of collectPhotoSizeRows(raw)) {
+      const id = photoSizeFileId(row);
+      const area = photoSizeArea(row);
+      if (id == null || area <= 0) continue;
+      const prev = deduped.get(id);
+      if (prev == null || area > prev) deduped.set(id, area);
+    }
+  }
+  return [...deduped.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
 }
 
 function pickThumbnailFileId(media: unknown): number | null {
@@ -116,10 +130,8 @@ function pickThumbnailFileId(media: unknown): number | null {
 }
 
 function pickPhotoFileId(content: Record<string, unknown>): number | null {
-  const photo = content.photo as { sizes?: PhotoSizeRow[] } | undefined;
-  const sizes = photo?.sizes;
-  if (!Array.isArray(sizes) || sizes.length === 0) return null;
-  return pickLargestPhotoFileId(sizes);
+  const ids = photoFileIdsBySizeDesc(content);
+  return ids[0] ?? null;
 }
 
 function pickFileIdFromTdFile(file: unknown): number | null {
@@ -193,17 +205,21 @@ function mediaFileIdFromMessage(message: TdMessage): number | null {
 async function readLocalFileBytes(
   client: Client,
   fileId: number,
+  timeoutMs = MEDIA_DOWNLOAD_TIMEOUT_MS,
 ): Promise<{ data: Buffer; path: string } | null> {
-  const file = await waitForLocalFile(client, fileId);
-  const path = file?.local?.path;
-  if (!path || !fs.existsSync(path)) return null;
-  try {
-    const data = fs.readFileSync(path);
-    if (data.length === 0) return null;
-    return { data, path };
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const file = await waitForLocalFile(client, fileId, timeoutMs, attempt > 0);
+    const path = file?.local?.path;
+    if (!path || !fs.existsSync(path)) continue;
+    try {
+      const data = fs.readFileSync(path);
+      if (data.length === 0) continue;
+      return { data, path };
+    } catch {
+      /* try again */
+    }
   }
+  return null;
 }
 
 function resolveMediaMime(
@@ -247,10 +263,57 @@ function mediaThumbnailFileIdFromMessage(message: TdMessage): number | null {
   return null;
 }
 
+export type MessageMediaFetchMode = "full" | "preview";
+
+async function readMessageMediaPreviewBytes(
+  client: Client,
+  message: TdMessage,
+  contentRow: Record<string, unknown>,
+  contentType: string | undefined,
+): Promise<{ data: Buffer; mime: string } | null> {
+  const preferVideoMime =
+    contentType === "messageVideo" || contentType === "messageAnimation";
+
+  if (preferVideoMime) {
+    const thumbnailId = mediaThumbnailFileIdFromMessage(message);
+    if (thumbnailId != null) {
+      const local = await readLocalFileBytes(client, thumbnailId, 15_000);
+      if (local) {
+        return { data: local.data, mime: mimeFromPath(local.path) };
+      }
+    }
+    return null;
+  }
+
+  if (contentType === "messagePhoto") {
+    const mini = readMinithumbnailJpeg(contentRow);
+    if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
+    const photoIds = photoFileIdsBySizeDesc(contentRow);
+    const smallestId = photoIds[photoIds.length - 1];
+    if (smallestId != null) {
+      const local = await readLocalFileBytes(client, smallestId, 15_000);
+      if (local) {
+        return { data: local.data, mime: mimeFromPath(local.path) };
+      }
+    }
+  }
+
+  const thumbnailId = mediaThumbnailFileIdFromMessage(message);
+  if (thumbnailId != null) {
+    const local = await readLocalFileBytes(client, thumbnailId, 15_000);
+    if (local) {
+      return { data: local.data, mime: mimeFromPath(local.path) };
+    }
+  }
+
+  return null;
+}
+
 export async function readMessageMediaBytes(
   client: Client,
   chatId: number,
   messageId: number,
+  mode: MessageMediaFetchMode = "full",
 ): Promise<{ data: Buffer; mime: string } | null> {
   let message: TdMessage;
   try {
@@ -268,20 +331,32 @@ export async function readMessageMediaBytes(
   const contentRow = content as Record<string, unknown>;
   const contentType = contentRow._;
 
-  for (const fileId of mediaFileIdsFromMessage(message)) {
-    const local = await readLocalFileBytes(client, fileId);
-    if (!local) continue;
-    const mime = resolveMediaMime(
+  if (mode === "preview") {
+    return readMessageMediaPreviewBytes(
+      client,
+      message,
       contentRow,
-      local.path,
-      contentType === "messageVideo" || contentType === "messageAnimation",
+      typeof contentType === "string" ? contentType : undefined,
     );
+  }
+
+  const downloadTimeoutMs = mediaDownloadTimeoutMs(
+    typeof contentType === "string" ? contentType : undefined,
+  );
+  const preferVideoMime =
+    contentType === "messageVideo" || contentType === "messageAnimation";
+
+  for (const fileId of mediaFileIdsFromMessage(message)) {
+    const local = await readLocalFileBytes(client, fileId, downloadTimeoutMs);
+    if (!local) continue;
+    const mime = resolveMediaMime(contentRow, local.path, preferVideoMime);
+    if (preferVideoMime && mime.startsWith("image/")) continue;
     return { data: local.data, mime };
   }
 
   const thumbnailId = mediaThumbnailFileIdFromMessage(message);
-  if (thumbnailId != null) {
-    const local = await readLocalFileBytes(client, thumbnailId);
+  if (thumbnailId != null && !preferVideoMime) {
+    const local = await readLocalFileBytes(client, thumbnailId, downloadTimeoutMs);
     if (local) {
       return { data: local.data, mime: mimeFromPath(local.path) };
     }
@@ -290,6 +365,16 @@ export async function readMessageMediaBytes(
   if (contentType === "messagePhoto") {
     const mini = readMinithumbnailJpeg(contentRow);
     if (mini && mini.length > 0) return { data: mini, mime: "image/jpeg" };
+  }
+
+  if (preferVideoMime) {
+    const videoThumbId = mediaThumbnailFileIdFromMessage(message);
+    if (videoThumbId != null) {
+      const local = await readLocalFileBytes(client, videoThumbId, 15_000);
+      if (local) {
+        return { data: local.data, mime: mimeFromPath(local.path) };
+      }
+    }
   }
 
   return null;

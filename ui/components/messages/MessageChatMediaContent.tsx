@@ -27,6 +27,10 @@ function isPixelPerfectMediaKind(contentKind: MessageChatContentKind): boolean {
   return contentKind === "animation" || contentKind === "sticker";
 }
 
+function shouldMeasureIntrinsicMediaSize(contentKind: MessageChatContentKind): boolean {
+  return isPixelPerfectMediaKind(contentKind) || contentKind === "photo" || contentKind === "video";
+}
+
 function measureWebMediaIntrinsicSize(
   url: string,
   kind: ResolvedMediaKind,
@@ -64,6 +68,40 @@ function measureWebMediaIntrinsicSize(
 }
 
 type ResolvedMediaKind = "tgs" | "video" | "gif" | "image";
+
+function isStreamableVideoContentKind(contentKind: MessageChatContentKind): boolean {
+  return contentKind === "video" || contentKind === "animation";
+}
+
+export function resolvePreviewMediaUrl(uri: string): string {
+  if (/[?&]preview=1(?:&|$)/.test(uri)) return uri;
+  return `${uri}${uri.includes("?") ? "&" : "?"}preview=1`;
+}
+
+async function fetchMediaBlob(
+  uri: string,
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  const response = await fetch(uri, { method: "GET", credentials: "include" });
+  if (!response.ok) throw new Error(`HTTP_${response.status}`);
+  const blob = await response.blob();
+  const buffer = await blob.arrayBuffer();
+  return {
+    bytes: new Uint8Array(buffer),
+    mime: (blob.type || response.headers.get("Content-Type") || "").trim(),
+  };
+}
+
+function createObjectUrl(bytes: Uint8Array, mime: string, kind: ResolvedMediaKind): string {
+  const blobType =
+    kind === "video"
+      ? mime.startsWith("video/")
+        ? mime
+        : "video/mp4"
+      : kind === "tgs"
+        ? "application/x-tgsticker"
+        : mime || "application/octet-stream";
+  return URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: blobType }));
+}
 
 export function messageMediaShowsProgressBar(contentKind: MessageChatContentKind): boolean {
   return contentKind === "video" || contentKind === "animation";
@@ -110,7 +148,7 @@ function resolveMediaKind(
   if (
     normalizedMime.startsWith("video/") ||
     bytesLookLikeVideo(bytes) ||
-    (contentKind === "animation" && bytesLookLikeVideo(bytes))
+    ((contentKind === "video" || contentKind === "animation") && bytesLookLikeVideo(bytes))
   ) {
     return "video";
   }
@@ -121,6 +159,7 @@ function resolveMediaKind(
 
 function WebMessageChatVideo({
   src,
+  posterSrc,
   widthPx,
   heightPx,
   colors,
@@ -128,7 +167,8 @@ function WebMessageChatVideo({
   showProgress,
   pixelPerfect,
 }: {
-  src: string;
+  src?: string | null;
+  posterSrc?: string | null;
   widthPx: number;
   heightPx: number;
   colors: ThemeColors;
@@ -139,13 +179,19 @@ function WebMessageChatVideo({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [progress, setProgress] = useState(0);
+  const [posterVisible, setPosterVisible] = useState(Boolean(posterSrc));
+
+  useEffect(() => {
+    setPosterVisible(Boolean(posterSrc));
+  }, [posterSrc, src]);
 
   useEffect(() => {
     const video = videoRef.current;
     const container = containerRef.current;
-    if (!video || !container) return;
+    if (!video || !container || !src) return;
 
     const playIfVisible = () => {
+      video.muted = true;
       const rect = container.getBoundingClientRect();
       const viewportH = window.innerHeight || document.documentElement.clientHeight;
       const visible =
@@ -162,13 +208,13 @@ function WebMessageChatVideo({
       (entries) => {
         const entry = entries[0];
         if (!entry) return;
-        if (entry.isIntersecting && entry.intersectionRatio >= 0.15) {
+        if (entry.isIntersecting) {
           void video.play().catch(() => {});
         } else {
           video.pause();
         }
       },
-      { threshold: [0, 0.15, 0.35, 0.6, 1] },
+      { threshold: [0, 0.05, 0.15, 0.35, 0.6, 1] },
     );
     observer.observe(container);
 
@@ -181,6 +227,12 @@ function WebMessageChatVideo({
       setProgress(Math.max(0, Math.min(1, video.currentTime / duration)));
     };
 
+    const onPlaying = () => {
+      setPosterVisible(false);
+    };
+    const onLoadedData = () => {
+      playIfVisible();
+    };
     const onLoadedMetadata = () => {
       setProgress(0);
       playIfVisible();
@@ -192,8 +244,17 @@ function WebMessageChatVideo({
       if (loop) setProgress(0);
     };
 
+    video.defaultMuted = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("loadeddata", onLoadedData);
     video.addEventListener("loadedmetadata", onLoadedMetadata);
     video.addEventListener("canplay", onCanPlay);
+    video.addEventListener("canplaythrough", onCanPlay);
     video.addEventListener("timeupdate", syncProgress);
     video.addEventListener("seeking", syncProgress);
     video.addEventListener("ended", onEnded);
@@ -202,8 +263,11 @@ function WebMessageChatVideo({
 
     return () => {
       observer.disconnect();
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("loadeddata", onLoadedData);
       video.removeEventListener("loadedmetadata", onLoadedMetadata);
       video.removeEventListener("canplay", onCanPlay);
+      video.removeEventListener("canplaythrough", onCanPlay);
       video.removeEventListener("timeupdate", syncProgress);
       video.removeEventListener("seeking", syncProgress);
       video.removeEventListener("ended", onEnded);
@@ -213,30 +277,59 @@ function WebMessageChatVideo({
   return createElement(
     "div",
     {
+      key: src ?? posterSrc ?? "video",
       ref: containerRef,
       style: {
         width: widthPx,
         display: "flex",
         flexDirection: "column",
+        position: "relative",
       },
     },
-    createElement("video", {
-      ref: videoRef,
-      src,
-      playsInline: true,
-      muted: true,
-      loop,
-      autoPlay: true,
-      preload: "auto",
-      style: {
-        width: widthPx,
-        height: heightPx,
-        display: "block",
-        ...(pixelPerfect
-          ? ({ imageRendering: "crisp-edges" } as object)
-          : ({ objectFit: "cover" } as object)),
-      },
-    }),
+    posterVisible && posterSrc
+      ? createElement("img", {
+          src: posterSrc,
+          alt: "",
+          width: widthPx,
+          height: heightPx,
+          style: {
+            width: widthPx,
+            height: heightPx,
+            display: "block",
+            position: src ? ("absolute" as const) : ("relative" as const),
+            inset: src ? 0 : undefined,
+            zIndex: 1,
+            pointerEvents: "none",
+            ...(pixelPerfect
+              ? ({ objectFit: "cover", imageRendering: "crisp-edges" } as object)
+              : ({ objectFit: "cover" } as object)),
+          },
+        })
+      : null,
+    src
+      ? createElement("video", {
+          key: src,
+          ref: videoRef,
+          src,
+          playsInline: true,
+          muted: true,
+          defaultMuted: true,
+          loop,
+          autoPlay: true,
+          preload: "auto",
+          disablePictureInPicture: true,
+          style: {
+            width: widthPx,
+            height: heightPx,
+            display: "block",
+            position: "relative",
+            zIndex: 0,
+            ...(pixelPerfect
+              ? ({ imageRendering: "crisp-edges" } as object)
+              : ({ objectFit: "cover" } as object)),
+          },
+        })
+      : null,
     showProgress
       ? createElement(
           "div",
@@ -259,6 +352,28 @@ function WebMessageChatVideo({
         )
       : null,
   );
+}
+
+function WebMessageChatPhotoImage({
+  src,
+  widthPx,
+  heightPx,
+}: {
+  src: string;
+  widthPx: number;
+  heightPx: number;
+}) {
+  return createElement("img", {
+    src,
+    alt: "",
+    width: widthPx,
+    height: heightPx,
+    style: {
+      width: widthPx,
+      height: heightPx,
+      display: "block",
+    },
+  });
 }
 
 function WebMessageChatGifImage({
@@ -293,6 +408,7 @@ export function MessageChatMediaContent({
   colors,
 }: Props) {
   const [mediaUri, setMediaUri] = useState<string | null>(null);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [mediaBytes, setMediaBytes] = useState<Uint8Array | null>(null);
   const [mediaKind, setMediaKind] = useState<ResolvedMediaKind | null>(null);
   const [displayWidthPx, setDisplayWidthPx] = useState(widthPx);
@@ -301,58 +417,90 @@ export function MessageChatMediaContent({
   const [loading, setLoading] = useState(true);
   const showProgress = messageMediaShowsProgressBar(contentKind);
   const pixelPerfect = isPixelPerfectMediaKind(contentKind);
+  const usesVideoPreview = isStreamableVideoContentKind(contentKind);
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
+    let mediaObjectUrl: string | null = null;
+    let previewObjectUrl: string | null = null;
     setLoading(true);
     setFailed(false);
     setMediaUri(null);
+    setPreviewUri(null);
     setMediaBytes(null);
     setMediaKind(null);
     setDisplayWidthPx(widthPx);
     setDisplayHeightPx(heightPx);
 
+    const applyIntrinsicDimensions = async (
+      objectUrl: string,
+      measureKind: ResolvedMediaKind,
+    ) => {
+      if (!shouldMeasureIntrinsicMediaSize(contentKind)) return;
+      const intrinsic = await measureWebMediaIntrinsicSize(objectUrl, measureKind);
+      if (cancelled || !intrinsic) return;
+      const fitted = scaleMediaDimensions(
+        intrinsic.width,
+        intrinsic.height,
+        maxWidthPx ?? widthPx,
+        contentKind,
+      );
+      setDisplayWidthPx(fitted.widthPx);
+      setDisplayHeightPx(fitted.heightPx);
+    };
+
     void (async () => {
       try {
-        const response = await fetch(uri, { method: "GET", credentials: "include" });
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
-        const blob = await response.blob();
-        const buffer = await blob.arrayBuffer();
-        if (cancelled) return;
-        const bytes = new Uint8Array(buffer);
-        const resolvedMime = (blob.type || response.headers.get("Content-Type") || "").trim();
-        const kind = resolveMediaKind(bytes, contentKind, resolvedMime);
-        const blobType =
-          kind === "video"
-            ? resolvedMime.startsWith("video/")
-              ? resolvedMime
-              : "video/mp4"
-            : kind === "tgs"
-              ? "application/x-tgsticker"
-              : resolvedMime || "application/octet-stream";
-        objectUrl = URL.createObjectURL(new Blob([bytes], { type: blobType }));
-        let nextWidthPx = widthPx;
-        let nextHeightPx = heightPx;
-        if (pixelPerfect) {
-          const intrinsic = await measureWebMediaIntrinsicSize(objectUrl, kind);
-          if (!cancelled && intrinsic) {
-            const fitted = scaleMediaDimensions(
-              intrinsic.width,
-              intrinsic.height,
-              maxWidthPx ?? widthPx,
-              contentKind,
-            );
-            nextWidthPx = fitted.widthPx;
-            nextHeightPx = fitted.heightPx;
+        if (usesVideoPreview) {
+          let hasPreview = false;
+
+          void (async () => {
+            try {
+              const { bytes, mime } = await fetchMediaBlob(resolvePreviewMediaUrl(uri));
+              if (cancelled) return;
+              previewObjectUrl = createObjectUrl(bytes, mime, "image");
+              hasPreview = true;
+              setPreviewUri(previewObjectUrl);
+              await applyIntrinsicDimensions(previewObjectUrl, "image");
+              if (!cancelled) setLoading(false);
+            } catch {
+              /* preview is optional */
+            }
+          })();
+
+          try {
+            const { bytes, mime } = await fetchMediaBlob(uri);
+            if (cancelled) return;
+            const kind = resolveMediaKind(bytes, contentKind, mime);
+            if (kind !== "video") throw new Error("VIDEO_NOT_READY");
+            mediaObjectUrl = createObjectUrl(bytes, mime, kind);
+            await applyIntrinsicDimensions(mediaObjectUrl, "video");
+            if (cancelled) return;
+            setMediaBytes(bytes);
+            setMediaKind(kind);
+            setMediaUri(mediaObjectUrl);
+            setLoading(false);
+          } catch {
+            for (let i = 0; i < 10 && !hasPreview && !cancelled; i++) {
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            if (!cancelled && !hasPreview) setFailed(true);
           }
+          return;
         }
+
+        const { bytes, mime } = await fetchMediaBlob(uri);
+        if (cancelled) return;
+        const kind = resolveMediaKind(bytes, contentKind, mime);
+        mediaObjectUrl = createObjectUrl(bytes, mime, kind);
+        await applyIntrinsicDimensions(
+          mediaObjectUrl,
+          kind === "video" ? "video" : kind === "gif" ? "gif" : "image",
+        );
         if (cancelled) return;
         setMediaBytes(bytes);
         setMediaKind(kind);
-        setMediaUri(objectUrl);
-        setDisplayWidthPx(nextWidthPx);
-        setDisplayHeightPx(nextHeightPx);
+        setMediaUri(mediaObjectUrl);
       } catch {
         if (!cancelled) setFailed(true);
       } finally {
@@ -362,9 +510,10 @@ export function MessageChatMediaContent({
 
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (mediaObjectUrl) URL.revokeObjectURL(mediaObjectUrl);
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
     };
-  }, [contentKind, heightPx, maxWidthPx, pixelPerfect, uri, widthPx]);
+  }, [contentKind, heightPx, maxWidthPx, uri, usesVideoPreview, widthPx]);
 
   const frameStyle = {
     width: displayWidthPx,
@@ -373,7 +522,7 @@ export function MessageChatMediaContent({
     backgroundColor: "transparent",
   };
 
-  if (loading) {
+  if (loading && !previewUri) {
     return (
       <View style={[frameStyle, { alignItems: "center", justifyContent: "center" }]}>
         <ActivityIndicator size="small" color={colors.primary} />
@@ -381,7 +530,33 @@ export function MessageChatMediaContent({
     );
   }
 
-  if (failed || !mediaUri || !mediaKind) {
+  if (failed && !previewUri && (!mediaUri || !mediaKind)) {
+    return (
+      <View>
+        <View style={[frameStyle, { backgroundColor: colors.highlight }]} />
+        {showProgress ? (
+          <MediaProgressBar widthPx={displayWidthPx} progress={0} colors={colors} />
+        ) : null}
+      </View>
+    );
+  }
+
+  if (usesVideoPreview && Platform.OS === "web" && (previewUri || mediaUri)) {
+    return (
+      <WebMessageChatVideo
+        src={mediaUri}
+        posterSrc={previewUri}
+        widthPx={displayWidthPx}
+        heightPx={displayHeightPx}
+        colors={colors}
+        loop
+        showProgress={showProgress}
+        pixelPerfect={pixelPerfect}
+      />
+    );
+  }
+
+  if (!mediaUri || !mediaKind) {
     return (
       <View>
         <View style={[frameStyle, { backgroundColor: colors.highlight }]} />
@@ -402,20 +577,6 @@ export function MessageChatMediaContent({
     );
   }
 
-  if (mediaKind === "video" && Platform.OS === "web") {
-    return (
-      <WebMessageChatVideo
-        src={mediaUri}
-        widthPx={displayWidthPx}
-        heightPx={displayHeightPx}
-        colors={colors}
-        loop
-        showProgress={showProgress}
-        pixelPerfect={pixelPerfect}
-      />
-    );
-  }
-
   if (mediaKind === "gif" && Platform.OS === "web") {
     return (
       <View>
@@ -427,6 +588,18 @@ export function MessageChatMediaContent({
         {showProgress ? (
           <MediaProgressBar widthPx={displayWidthPx} progress={0} colors={colors} />
         ) : null}
+      </View>
+    );
+  }
+
+  if (mediaKind === "image" && contentKind === "photo" && Platform.OS === "web") {
+    return (
+      <View>
+        <WebMessageChatPhotoImage
+          src={mediaUri}
+          widthPx={displayWidthPx}
+          heightPx={displayHeightPx}
+        />
       </View>
     );
   }
@@ -463,9 +636,28 @@ function scaleMediaDimensions(
     maxW = Math.min(maxW, MESSAGE_BUBBLE_GIF_MAX_PX);
   }
 
-  if (pixelPerfect) {
-    const nativeW = Math.max(1, Math.round(sourceW));
-    const nativeH = Math.max(1, Math.round(sourceH));
+  const nativeW = Math.max(1, Math.round(sourceW));
+  const nativeH = Math.max(1, Math.round(sourceH));
+
+  if (pixelPerfect || contentKind === "photo") {
+    let fitW = nativeW;
+    let fitH = nativeH;
+    if (contentKind === "photo" && fitH > 480) {
+      const scale = 480 / fitH;
+      fitW = Math.max(1, Math.round(fitW * scale));
+      fitH = 480;
+    }
+    if (fitW <= maxW) {
+      return { widthPx: fitW, heightPx: fitH };
+    }
+    const scale = maxW / fitW;
+    return {
+      widthPx: Math.max(1, Math.round(fitW * scale)),
+      heightPx: Math.max(1, Math.round(fitH * scale)),
+    };
+  }
+
+  if (contentKind === "video") {
     if (nativeW <= maxW) {
       return { widthPx: nativeW, heightPx: nativeH };
     }
@@ -476,20 +668,12 @@ function scaleMediaDimensions(
     };
   }
 
-  let widthPx = sourceW;
-  let heightPx = sourceH;
+  let widthPx = nativeW;
+  let heightPx = nativeH;
   if (widthPx > maxW) {
     const scale = maxW / widthPx;
-    widthPx = Math.max(1, Math.round(sourceW * scale));
-    heightPx = Math.max(1, Math.round(sourceH * scale));
-  } else {
-    widthPx = Math.min(maxW, Math.max(120, Math.round(widthPx)));
-    heightPx = Math.max(80, Math.min(480, Math.round(heightPx)));
-  }
-  if (contentKind === "photo" && heightPx > 480) {
-    const scale = 480 / heightPx;
-    widthPx = Math.max(1, Math.round(widthPx * scale));
-    heightPx = 480;
+    widthPx = Math.max(1, Math.round(nativeW * scale));
+    heightPx = Math.max(1, Math.round(nativeH * scale));
   }
   return { widthPx, heightPx };
 }
@@ -506,7 +690,7 @@ export function resolveMessageMediaDimensions(
     return scaleMediaDimensions(sourceW, sourceH, maxWidthPx, contentKind);
   }
   const pixelPerfect = isPixelPerfectMediaKind(contentKind ?? "other");
-  if (pixelPerfect) {
+  if (pixelPerfect || contentKind === "photo" || contentKind === "video") {
     return { widthPx: 1, heightPx: 1 };
   }
   let widthPx = Math.min(maxWidthPx, MESSAGE_BUBBLE_MEDIA_MAX_WIDTH_PX);

@@ -23,6 +23,7 @@ import {
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
   MESSAGE_BUBBLE_TIME_FONT_SIZE_PX,
   MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
+  MESSAGE_CHAT_CHECKMARK_SIZE_PX,
   messageBubbleMediaMetaBottomPx,
 } from "./messageChatLayout";
 import type { BubbleMetaPlacement } from "./messageChatBubbleMeasure";
@@ -152,6 +153,7 @@ function MessageChatBubbleTextContent({
         alignSelf: "flex-start",
         width: maxWidthPx,
         maxWidth: maxWidthPx,
+        overflow: "visible",
       }}
     >
       {bodyText ? (
@@ -195,8 +197,10 @@ function MessageChatBubbleTimeRow({
     <View
       style={{
         flexDirection: "row",
-        alignItems: alignWithBodyBaseline ? "baseline" : "center",
+        alignItems: "flex-end",
         alignSelf,
+        minHeight: MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX,
+        overflow: "visible",
         ...(lightOnMedia && Platform.OS === "web"
           ? ({ textShadow: "0 1px 2px rgba(0,0,0,0.65)" } as object)
           : null),
@@ -206,13 +210,7 @@ function MessageChatBubbleTimeRow({
       }}
     >
       {callIndicator ? (
-        <View
-          style={
-            alignWithBodyBaseline
-              ? { marginBottom: Platform.OS === "web" ? 0 : 1 }
-              : undefined
-          }
-        >
+        <View style={{ overflow: "visible", marginBottom: 0 }}>
           <MessageChatCallArrow
             outgoing={callIndicator.outgoing}
             successful={callIndicator.successful}
@@ -222,11 +220,14 @@ function MessageChatBubbleTimeRow({
       <Text style={metaStyle}>{timeLabel}</Text>
       {showChecks ? (
         <View
-          style={
-            alignWithBodyBaseline
-              ? { marginBottom: Platform.OS === "web" ? 0 : 1 }
-              : undefined
-          }
+          style={{
+            overflow: "visible",
+            height: MESSAGE_CHAT_CHECKMARK_SIZE_PX,
+            justifyContent: "flex-end",
+            ...(Platform.OS === "web"
+              ? ({ display: "flex", alignItems: "flex-end" } as object)
+              : null),
+          }}
         >
           <MessageChatOutgoingChecks
             status={outgoingStatus!}

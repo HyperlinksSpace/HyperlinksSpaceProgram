@@ -14,7 +14,8 @@ type Props = {
 
 const SINGLE_CHECK_PATH = "M1 7.5 L4.5 11 L10 2";
 const READ_CHECK_OFFSET = 4;
-const READ_VIEW_WIDTH = 14;
+/** Wide enough for two checks + round stroke caps (path reaches x≈14 at strokeWidth 1.75). */
+const READ_VIEW_WIDTH = 16;
 
 function outgoingChecksSvgWidthPx(size = MESSAGE_CHAT_CHECKMARK_SIZE_PX): number {
   return (size * READ_VIEW_WIDTH) / 14;
@@ -54,9 +55,10 @@ export function MessageChatOutgoingChecks({
           marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
           width: reserveWidthPx,
           alignItems: "flex-start",
+          overflow: "visible",
         }}
       >
-        <Svg width={size * 0.62} height={size} viewBox="0 0 11 14">
+        <Svg width={size * 0.62} height={size} viewBox="0 0 11 14" style={{ overflow: "visible" }}>
           <Path d={SINGLE_CHECK_PATH} {...stroke} />
         </Svg>
       </View>
@@ -69,12 +71,14 @@ export function MessageChatOutgoingChecks({
         marginLeft: MESSAGE_CHAT_CHECKMARK_GAP_PX,
         width: reserveWidthPx,
         alignItems: "flex-start",
+        overflow: "visible",
       }}
     >
       <Svg
         width={reserveWidthPx}
         height={size}
         viewBox={`0 0 ${READ_VIEW_WIDTH} 14`}
+        style={{ overflow: "visible" }}
       >
         <Path d={SINGLE_CHECK_PATH} {...stroke} />
         <Path d={SINGLE_CHECK_PATH} transform={`translate(${READ_CHECK_OFFSET} 0)`} {...stroke} />
