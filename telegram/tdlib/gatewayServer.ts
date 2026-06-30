@@ -35,6 +35,7 @@ import {
   submitConnectPhoneNumber,
   sendChatMessageForUser,
   editChatMessageForUser,
+  resolvePublicChatForUser,
 } from "./connectAttempts.js";
 
 const PEER_EMOJI_STATUS_MIN_INTERVAL_MS = 45_000;
@@ -413,6 +414,31 @@ export function startTdlibGatewayServer(): http.Server {
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             message: result.message,
+            error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/chat/resolve") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const username = (url.searchParams.get("username") || "").trim();
+          if (!telegramUsername || !username) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await resolvePublicChatForUser(telegramUsername, username);
+          logGateway("chat_resolve", {
+            telegramUsername,
+            username,
+            ok: !result.error,
+            chatId: result.chat?.telegram_chat_id ?? null,
+            error: result.error,
+            ms: Date.now() - started,
+          });
+          sendJson(res, result.error ? 503 : 200, {
+            ok: !result.error,
+            chat: result.chat,
             error: result.error,
           });
           return;

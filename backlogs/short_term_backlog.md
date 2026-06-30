@@ -1,3 +1,4 @@
+No loading indicator
 Icon aapearing in the AI and Search
 Reactions, msg history loading dsgn, 
 Emoji statuses, slow loading

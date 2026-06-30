@@ -1,4 +1,5 @@
 import type { MessageChatHistoryItem } from "./components/messages/messageChatHistoryTypes";
+import { invalidateChatHistoryCache } from "./messageChatHistoryCache";
 
 export type OutgoingChatMessageEvent = {
   chatId: number;
@@ -8,6 +9,7 @@ export type OutgoingChatMessageEvent = {
 const listeners = new Set<(event: OutgoingChatMessageEvent) => void>();
 
 export function publishOutgoingChatMessage(chatId: number, message: MessageChatHistoryItem): void {
+  invalidateChatHistoryCache(chatId);
   const event = { chatId, message };
   for (const listener of listeners) {
     listener(event);

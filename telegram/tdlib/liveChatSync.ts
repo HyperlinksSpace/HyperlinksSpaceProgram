@@ -5,6 +5,7 @@ import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChat
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
+import { userProfileFromTdUser } from "./tdUserProfile.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -193,11 +194,17 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     if (!user || typeof user !== "object") return;
     const userId = (user as { id?: number }).id;
     if (typeof userId !== "number") return;
-    const customEmojiId = emojiStatusCustomIdFromUser(user);
-    patchLiveChatEmojiStatus(record.telegramUsername, userId, customEmojiId);
+    const profile = userProfileFromTdUser(user);
+    patchLiveChatEmojiStatus(
+      record.telegramUsername,
+      userId,
+      profile.emoji_status_custom_emoji_id,
+      profile.accent_color_light,
+      profile.accent_color_dark,
+    );
     logLiveSync(record, "live_chat_user_profile_applied", {
       peerUserId: userId,
-      hasEmojiStatus: Boolean(customEmojiId),
+      hasEmojiStatus: Boolean(profile.emoji_status_custom_emoji_id),
     });
     return;
   }

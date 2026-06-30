@@ -22,7 +22,7 @@ import {
 } from "./chatPreview.js";
 import { patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatMemberMeta, seedLiveChatList, getLiveChatList, type LiveChatRow } from "./liveChatCache.js";
 import { chatKindFromTdChat } from "./messageHistoryMap.js";
-import { emojiStatusCustomIdFromUser } from "./emojiStatus.js";
+import { userProfileFromTdUser } from "./tdUserProfile.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import {
   specialUserForceIncludedPeerUserIds,
@@ -470,10 +470,18 @@ async function resolvePeerProfile(
   presence: { kind: LiveChatRow["presence_kind"]; at: string | null } | null;
   emojiStatusCustomEmojiId: string | null;
   username: string | null;
+  accentColorLight: string | null;
+  accentColorDark: string | null;
 }> {
   const peerUserId = peerUserIdFromChat(chat);
   if (peerUserId == null) {
-    return { presence: null, emojiStatusCustomEmojiId: null, username: null };
+    return {
+      presence: null,
+      emojiStatusCustomEmojiId: null,
+      username: null,
+      accentColorLight: null,
+      accentColorDark: null,
+    };
   }
   try {
     const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as {
@@ -482,13 +490,22 @@ async function resolvePeerProfile(
       username?: string;
       usernames?: { active_usernames?: string[]; editable_username?: string };
     };
+    const profile = userProfileFromTdUser(user);
     return {
       presence: presenceFromTdlibStatus(user.status),
-      emojiStatusCustomEmojiId: emojiStatusCustomIdFromUser(user),
+      emojiStatusCustomEmojiId: profile.emoji_status_custom_emoji_id,
       username: usernameFromTdUser(user),
+      accentColorLight: profile.accent_color_light,
+      accentColorDark: profile.accent_color_dark,
     };
   } catch {
-    return { presence: null, emojiStatusCustomEmojiId: null, username: null };
+    return {
+      presence: null,
+      emojiStatusCustomEmojiId: null,
+      username: null,
+      accentColorLight: null,
+      accentColorDark: null,
+    };
   }
 }
 
@@ -500,8 +517,14 @@ export async function refreshPeerEmojiStatus(
 ): Promise<boolean> {
   try {
     const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as unknown;
-    const customEmojiId = emojiStatusCustomIdFromUser(user);
-    patchLiveChatEmojiStatus(telegramUsername, peerUserId, customEmojiId);
+    const profile = userProfileFromTdUser(user);
+    patchLiveChatEmojiStatus(
+      telegramUsername,
+      peerUserId,
+      profile.emoji_status_custom_emoji_id,
+      profile.accent_color_light,
+      profile.accent_color_dark,
+    );
     return true;
   } catch {
     return false;
@@ -524,8 +547,14 @@ export async function refreshMissingPeerEmojiStatuses(
     if (peerUserId == null) continue;
     try {
       const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as unknown;
-      const customEmojiId = emojiStatusCustomIdFromUser(user);
-      patchLiveChatEmojiStatus(telegramUsername, peerUserId, customEmojiId);
+      const profile = userProfileFromTdUser(user);
+      patchLiveChatEmojiStatus(
+        telegramUsername,
+        peerUserId,
+        profile.emoji_status_custom_emoji_id,
+        profile.accent_color_light,
+        profile.accent_color_dark,
+      );
       refreshed += 1;
     } catch {
       /* per-peer fetch may fail for deleted users */
@@ -611,6 +640,8 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       chat_kind: chatKindFromTdChat(chat),
       member_count: memberCounts[i] ?? null,
       peer_emoji_status_custom_emoji_id: profile?.emojiStatusCustomEmojiId ?? null,
+      peer_accent_color_light: profile?.accentColorLight ?? null,
+      peer_accent_color_dark: profile?.accentColorDark ?? null,
       presence_kind: profile?.presence?.kind ?? null,
       presence_at: profile?.presence?.at ?? null,
       chat_action: null,

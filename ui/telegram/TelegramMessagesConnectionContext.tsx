@@ -181,6 +181,13 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         if (json.gatewayReady) {
           setConnected(true);
           logPageDisplay("telegram_messages_gateway_ready");
+          void import("../authenticatedHomeSelectedChat").then(({ getAuthenticatedHomeSelectedChatSnapshot }) => {
+            const chat = getAuthenticatedHomeSelectedChatSnapshot();
+            if (!chat) return;
+            void import("../messageChatHistoryPrefetch").then(({ prefetchChatHistoryPriority }) => {
+              prefetchChatHistoryPriority(chat);
+            });
+          });
           return;
         }
         if (json.warming && attempt + 1 < maxAttempts) {

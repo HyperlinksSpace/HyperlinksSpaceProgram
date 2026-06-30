@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, Text, View, type TextLayoutEvent } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Platform, Pressable, Text, View, type GestureResponderEvent, type TextLayoutEvent } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
@@ -15,6 +15,7 @@ import {
   isGroupLikeChatKind,
   messageShowsOutgoingChecks,
   resolveMessageOutgoingStatus,
+  resolveOutgoingStatusForDisplay,
 } from "./messageChatHistoryTypes";
 import {
   measureBubbleInnerContentWidth,
@@ -42,12 +43,16 @@ import { messageChatCallArrowWidthPx } from "./MessageChatCallArrow";
 import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
-import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
+import { resolveMessageSenderDisplayName } from "./resolveMessageSenderDisplayName";
+import { specialUserBadgeExtraWidthPx } from "./specialTelegramUserDisplay";
 import {
   canEditMessage,
   canReplyToMessage,
 } from "./messageChatActionUtils";
-import { MessageChatMessageActionSheet } from "./MessageChatMessageActionSheet";
+import {
+  MessageChatMessageContextMenu,
+  type MessageContextMenuAnchor,
+} from "./MessageChatMessageContextMenu";
 import {
   setMessageChatComposeEdit,
   setMessageChatComposeReply,
@@ -137,6 +142,9 @@ export function MessageChatMessageRow({
   } | null>(null);
   const [liveMediaWidthPx, setLiveMediaWidthPx] = useState<number | null>(null);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<MessageContextMenuAnchor | null>(null);
+  const lastPointerRef = useRef<MessageContextMenuAnchor | null>(null);
+  const bubblePressableRef = useRef<View | null>(null);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
 
@@ -157,11 +165,7 @@ export function MessageChatMessageRow({
   const isCall = item.content_kind === "call";
   const bodyText = isCall ? formatMessageCallLabel(item.is_outgoing, t) : item.text.trim();
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
-  const outgoingStatusForLayout = (() => {
-    const status = resolveMessageOutgoingStatus(item);
-    if (status === "read" && chatKind !== "private") return "delivered" as const;
-    return status;
-  })();
+  const outgoingStatusForLayout = resolveOutgoingStatusForDisplay(item, chatKind ?? chat.chat_kind, chat);
   const showOutgoingChecks = messageShowsOutgoingChecks(item, {
     peerUserId: chat.peer_user_id,
     selfUserId,
@@ -185,25 +189,29 @@ export function MessageChatMessageRow({
   );
   const effectiveMediaWidthPx = liveMediaWidthPx ?? mediaWidthPx;
 
+  const senderDisplayName = resolveMessageSenderDisplayName(
+    item.sender_name,
+    item.sender_user_id,
+    chat.telegram_chat_id,
+  );
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) &&
     chatKind !== "channel" &&
     !item.is_outgoing &&
-    item.sender_name.trim().length > 0;
+    senderDisplayName.length > 0;
 
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;
     if (showMedia) extra = Math.max(extra, effectiveMediaWidthPx);
     if (showSenderHeader) {
-      const senderName = specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
-      if (senderName) {
+      if (senderDisplayName) {
         extra = Math.max(
           extra,
           measureTextGlyphWidth(
-            senderName,
+            senderDisplayName,
             MESSAGE_BUBBLE_FONT_SIZE_PX,
             MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-          ) + specialUserBadgeExtraWidthPx(item.sender_user_id, senderName, chat.telegram_chat_id),
+          ) + specialUserBadgeExtraWidthPx(item.sender_user_id, senderDisplayName, chat.telegram_chat_id),
         );
       }
     }
@@ -228,6 +236,7 @@ export function MessageChatMessageRow({
     item.reply_to,
     item.sender_name,
     item.sender_user_id,
+    senderDisplayName,
     showMedia,
     showSenderHeader,
   ]);
@@ -361,30 +370,59 @@ export function MessageChatMessageRow({
     bodyText.length > 0;
 
   const canReply = canReplyToMessage(item);
-  const canEdit = canEditMessage(item);
+  const canEdit = canEditMessage(item, selfUserId);
   const showActionSheet = canReply || canEdit;
 
-  const openActionSheet = useCallback(() => {
-    if (!showActionSheet) return;
-    setActionSheetVisible(true);
-  }, [showActionSheet]);
+  const openActionSheet = useCallback(
+    (anchor?: MessageContextMenuAnchor | null) => {
+      if (!showActionSheet) return;
+      if (anchor) {
+        setMenuAnchor(anchor);
+        setActionSheetVisible(true);
+        return;
+      }
+      if (lastPointerRef.current) {
+        setMenuAnchor(lastPointerRef.current);
+        setActionSheetVisible(true);
+        return;
+      }
+      bubblePressableRef.current?.measureInWindow((x, y, width, height) => {
+        setMenuAnchor({ x: x + width / 2, y: y + height / 2 });
+        setActionSheetVisible(true);
+      });
+    },
+    [showActionSheet],
+  );
+
+  const capturePointer = useCallback((event: GestureResponderEvent) => {
+    const { pageX, pageY } = event.nativeEvent;
+    if (Number.isFinite(pageX) && Number.isFinite(pageY)) {
+      lastPointerRef.current = { x: pageX, y: pageY };
+    }
+  }, []);
 
   const onContextMenu = useCallback(
-    (event: { preventDefault?: () => void }) => {
+    (event: GestureResponderEvent & { preventDefault?: () => void }) => {
       if (Platform.OS !== "web" || !showActionSheet) return;
       event.preventDefault?.();
-      openActionSheet();
+      const { pageX, pageY } = event.nativeEvent;
+      openActionSheet({
+        x: Number.isFinite(pageX) ? pageX : 0,
+        y: Number.isFinite(pageY) ? pageY : 0,
+      });
     },
     [openActionSheet, showActionSheet],
   );
 
   const onReply = useCallback(() => {
     setActionSheetVisible(false);
+    setMenuAnchor(null);
     setMessageChatComposeReply(chat.telegram_chat_id, item);
   }, [chat.telegram_chat_id, item]);
 
   const onEdit = useCallback(() => {
     setActionSheetVisible(false);
+    setMenuAnchor(null);
     setMessageChatComposeEdit(chat.telegram_chat_id, item);
   }, [chat.telegram_chat_id, item]);
 
@@ -440,7 +478,9 @@ export function MessageChatMessageRow({
       </View>
       <View style={{ width: MESSAGE_BUBBLE_AVATAR_GAP_PX }} />
         <Pressable
-          onLongPress={showActionSheet ? openActionSheet : undefined}
+          ref={bubblePressableRef}
+          onPressIn={capturePointer}
+          onLongPress={showActionSheet ? () => openActionSheet() : undefined}
           onContextMenu={onContextMenu}
           style={({ pressed }) => ({
             alignSelf: "flex-start",
@@ -511,6 +551,7 @@ export function MessageChatMessageRow({
               maxWidthPx={bubbleContentWidthPx}
               mediaColumnMaxWidthPx={bubbleInnerMaxWidth}
               metaPlacement={metaPlacement}
+              metaReserveWidthPx={metaWidthPx}
               compactSingleLine={isCompactSingleLineRow}
               onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
               peerUserId={chat.peer_user_id}
@@ -518,11 +559,15 @@ export function MessageChatMessageRow({
             />
           </View>
         </Pressable>
-      <MessageChatMessageActionSheet
+      <MessageChatMessageContextMenu
         visible={actionSheetVisible}
+        anchor={menuAnchor}
         colors={colors}
         canEdit={canEdit}
-        onClose={() => setActionSheetVisible(false)}
+        onClose={() => {
+          setActionSheetVisible(false);
+          setMenuAnchor(null);
+        }}
         onReply={onReply}
         onEdit={onEdit}
       />

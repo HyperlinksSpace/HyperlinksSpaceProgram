@@ -6,14 +6,14 @@ import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { typographyRect15, type ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
-import { groupSenderDisplayColor } from "./groupSenderColor";
+import { resolveMessageSenderDisplayName } from "./resolveMessageSenderDisplayName";
 import type {
   MessageChatContentKind,
   MessageChatHistoryItem,
   MessageChatKind,
   MessageChatReplyPreview,
 } from "./messageChatHistoryTypes";
-import { isDisplayableMediaMessage, isGroupLikeChatKind, messageShowsOutgoingChecks, resolveMessageOutgoingStatus } from "./messageChatHistoryTypes";
+import { isDisplayableMediaMessage, isGroupLikeChatKind, messageShowsOutgoingChecks, resolveMessageOutgoingStatus, resolveOutgoingStatusForDisplay } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -42,6 +42,7 @@ import {
   messageChatCallArrowWidthPx,
 } from "./MessageChatCallArrow";
 import { formatMessageCallLabel } from "./formatMessageCallLabel";
+import { groupSenderDisplayColor } from "./groupSenderColor";
 import { MessageChatLinkifiedText } from "./MessageChatLinkifiedText";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
@@ -54,6 +55,7 @@ type Props = {
   maxWidthPx: number;
   mediaColumnMaxWidthPx?: number;
   metaPlacement?: BubbleMetaPlacement;
+  metaReserveWidthPx?: number;
   /** One-line inline text + time; row uses avatar height. */
   compactSingleLine?: boolean;
   onMediaDisplaySizeChange?: (widthPx: number, heightPx: number) => void;
@@ -78,7 +80,9 @@ function MessageChatBubbleTextContent({
   textStyle,
   marginTop = 0,
   metaPlacement = "stacked",
+  metaReserveWidthPx = 0,
   callIndicator = null,
+  doubleCheckDelivered = false,
 }: {
   bodyText: string;
   bodyTextSegments?: FormattedTextSegment[] | null;
@@ -90,7 +94,9 @@ function MessageChatBubbleTextContent({
   textStyle: StyleProp<TextStyle>;
   marginTop?: number;
   metaPlacement?: BubbleMetaPlacement;
+  metaReserveWidthPx?: number;
   callIndicator?: { outgoing: boolean; successful: boolean } | null;
+  doubleCheckDelivered?: boolean;
 }) {
   if (!bodyText && !timeLabel) return null;
 
@@ -103,25 +109,21 @@ function MessageChatBubbleTextContent({
       alignSelf={metaPlacement === "stacked" ? "flex-end" : undefined}
       alignWithBodyBaseline={metaPlacement === "inline" || metaPlacement === "lastLine"}
       callIndicator={callIndicator}
+      doubleCheckDelivered={doubleCheckDelivered}
     />
   ) : null;
 
-  const metaFloatStyle =
-    Platform.OS === "web"
-      ? ({
-          float: "right",
-          clear: "right",
-          height: 0,
-          display: "inline-flex",
-          alignItems: "center",
-          marginLeft: MESSAGE_BUBBLE_META_GAP_PX,
-          position: "relative",
-          top: -MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
-          overflow: "visible",
-        } as object)
-      : null;
+  const metaPadRight =
+    metaPlacement === "lastLine" && metaReserveWidthPx > 0
+      ? metaReserveWidthPx + MESSAGE_BUBBLE_META_GAP_PX
+      : 0;
 
   if (metaPlacement === "inline" && bodyText && timeLabel) {
+    const inlineTextStyle = [
+      textStyle,
+      { textAlign: "left" as const, flexShrink: 0 },
+      Platform.OS === "web" ? ({ whiteSpace: "nowrap", flexGrow: 0 } as object) : null,
+    ];
     return (
       <View
         style={{
@@ -129,14 +131,15 @@ function MessageChatBubbleTextContent({
           flexDirection: "row",
           alignItems: "baseline",
           alignSelf: "flex-start",
-          maxWidth: maxWidthPx,
-          minWidth: 0,
+          flexWrap: "nowrap",
         }}
       >
         <MessageChatLinkifiedText
           text={bodyText}
           segments={bodyTextSegments}
-          style={[textStyle, { textAlign: "left", flexShrink: 1, minWidth: 0 }]}
+          style={inlineTextStyle}
+          numberOfLines={1}
+          nowrap
         />
         <View
           style={{
@@ -153,67 +156,36 @@ function MessageChatBubbleTextContent({
     );
   }
 
-  if (
-    Platform.OS === "web" &&
-    metaPlacement === "lastLine" &&
-    bodyText &&
-    timeLabel
-  ) {
-    return (
-      <View
-        style={{
-          marginTop,
-          alignSelf: "flex-start",
-          maxWidth: maxWidthPx,
-          width: maxWidthPx,
-          minWidth: 0,
-        }}
-      >
-        <View
-          style={
-            Platform.OS === "web"
-              ? ({ display: "flow-root", overflow: "visible" } as object)
-              : undefined
-          }
-        >
-          <MessageChatLinkifiedText
-            text={bodyText}
-            segments={bodyTextSegments}
-            style={[textStyle, { textAlign: "left" }]}
-          />
-          <View style={metaFloatStyle ?? undefined}>{timeRow}</View>
-        </View>
-      </View>
-    );
-  }
-
   if (metaPlacement === "lastLine" && bodyText && timeLabel) {
     return (
       <View
         style={{
           marginTop,
           alignSelf: "flex-start",
-          width: maxWidthPx,
           maxWidth: maxWidthPx,
           minWidth: 0,
-          overflow: "hidden",
+          position: "relative",
         }}
       >
         <MessageChatLinkifiedText
           text={bodyText}
           segments={bodyTextSegments}
-          style={[textStyle, { textAlign: "left", width: maxWidthPx, maxWidth: maxWidthPx }]}
+          style={[
+            textStyle,
+            {
+              textAlign: "left",
+              paddingRight: metaPadRight,
+            },
+          ]}
         />
         <View
           style={{
+            position: "absolute",
+            right: 0,
+            bottom: 0,
             flexDirection: "row",
             justifyContent: "flex-end",
             alignItems: "baseline",
-            marginTop: -MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-            height: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-            width: maxWidthPx,
-            maxWidth: maxWidthPx,
-            paddingBottom: MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
           }}
         >
           {timeRow}
@@ -227,35 +199,29 @@ function MessageChatBubbleTextContent({
       style={{
         marginTop,
         alignSelf: "flex-start",
-        width: maxWidthPx,
         maxWidth: maxWidthPx,
         minWidth: 0,
-        overflow: Platform.OS === "web" ? "visible" : "hidden",
       }}
     >
-      {Platform.OS === "web" && bodyText && timeLabel ? (
-        <View style={{ display: "flow-root", overflow: "visible" } as object}>
-          <MessageChatLinkifiedText
-            text={bodyText}
-            segments={bodyTextSegments}
-            style={[textStyle, { textAlign: "left" }]}
-          />
-          <View style={metaFloatStyle ?? undefined}>{timeRow}</View>
+      {bodyText ? (
+        <MessageChatLinkifiedText
+          text={bodyText}
+          segments={bodyTextSegments}
+          style={[textStyle, { textAlign: "left" }]}
+        />
+      ) : null}
+      {timeRow ? (
+        <View
+          style={{
+            marginTop: bodyText ? 2 : 0,
+            alignSelf: "stretch",
+            flexDirection: "row",
+            justifyContent: "flex-end",
+          }}
+        >
+          {timeRow}
         </View>
-      ) : (
-        <>
-          {bodyText ? (
-            <MessageChatLinkifiedText
-              text={bodyText}
-              segments={bodyTextSegments}
-              style={[textStyle, { textAlign: "left" }]}
-            />
-          ) : null}
-          {timeRow ? (
-            <View style={{ marginTop: bodyText ? 2 : 0, alignSelf: "stretch" }}>{timeRow}</View>
-          ) : null}
-        </>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -269,6 +235,7 @@ function MessageChatBubbleTimeRow({
   alignWithBodyBaseline = false,
   lightOnMedia = false,
   callIndicator = null,
+  doubleCheckDelivered = false,
 }: {
   timeLabel: string;
   colors: ThemeColors;
@@ -278,6 +245,7 @@ function MessageChatBubbleTimeRow({
   alignWithBodyBaseline?: boolean;
   lightOnMedia?: boolean;
   callIndicator?: { outgoing: boolean; successful: boolean } | null;
+  doubleCheckDelivered?: boolean;
 }) {
   const showChecks =
     isOutgoing &&
@@ -325,6 +293,7 @@ function MessageChatBubbleTimeRow({
           status={outgoingStatus!}
           colors={colors}
           onMedia={lightOnMedia}
+          doubleCheckDelivered={doubleCheckDelivered}
         />
       ) : null}
     </View>
@@ -358,6 +327,8 @@ function MessageChatReplyBlock({
     null,
     reply.sender_name,
     colorScheme,
+    reply.sender_accent_color_light,
+    reply.sender_accent_color_dark,
   );
 
   return (
@@ -377,6 +348,7 @@ function MessageChatReplyBlock({
           name={reply.sender_name}
           telegramUserId={reply.sender_user_id}
           telegramChatId={telegramChatId}
+          emojiStatusCustomEmojiId={reply.sender_emoji_status_custom_emoji_id ?? null}
           textStyle={{
             ...typographyRect15,
             fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -416,6 +388,7 @@ export function MessageChatBubbleBody({
   maxWidthPx,
   mediaColumnMaxWidthPx,
   metaPlacement = "stacked",
+  metaReserveWidthPx = 0,
   compactSingleLine = false,
   onMediaDisplaySizeChange,
   peerUserId = null,
@@ -427,15 +400,22 @@ export function MessageChatBubbleBody({
     null,
   );
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
-  const outgoingStatusRaw = resolveMessageOutgoingStatus(item);
-  const outgoingStatus =
-    outgoingStatusRaw === "read" && chatKind !== "private" ? "delivered" : outgoingStatusRaw;
+  const outgoingStatus = resolveOutgoingStatusForDisplay(item, chatKind, {
+    chat_kind: chatKind,
+    telegram_chat_id: chatId,
+    peer_user_id: peerUserId,
+  });
   const showOutgoingChecks = messageShowsOutgoingChecks(item, { peerUserId, selfUserId });
+  const senderDisplayName = resolveMessageSenderDisplayName(
+    item.sender_name,
+    item.sender_user_id,
+    chatId,
+  );
   const showSenderHeader =
     isGroupLikeChatKind(chatKind) &&
     chatKind !== "channel" &&
     !item.is_outgoing &&
-    item.sender_name.trim().length > 0;
+    senderDisplayName.length > 0;
   const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
   const contentKind: MessageChatContentKind = item.content_kind ?? "other";
   const isCall = contentKind === "call";
@@ -487,6 +467,8 @@ export function MessageChatBubbleBody({
     item.sender_chat_id ?? null,
     item.sender_name,
     colorScheme,
+    item.sender_accent_color_light,
+    item.sender_accent_color_dark,
   );
 
   const textStyle = useMemo(
@@ -532,9 +514,10 @@ export function MessageChatBubbleBody({
 
       {showSenderHeader ? (
         <SpecialTelegramUserName
-          name={item.sender_name}
+          name={senderDisplayName}
           telegramUserId={item.sender_user_id}
           telegramChatId={chatId}
+          emojiStatusCustomEmojiId={item.sender_emoji_status_custom_emoji_id ?? null}
           textStyle={{
             ...typographyRect15,
             fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -612,6 +595,7 @@ export function MessageChatBubbleBody({
                 alignSelf="flex-end"
                 lightOnMedia
                 callIndicator={callIndicator}
+                doubleCheckDelivered={false}
               />
             </View>
           ) : null}
@@ -653,7 +637,9 @@ export function MessageChatBubbleBody({
                     : 0
             }
             metaPlacement={metaPlacement}
+            metaReserveWidthPx={metaReserveWidthPx}
             callIndicator={callIndicator}
+            doubleCheckDelivered={false}
           />
         </View>
       ) : null}

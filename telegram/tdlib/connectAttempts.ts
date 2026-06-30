@@ -6,6 +6,7 @@ import * as tdl from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
 import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./env.js";
 import { logGateway } from "./gatewayLog.js";
+import { classifyTdlibSendError } from "../../shared/telegramSendError.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
 import { fetchChatHistory, sendChatTextMessage, editChatTextMessage } from "./chatHistory.js";
@@ -1171,6 +1172,10 @@ export async function getChatHistoryForUser(
   try {
     const result = await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
     const liveRow = getLiveChatList(telegramUsername)?.find((row) => row.telegram_chat_id === chatId);
+    const memberCount =
+      typeof liveRow?.member_count === "number" && liveRow.member_count > 0
+        ? liveRow.member_count
+        : result.member_count;
     return {
       chat_kind: liveRow?.chat_kind ?? result.chat_kind,
       self_user_id: result.self_user_id,
@@ -1178,10 +1183,7 @@ export async function getChatHistoryForUser(
       has_more_older: result.has_more_older,
       next_before_message_id: result.next_before_message_id,
       last_read_outbox_message_id: result.last_read_outbox_message_id,
-      member_count:
-        typeof liveRow?.member_count === "number" && liveRow.member_count > 0
-          ? liveRow.member_count
-          : null,
+      member_count: memberCount,
       error: null,
     };
   } catch (err) {
@@ -1225,8 +1227,51 @@ export async function sendChatMessageForUser(
     }
     return { message, error: null };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "send_failed";
-    return { message: null, error: message };
+    return { message: null, error: classifyTdlibSendError(err, chatId) };
+  }
+}
+
+export async function resolvePublicChatForUser(
+  telegramUsername: string,
+  username: string,
+): Promise<{ chat: Record<string, unknown> | null; error: string | null }> {
+  const name = username.trim().replace(/^@+/, "");
+  if (!name) {
+    return { chat: null, error: "username_required" };
+  }
+
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { chat: null, error: "session_not_ready" };
+  }
+
+  try {
+    const chatPreview = await import("./chatPreview.js");
+    const messageHistoryMap = await import("./messageHistoryMap.js");
+    const chat = (await record.client.invoke({
+      _: "searchPublicChat",
+      username: name,
+    })) as chatPreview.TdChat;
+
+    return {
+      chat: {
+        telegram_chat_id: chat.id,
+        title: chatPreview.chatTitle(chat),
+        subtitle: "",
+        avatar_url: null,
+        last_message_at: chatPreview.lastMessageAtIso(chat),
+        unread_count: chatPreview.normalizeUnreadCount(chat),
+        peer_user_id: chatPreview.peerUserIdFromChat(chat),
+        peer_username: name,
+        chat_username: chatPreview.chatUsernameFromChat(chat) ?? name,
+        chat_kind: messageHistoryMap.chatKindFromTdChat(chat),
+        member_count: null,
+      },
+      error: null,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "resolve_failed";
+    return { chat: null, error: message };
   }
 }
 

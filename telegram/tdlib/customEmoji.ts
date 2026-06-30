@@ -1,5 +1,6 @@
 import fs from "fs";
 import type { Client } from "tdl";
+import { tdlibCustomEmojiIdParam } from "../../shared/telegramCustomEmojiId.js";
 import { logGateway } from "./gatewayLog.js";
 
 type TdFile = {
@@ -39,7 +40,30 @@ function pickTdlibFileId(value: unknown): number | null {
       if (Number.isFinite(fileId) && fileId > 0) return fileId;
     }
   }
+
+  const preview = row.preview;
+  if (preview && typeof preview === "object") {
+    const fileId = pickTdlibFileId(preview);
+    if (fileId != null) return fileId;
+  }
+
   return null;
+}
+
+function pickTdlibFileIds(value: unknown): number[] {
+  const primary = pickTdlibFileId(value);
+  const ids: number[] = primary != null ? [primary] : [];
+  if (!value || typeof value !== "object") return ids;
+  const row = value as Record<string, unknown>;
+  const thumbnail = row.thumbnail;
+  if (thumbnail && typeof thumbnail === "object") {
+    const file = (thumbnail as { file?: unknown }).file;
+    if (file && typeof file === "object") {
+      const fileId = Number((file as { id?: number }).id);
+      if (Number.isFinite(fileId) && fileId > 0 && !ids.includes(fileId)) ids.push(fileId);
+    }
+  }
+  return ids;
 }
 
 function normalizeAnimatedEmojiInput(emoji: string): string[] {
@@ -153,24 +177,33 @@ export async function readCustomEmojiBytes(
   try {
     const result = (await client.invoke({
       _: "getCustomEmojiStickers",
-      custom_emoji_ids: [id],
+      custom_emoji_ids: [tdlibCustomEmojiIdParam(id)],
     })) as { stickers?: unknown[] };
 
-    const fileId = pickTdlibFileId(result.stickers?.[0]);
-    if (fileId == null) {
+    const sticker = result.stickers?.[0];
+    const fileIds = pickTdlibFileIds(sticker);
+    if (fileIds.length === 0) {
       logGateway("custom_emoji_sticker_missing", {
         customEmojiId: id,
         stickerKeys:
-          result.stickers?.[0] && typeof result.stickers[0] === "object"
-            ? Object.keys(result.stickers[0] as object)
+          sticker && typeof sticker === "object"
+            ? Object.keys(sticker as object)
             : null,
       });
       return null;
     }
 
-    const resolved = await readDownloadedFile(client, fileId, { customEmojiId: id, source: "custom" });
-    if (resolved) bytesCache.set(key, resolved);
-    return resolved;
+    for (const fileId of fileIds) {
+      const resolved = await readDownloadedFile(client, fileId, {
+        customEmojiId: id,
+        source: "custom",
+      });
+      if (resolved) {
+        bytesCache.set(key, resolved);
+        return resolved;
+      }
+    }
+    return null;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logGateway("custom_emoji_error", { customEmojiId: id, message });

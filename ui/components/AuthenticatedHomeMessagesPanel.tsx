@@ -13,7 +13,9 @@ import {
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
+import { prefetchChatHistory, prefetchChatHistoryForList, prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
+import { telegramEmojiDebug } from "./messages/telegramEmojiDebug";
 import { homeListShellStyle } from "./messages/messageListLayout";
 import { useTelegramMessagesChatListStream } from "./messages/useTelegramMessagesChatListStream";
 
@@ -102,6 +104,14 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
       row.peer_emoji_status_custom_emoji_id.trim()
         ? row.peer_emoji_status_custom_emoji_id.trim()
         : null,
+    peer_accent_color_light:
+      typeof row.peer_accent_color_light === "string" && row.peer_accent_color_light.trim()
+        ? row.peer_accent_color_light.trim()
+        : null,
+    peer_accent_color_dark:
+      typeof row.peer_accent_color_dark === "string" && row.peer_accent_color_dark.trim()
+        ? row.peer_accent_color_dark.trim()
+        : null,
     presence_kind: presenceKind,
     presence_at: presenceAt,
     chat_action: chatAction,
@@ -158,6 +168,8 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
       a.peer_emoji_status_custom_emoji_id !== b.peer_emoji_status_custom_emoji_id ||
+      a.peer_accent_color_light !== b.peer_accent_color_light ||
+      a.peer_accent_color_dark !== b.peer_accent_color_dark ||
       a.chat_kind !== b.chat_kind ||
       a.member_count !== b.member_count ||
       a.presence_kind !== b.presence_kind ||
@@ -203,6 +215,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [error, setError] = useState<string | null>(null);
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
+  const selectedChatRef = useRef(selectedChat);
+  selectedChatRef.current = selectedChat;
   const { width: windowWidth } = useWindowDimensions();
   const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
   const chatSelectionEnabled = wideListChrome;
@@ -352,6 +366,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         return sortChatRows(rows);
       });
       syncAuthenticatedHomeSelectedChat(rows);
+      const openChat = selectedChatRef.current;
+      prefetchChatHistoryForList(rows, { skipChatId: openChat?.telegram_chat_id ?? null });
+      if (openChat) {
+        prefetchChatHistoryPriority(openChat);
+      }
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
           count: rows.length,
@@ -363,6 +382,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           missingPreviewCount,
           missingAvatarFieldCount,
         });
+        telegramEmojiDebug.chatListSummary(rows);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -452,6 +472,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     void loadChats({ silent: false });
     void triggerGatewayResync("initial_mount").then(() => loadChats({ silent: true }));
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
+
+  useEffect(() => {
+    if (!isTelegramMessagesConnected || !selectedChat) return;
+    prefetchChatHistoryPriority(selectedChat);
+  }, [isTelegramMessagesConnected, selectedChat]);
 
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected) return;
@@ -592,6 +617,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             colors={colors}
             timePendingLabel={t("feed.timePending")}
             onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
+            onPrefetch={chatSelectionEnabled ? () => prefetchChatHistory(item) : undefined}
           />
         ))}
       </View>
@@ -617,6 +643,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           colors={colors}
           timePendingLabel={t("feed.timePending")}
           onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
+          onPrefetch={chatSelectionEnabled ? () => prefetchChatHistory(item) : undefined}
         />
       ))}
       <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={handleClearSelection} />

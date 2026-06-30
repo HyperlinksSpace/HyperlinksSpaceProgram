@@ -33,6 +33,12 @@ export function MessageChatStatusTgsBadge({ size = 20 }: Props) {
   }
 
   return (
-    <TgsCanvasPlayer animationData={animationData} widthPx={size} heightPx={size} lowPriority />
+    <TgsCanvasPlayer
+      animationData={animationData}
+      widthPx={size}
+      heightPx={size}
+      lowPriority={false}
+      priority
+    />
   );
 }

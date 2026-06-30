@@ -1,5 +1,4 @@
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
-import { normalizeFormattedTextSegments } from "../../../shared/formattedTextSegments";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
@@ -16,8 +15,7 @@ import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { MessageChatRichText } from "./MessageChatRichText";
-import { formatMessageChatListSubtitle } from "./formatMessageChatSubheader";
-import { formatMessageChatRowUsernameLabel } from "./formatTelegramChatRowUsername";
+import { formatMessageChatListPreview } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import {
@@ -54,6 +52,8 @@ export type MessageChatRowData = {
   chat_kind?: MessageChatKind | null;
   member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
+  peer_accent_color_light?: string | null;
+  peer_accent_color_dark?: string | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
   presence_at?: string | null;
   chat_action?: MessageChatActionKind | null;
@@ -82,6 +82,7 @@ export function MessageChatRow({
   colors,
   timePendingLabel,
   onPress,
+  onPrefetch,
 }: {
   item: MessageChatRowData;
   isLast: boolean;
@@ -89,15 +90,13 @@ export function MessageChatRow({
   colors: ThemeColors;
   timePendingLabel: string;
   onPress?: () => void;
+  onPrefetch?: () => void;
 }) {
   const { locale } = useAppStrings();
   const title = item.title.trim();
-  const usernameLabel = formatMessageChatRowUsernameLabel(item);
-  const subtitle = formatMessageChatListSubtitle(item, locale);
-  const subtitleSegments = useMemo(
-    () => normalizeFormattedTextSegments(item.subtitle_segments),
-    [item.subtitle_segments],
-  );
+  const preview = formatMessageChatListPreview(item, locale);
+  const subtitle = preview.text;
+  const subtitleSegments = useMemo(() => preview.textSegments, [preview.textSegments]);
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
@@ -158,6 +157,7 @@ export function MessageChatRow({
       isActive={isActive}
       colors={colors}
       onPress={onPress}
+      onHoverIn={onPrefetch}
     >
       <View
         style={{
@@ -215,7 +215,7 @@ export function MessageChatRow({
         <View
           style={{
             flexDirection: "row",
-            alignItems: usernameLabel ? "flex-start" : "center",
+            alignItems: "center",
             minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
@@ -230,17 +230,6 @@ export function MessageChatRow({
                 color: colors.primary,
               }}
             />
-            {usernameLabel ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  ...textBase,
-                  color: colors.secondary,
-                }}
-              >
-                {usernameLabel}
-              </Text>
-            ) : null}
           </View>
           {gapTitleTime ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {timeLabel ? (

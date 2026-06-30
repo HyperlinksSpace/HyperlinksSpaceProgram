@@ -34,6 +34,10 @@
       "destination": "/api/telegram-messages-edit"
     },
     {
+      "source": "/api/telegram/messages/resolve-chat",
+      "destination": "/api/telegram-messages-resolve-chat"
+    },
+    {
       "source": "/api/telegram/mtproto/connect/start",
       "destination": "/api/telegram-mtproto-connect-start"
     },

@@ -1,5 +1,6 @@
 import { buildApiUrl } from "../../../api/_base";
 import { bytesLookLikeTgs, bytesLookLikeVideo } from "./loadTgsAnimation";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 export type TelegramEmojiFetchRef =
   | { kind: "custom"; customEmojiId: string }
@@ -11,6 +12,7 @@ export type TelegramEmojiAsset = {
 };
 
 const bytesCache = new Map<string, TelegramEmojiAsset>();
+const unavailableCache = new Set<string>();
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -36,8 +38,15 @@ export async function fetchTelegramEmojiAsset(
   ref: TelegramEmojiFetchRef,
 ): Promise<TelegramEmojiAsset | null> {
   const key = cacheKey(ref);
+  if (unavailableCache.has(key)) {
+    telegramEmojiDebug.fetchUnavailableCached(ref);
+    return null;
+  }
   const cached = bytesCache.get(key);
-  if (cached) return cached;
+  if (cached) {
+    telegramEmojiDebug.fetchCacheHit(ref, cached.mime, cached.bytes.length);
+    return cached;
+  }
 
   const params = new URLSearchParams();
   if (ref.kind === "custom") {
@@ -47,22 +56,38 @@ export async function fetchTelegramEmojiAsset(
   }
 
   const url = buildApiUrl(`/api/telegram-messages-custom-emoji?${params.toString()}`);
-  let response = await fetch(url, { credentials: "include" });
-  if (response.status === 403 || response.status === 503) {
-    await sleep(600);
-    response = await fetch(url, { credentials: "include" });
+  telegramEmojiDebug.fetchStart(ref, url);
+  try {
+    let response = await fetch(url, { credentials: "include" });
+    if (response.status === 403 || response.status === 503 || response.status === 404) {
+      await sleep(response.status === 404 ? 1200 : 600);
+      response = await fetch(url, { credentials: "include" });
+    }
+    const contentType = response.headers.get("Content-Type");
+  if (!response.ok) {
+    telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, 0);
+    if (response.status !== 404) {
+      unavailableCache.add(key);
+    }
+    return null;
   }
-  if (!response.ok && ref.kind === "custom") {
-    await sleep(400);
-    response = await fetch(url, { credentials: "include" });
-  }
-  if (!response.ok) return null;
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  const mime = resolveMime(response.headers.get("Content-Type") || "", bytes);
-  const asset = { bytes, mime };
-  bytesCache.set(key, asset);
-  return asset;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, bytes.length);
+    if (bytes.length === 0) {
+      telegramEmojiDebug.fetchEmptyBody(ref);
+      unavailableCache.add(key);
+      return null;
+    }
+    const mime = resolveMime(contentType || "", bytes);
+    const asset = { bytes, mime };
+    bytesCache.set(key, asset);
+    return asset;
+  } catch (err) {
+    telegramEmojiDebug.fetchNetworkError(ref, err);
+    unavailableCache.add(key);
+    return null;
+  }
 }
 
 /** @deprecated Use {@link fetchTelegramEmojiAsset}. */

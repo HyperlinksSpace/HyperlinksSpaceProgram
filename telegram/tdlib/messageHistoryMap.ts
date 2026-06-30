@@ -14,6 +14,7 @@ import {
 } from "./chatPreview.js";
 import { messageTextSegments } from "./formattedTextSegments.js";
 import { largestPhotoDimensions } from "./photoParse.js";
+import { resolveTdUserProfile, type TdUserProfileCache } from "./tdUserProfile.js";
 
 export type ChatKind = "private" | "group" | "supergroup" | "channel";
 
@@ -38,6 +39,9 @@ export type MappedChatHistoryMessage = {
   sender_user_id: number | null;
   sender_chat_id: number | null;
   sender_is_channel: boolean;
+  sender_emoji_status_custom_emoji_id?: string | null;
+  sender_accent_color_light?: string | null;
+  sender_accent_color_dark?: string | null;
   is_outgoing: boolean;
   outgoing_status: MessageOutgoingStatus | null;
   content_kind: MessageContentKind;
@@ -54,12 +58,7 @@ export type MappedChatHistoryMessage = {
   call_success?: boolean | null;
 };
 
-type TdUser = {
-  id?: number;
-  first_name?: string;
-  last_name?: string;
-  username?: string;
-};
+type UserProfileCache = Map<number, TdUserProfileCache>;
 
 export function chatKindFromTdChat(chat: TdChat): ChatKind {
   const kind = chat.type?._;
@@ -187,7 +186,7 @@ async function resolveFullMessage(
 async function resolveReplyPreview(
   client: Client,
   message: TdMessage,
-  userCache: Map<number, string>,
+  userCache: UserProfileCache,
   chatCache: Map<number, { title: string; isChannel: boolean }>,
 ): Promise<{
   sender_name: string;
@@ -215,6 +214,9 @@ async function resolveReplyPreview(
       sender_user_id: senderUserId(replied),
       text: text.slice(0, 200),
       text_segments: replySegments,
+      sender_emoji_status_custom_emoji_id: sender.profile?.emoji_status_custom_emoji_id ?? null,
+      sender_accent_color_light: sender.profile?.accent_color_light ?? null,
+      sender_accent_color_dark: sender.profile?.accent_color_dark ?? null,
     };
   } catch {
     return null;
@@ -245,24 +247,28 @@ function messageSentAtIso(message: TdMessage): string {
   return new Date().toISOString();
 }
 
-async function resolveUserName(client: Client, userId: number, cache: Map<number, string>): Promise<string> {
-  const cached = cache.get(userId);
-  if (cached) return cached;
-  try {
-    const user = (await client.invoke({ _: "getUser", user_id: userId })) as TdUser;
-    const parts = [user.first_name, user.last_name].filter(
-      (part): part is string => typeof part === "string" && part.trim().length > 0,
-    );
-    const name =
-      parts.join(" ").trim() ||
-      (typeof user.username === "string" && user.username.trim()
-        ? `@${user.username.trim()}`
-        : "User");
-    cache.set(userId, name);
-    return name;
-  } catch {
-    return "User";
+async function resolveSenderName(
+  client: Client,
+  message: TdMessage,
+  chat: TdChat,
+  userCache: UserProfileCache,
+  chatCache: Map<number, { title: string; isChannel: boolean }>,
+): Promise<{ name: string; isChannel: boolean; profile: TdUserProfileCache | null }> {
+  const userId = senderUserId(message);
+  if (userId != null) {
+    const profile = await resolveTdUserProfile(client, userId, userCache);
+    return { name: profile.name, isChannel: false, profile };
   }
+  const senderChatIdValue = senderChatId(message);
+  if (senderChatIdValue != null) {
+    const resolved = await resolveChatName(client, senderChatIdValue, chatCache);
+    return { name: resolved.title, isChannel: resolved.isChannel, profile: null };
+  }
+  return {
+    name: chatTitle(chat),
+    isChannel: chatKindFromTdChat(chat) === "channel",
+    profile: null,
+  };
 }
 
 async function resolveChatName(
@@ -282,25 +288,6 @@ async function resolveChatName(
   } catch {
     return { title: "Channel", isChannel: true };
   }
-}
-
-async function resolveSenderName(
-  client: Client,
-  message: TdMessage,
-  chat: TdChat,
-  userCache: Map<number, string>,
-  chatCache: Map<number, { title: string; isChannel: boolean }>,
-): Promise<{ name: string; isChannel: boolean }> {
-  const userId = senderUserId(message);
-  if (userId != null) {
-    return { name: await resolveUserName(client, userId, userCache), isChannel: false };
-  }
-  const senderChatIdValue = senderChatId(message);
-  if (senderChatIdValue != null) {
-    const resolved = await resolveChatName(client, senderChatIdValue, chatCache);
-    return { name: resolved.title, isChannel: resolved.isChannel };
-  }
-  return { name: chatTitle(chat), isChannel: chatKindFromTdChat(chat) === "channel" };
 }
 
 export function effectiveReadOutboxMessageId(
@@ -456,7 +443,7 @@ export async function mapHistoryMessage(
   client: Client,
   message: TdMessage,
   chat: TdChat,
-  userCache: Map<number, string>,
+  userCache: UserProfileCache,
   chatCache: Map<number, { title: string; isChannel: boolean }>,
   myUserId?: number | null,
 ): Promise<MappedChatHistoryMessage | null> {
@@ -485,6 +472,9 @@ export async function mapHistoryMessage(
     sender_user_id: senderUserId(resolved),
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
+    sender_emoji_status_custom_emoji_id: sender.profile?.emoji_status_custom_emoji_id ?? null,
+    sender_accent_color_light: sender.profile?.accent_color_light ?? null,
+    sender_accent_color_dark: sender.profile?.accent_color_dark ?? null,
     is_outgoing: messageIsOutgoing(resolved, myUserId),
     outgoing_status: resolveOutgoingStatus(resolved, chat, myUserId),
     content_kind: messageContentKind(resolved),

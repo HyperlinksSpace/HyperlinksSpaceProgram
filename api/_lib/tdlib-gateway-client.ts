@@ -592,6 +592,28 @@ export async function gatewaySendChatMessage(
   return { message, error: null };
 }
 
+export async function gatewayResolvePublicChat(
+  telegramUsername: string,
+  username: string,
+): Promise<{ chat: Record<string, unknown> | null; error: string | null }> {
+  const name = username.trim().replace(/^@+/, "");
+  const { response, json } = await gatewayFetch(
+    `/v1/chat/resolve?telegramUsername=${encodeURIComponent(telegramUsername)}&username=${encodeURIComponent(name)}`,
+    { method: "GET" },
+  );
+  const chat =
+    json.chat && typeof json.chat === "object" && !Array.isArray(json.chat)
+      ? (json.chat as Record<string, unknown>)
+      : null;
+  if (!response.ok || !json.ok) {
+    return {
+      chat: null,
+      error: typeof json.error === "string" ? json.error : "resolve_failed",
+    };
+  }
+  return { chat, error: null };
+}
+
 export async function gatewayEditChatMessage(
   telegramUsername: string,
   chatId: number,

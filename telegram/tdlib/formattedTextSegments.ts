@@ -154,45 +154,6 @@ export function animatedEmojiSegments(content: Record<string, unknown>): Formatt
   return null;
 }
 
-const UNICODE_EMOJI_PATTERN =
-  /\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?)*/gu;
-
-function splitTextIntoAnimatedEmojiSegments(text: string): FormattedTextSegment[] {
-  if (!text) return [];
-  const segments: FormattedTextSegment[] = [];
-  let lastIndex = 0;
-  const pattern = new RegExp(UNICODE_EMOJI_PATTERN.source, "gu");
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text)) !== null) {
-    const start = match.index;
-    if (start > lastIndex) {
-      segments.push({ kind: "text", text: text.slice(lastIndex, start) });
-    }
-    const emoji = match[0];
-    segments.push({ kind: "animated_emoji", text: emoji, emoji });
-    lastIndex = start + emoji.length;
-  }
-
-  if (lastIndex < text.length) {
-    segments.push({ kind: "text", text: text.slice(lastIndex) });
-  }
-
-  return segments.length > 0 ? segments : [{ kind: "text", text }];
-}
-
-function enrichSegmentsWithStandardEmojis(segments: FormattedTextSegment[]): FormattedTextSegment[] {
-  const enriched: FormattedTextSegment[] = [];
-  for (const segment of segments) {
-    if (segment.kind !== "text" || !segment.text) {
-      enriched.push(segment);
-      continue;
-    }
-    enriched.push(...splitTextIntoAnimatedEmojiSegments(segment.text));
-  }
-  return enriched;
-}
-
 export function messageTextSegments(message: {
   content?: Record<string, unknown> | null;
 } | null | undefined): FormattedTextSegment[] | null {
@@ -204,11 +165,11 @@ export function messageTextSegments(message: {
 
   if (type === "messageText") {
     const parsed = parseFormattedTextSegments(row.text);
-    if (parsed) return enrichSegmentsWithStandardEmojis(parsed);
+    if (parsed) return parsed;
     const plain = typeof (row.text as { text?: string } | undefined)?.text === "string"
       ? (row.text as { text: string }).text
       : "";
-    return plain ? enrichSegmentsWithStandardEmojis([{ kind: "text", text: plain }]) : null;
+    return plain ? [{ kind: "text", text: plain }] : null;
   }
   if (type === "messageAnimatedEmoji") {
     return animatedEmojiSegments(row);
@@ -222,12 +183,10 @@ export function messageTextSegments(message: {
     type === "messageVoiceNote" ||
     type === "messagePaidMedia"
   ) {
-    const parsed = parseFormattedTextSegments(row.caption);
-    return parsed ? enrichSegmentsWithStandardEmojis(parsed) : null;
+    return parseFormattedTextSegments(row.caption);
   }
   if (type === "messageWebPage") {
-    const parsed = parseFormattedTextSegments(row.caption);
-    return parsed ? enrichSegmentsWithStandardEmojis(parsed) : null;
+    return parseFormattedTextSegments(row.caption);
   }
   return null;
 }

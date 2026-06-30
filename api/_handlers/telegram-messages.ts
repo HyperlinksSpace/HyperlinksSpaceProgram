@@ -7,7 +7,7 @@ import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayOpenLiveChatsStream, gatewayResyncChats, gatewaySendChatMessage, gatewayEditChatMessage, gatewayUserHasPersistedSession, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayOpenLiveChatsStream, gatewayResyncChats, gatewaySendChatMessage, gatewayEditChatMessage, gatewayResolvePublicChat, gatewayUserHasPersistedSession, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -180,6 +180,14 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
       typeof row.peer_emoji_status_custom_emoji_id === "string" &&
       row.peer_emoji_status_custom_emoji_id.trim()
         ? row.peer_emoji_status_custom_emoji_id.trim()
+        : null,
+    peer_accent_color_light:
+      typeof row.peer_accent_color_light === "string" && row.peer_accent_color_light.trim()
+        ? row.peer_accent_color_light.trim()
+        : null,
+    peer_accent_color_dark:
+      typeof row.peer_accent_color_dark === "string" && row.peer_accent_color_dark.trim()
+        ? row.peer_accent_color_dark.trim()
         : null,
     presence_kind: row.presence_kind ?? null,
     presence_at: row.presence_at ?? null,
@@ -956,6 +964,111 @@ export async function telegramMessagesSendHandler(
   }
 
   return finishJson(request, res, { ok: true, message: result.message }, 200);
+}
+
+function mapResolvedChatRow(row: Record<string, unknown>) {
+  const telegramChatId = Number(row.telegram_chat_id);
+  return {
+    id: Number.isFinite(telegramChatId) ? telegramChatId : 0,
+    telegram_chat_id: telegramChatId,
+    title: typeof row.title === "string" ? row.title : "",
+    subtitle: typeof row.subtitle === "string" ? row.subtitle : "",
+    avatar_url: typeof row.avatar_url === "string" ? row.avatar_url : null,
+    last_message_at:
+      typeof row.last_message_at === "string" || typeof row.last_message_at === "number"
+        ? String(row.last_message_at)
+        : null,
+    unread_count: Number.isFinite(Number(row.unread_count)) ? Number(row.unread_count) : 0,
+    peer_user_id: Number.isFinite(Number(row.peer_user_id)) ? Number(row.peer_user_id) : null,
+    peer_username:
+      typeof row.peer_username === "string" && row.peer_username.trim()
+        ? row.peer_username.trim().replace(/^@+/, "")
+        : null,
+    chat_username:
+      typeof row.chat_username === "string" && row.chat_username.trim()
+        ? row.chat_username.trim().replace(/^@+/, "")
+        : null,
+    chat_kind:
+      row.chat_kind === "private" ||
+      row.chat_kind === "group" ||
+      row.chat_kind === "supergroup" ||
+      row.chat_kind === "channel"
+        ? row.chat_kind
+        : null,
+    member_count: null,
+    presence_kind: null,
+    presence_at: null,
+    chat_action: null,
+    chat_action_user_id: null,
+    chat_action_user_name: null,
+    chat_action_expires_at: null,
+    is_pinned: false,
+    pin_order: "0",
+    last_read_outbox_message_id: null,
+  };
+}
+
+export async function telegramMessagesResolveChatHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const url = requestUrl(request);
+  const username = (url.searchParams.get("username") || "").trim().replace(/^@+/, "");
+  if (!username) {
+    return finishJson(request, res, { ok: false, error: "username_required" }, 400);
+  }
+
+  const started = Date.now();
+  const result = await gatewayResolvePublicChat(userOrRes, username);
+  logTelegramMessagesApi("messages_resolve_chat", {
+    telegramUsername: userOrRes,
+    username,
+    ok: !result.error,
+    chatId:
+      result.chat && typeof result.chat.telegram_chat_id === "number"
+        ? result.chat.telegram_chat_id
+        : null,
+    error: result.error,
+    elapsedMs: Date.now() - started,
+  });
+
+  if (result.error || !result.chat) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: result.error ?? "resolve_failed", chat: null },
+      result.error === "session_not_ready" ? 503 : 502,
+    );
+  }
+
+  return finishJson(
+    request,
+    res,
+    { ok: true, chat: mapResolvedChatRow(result.chat) },
+    200,
+  );
 }
 
 export async function telegramMessagesEditHandler(

@@ -114,7 +114,7 @@ export function measureInlineBubbleRowWidth(bodyText: string, metaWidthPx: numbe
     MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   );
   if (metaWidthPx <= 0) return textWidth;
-  return textWidth + MESSAGE_BUBBLE_META_GAP_PX + metaWidthPx;
+  return Math.ceil(textWidth + MESSAGE_BUBBLE_META_GAP_PX + metaWidthPx);
 }
 
 export function resolveBubbleMetaPlacementFromLineWidths(
@@ -124,16 +124,12 @@ export function resolveBubbleMetaPlacementFromLineWidths(
   metaGapPx = MESSAGE_BUBBLE_META_GAP_PX,
 ): BubbleMetaPlacement {
   if (lineWidths.length === 0 || metaWidthPx <= 0) return "stacked";
-  if (lineWidths.length === 1) {
-    return lineWidths[0]! + metaGapPx + metaWidthPx <= maxContentWidth ? "inline" : "stacked";
-  }
-  const longest = Math.max(...lineWidths);
-  const lastLine = lineWidths[lineWidths.length - 1]!;
   const metaBlock = metaGapPx + metaWidthPx;
-  if (lastLine + metaBlock <= maxContentWidth) {
-    return "lastLine";
+  if (lineWidths.length === 1) {
+    return lineWidths[0]! + metaBlock <= maxContentWidth ? "inline" : "stacked";
   }
-  if (longest - lastLine >= metaBlock) {
+  const lastLine = lineWidths[lineWidths.length - 1]!;
+  if (lastLine + metaBlock <= maxContentWidth) {
     return "lastLine";
   }
   return "stacked";
@@ -190,11 +186,17 @@ export function resolveMessageBubbleLayout(
     trimmed,
   );
 
-  if (trimmed && innerWidthPx > 0 && innerWidthPx < maxContentWidth) {
-    const remeasured = measureWrappedLineWidths(trimmed, innerWidthPx);
+  if (trimmed && innerWidthPx > 0 && innerWidthPx < maxContentWidth && placement !== "inline") {
+    const remeasureWidth = Math.ceil(innerWidthPx);
+    const remeasured = measureWrappedLineWidths(trimmed, remeasureWidth);
     if (remeasured.length > 0) {
       lineWidths = remeasured;
-      placement = resolveBubbleMetaPlacementFromLineWidths(lineWidths, innerWidthPx, metaWidthPx);
+      const nextPlacement = resolveBubbleMetaPlacementFromLineWidths(
+        lineWidths,
+        remeasureWidth,
+        metaWidthPx,
+      );
+      placement = nextPlacement;
       innerWidthPx = measureBubbleInnerContentWidth(
         lineWidths,
         placement,

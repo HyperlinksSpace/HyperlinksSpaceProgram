@@ -1,4 +1,4 @@
-/** Telegram user id for Irina (private chat title "Irina", peer_user_id from TDLib). */
+import { resolveTelegramDisplayName } from "./telegramDisplayName";
 export const IRINA_TELEGRAM_USER_ID = 402111770;
 /** Telegram user id for MMI (private chat title "MMI"). */
 export const MMI_TELEGRAM_USER_ID = 217908042;
@@ -98,7 +98,10 @@ export function specialUserDisplayName(
 ): string {
   const override = resolveSpecialUserRule(telegramUserId, fallbackName, telegramChatId)?.displayName;
   if (override?.trim()) return override.trim();
-  return fallbackName.trim();
+  return resolveTelegramDisplayName({
+    name: fallbackName,
+    userId: telegramUserId,
+  });
 }
 
 export function specialUserShowsShineName(

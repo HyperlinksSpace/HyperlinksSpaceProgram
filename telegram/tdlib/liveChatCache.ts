@@ -34,6 +34,8 @@ export type LiveChatRow = {
   chat_kind?: "private" | "group" | "supergroup" | "channel" | null;
   member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
+  peer_accent_color_light?: string | null;
+  peer_accent_color_dark?: string | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
   chat_action: ChatActionKind | null;
@@ -205,6 +207,8 @@ export function patchLiveChatFromTdlib(
       input.peer_emoji_status_custom_emoji_id !== undefined
         ? input.peer_emoji_status_custom_emoji_id
         : (existing?.peer_emoji_status_custom_emoji_id ?? null),
+    peer_accent_color_light: existing?.peer_accent_color_light ?? null,
+    peer_accent_color_dark: existing?.peer_accent_color_dark ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
     chat_action: existing?.chat_action ?? null,
@@ -250,6 +254,8 @@ export function patchLiveChatAction(
     chat_kind: existing.chat_kind ?? null,
     member_count: existing.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
+    peer_accent_color_light: existing.peer_accent_color_light ?? null,
+    peer_accent_color_dark: existing.peer_accent_color_dark ?? null,
     presence_kind: existing.presence_kind,
     presence_at: existing.presence_at,
     chat_action: input.action,
@@ -285,6 +291,8 @@ export function patchLiveChatPresence(
       chat_kind: row.chat_kind ?? null,
       member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: row.peer_emoji_status_custom_emoji_id ?? null,
+      peer_accent_color_light: row.peer_accent_color_light ?? null,
+      peer_accent_color_dark: row.peer_accent_color_dark ?? null,
       presence_kind: presence.kind,
       presence_at: presence.at,
       chat_action: row.chat_action,
@@ -303,6 +311,8 @@ export function patchLiveChatEmojiStatus(
   telegramUsername: string,
   peerUserId: number,
   customEmojiId: string | null,
+  accentColorLight: string | null = null,
+  accentColorDark: string | null = null,
 ): LiveChatRow | null {
   const cache = caches.get(telegramUsername);
   if (!cache) return null;
@@ -322,6 +332,8 @@ export function patchLiveChatEmojiStatus(
       chat_kind: row.chat_kind ?? null,
       member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: customEmojiId,
+      peer_accent_color_light: accentColorLight ?? row.peer_accent_color_light ?? null,
+      peer_accent_color_dark: accentColorDark ?? row.peer_accent_color_dark ?? null,
       presence_kind: row.presence_kind,
       presence_at: row.presence_at,
       chat_action: row.chat_action,
@@ -366,6 +378,8 @@ export function applyLiveMessageUpdate(
     chat_kind: existing?.chat_kind ?? null,
     member_count: existing?.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing?.peer_emoji_status_custom_emoji_id ?? null,
+    peer_accent_color_light: existing?.peer_accent_color_light ?? null,
+    peer_accent_color_dark: existing?.peer_accent_color_dark ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
     chat_action: existing?.chat_action ?? null,
@@ -406,6 +420,8 @@ export function patchLiveChatMemberMeta(
     member_count:
       input.member_count !== undefined ? input.member_count : (existing.member_count ?? null),
     peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
+    peer_accent_color_light: existing.peer_accent_color_light ?? null,
+    peer_accent_color_dark: existing.peer_accent_color_dark ?? null,
     presence_kind: existing.presence_kind,
     presence_at: existing.presence_at,
     chat_action: existing.chat_action,

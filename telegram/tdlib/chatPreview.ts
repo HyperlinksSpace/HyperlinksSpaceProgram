@@ -424,14 +424,13 @@ export function messageReadDateFromTdMessage(message: TdMessage): number | null 
 }
 
 export function messageIsOutgoing(message: TdMessage, myUserId?: number | null): boolean {
-  const row = message as Record<string, unknown>;
-  if (message.is_outgoing === false || row.isOutgoing === false) return false;
-
   const sender = message.sender_id;
   if (sender?._ === "messageSenderUser" && myUserId != null) {
     return sender.user_id === myUserId;
   }
 
+  const row = message as Record<string, unknown>;
+  if (message.is_outgoing === false || row.isOutgoing === false) return false;
   if (message.is_outgoing === true || row.isOutgoing === true) return true;
   const sendingState = message.sending_state?._;
   if (

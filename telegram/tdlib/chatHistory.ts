@@ -9,7 +9,8 @@ import {
   type ChatKind,
   type MappedChatHistoryMessage,
 } from "./messageHistoryMap.js";
-import { lastReadOutboxMessageIdFromChat, type TdChat, type TdMessage } from "./chatPreview.js";
+import { lastReadOutboxMessageIdFromChat, memberCountFromChat, type TdChat, type TdMessage } from "./chatPreview.js";
+import type { TdUserProfileCache } from "./tdUserProfile.js";
 
 export type { ChatKind, MappedChatHistoryMessage };
 
@@ -49,7 +50,7 @@ async function mapHistoryBatch(
   messages: TdMessage[],
   chat: TdChat,
 ): Promise<MappedChatHistoryMessage[]> {
-  const userCache = new Map<number, string>();
+  const userCache = new Map<number, TdUserProfileCache>();
   const chatCache = new Map<number, { title: string; isChannel: boolean }>();
   const myUserId = await resolveMyUserId(client);
   const mapped = await Promise.all(
@@ -197,9 +198,12 @@ export async function fetchChatHistory(
       .map((row) => row.telegram_message_id),
   );
 
+  const memberCount = await memberCountFromChat(client, finalChat);
+
   return {
     chat_kind: chatKind,
     self_user_id: selfUserId,
+    member_count: memberCount,
     messages,
     has_more_older: hasMoreOlder,
     next_before_message_id: nextBeforeMessageId,

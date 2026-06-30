@@ -5,10 +5,7 @@
 !scripts/load-env.ts
 !scripts/run-tdlib-gateway.ts
 !telegram/tdlib/**
-!shared/telegramThreadConstants.ts
-!shared/specialTelegramUsers.ts
-!shared/appLog.ts
-!shared/formattedTextSegments.ts
+!shared/**
 !database/start.ts
 !database/telegramMessages.ts
 !database/telegramMtproto.ts

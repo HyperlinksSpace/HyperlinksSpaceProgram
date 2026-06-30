@@ -4,6 +4,7 @@
 !scripts/load-env.ts
 !scripts/run-tdlib-gateway.ts
 !telegram/tdlib/**
+!shared/**
 !database/start.ts
 !database/telegramMessages.ts
 !database/telegramMtproto.ts

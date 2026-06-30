@@ -21,6 +21,9 @@ export type MessageChatReplyPreview = {
   sender_user_id: number | null;
   text: string;
   text_segments?: FormattedTextSegment[] | null;
+  sender_emoji_status_custom_emoji_id?: string | null;
+  sender_accent_color_light?: string | null;
+  sender_accent_color_dark?: string | null;
 };
 
 /** Outgoing message delivery state for bubble checkmarks. */
@@ -35,6 +38,9 @@ export type MessageChatHistoryItem = {
   sender_user_id: number | null;
   sender_chat_id?: number | null;
   sender_is_channel?: boolean;
+  sender_emoji_status_custom_emoji_id?: string | null;
+  sender_accent_color_light?: string | null;
+  sender_accent_color_dark?: string | null;
   is_outgoing: boolean;
   /** Outgoing delivery/read ticks (private chats use read receipts). */
   outgoing_status?: MessageOutgoingStatus | null;
@@ -62,14 +68,18 @@ export function resolveHistoryMessageIsOutgoing(params: {
   const { rawIsOutgoing, senderUserId, peerUserId, selfUserId } = params;
 
   if (peerUserId != null && senderUserId === peerUserId) return false;
+  if (selfUserId != null && senderUserId != null && senderUserId === selfUserId) return true;
   if (selfUserId != null && senderUserId != null && senderUserId !== selfUserId) {
     return false;
   }
 
-  if (rawIsOutgoing === true) return true;
   if (rawIsOutgoing === false) return false;
 
-  if (selfUserId != null && senderUserId === selfUserId) return true;
+  // Private chat: TDLib `is_outgoing` alone is not enough without a known sender.
+  if (peerUserId != null && senderUserId == null) return false;
+
+  if (rawIsOutgoing === true) return true;
+
   if (peerUserId != null && senderUserId != null && senderUserId !== peerUserId) {
     return true;
   }
@@ -84,13 +94,10 @@ export function messageShowsOutgoingChecks(
 ): boolean {
   if (!item.is_outgoing) return false;
   if (ctx?.peerUserId != null && item.sender_user_id === ctx.peerUserId) return false;
-  if (
-    ctx?.selfUserId != null &&
-    item.sender_user_id != null &&
-    item.sender_user_id !== ctx.selfUserId
-  ) {
-    return false;
+  if (ctx?.selfUserId != null && item.sender_user_id != null) {
+    return item.sender_user_id === ctx.selfUserId;
   }
+  if (ctx?.peerUserId != null && item.sender_user_id == null) return false;
   return true;
 }
 
@@ -188,6 +195,37 @@ export function applyCumulativeOutgoingReadStatuses(
 
 export function isGroupLikeChatKind(kind: MessageChatKind | null | undefined): boolean {
   return kind === "group" || kind === "supergroup" || kind === "channel";
+}
+
+/** Private chats use TDLib read-outbox cursors and double-check read receipts. */
+export type MessageChatReadReceiptContext = {
+  chat_kind?: MessageChatKind | null;
+  telegram_chat_id?: number;
+  peer_user_id?: number | null;
+};
+
+export function isPrivateChatForReadReceipts(
+  chatKind: MessageChatKind | null | undefined,
+  chat?: MessageChatReadReceiptContext | null,
+): boolean {
+  const kind = chatKind ?? chat?.chat_kind ?? null;
+  if (kind === "private") return true;
+  if (isGroupLikeChatKind(kind)) return false;
+  const chatId = Number(chat?.telegram_chat_id);
+  if (Number.isFinite(chatId) && chatId > 0 && chat?.peer_user_id != null) return true;
+  return false;
+}
+
+/** Group chats do not show per-message read ticks; keep a single delivered tick. */
+export function resolveOutgoingStatusForDisplay(
+  item: Pick<MessageChatHistoryItem, "is_outgoing" | "outgoing_status">,
+  chatKind: MessageChatKind | null | undefined,
+  chat?: MessageChatReadReceiptContext | null,
+): MessageOutgoingStatus | null {
+  const status = resolveMessageOutgoingStatus(item);
+  if (status !== "read") return status;
+  if (isPrivateChatForReadReceipts(chatKind, chat)) return status;
+  return "delivered";
 }
 
 const DISPLAYABLE_MEDIA_KINDS = new Set<MessageChatContentKind>([
@@ -332,11 +370,16 @@ function mergeIsOutgoing(
 ): boolean {
   const senderId = incoming.sender_user_id ?? prev.sender_user_id;
   if (ctx?.peerUserId != null && senderId === ctx.peerUserId) return false;
+  if (ctx?.selfUserId != null && senderId != null && senderId === ctx.selfUserId) return true;
   if (ctx?.selfUserId != null && senderId != null && senderId !== ctx.selfUserId) {
     return false;
   }
+  if (incoming.is_outgoing === false) return false;
   if (incoming.is_outgoing) return true;
-  if (prev.is_outgoing && prev.outgoing_status != null) return true;
+  if (prev.is_outgoing && prev.outgoing_status != null) {
+    if (ctx?.peerUserId != null && senderId == null) return false;
+    return true;
+  }
   return false;
 }
 
@@ -373,6 +416,14 @@ export function mergeHistoryMessageRow(
   return enrichHistoryMessageDisplay({
     ...mergeTextFields(mergeMediaFields(incomingEnriched, prevEnriched), prevEnriched),
     text_segments: incomingEnriched.text_segments ?? prevEnriched.text_segments ?? null,
+    sender_emoji_status_custom_emoji_id:
+      incomingEnriched.sender_emoji_status_custom_emoji_id ??
+      prevEnriched.sender_emoji_status_custom_emoji_id ??
+      null,
+    sender_accent_color_light:
+      incomingEnriched.sender_accent_color_light ?? prevEnriched.sender_accent_color_light ?? null,
+    sender_accent_color_dark:
+      incomingEnriched.sender_accent_color_dark ?? prevEnriched.sender_accent_color_dark ?? null,
     is_outgoing: isOutgoing,
     outgoing_status: outgoingStatus,
   });

@@ -19,9 +19,27 @@ export function canReplyToMessage(_item: MessageChatHistoryItem): boolean {
   return true;
 }
 
-/** Only outgoing plain-text messages can be edited in Telegram. */
-export function canEditMessage(item: MessageChatHistoryItem): boolean {
-  if (!item.is_outgoing) return false;
+function isOwnMessage(
+  item: MessageChatHistoryItem,
+  selfUserId?: number | null,
+): boolean {
+  if (item.is_outgoing) return true;
+  if (
+    selfUserId != null &&
+    item.sender_user_id != null &&
+    item.sender_user_id === selfUserId
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Only own plain-text messages can be edited in Telegram. */
+export function canEditMessage(
+  item: MessageChatHistoryItem,
+  selfUserId?: number | null,
+): boolean {
+  if (!isOwnMessage(item, selfUserId)) return false;
   if (item.content_kind === "call") return false;
   if (item.has_media && item.content_kind !== "text" && item.content_kind !== undefined) {
     return false;

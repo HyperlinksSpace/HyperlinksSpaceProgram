@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { TELEGRAM_SEND_ERROR_PUBLIC_GROUPS_BANNED } from "../../../shared/telegramSendError";
 import { useAuthenticatedHomeSelectedChat } from "../../authenticatedHomeSelectedChat";
 import {
   clearMessageChatCompose,
@@ -15,6 +16,7 @@ import { appWarn } from "../../../shared/appLog";
 import { useColors } from "../../theme";
 import { GlobalBottomBar } from "../GlobalBottomBar";
 import { MessageChatComposeStrip } from "../messages/MessageChatComposeStrip";
+import { MessageChatPublicGroupsBanModal } from "../messages/MessageChatPublicGroupsBanModal";
 
 /** Chat compose bar in wide three-column layout — same chrome as {@link GlobalBottomBar}. */
 export function MessageChatWriteBottomBar() {
@@ -25,6 +27,7 @@ export function MessageChatWriteBottomBar() {
   const compose = useMessageChatCompose(selectedChat?.telegram_chat_id);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [publicGroupsBanVisible, setPublicGroupsBanVisible] = useState(false);
   const sendingRef = useRef(false);
   const editPrefillRef = useRef<number | null>(null);
 
@@ -78,6 +81,9 @@ export function MessageChatWriteBottomBar() {
             enrichHistoryMessageDisplay(result.message),
           );
           clearMessageChatCompose(selectedChat.telegram_chat_id);
+        } else if (result.error === TELEGRAM_SEND_ERROR_PUBLIC_GROUPS_BANNED) {
+          setDraft(text);
+          setPublicGroupsBanVisible(true);
         } else {
           appWarn("[message-send]", String(result.error), {
             chatId: selectedChat.telegram_chat_id,
@@ -116,6 +122,10 @@ export function MessageChatWriteBottomBar() {
         draft={draft}
         onDraftChange={setDraft}
         onSubmit={canSend ? onSubmit : () => {}}
+      />
+      <MessageChatPublicGroupsBanModal
+        visible={publicGroupsBanVisible}
+        onClose={() => setPublicGroupsBanVisible(false)}
       />
     </View>
   );

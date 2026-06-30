@@ -31,6 +31,7 @@ import {
   telegramMessagesCustomEmojiHandler,
   telegramMessagesSendHandler,
   telegramMessagesEditHandler,
+  telegramMessagesResolveChatHandler,
   telegramMessagesResyncHandler,
   telegramMessagesStatusHandler,
   telegramMessagesWarmupHandler,
@@ -84,6 +85,7 @@ const ROUTES: Record<string, ApiHandler> = {
   'telegram-messages-custom-emoji': telegramMessagesCustomEmojiHandler as ApiHandler,
   'telegram-messages-send': telegramMessagesSendHandler as ApiHandler,
   'telegram-messages-edit': telegramMessagesEditHandler as ApiHandler,
+  'telegram-messages-resolve-chat': telegramMessagesResolveChatHandler as ApiHandler,
   'telegram-messages-resync': telegramMessagesResyncHandler as ApiHandler,
   'telegram-messages-warmup': telegramMessagesWarmupHandler as ApiHandler,
   /** TDLib QR connect (proxies to local/remote gateway). */

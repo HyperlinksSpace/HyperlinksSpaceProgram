@@ -1,4 +1,8 @@
 import { formatAppString, type AppLocale } from "../../../locales/appStrings";
+import {
+  normalizeFormattedTextSegments,
+  type FormattedTextSegment,
+} from "../../../shared/formattedTextSegments";
 import { formatMessageChatMemberCountLabel, formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
 import { formatMessageChatRowUsernameLabel } from "./formatTelegramChatRowUsername";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -126,4 +130,37 @@ export function formatMessageChatListSubtitle(chat: MessageChatRowData, locale: 
     return formatChatActionLabel(chat, locale);
   }
   return chat.subtitle.trim();
+}
+
+/** Chat list preview: group/supergroup/channel rows prefix with @username; private chats show message only. */
+export function formatMessageChatListPreview(
+  chat: MessageChatRowData,
+  locale: AppLocale,
+): { text: string; textSegments: FormattedTextSegment[] | null } {
+  const subtitle = formatMessageChatListSubtitle(chat, locale);
+  const baseSegments = normalizeFormattedTextSegments(chat.subtitle_segments);
+
+  if (isChatActionLive(chat) || !subtitle.trim()) {
+    return { text: subtitle, textSegments: baseSegments };
+  }
+
+  if (!isGroupLikeChatRow(chat)) {
+    return { text: subtitle, textSegments: baseSegments };
+  }
+
+  const usernameLabel = formatMessageChatRowUsernameLabel(chat);
+  if (!usernameLabel) {
+    return { text: subtitle, textSegments: baseSegments };
+  }
+
+  const prefix = `${usernameLabel}: `;
+  if (!baseSegments?.length) {
+    const text = `${prefix}${subtitle}`;
+    return { text, textSegments: [{ kind: "text", text }] };
+  }
+
+  return {
+    text: `${prefix}${subtitle}`,
+    textSegments: [{ kind: "text", text: prefix }, ...baseSegments],
+  };
 }

@@ -4,6 +4,7 @@ import {
   fetchTelegramEmojiAsset,
   type TelegramEmojiFetchRef,
 } from "./fetchTelegramEmojiBytes";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 type Props = {
   customEmojiId?: string;
@@ -36,14 +37,22 @@ export function MessageChatInlineTgsEmoji({
 
   useEffect(() => {
     let cancelled = false;
-    if (!fetchRef) return;
+    if (!fetchRef) {
+      telegramEmojiDebug.inlineNoRef("native", { customEmojiId, emoji });
+      return;
+    }
     void fetchTelegramEmojiAsset(fetchRef)
       .then((asset) => {
-        if (cancelled || !asset) return;
+        if (cancelled) return;
+        if (!asset) {
+          telegramEmojiDebug.inlineAssetNull(fetchRef, "native");
+          return;
+        }
+        telegramEmojiDebug.inlineDecode(fetchRef, "unsupported", asset.mime, asset.bytes.length);
         setLoadedFallback(fallbackText || emoji || "🎭");
       })
-      .catch(() => {
-        /* keep fallback */
+      .catch((err) => {
+        telegramEmojiDebug.fetchNetworkError(fetchRef, err);
       });
     return () => {
       cancelled = true;

@@ -3,6 +3,7 @@ import { Platform, PixelRatio, Text, View, type ViewStyle } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { layout, type ThemeColors } from "../../theme";
+import { useTelegram } from "../Telegram";
 import { formatMessageChatSubheaderLabel, isMessageChatActionLive } from "./formatMessageChatSubheader";
 import type { MessageChatRowData } from "./MessageChatRow";
 import {
@@ -11,6 +12,7 @@ import {
   MESSAGE_LINE_HEIGHT_PX,
 } from "./messageListLayout";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
+import { resolveTelegramUserAccentColor } from "./resolveTelegramUserAccentColor";
 
 type Props = {
   chat: MessageChatRowData;
@@ -30,9 +32,16 @@ function menuStripRuleThickness(): number {
 /** Centered title (name + status badge) and multifunction subheader for the open chat. */
 export function MessageChatHeader({ chat, colors }: Props) {
   const { locale } = useAppStrings();
+  const { colorScheme } = useTelegram();
   const lineT = menuStripRuleThickness();
   const stripPaddingX = layout.contentSideInsetPx;
   const title = chat.title.trim();
+  const titleColor =
+    resolveTelegramUserAccentColor(
+      chat.peer_accent_color_light,
+      chat.peer_accent_color_dark,
+      colorScheme,
+    ) ?? colors.primary;
   const subheaderLabel = formatMessageChatSubheaderLabel(chat, locale);
   const subheaderIsLiveAction = isMessageChatActionLive(chat);
 
@@ -86,7 +95,7 @@ export function MessageChatHeader({ chat, colors }: Props) {
             numberOfLines={1}
             textStyle={{
               ...textBase,
-              color: colors.primary,
+              color: titleColor,
             }}
           />
           {subheaderLabel ? (

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import type { AnimationConfig, AnimationItem } from "lottie-web";
 import lottie from "lottie-web/build/player/lottie_canvas";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 import { useElementVisible } from "./useElementVisible.web";
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   loop?: boolean;
   /** Smaller canvas + lower DPR for chat-list inline emoji (telegram-tt low-priority quality). */
   lowPriority?: boolean;
+  /** Status badges: always paint frame 0 and skip the global active-player cap. */
+  priority?: boolean;
   className?: string;
   style?: React.CSSProperties;
 };
@@ -27,6 +30,27 @@ function releasePlaySlot(): void {
   activePlayerCount = Math.max(0, activePlayerCount - 1);
 }
 
+function forcePaintFrame(anim: AnimationItem): void {
+  try {
+    anim.goToAndStop(0, true);
+    const renderer = anim.renderer as { renderFrame?: (frame: number) => void } | undefined;
+    if (renderer?.renderFrame) {
+      renderer.renderFrame(anim.currentFrame);
+    }
+  } catch {
+    /* lottie not ready yet */
+  }
+}
+
+function styleLottieCanvas(host: HTMLElement, widthPx: number, heightPx: number): void {
+  const canvas = host.querySelector("canvas");
+  if (!canvas) return;
+  canvas.style.width = `${widthPx}px`;
+  canvas.style.height = `${heightPx}px`;
+  canvas.style.display = "block";
+  canvas.style.verticalAlign = "text-bottom";
+}
+
 /** Canvas-based TGS loop — avoids lottie-react SVG DOM churn. */
 export function TgsCanvasPlayer({
   animationData,
@@ -34,6 +58,7 @@ export function TgsCanvasPlayer({
   heightPx,
   loop = true,
   lowPriority = false,
+  priority = false,
   className,
   style,
 }: Props) {
@@ -41,69 +66,84 @@ export function TgsCanvasPlayer({
   const hostRef = useRef<HTMLSpanElement>(null);
   const animRef = useRef<AnimationItem | null>(null);
   const slotHeldRef = useRef(false);
-  const visible = useElementVisible(hostRef, { enabled: true });
+  const visibleRef = useRef(true);
+  const visible = useElementVisible(hostRef, { enabled: !priority });
+  visibleRef.current = visible;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
 
-    const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-    const quality = lowPriority ? 0.5 : 0.75;
-    const renderW = Math.max(1, Math.round(widthPx * dpr * quality));
-    const renderH = Math.max(1, Math.round(height * dpr * quality));
+    host.replaceChildren();
 
-    const canvas = document.createElement("canvas");
-    canvas.width = renderW;
-    canvas.height = renderH;
-    canvas.style.width = `${widthPx}px`;
-    canvas.style.height = `${height}px`;
-    canvas.style.display = "block";
-    canvas.style.verticalAlign = "text-bottom";
-    host.replaceChildren(canvas);
-
+    const shouldAutoplay = priority || visibleRef.current;
     const anim = lottie.loadAnimation({
-      container: canvas,
+      container: host,
       renderer: "canvas",
       loop,
-      autoplay: false,
+      autoplay: shouldAutoplay,
       animationData,
       rendererSettings: {
         clearCanvas: true,
-        progressiveLoad: true,
-        hideOnTransparent: true,
+        progressiveLoad: false,
+        hideOnTransparent: false,
       },
     } as AnimationConfig);
     animRef.current = anim;
 
-    const paintFirstFrame = () => {
-      anim.goToAndStop(0, true);
+    const onReady = () => {
+      styleLottieCanvas(host, widthPx, height);
+      forcePaintFrame(anim);
+      const shouldPlay = priority || visibleRef.current;
+      telegramEmojiDebug.playerAction("ready", {
+        priority,
+        visible: visibleRef.current,
+        shouldPlay,
+        hasCanvas: Boolean(host.querySelector("canvas")),
+      });
+      if (shouldPlay) {
+        if (!slotHeldRef.current && (priority || acquirePlaySlot())) {
+          slotHeldRef.current = true;
+        }
+        if (slotHeldRef.current || priority) {
+          anim.play();
+        }
+      }
     };
-    paintFirstFrame();
-    anim.addEventListener("DOMLoaded", paintFirstFrame);
+    onReady();
+    anim.addEventListener("DOMLoaded", onReady);
+    anim.addEventListener("data_ready", onReady);
 
     return () => {
       if (slotHeldRef.current) {
         releasePlaySlot();
         slotHeldRef.current = false;
       }
+      anim.removeEventListener("DOMLoaded", onReady);
+      anim.removeEventListener("data_ready", onReady);
       anim.destroy();
       animRef.current = null;
       host.replaceChildren();
     };
-  }, [animationData, widthPx, height, loop, lowPriority]);
+  }, [animationData, widthPx, height, loop, lowPriority, priority]);
 
   useEffect(() => {
     const anim = animRef.current;
     if (!anim) return;
 
-    if (visible) {
-      if (!slotHeldRef.current && acquirePlaySlot()) {
+    const shouldPlay = priority || visible;
+
+    if (shouldPlay) {
+      if (!slotHeldRef.current && (priority || acquirePlaySlot())) {
         slotHeldRef.current = true;
         anim.play();
+        telegramEmojiDebug.playerAction("play", { priority, visible, reason: "slot_acquired" });
       } else if (slotHeldRef.current) {
         anim.play();
+        telegramEmojiDebug.playerAction("play", { priority, visible, reason: "slot_held" });
       } else {
-        anim.goToAndStop(0, true);
+        forcePaintFrame(anim);
+        telegramEmojiDebug.playerAction("paint_only", { priority, visible, reason: "player_cap" });
       }
       return;
     }
@@ -113,7 +153,9 @@ export function TgsCanvasPlayer({
       releasePlaySlot();
       slotHeldRef.current = false;
     }
-  }, [visible]);
+    forcePaintFrame(anim);
+    telegramEmojiDebug.playerAction("pause", { priority, visible });
+  }, [priority, visible]);
 
   return (
     <span

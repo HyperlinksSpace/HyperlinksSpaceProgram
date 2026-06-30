@@ -17,6 +17,7 @@ type Props = {
   isActive?: boolean;
   colors: ThemeColors;
   onPress?: () => void;
+  onHoverIn?: () => void;
   children: ReactNode;
 };
 
@@ -42,6 +43,7 @@ export function HomeListRowShell({
   isActive = false,
   colors,
   onPress,
+  onHoverIn,
   children,
 }: Props) {
   const { width: windowWidth } = useWindowDimensions();
@@ -68,6 +70,7 @@ export function HomeListRowShell({
       accessibilityRole="button"
       accessibilityState={{ selected: isActive }}
       onPress={onPress}
+      onHoverIn={onHoverIn}
       style={({ pressed, hovered }) => ({
         marginHorizontal: -columnBleedPx,
         paddingHorizontal: columnBleedPx,

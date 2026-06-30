@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, useEffect, type ReactNode } from "react";
 import { Platform, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { MessageChatRussianFlagIcon } from "./MessageChatRussianFlagIcon";
 import { MessageChatArtSignIcon } from "./MessageChatArtSignIcon";
@@ -14,6 +14,7 @@ import {
   specialUserDisplayName,
   specialUserShowsShineName,
 } from "./specialTelegramUserDisplay";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 type Props = {
   name: string;
@@ -68,12 +69,29 @@ export function SpecialTelegramUserName({
 }: Props) {
   const displayName = specialUserDisplayName(telegramUserId, name, telegramChatId);
   const badgeKind = specialUserBadgeKind(telegramUserId, name, telegramChatId);
-  const showSpecialBadge = badgeKind != null;
   const telegramEmojiStatusId = emojiStatusCustomEmojiId?.trim() || null;
+  const showSpecialBadge = badgeKind != null;
   const showTelegramEmojiStatus = !showSpecialBadge && Boolean(telegramEmojiStatusId);
   const showBadge = showSpecialBadge || showTelegramEmojiStatus;
   const showShine = specialUserShowsShineName(telegramUserId, name, telegramChatId);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
+
+  useEffect(() => {
+    telegramEmojiDebug.statusBadgeDecision({
+      context: "special_telegram_user_name",
+      userId: telegramUserId ?? null,
+      emojiStatusId: telegramEmojiStatusId,
+      showSpecialBadge,
+      showTelegramEmojiStatus,
+      badgeKind: badgeKind ?? null,
+    });
+  }, [
+    badgeKind,
+    showSpecialBadge,
+    showTelegramEmojiStatus,
+    telegramEmojiStatusId,
+    telegramUserId,
+  ]);
 
   const nameContent =
     Platform.OS === "web" && showShine
@@ -145,11 +163,11 @@ export function SpecialTelegramUserName({
       >
         {showSpecialBadge && badgeKind ? (
           <SpecialUserBadge kind={badgeKind} size={SPECIAL_USER_BADGE_SIZE_PX} />
-        ) : null}
-        {showTelegramEmojiStatus && telegramEmojiStatusId ? (
+        ) : showTelegramEmojiStatus && telegramEmojiStatusId ? (
           <MessageChatInlineTgsEmoji
             customEmojiId={telegramEmojiStatusId}
             sizePx={SPECIAL_USER_BADGE_SIZE_PX}
+            priority
           />
         ) : null}
       </View>

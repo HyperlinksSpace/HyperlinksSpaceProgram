@@ -1,4 +1,4 @@
-import { createElement, useMemo } from "react";
+import { createElement, useEffect, useMemo } from "react";
 import {
   Platform,
   StyleSheet,
@@ -18,6 +18,7 @@ import { openMessageLinkUrl } from "./openMessageLinkUrl";
 import { messageChatBubbleTextWebWrapStyle } from "./messageChatLayout";
 import { MessageChatInlineTgsEmoji } from "./MessageChatInlineTgsEmoji";
 import { parseMessageTextLinks } from "./parseMessageTextLinks";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 const MESSAGE_LINK_COLOR = "#3390ec";
 const DEFAULT_INLINE_EMOJI_SIZE_PX = 20;
@@ -30,6 +31,8 @@ type Props = {
   emojiSizePx?: number;
   /** Lower canvas quality + lazy fetch for chat-list rows. */
   lowPriorityEmoji?: boolean;
+  /** Single-line bubble row: do not break words (inline time + checks). */
+  nowrap?: boolean;
 } & Pick<TextProps, "numberOfLines">;
 
 function resolveSegments(
@@ -37,13 +40,13 @@ function resolveSegments(
   segments?: FormattedTextSegment[] | null,
 ): FormattedTextSegment[] {
   const normalized = segments ? normalizeFormattedTextSegments(segments) : null;
-  if (
-    normalized &&
-    (segmentsContainTelegramEmoji(normalized) || normalized.some((segment) => segment.kind === "link"))
-  ) {
-    return normalized;
+  const base =
+    normalized ??
+    (parseMessageTextLinks(text) as FormattedTextSegment[]);
+  if (!base.length) {
+    return text ? [{ kind: "text", text }] : [];
   }
-  return parseMessageTextLinks(text);
+  return base;
 }
 
 function textStyleFromProp(style: StyleProp<TextStyle>): TextStyle {
@@ -73,6 +76,7 @@ function RichTextWebRow({
   emojiSizePx,
   numberOfLines,
   lowPriorityEmoji,
+  nowrap = false,
 }: {
   segments: FormattedTextSegment[];
   style: TextStyle;
@@ -80,27 +84,41 @@ function RichTextWebRow({
   emojiSizePx: number;
   numberOfLines?: number;
   lowPriorityEmoji?: boolean;
+  nowrap?: boolean;
 }) {
   const wrapStyle =
-    Platform.OS === "web" ? (messageChatBubbleTextWebWrapStyle as TextStyle) : null;
+    Platform.OS === "web" && !nowrap ? (messageChatBubbleTextWebWrapStyle as TextStyle) : null;
   const textStyle = wrapStyle ? { ...style, ...wrapStyle } : style;
+  const nowrapStyle =
+    Platform.OS === "web" && nowrap ? ({ whiteSpace: "nowrap" } as TextStyle) : null;
+  const resolvedTextStyle = nowrapStyle ? { ...textStyle, ...nowrapStyle } : textStyle;
   const linkStyle = {
-    ...textStyle,
+    ...resolvedTextStyle,
     color: linkColor,
     textDecorationLine: "underline" as const,
     ...(Platform.OS === "web"
-      ? ({ cursor: "pointer", ...messageChatBubbleTextWebWrapStyle } as object)
+      ? ({
+          cursor: "pointer",
+          ...(nowrap ? null : messageChatBubbleTextWebWrapStyle),
+        } as object)
       : null),
   };
 
   const rowStyle: ViewStyle = {
     flexDirection: "row",
-    flexWrap: numberOfLines === 1 ? "nowrap" : "wrap",
+    flexWrap: nowrap || numberOfLines === 1 ? "nowrap" : "wrap",
     alignItems: "flex-end",
-    overflow: numberOfLines === 1 ? "hidden" : "visible",
-    flexShrink: 1,
-    minWidth: 0,
-    maxWidth: "100%",
+    overflow: numberOfLines === 1 || nowrap ? "hidden" : "visible",
+    ...(nowrap
+      ? { flexGrow: 0, flexShrink: 0, alignSelf: "flex-start" as const }
+      : {
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: 0,
+          minWidth: 0,
+          maxWidth: "100%",
+          alignSelf: "stretch",
+        }),
   };
 
   return (
@@ -108,7 +126,7 @@ function RichTextWebRow({
       {segments.map((segment, index) => {
         if (segment.kind === "text") {
           return (
-            <Text key={index} style={textStyle} numberOfLines={numberOfLines}>
+            <Text key={index} style={resolvedTextStyle} numberOfLines={numberOfLines}>
               {segment.text}
             </Text>
           );
@@ -185,9 +203,15 @@ export function MessageChatRichText({
   emojiSizePx = DEFAULT_INLINE_EMOJI_SIZE_PX,
   numberOfLines,
   lowPriorityEmoji = false,
+  nowrap = false,
 }: Props) {
   const resolvedSegments = useMemo(() => resolveSegments(text, segments), [text, segments]);
   const hasTelegramEmoji = segmentsContainTelegramEmoji(resolvedSegments);
+
+  useEffect(() => {
+    telegramEmojiDebug.richTextSegments("message_chat_rich_text", text, resolvedSegments);
+  }, [resolvedSegments, text]);
+
   const hasRichContent = resolvedSegments.some(
     (segment) =>
       segment.kind === "link" ||
@@ -196,8 +220,14 @@ export function MessageChatRichText({
   );
   const flatStyle = textStyleFromProp(style);
   const wrapStyle =
-    Platform.OS === "web" ? (messageChatBubbleTextWebWrapStyle as TextStyle) : null;
-  const resolvedStyle = wrapStyle ? [style, wrapStyle] : style;
+    Platform.OS === "web" && !nowrap ? (messageChatBubbleTextWebWrapStyle as TextStyle) : null;
+  const nowrapStyle =
+    Platform.OS === "web" && nowrap ? ({ whiteSpace: "nowrap" } as TextStyle) : null;
+  const resolvedStyle = [
+    style,
+    wrapStyle,
+    nowrapStyle,
+  ];
 
   if (!hasRichContent) {
     return (
@@ -216,6 +246,7 @@ export function MessageChatRichText({
         emojiSizePx={emojiSizePx}
         numberOfLines={numberOfLines}
         lowPriorityEmoji={lowPriorityEmoji}
+        nowrap={nowrap}
       />
     );
   }
@@ -224,7 +255,10 @@ export function MessageChatRichText({
     color: linkColor,
     textDecorationLine: "underline" as const,
     ...(Platform.OS === "web"
-      ? ({ cursor: "pointer", ...messageChatBubbleTextWebWrapStyle } as object)
+      ? ({
+          cursor: "pointer",
+          ...(nowrap ? null : messageChatBubbleTextWebWrapStyle),
+        } as object)
       : null),
   };
 

@@ -89,6 +89,15 @@ function readStoredChat(): MessageChatRowData | null {
           const raw = Number(row.last_read_outbox_message_id);
           return Number.isFinite(raw) && raw > 0 ? raw : null;
         })(),
+        peer_emoji_status_custom_emoji_id:
+          typeof row.peer_emoji_status_custom_emoji_id === "string" &&
+          row.peer_emoji_status_custom_emoji_id.trim()
+            ? row.peer_emoji_status_custom_emoji_id.trim()
+            : null,
+        subtitle_segments: Array.isArray(row.subtitle_segments)
+          ? (row.subtitle_segments as MessageChatRowData["subtitle_segments"])
+          : null,
+        is_pinned: Boolean(row.is_pinned),
       };
     }
   } catch {
@@ -140,6 +149,12 @@ function hydrateFromStorageIfNeeded() {
     historyLoadGeneration = 1;
     middleColumnFocus = "chat";
     syncHistoryLoadSnapshot();
+    void import("./messageChatHistoryCache").then(({ warmChatHistoryCacheFromSession }) => {
+      warmChatHistoryCacheFromSession(selectedChat!.telegram_chat_id);
+    });
+    void import("./messageChatHistoryPrefetch").then(({ prefetchChatHistoryPriority }) => {
+      prefetchChatHistoryPriority(selectedChat!);
+    });
   }
 }
 
@@ -223,6 +238,11 @@ function subscribe(onStoreChange: () => void) {
   };
 }
 
+export function getAuthenticatedHomeSelectedChatSnapshot(): MessageChatRowData | null {
+  hydrateFromStorageIfNeeded();
+  return selectedChat;
+}
+
 export function useAuthenticatedHomeSelectedChat(): MessageChatRowData | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
@@ -273,7 +293,17 @@ export function patchAuthenticatedHomeSelectedChatGroupMeta(
   hydrateFromStorageIfNeeded();
   if (selectedChat?.telegram_chat_id !== chatId) return;
   const next: MessageChatRowData = { ...selectedChat };
-  if (meta.chat_kind !== undefined) next.chat_kind = meta.chat_kind;
+  if (meta.chat_kind !== undefined) {
+    next.chat_kind = meta.chat_kind;
+    if (
+      meta.chat_kind === "group" ||
+      meta.chat_kind === "supergroup" ||
+      meta.chat_kind === "channel"
+    ) {
+      next.presence_kind = null;
+      next.presence_at = null;
+    }
+  }
   if (meta.member_count !== undefined) next.member_count = meta.member_count;
   selectedChat = next;
   writeStoredChat(selectedChat);
@@ -298,7 +328,7 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
   if (selectedChat == null) return;
   const fresh = chats.find((c) => c.telegram_chat_id === selectedChat!.telegram_chat_id);
   if (!fresh) {
-    selectAuthenticatedHomeChat(null);
+    // Poll responses can be partial while the gateway resyncs; keep the open chat selected.
     return;
   }
   if (
@@ -309,6 +339,9 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.avatar_url !== selectedChat.avatar_url ||
     fresh.peer_username !== selectedChat.peer_username ||
     fresh.chat_username !== selectedChat.chat_username ||
+    fresh.peer_emoji_status_custom_emoji_id !== selectedChat.peer_emoji_status_custom_emoji_id ||
+    fresh.peer_accent_color_light !== selectedChat.peer_accent_color_light ||
+    fresh.peer_accent_color_dark !== selectedChat.peer_accent_color_dark ||
     fresh.chat_kind !== selectedChat.chat_kind ||
     fresh.member_count !== selectedChat.member_count ||
     fresh.presence_kind !== selectedChat.presence_kind ||

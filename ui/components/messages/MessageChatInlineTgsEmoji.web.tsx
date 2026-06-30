@@ -7,7 +7,7 @@ import {
 import { bytesLookLikeTgs } from "./loadTgsAnimation";
 import { getCachedTgsAnimationFromBytes } from "./tgsAnimationCache";
 import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
-import { useElementVisible } from "./useElementVisible.web";
+import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 type Props = {
   customEmojiId?: string;
@@ -15,6 +15,8 @@ type Props = {
   sizePx: number;
   fallbackText?: string;
   lowPriority?: boolean;
+  /** Premium/status emoji beside usernames — always paint even when off-screen. */
+  priority?: boolean;
 };
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {
@@ -47,13 +49,13 @@ function isLikelyCustomEmojiPlaceholder(text: string): boolean {
 
 /** Inline Telegram emoji sticker (.tgs / .webm / static) on web. */
 export function MessageChatInlineTgsEmoji(props: Props) {
-  const { sizePx, fallbackText = "", lowPriority = false } = props;
+  const { sizePx, fallbackText = "", lowPriority = false, priority = false } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
   const hostRef = useRef<HTMLSpanElement>(null);
-  const visible = useElementVisible(hostRef, { enabled: Boolean(fetchRef) });
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);
+  const [fetchSettled, setFetchSettled] = useState(false);
 
   const displayFallback = useMemo(() => {
     const fromEmoji = props.emoji?.trim();
@@ -71,22 +73,36 @@ export function MessageChatInlineTgsEmoji(props: Props) {
       return null;
     });
     setMediaKind(null);
+    setFetchSettled(false);
 
-    if (!fetchRef) return;
+    if (!fetchRef) {
+      telegramEmojiDebug.inlineNoRef("web", props);
+      return;
+    }
 
     void fetchTelegramEmojiAsset(fetchRef)
       .then(async (asset) => {
-        if (cancelled || !asset) return;
+        if (cancelled) return;
+        if (!asset) {
+          telegramEmojiDebug.inlineAssetNull(fetchRef, "web");
+          return;
+        }
         if (
           asset.mime === "application/x-tgsticker" ||
           asset.mime.endsWith("+tgs") ||
           bytesLookLikeTgs(asset.bytes)
         ) {
-          const parsed = await getCachedTgsAnimationFromBytes(asset.bytes);
-          if (!cancelled) setAnimationData(parsed);
+          telegramEmojiDebug.inlineDecode(fetchRef, "tgs", asset.mime, asset.bytes.length);
+          try {
+            const parsed = await getCachedTgsAnimationFromBytes(asset.bytes);
+            if (!cancelled) setAnimationData(parsed);
+          } catch (err) {
+            telegramEmojiDebug.inlineTgsParseFail(fetchRef, err);
+          }
           return;
         }
         if (isVideoMime(asset.mime)) {
+          telegramEmojiDebug.inlineDecode(fetchRef, "video", asset.mime, asset.bytes.length);
           const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
           const url = URL.createObjectURL(blob);
           if (!cancelled) {
@@ -98,6 +114,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           return;
         }
         if (isImageMime(asset.mime)) {
+          telegramEmojiDebug.inlineDecode(fetchRef, "image", asset.mime, asset.bytes.length);
           const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
           const url = URL.createObjectURL(blob);
           if (!cancelled) {
@@ -106,16 +123,26 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           } else {
             URL.revokeObjectURL(url);
           }
+          return;
         }
+        telegramEmojiDebug.inlineDecode(fetchRef, "unsupported", asset.mime, asset.bytes.length);
       })
-      .catch(() => {
-        /* keep fallback glyph */
+      .catch((err) => {
+        telegramEmojiDebug.fetchNetworkError(fetchRef, err);
+      })
+      .finally(() => {
+        if (!cancelled) setFetchSettled(true);
       });
 
     return () => {
       cancelled = true;
     };
   }, [fetchRef]);
+
+  useEffect(() => {
+    if (!fetchRef || !fetchSettled || animationData || mediaUrl) return;
+    telegramEmojiDebug.inlineFallback(fetchRef, displayFallback, "web_after_fetch");
+  }, [animationData, displayFallback, fetchRef, fetchSettled, mediaUrl]);
 
   useEffect(() => {
     return () => {
@@ -141,6 +168,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           widthPx={sizePx}
           heightPx={sizePx}
           lowPriority={lowPriority}
+          priority={priority}
           style={{
             display: "block",
             width: sizePx,
@@ -151,7 +179,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
       {mediaUrl && mediaKind === "video" ? (
         <video
           src={mediaUrl}
-          autoPlay={visible}
+          autoPlay
           loop
           muted
           playsInline
@@ -175,7 +203,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           }}
         />
       ) : null}
-      {!animationData && !mediaUrl ? (
+      {!animationData && !mediaUrl && fetchSettled ? (
         <Text
           style={{
             fontSize: Math.round(sizePx * 0.85),
