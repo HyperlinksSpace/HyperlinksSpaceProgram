@@ -16,7 +16,9 @@ import {
   resolveLastMessagePreview,
   type TdChat,
 } from "./chatPreview.js";
-import { patchLiveChatFromTdlib, seedLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import { patchLiveChatEmojiStatus, patchLiveChatFromTdlib, seedLiveChatList, getLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import { emojiStatusCustomIdFromUser } from "./emojiStatus.js";
+import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import {
   specialUserForceIncludedPeerUserIds,
   SUPPLEMENTARY_CONTACT_SEARCH_QUERIES,
@@ -428,20 +430,72 @@ async function enrichChatRow(
   return { subtitle: nextSubtitle, avatarUrl: nextAvatar };
 }
 
-async function resolveChatPresence(
+async function resolvePeerProfile(
   client: Client,
   chat: TdChat,
-): Promise<{ kind: LiveChatRow["presence_kind"]; at: string | null } | null> {
+): Promise<{
+  presence: { kind: LiveChatRow["presence_kind"]; at: string | null } | null;
+  emojiStatusCustomEmojiId: string | null;
+}> {
   const peerUserId = peerUserIdFromChat(chat);
-  if (peerUserId == null) return null;
+  if (peerUserId == null) {
+    return { presence: null, emojiStatusCustomEmojiId: null };
+  }
   try {
     const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as {
       status?: unknown;
+      emoji_status?: unknown;
     };
-    return presenceFromTdlibStatus(user.status);
+    return {
+      presence: presenceFromTdlibStatus(user.status),
+      emojiStatusCustomEmojiId: emojiStatusCustomIdFromUser(user),
+    };
   } catch {
-    return null;
+    return { presence: null, emojiStatusCustomEmojiId: null };
   }
+}
+
+/** Backfill peer emoji statuses for private chats missing them in the live cache. */
+export async function refreshPeerEmojiStatus(
+  client: Client,
+  telegramUsername: string,
+  peerUserId: number,
+): Promise<boolean> {
+  try {
+    const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as unknown;
+    const customEmojiId = emojiStatusCustomIdFromUser(user);
+    patchLiveChatEmojiStatus(telegramUsername, peerUserId, customEmojiId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Backfill peer emoji statuses for private chats missing them in the live cache. */
+export async function refreshMissingPeerEmojiStatuses(
+  client: Client,
+  telegramUsername: string,
+  maxPeers = 24,
+): Promise<number> {
+  const rows = getLiveChatList(telegramUsername);
+  if (!rows?.length) return 0;
+
+  let refreshed = 0;
+  for (const row of rows) {
+    if (refreshed >= maxPeers) break;
+    const peerUserId = row.peer_user_id;
+    if (peerUserId == null) continue;
+    try {
+      const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as unknown;
+      const customEmojiId = emojiStatusCustomIdFromUser(user);
+      if (!customEmojiId && !row.peer_emoji_status_custom_emoji_id) continue;
+      patchLiveChatEmojiStatus(telegramUsername, peerUserId, customEmojiId);
+      refreshed += 1;
+    } catch {
+      /* per-peer fetch may fail for deleted users */
+    }
+  }
+  return refreshed;
 }
 
 export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {
@@ -454,7 +508,7 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
     resolveChatAvatarUrl(client, chat),
   );
   let presences = await mapWithConcurrency(chats, PRESENCE_SYNC_CONCURRENCY, (chat) =>
-    resolveChatPresence(client, chat),
+    resolvePeerProfile(client, chat),
   );
 
   for (let pass = 0; pass < 3; pass++) {
@@ -469,17 +523,20 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   const liveRows: Omit<LiveChatRow, "revision">[] = [];
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
-    const presence = presences[i];
+    const profile = presences[i];
+    const subtitleSegments = previewSegmentsFromMessage(chat.last_message);
     liveRows.push({
       telegram_chat_id: chat.id,
       title: chatTitle(chat),
       subtitle: subtitles[i] ?? "",
+      ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : {}),
       avatar_url: avatarUrls[i] ?? null,
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
       peer_user_id: peerUserIdFromChat(chat),
-      presence_kind: presence?.kind ?? null,
-      presence_at: presence?.at ?? null,
+      peer_emoji_status_custom_emoji_id: profile?.emojiStatusCustomEmojiId ?? null,
+      presence_kind: profile?.presence?.kind ?? null,
+      presence_at: profile?.presence?.at ?? null,
       chat_action: null,
       chat_action_user_id: null,
       chat_action_user_name: null,

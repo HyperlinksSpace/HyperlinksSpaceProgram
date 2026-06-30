@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { buildApiUrl } from "../../api/_base";
+import { normalizeFormattedTextSegments } from "../../shared/formattedTextSegments";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
@@ -70,10 +71,16 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     telegram_chat_id: telegramChatId,
     title,
     subtitle,
+    subtitle_segments: normalizeFormattedTextSegments(row.subtitle_segments),
     avatar_url: avatarUrl,
     last_message_at: lastAt == null ? null : String(lastAt),
     unread_count: Number.isFinite(unread) ? unread : 0,
     peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
+    peer_emoji_status_custom_emoji_id:
+      typeof row.peer_emoji_status_custom_emoji_id === "string" &&
+      row.peer_emoji_status_custom_emoji_id.trim()
+        ? row.peer_emoji_status_custom_emoji_id.trim()
+        : null,
     presence_kind: presenceKind,
     presence_at: presenceAt,
     chat_action: chatAction,
@@ -99,9 +106,11 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
     if (
       a.title !== b.title ||
       a.subtitle !== b.subtitle ||
+      JSON.stringify(a.subtitle_segments ?? null) !== JSON.stringify(b.subtitle_segments ?? null) ||
       a.last_message_at !== b.last_message_at ||
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
+      a.peer_emoji_status_custom_emoji_id !== b.peer_emoji_status_custom_emoji_id ||
       a.presence_kind !== b.presence_kind ||
       a.presence_at !== b.presence_at ||
       a.chat_action !== b.chat_action ||
@@ -137,6 +146,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const { isTelegramMessagesConnected, refreshStatus } = useTelegramMessagesConnection();
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [gatewayWarming, setGatewayWarming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
@@ -165,6 +175,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         connected?: boolean;
         warming?: boolean;
       };
+      setGatewayWarming(Boolean(json.warming));
       logPageDisplay("messages_gateway_resync", {
         reason,
         ok: json.ok ?? false,
@@ -177,8 +188,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       });
       lastGatewayResyncRef.current = Date.now();
       if (json.needsReconnect || json.connected === false) {
+        setGatewayWarming(false);
         await refreshStatus();
         return false;
+      }
+      if (json.ok && (json.chatCount ?? 0) > 0) {
+        setGatewayWarming(false);
       }
       return response.ok && (json.ok !== false || json.warming === true);
     } catch (e) {
@@ -235,6 +250,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }
       setChats((prev) => {
         const changed = chatsChanged(prev, rows);
+        if (rows.length > 0) {
+          setGatewayWarming(false);
+        }
         if (options?.silent) {
           if (changed) {
             logPageDisplay("messages_chats_poll_updated", {
@@ -295,6 +313,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (!authReady) return;
     lastGatewayResyncRef.current = 0;
     pollCountRef.current = 0;
+    if (isTelegramMessagesConnected) {
+      setGatewayWarming(true);
+    }
     void (async () => {
       await loadChats({ silent: true });
       await triggerGatewayResync("initial_mount");
@@ -357,7 +378,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     );
   }
 
-  if (loading && chats.length === 0) {
+  if ((loading || gatewayWarming) && chats.length === 0) {
     return (
       <View style={[listShellStyle, { paddingVertical: 24, alignItems: "center" }]}>
         <ActivityIndicator size="small" color={colors.primary} />

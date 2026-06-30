@@ -91,35 +91,32 @@ export async function fetchChatHistory(
       cursorMessageId > 0
         ? cursorMessageId
         : 0;
+    const requestLimit =
+      fromMessageId > 0 ? Math.min(100, pageLimit + 1) : rawBatchLimit;
     // TDLib: offset 0 starts at from_message_id; negative offset adds *newer* messages.
-    // Older history must use offset 0 and skip the anchor id below.
     const history = (await client.invoke({
       _: "getChatHistory",
       chat_id: chatId,
       from_message_id: fromMessageId,
       offset: 0,
-      limit: rawBatchLimit,
+      limit: requestLimit,
       only_local: false,
     })) as { messages?: TdMessage[] };
     const raw = Array.isArray(history.messages) ? history.messages : [];
     return raw.filter((message) => {
       const telegramMessageId = Number(message.id);
-      if (
-        typeof cursorMessageId !== "number" ||
-        !Number.isFinite(cursorMessageId) ||
-        cursorMessageId <= 0
-      ) {
-        return true;
-      }
-      return Number.isFinite(telegramMessageId) && telegramMessageId < cursorMessageId;
+      if (fromMessageId <= 0) return true;
+      return Number.isFinite(telegramMessageId) && telegramMessageId < fromMessageId;
     });
   };
 
   const mappedById = new Map<number, MappedChatHistoryMessage>();
   let cursorMessageId: number | null = loadOlder ? beforeMessageId! : null;
   let lastBatchWasFull = false;
+  let lastRawOldestId: number | null = null;
   let batches = 0;
   const maxBatches = 20;
+  const batchFullThreshold = loadOlder ? pageLimit : rawBatchLimit;
 
   while (batches < maxBatches) {
     let raw = await loadPage(cursorMessageId);
@@ -132,7 +129,8 @@ export async function fetchChatHistory(
       break;
     }
 
-    lastBatchWasFull = raw.length >= rawBatchLimit;
+    lastBatchWasFull = raw.length >= batchFullThreshold;
+    lastRawOldestId = oldestRawMessageId(raw) ?? lastRawOldestId;
     const freshChat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
     const mapped = await mapHistoryBatch(client, raw, freshChat);
     for (const row of mapped) {
@@ -154,16 +152,29 @@ export async function fetchChatHistory(
 
   const sorted = sortHistoryMessages([...mappedById.values()]);
   const finalChat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  let messages = applyReadOutboxToHistoryMessages(sorted.slice(-pageLimit), finalChat);
+  const pageSlice = sorted.slice(-pageLimit);
+  let messages = applyReadOutboxToHistoryMessages(pageSlice, finalChat);
   if (chatKind === "private") {
     messages = await enrichOutgoingReadStatuses(client, finalChat, messages);
     messages = applyReadOutboxToHistoryMessages(messages, finalChat);
     messages = applyCumulativeOutgoingReadStatuses(messages);
   }
   const oldestReturnedId = messages[0]?.telegram_message_id ?? null;
-  const hasMoreOlder =
-    sorted.length > pageLimit ||
-    (lastBatchWasFull && oldestReturnedId != null);
+  const hasMoreOlder = loadOlder
+    ? messages.length >= pageLimit ||
+      (messages.length === 0 && lastBatchWasFull && lastRawOldestId != null)
+    : sorted.length > pageLimit || (lastBatchWasFull && oldestReturnedId != null);
+  const nextBeforeMessageId = loadOlder
+    ? messages.length > 0
+      ? hasMoreOlder
+        ? oldestReturnedId
+        : null
+      : lastBatchWasFull && lastRawOldestId != null
+        ? lastRawOldestId
+        : null
+    : hasMoreOlder && oldestReturnedId != null
+      ? oldestReturnedId
+      : null;
 
   const lastReadOutbox = effectiveReadOutboxMessageId(
     lastReadOutboxMessageIdFromChat(finalChat),
@@ -176,8 +187,7 @@ export async function fetchChatHistory(
     chat_kind: chatKind,
     messages,
     has_more_older: hasMoreOlder,
-    next_before_message_id:
-      hasMoreOlder && oldestReturnedId != null ? oldestReturnedId : null,
+    next_before_message_id: nextBeforeMessageId,
     last_read_outbox_message_id: lastReadOutbox,
   };
 }

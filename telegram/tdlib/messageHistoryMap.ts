@@ -1,3 +1,4 @@
+import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 import type { Client } from "tdl";
 import {
   chatTitle,
@@ -11,6 +12,7 @@ import {
   type TdChat,
   type TdMessage,
 } from "./chatPreview.js";
+import { messageTextSegments } from "./formattedTextSegments.js";
 import { largestPhotoDimensions } from "./photoParse.js";
 
 export type ChatKind = "private" | "group" | "supergroup" | "channel";
@@ -30,6 +32,7 @@ export type MessageOutgoingStatus = "pending" | "delivered" | "read" | "failed";
 export type MappedChatHistoryMessage = {
   telegram_message_id: number;
   text: string;
+  text_segments?: FormattedTextSegment[] | null;
   sent_at: string;
   sender_name: string;
   sender_user_id: number | null;
@@ -45,6 +48,7 @@ export type MappedChatHistoryMessage = {
     sender_name: string;
     sender_user_id: number | null;
     text: string;
+    text_segments?: FormattedTextSegment[] | null;
   } | null;
   /** Ended call was answered / had duration (messageCall only). */
   call_success?: boolean | null;
@@ -185,7 +189,12 @@ async function resolveReplyPreview(
   message: TdMessage,
   userCache: Map<number, string>,
   chatCache: Map<number, { title: string; isChannel: boolean }>,
-): Promise<{ sender_name: string; sender_user_id: number | null; text: string } | null> {
+): Promise<{
+  sender_name: string;
+  sender_user_id: number | null;
+  text: string;
+  text_segments: FormattedTextSegment[] | null;
+} | null> {
   const reply = message.reply_to;
   if (reply?._ !== "messageReplyMessage") return null;
   const chatId = reply.chat_id;
@@ -200,10 +209,12 @@ async function resolveReplyPreview(
     const sender = await resolveSenderName(client, replied, { id: chatId } as TdChat, userCache, chatCache);
     const text = bodyText(replied).trim() || previewFromMessage(replied) || "";
     if (!text) return null;
+    const replySegments = messageTextSegments(replied);
     return {
       sender_name: sender.name,
       sender_user_id: senderUserId(replied),
       text: text.slice(0, 200),
+      text_segments: replySegments,
     };
   } catch {
     return null;
@@ -458,9 +469,12 @@ export async function mapHistoryMessage(
   const replyTo = await resolveReplyPreview(client, resolved, userCache, chatCache);
   const dimensions = mediaDimensions(resolved);
 
+  const textSegments = messageTextSegments(resolved);
+
   return {
     telegram_message_id: telegramMessageId,
     text,
+    ...(textSegments ? { text_segments: textSegments } : {}),
     sent_at: messageSentAtIso(resolved),
     sender_name: sender.name,
     sender_user_id: senderUserId(resolved),

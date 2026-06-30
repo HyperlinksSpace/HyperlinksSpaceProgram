@@ -1,3 +1,5 @@
+import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
+
 export type MessageChatContentKind =
   | "text"
   | "photo"
@@ -18,6 +20,7 @@ export type MessageChatReplyPreview = {
   sender_name: string;
   sender_user_id: number | null;
   text: string;
+  text_segments?: FormattedTextSegment[] | null;
 };
 
 /** Outgoing message delivery state for bubble checkmarks. */
@@ -26,6 +29,7 @@ export type MessageOutgoingStatus = "pending" | "delivered" | "read" | "failed";
 export type MessageChatHistoryItem = {
   telegram_message_id: number;
   text: string;
+  text_segments?: FormattedTextSegment[] | null;
   sent_at: string;
   sender_name: string;
   sender_user_id: number | null;
@@ -286,6 +290,7 @@ export function mergeHistoryMessageRow(
 
   return enrichHistoryMessageDisplay({
     ...mergeTextFields(mergeMediaFields(incomingEnriched, prevEnriched), prevEnriched),
+    text_segments: incomingEnriched.text_segments ?? prevEnriched.text_segments ?? null,
     outgoing_status: outgoingStatus,
   });
 }

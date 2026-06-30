@@ -159,12 +159,14 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         connected?: boolean;
         gatewayReady?: boolean;
         needsReconnect?: boolean;
+        warming?: boolean;
         authState?: string;
         error?: string | null;
       };
       logTelegramConnect("silent_warmup_done", {
         ok: json.ok ?? false,
         gatewayReady: json.gatewayReady ?? false,
+        warming: json.warming ?? false,
         authState: json.authState ?? null,
         error: json.error ?? null,
         status: response.status,

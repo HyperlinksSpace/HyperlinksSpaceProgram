@@ -80,6 +80,7 @@ export function MessageChatHeader({ chat, colors }: Props) {
           <SpecialTelegramUserName
             name={title}
             telegramUserId={chat.peer_user_id ?? null}
+            emojiStatusCustomEmojiId={chat.peer_emoji_status_custom_emoji_id ?? null}
             textAlign="center"
             numberOfLines={1}
             textStyle={{

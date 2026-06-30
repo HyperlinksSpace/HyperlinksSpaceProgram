@@ -7,6 +7,8 @@
 !telegram/tdlib/**
 !shared/telegramThreadConstants.ts
 !shared/specialTelegramUsers.ts
+!shared/appLog.ts
+!shared/formattedTextSegments.ts
 !database/start.ts
 !database/telegramMessages.ts
 !database/telegramMtproto.ts

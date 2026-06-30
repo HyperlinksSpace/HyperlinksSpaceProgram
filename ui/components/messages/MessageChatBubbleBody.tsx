@@ -44,6 +44,7 @@ import {
 import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import { MessageChatLinkifiedText } from "./MessageChatLinkifiedText";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
+import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
 
 type Props = {
   chatId: number;
@@ -66,6 +67,7 @@ function resolveMediaUrl(chatId: number, messageId: number): string {
 
 function MessageChatBubbleTextContent({
   bodyText,
+  bodyTextSegments,
   timeLabel,
   outgoingStatus,
   colors,
@@ -76,6 +78,7 @@ function MessageChatBubbleTextContent({
   callIndicator = null,
 }: {
   bodyText: string;
+  bodyTextSegments?: FormattedTextSegment[] | null;
   timeLabel: string;
   outgoingStatus: ReturnType<typeof resolveMessageOutgoingStatus>;
   colors: ThemeColors;
@@ -114,6 +117,7 @@ function MessageChatBubbleTextContent({
       >
         <MessageChatLinkifiedText
           text={bodyText}
+          segments={bodyTextSegments}
           style={[textStyle, { textAlign: "left", flexShrink: 1, minWidth: 0 }]}
         />
         <View
@@ -145,6 +149,7 @@ function MessageChatBubbleTextContent({
       >
         <MessageChatLinkifiedText
           text={bodyText}
+          segments={bodyTextSegments}
           style={[textStyle, { textAlign: "left", width: maxWidthPx, maxWidth: maxWidthPx }]}
         />
         <View
@@ -177,7 +182,11 @@ function MessageChatBubbleTextContent({
       }}
     >
       {bodyText ? (
-        <MessageChatLinkifiedText text={bodyText} style={[textStyle, { textAlign: "left" }]} />
+        <MessageChatLinkifiedText
+          text={bodyText}
+          segments={bodyTextSegments}
+          style={[textStyle, { textAlign: "left" }]}
+        />
       ) : null}
       {timeRow ? (
         <View style={{ marginTop: bodyText ? 2 : 0, alignSelf: "stretch" }}>{timeRow}</View>
@@ -309,6 +318,7 @@ function MessageChatReplyBlock({
         />
         <MessageChatLinkifiedText
           text={reply.text}
+          segments={reply.text_segments}
           numberOfLines={2}
           style={[
             typographyRect15,
@@ -545,6 +555,7 @@ export function MessageChatBubbleBody({
         >
           <MessageChatBubbleTextContent
             bodyText={bodyText}
+            bodyTextSegments={item.text_segments}
             timeLabel={showMedia && bodyText ? timeLabel : showMedia ? "" : timeLabel}
             outgoingStatus={outgoingStatus}
             colors={colors}

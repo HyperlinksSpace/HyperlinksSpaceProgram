@@ -7,7 +7,7 @@ import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayResyncChats, gatewaySendChatMessage, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -22,6 +22,34 @@ const TELEGRAM_MESSAGES_API_LOG_PREFIX = "[telegram-messages-api]";
 
 function logTelegramMessagesApi(event: string, details?: Record<string, unknown>): void {
   appLog(TELEGRAM_MESSAGES_API_LOG_PREFIX, event, details);
+}
+
+function isGatewaySessionWarmingError(error: string | undefined | null): boolean {
+  return (
+    error === "session_not_ready" ||
+    error === "warmup_timeout" ||
+    error === "warmup_no_attempt"
+  );
+}
+
+function gatewayResyncWarmingResponse(
+  request: AnyRequest,
+  res: NodeRes | undefined,
+  result: { chatCount?: number; error?: string },
+  errorOverride?: string,
+): Response | void {
+  return finishJson(
+    request,
+    res,
+    {
+      ok: false,
+      connected: true,
+      warming: true,
+      chatCount: result.chatCount ?? 0,
+      error: errorOverride ?? result.error ?? "session_not_ready",
+    },
+    200,
+  );
 }
 
 function requestMethod(request: AnyRequest): string {
@@ -122,10 +150,16 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     telegram_chat_id: row.telegram_chat_id,
     title: row.title,
     subtitle: row.subtitle ?? "",
+    subtitle_segments: Array.isArray(row.subtitle_segments) ? row.subtitle_segments : null,
     avatar_url: row.avatar_url ?? null,
     last_message_at: row.last_message_at,
     unread_count: row.unread_count ?? 0,
     peer_user_id: row.peer_user_id ?? null,
+    peer_emoji_status_custom_emoji_id:
+      typeof row.peer_emoji_status_custom_emoji_id === "string" &&
+      row.peer_emoji_status_custom_emoji_id.trim()
+        ? row.peer_emoji_status_custom_emoji_id.trim()
+        : null,
     presence_kind: row.presence_kind ?? null,
     presence_at: row.presence_at ?? null,
     chat_action: row.chat_action ?? null,
@@ -313,21 +347,23 @@ export async function telegramMessagesResyncHandler(
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
 
-  let result = await gatewayResyncChats(userOrRes);
+  let result = await gatewayResyncChats(userOrRes, { maxWaitMs: 10_000 });
 
   if (result.error === "no_session" || result.error === "session_not_ready") {
     const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: 25_000 });
     if (warm.ok) {
-      result = await gatewayResyncChats(userOrRes);
-    } else if (result.error === "session_not_ready" || warm.error === "warmup_timeout") {
-      return finishJson(request, res, {
-        ok: false,
-        connected: true,
-        warming: true,
-        chatCount: result.chatCount ?? 0,
-        error: result.error ?? warm.error ?? "session_not_ready",
-      });
+      result = await gatewayResyncChats(userOrRes, { maxWaitMs: 10_000 });
+    } else if (
+      result.error === "session_not_ready" ||
+      warm.error === "warmup_timeout" ||
+      isGatewaySessionWarmingError(warm.error)
+    ) {
+      return gatewayResyncWarmingResponse(request, res, result, result.error ?? warm.error ?? "session_not_ready");
     }
+  }
+
+  if (result.httpStatus >= 400 || isGatewaySessionWarmingError(result.error)) {
+    return gatewayResyncWarmingResponse(request, res, result);
   }
 
   const sessionLost = result.error === "no_session";
@@ -351,8 +387,9 @@ export async function telegramMessagesResyncHandler(
       connected: true,
       chatCount: result.chatCount ?? 0,
       error: result.error ?? null,
+      warming: !result.ok && isGatewaySessionWarmingError(result.error),
     },
-    result.httpStatus >= 400 ? result.httpStatus : 200,
+    200,
   );
 }
 
@@ -620,6 +657,65 @@ export async function telegramMessagesMediaHandler(
   return new Response(new Uint8Array(media.data), { status: 200, headers });
 }
 
+export async function telegramMessagesCustomEmojiHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected" }, 403);
+  }
+
+  const url = requestUrl(request);
+  const customEmojiId = (url.searchParams.get("custom_emoji_id") || "").trim();
+  const emoji = (url.searchParams.get("emoji") || "").trim();
+  if (!customEmojiId && !emoji) {
+    return finishJson(request, res, { ok: false, error: "custom_emoji_id_or_emoji_required" }, 400);
+  }
+
+  const sticker = await gatewayFetchTelegramEmoji(userOrRes, { customEmojiId, emoji });
+  if (!sticker) {
+    logTelegramMessagesApi("custom_emoji_unavailable", {
+      telegramUsername: userOrRes,
+      customEmojiId: customEmojiId || null,
+      emoji: emoji || null,
+    });
+    return finishJson(request, res, { ok: false, error: "custom_emoji_unavailable" }, 404);
+  }
+
+  const headers = new Headers({
+    "Content-Type": sticker.mime,
+    "Cache-Control": "public, max-age=86400",
+  });
+  applyAuthApiCors(request, headers);
+  const body = Buffer.from(sticker.data);
+
+  if (res) {
+    res.status(200);
+    headers.forEach((v, k) => res.setHeader(k, v));
+    res.end(body);
+    return;
+  }
+  return new Response(new Uint8Array(sticker.data), { status: 200, headers });
+}
+
 export async function telegramMessagesSendHandler(
   request: AnyRequest,
   res?: NodeRes,
@@ -745,6 +841,7 @@ export async function telegramMessagesWarmupHandler(
     ok: warm.ok,
     connected: true,
     gatewayReady: warm.ok,
+    warming: !warm.ok && isGatewaySessionWarmingError(warm.error),
     authState: warm.authState,
     focusOk,
     error: warm.error ?? null,

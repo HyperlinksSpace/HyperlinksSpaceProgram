@@ -1,3 +1,5 @@
+import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
+import { normalizeFormattedTextSegments } from "../../../shared/formattedTextSegments";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Text, View } from "react-native";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
@@ -13,6 +15,7 @@ import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
+import { MessageChatRichText } from "./MessageChatRichText";
 import { formatMessageChatListSubtitle } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
@@ -38,10 +41,12 @@ export type MessageChatRowData = {
   telegram_chat_id: number;
   title: string;
   subtitle: string;
+  subtitle_segments?: FormattedTextSegment[] | null;
   avatar_url: string | null;
   last_message_at: string | null;
   unread_count: number;
   peer_user_id?: number | null;
+  peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
   presence_at?: string | null;
   chat_action?: MessageChatActionKind | null;
@@ -81,6 +86,10 @@ export function MessageChatRow({
   const { locale } = useAppStrings();
   const title = item.title.trim();
   const subtitle = formatMessageChatListSubtitle(item, locale);
+  const subtitleSegments = useMemo(
+    () => normalizeFormattedTextSegments(item.subtitle_segments),
+    [item.subtitle_segments],
+  );
   const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
@@ -206,6 +215,7 @@ export function MessageChatRow({
             <SpecialTelegramUserName
               name={title}
               telegramUserId={item.peer_user_id ?? null}
+              emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
               textStyle={{
                 ...textBase,
                 color: colors.primary,
@@ -233,18 +243,18 @@ export function MessageChatRow({
             minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
-          <Text
+          <MessageChatRichText
+            text={subtitle}
+            segments={subtitleSegments}
             numberOfLines={1}
-            ellipsizeMode="tail"
+            emojiSizePx={16}
             style={{
               ...textBase,
               flex: 1,
               minWidth: 0,
               color: colors.secondary,
             }}
-          >
-            {subtitle}
-          </Text>
+          />
           {showPin || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {showPin ? <MessageChatPinIcon size={20} color={colors.accent} /> : null}
           {trailing ? <MessageUnreadCountBadge label={trailing} colors={colors} /> : null}

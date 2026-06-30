@@ -13,15 +13,19 @@ import {
   type TdChat,
   type TdMessage,
 } from "./chatPreview.js";
+import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
+import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 
 export type LiveChatRow = {
   telegram_chat_id: number;
   title: string;
   subtitle: string;
+  subtitle_segments?: FormattedTextSegment[] | null;
   avatar_url: string | null;
   last_message_at: string;
   unread_count: number;
   peer_user_id: number | null;
+  peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
   chat_action: ChatActionKind | null;
@@ -139,25 +143,37 @@ export function patchLiveChatFromTdlib(
   chat: TdChat,
   input: {
     subtitle?: string | null;
+    subtitle_segments?: FormattedTextSegment[] | null;
     avatar_url?: string | null;
     last_message?: TdMessage | null;
+    peer_emoji_status_custom_emoji_id?: string | null;
   },
 ): LiveChatRow {
   const cache = userCache(telegramUsername);
   const existing = cache.chats.get(chat.id);
+  const lastMessage = input.last_message ?? chat.last_message ?? null;
+  const subtitleSegments =
+    input.subtitle_segments !== undefined
+      ? input.subtitle_segments
+      : previewSegmentsFromMessage(lastMessage);
   const subtitle =
     input.subtitle?.trim() ||
-    previewFromMessage(input.last_message ?? chat.last_message) ||
+    previewFromMessage(lastMessage) ||
     existing?.subtitle ||
     "";
   const row: Omit<LiveChatRow, "revision"> = {
     telegram_chat_id: chat.id,
     title: chatTitle(chat),
     subtitle,
+    ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : { subtitle_segments: null }),
     avatar_url: input.avatar_url !== undefined ? input.avatar_url : (existing?.avatar_url ?? null),
-    last_message_at: lastMessageAtIso(chat, input.last_message ?? chat.last_message),
+    last_message_at: lastMessageAtIso(chat, lastMessage),
     unread_count: normalizeUnreadCount(chat),
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
+    peer_emoji_status_custom_emoji_id:
+      input.peer_emoji_status_custom_emoji_id !== undefined
+        ? input.peer_emoji_status_custom_emoji_id
+        : (existing?.peer_emoji_status_custom_emoji_id ?? null),
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
     chat_action: existing?.chat_action ?? null,
@@ -193,10 +209,12 @@ export function patchLiveChatAction(
     telegram_chat_id: existing.telegram_chat_id,
     title: existing.title,
     subtitle: existing.subtitle,
+    ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
+    peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing.presence_kind,
     presence_at: existing.presence_at,
     chat_action: input.action,
@@ -222,12 +240,47 @@ export function patchLiveChatPresence(
       telegram_chat_id: row.telegram_chat_id,
       title: row.title,
       subtitle: row.subtitle,
+      ...(row.subtitle_segments ? { subtitle_segments: row.subtitle_segments } : {}),
       avatar_url: row.avatar_url,
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
+      peer_emoji_status_custom_emoji_id: row.peer_emoji_status_custom_emoji_id ?? null,
       presence_kind: presence.kind,
       presence_at: presence.at,
+      chat_action: row.chat_action,
+      chat_action_user_id: row.chat_action_user_id,
+      chat_action_user_name: row.chat_action_user_name,
+      chat_action_expires_at: row.chat_action_expires_at,
+      last_read_outbox_message_id: row.last_read_outbox_message_id,
+      is_pinned: row.is_pinned,
+      pin_order: row.pin_order,
+    });
+  }
+  return null;
+}
+
+export function patchLiveChatEmojiStatus(
+  telegramUsername: string,
+  peerUserId: number,
+  customEmojiId: string | null,
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  for (const row of cache.chats.values()) {
+    if (row.peer_user_id !== peerUserId) continue;
+    return upsertLiveChatRow(telegramUsername, {
+      telegram_chat_id: row.telegram_chat_id,
+      title: row.title,
+      subtitle: row.subtitle,
+      ...(row.subtitle_segments ? { subtitle_segments: row.subtitle_segments } : {}),
+      avatar_url: row.avatar_url,
+      last_message_at: row.last_message_at,
+      unread_count: row.unread_count,
+      peer_user_id: row.peer_user_id,
+      peer_emoji_status_custom_emoji_id: customEmojiId,
+      presence_kind: row.presence_kind,
+      presence_at: row.presence_at,
       chat_action: row.chat_action,
       chat_action_user_id: row.chat_action_user_id,
       chat_action_user_name: row.chat_action_user_name,
@@ -250,11 +303,14 @@ export function applyLiveMessageUpdate(
   const existing = cache.chats.get(chatId);
   const preview = previewFromMessage(message);
   if (!preview && !existing) return null;
+  const subtitleSegments =
+    previewSegmentsFromMessage(message) ?? existing?.subtitle_segments ?? null;
 
   const row: Omit<LiveChatRow, "revision"> = {
     telegram_chat_id: chatId,
     title: existing?.title ?? `Chat ${chatId}`,
     subtitle: preview || existing?.subtitle || "",
+    ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : {}),
     avatar_url: existing?.avatar_url ?? null,
     last_message_at: lastMessageAtIso({ id: chatId, last_message: message }, message),
     unread_count:
@@ -262,6 +318,7 @@ export function applyLiveMessageUpdate(
         ? unreadCount
         : (existing?.unread_count ?? 0),
     peer_user_id: existing?.peer_user_id ?? null,
+    peer_emoji_status_custom_emoji_id: existing?.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
     chat_action: existing?.chat_action ?? null,

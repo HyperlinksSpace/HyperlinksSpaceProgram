@@ -99,6 +99,18 @@ export async function gatewayConnectStatus(
   return { ...json, httpStatus: response.status };
 }
 
+export async function gatewayConnectUserStatus(
+  telegramUsername: string,
+): Promise<(GatewayConnectSnapshot & { active?: boolean }) | null> {
+  const { response, json } = await gatewayFetch(
+    `/v1/connect/user-status?telegramUsername=${encodeURIComponent(telegramUsername)}`,
+    { method: "GET" },
+  );
+  if (!response.ok) return null;
+  if (json.active === false) return null;
+  return json as GatewayConnectSnapshot & { active?: boolean };
+}
+
 export async function gatewayConnectPassword(
   attemptId: string,
   password: string,
@@ -149,7 +161,7 @@ export async function gatewayConnectCode(
 
 export async function gatewayResyncChats(
   telegramUsername: string,
-  options?: { chatIds?: number[] },
+  options?: { chatIds?: number[]; maxWaitMs?: number },
 ): Promise<{
   ok: boolean;
   chatCount?: number;
@@ -161,6 +173,7 @@ export async function gatewayResyncChats(
     method: "POST",
     body: JSON.stringify({
       telegramUsername,
+      ...(options?.maxWaitMs ? { maxWaitMs: options.maxWaitMs } : {}),
       ...(options?.chatIds?.length ? { chatIds: options.chatIds } : {}),
     }),
   });
@@ -185,21 +198,66 @@ export async function gatewayWarmupSession(
   const maxPollMs = options?.maxPollMs ?? 45_000;
   const pollMs = options?.pollMs ?? 2_000;
 
-  const start = await gatewayConnectStart(telegramUsername, { resume: true, resumeOnly: true });
-  if (start.authState === "ready") {
+  const resolveAttempt = async (): Promise<{
+    attemptId: string | null;
+    authState: string;
+    error?: string;
+  }> => {
+    for (let tryIndex = 0; tryIndex < 3; tryIndex += 1) {
+      const start = await gatewayConnectStart(telegramUsername, { resume: true, resumeOnly: true });
+      if (start.authState === "ready") {
+        return { attemptId: start.attemptId ?? null, authState: "ready" };
+      }
+      if (start.error === "no_session") {
+        return { attemptId: null, authState: "failed", error: "no_session" };
+      }
+      if (start.attemptId) {
+        return {
+          attemptId: start.attemptId,
+          authState: start.authState ?? "initializing",
+          error: start.error ?? undefined,
+        };
+      }
+      const user = await gatewayConnectUserStatus(telegramUsername);
+      if (user?.authState === "ready") {
+        return { attemptId: user.attemptId ?? null, authState: "ready" };
+      }
+      if (user?.attemptId) {
+        return {
+          attemptId: user.attemptId,
+          authState: user.authState ?? "initializing",
+        };
+      }
+      if (start.authState === "failed" && start.error) {
+        return { attemptId: null, authState: "failed", error: start.error };
+      }
+      await sleepMs(1_000);
+    }
+
+    const user = await gatewayConnectUserStatus(telegramUsername);
+    if (user?.authState === "ready") {
+      return { attemptId: user.attemptId ?? null, authState: "ready" };
+    }
+    if (user?.attemptId) {
+      return {
+        attemptId: user.attemptId,
+        authState: user.authState ?? "initializing",
+      };
+    }
+    return { attemptId: null, authState: "session_not_ready", error: "session_not_ready" };
+  };
+
+  const resolved = await resolveAttempt();
+  if (resolved.authState === "ready") {
     return { ok: true, authState: "ready" };
   }
-  if (start.error === "no_session" || (start.authState === "failed" && !start.attemptId)) {
-    return { ok: false, authState: "failed", error: start.error ?? "no_session" };
+  if (resolved.error === "no_session" || (resolved.authState === "failed" && resolved.error)) {
+    return { ok: false, authState: "failed", error: resolved.error ?? "no_session" };
   }
 
-  const attemptId = start.attemptId;
+  const attemptId = resolved.attemptId;
   if (!attemptId) {
-    return {
-      ok: false,
-      authState: start.authState ?? "failed",
-      error: start.error ?? "warmup_no_attempt",
-    };
+    return { ok: false, authState: "session_not_ready", error: "session_not_ready" };
   }
 
   const deadline = Date.now() + maxPollMs;
@@ -432,6 +490,51 @@ export async function gatewayFetchMessageMedia(
   } catch {
     return null;
   }
+}
+
+export async function gatewayFetchTelegramEmoji(
+  telegramUsername: string,
+  options: { customEmojiId?: string; emoji?: string },
+): Promise<{ data: ArrayBuffer; mime: string } | null> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const params = new URLSearchParams({ telegramUsername });
+  if (options.customEmojiId?.trim()) params.set("customEmojiId", options.customEmojiId.trim());
+  if (options.emoji?.trim()) params.set("emoji", options.emoji.trim());
+  const url = `${base}/v1/custom-emoji?${params.toString()}`;
+  const started = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    logTdlibGatewayApi("gateway_fetch_done", {
+      path: "/v1/custom-emoji",
+      status: response.status,
+      ok: response.ok,
+      elapsedMs: Date.now() - started,
+      hasCustomEmojiId: Boolean(options.customEmojiId?.trim()),
+      hasEmoji: Boolean(options.emoji?.trim()),
+    });
+    if (!response.ok) return null;
+    const mime = response.headers.get("Content-Type") || "application/octet-stream";
+    const data = await response.arrayBuffer();
+    return { data, mime };
+  } catch (err) {
+    logTdlibGatewayApi("gateway_fetch_error", {
+      path: "/v1/custom-emoji",
+      elapsedMs: Date.now() - started,
+      fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    });
+    return null;
+  }
+}
+
+export async function gatewayFetchCustomEmoji(
+  telegramUsername: string,
+  customEmojiId: string,
+): Promise<{ data: ArrayBuffer; mime: string } | null> {
+  return gatewayFetchTelegramEmoji(telegramUsername, { customEmojiId });
 }
 
 export async function gatewayFetchUserAvatar(

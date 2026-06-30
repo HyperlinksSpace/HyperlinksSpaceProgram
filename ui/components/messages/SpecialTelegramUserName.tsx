@@ -6,6 +6,7 @@ import { MessageChatPeaceIcon } from "./MessageChatPeaceIcon";
 import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
 import { MessageChatSIcon } from "./MessageChatSIcon";
 import { MessageChatStatusTgsBadge } from "./MessageChatStatusTgsBadge";
+import { MessageChatInlineTgsEmoji } from "./MessageChatInlineTgsEmoji";
 import {
   SPECIAL_USER_BADGE_GAP_PX,
   SPECIAL_USER_BADGE_SIZE_PX,
@@ -17,6 +18,7 @@ import {
 type Props = {
   name: string;
   telegramUserId: number | null | undefined;
+  emojiStatusCustomEmojiId?: string | null;
   textStyle: TextStyle;
   numberOfLines?: number;
   textAlign?: "left" | "center" | "right";
@@ -56,6 +58,7 @@ function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof 
 export function SpecialTelegramUserName({
   name,
   telegramUserId,
+  emojiStatusCustomEmojiId,
   textStyle,
   numberOfLines = 1,
   textAlign = "left",
@@ -63,7 +66,10 @@ export function SpecialTelegramUserName({
 }: Props) {
   const displayName = specialUserDisplayName(telegramUserId, name);
   const badgeKind = specialUserBadgeKind(telegramUserId, name);
-  const showBadge = badgeKind != null;
+  const showSpecialBadge = badgeKind != null;
+  const telegramEmojiStatusId = emojiStatusCustomEmojiId?.trim() || null;
+  const showTelegramEmojiStatus = !showSpecialBadge && Boolean(telegramEmojiStatusId);
+  const showBadge = showSpecialBadge || showTelegramEmojiStatus;
   const showShine = specialUserShowsShineName(telegramUserId, name);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
 
@@ -135,7 +141,15 @@ export function SpecialTelegramUserName({
           justifyContent: "center",
         }}
       >
-        <SpecialUserBadge kind={badgeKind} size={SPECIAL_USER_BADGE_SIZE_PX} />
+        {showSpecialBadge && badgeKind ? (
+          <SpecialUserBadge kind={badgeKind} size={SPECIAL_USER_BADGE_SIZE_PX} />
+        ) : null}
+        {showTelegramEmojiStatus && telegramEmojiStatusId ? (
+          <MessageChatInlineTgsEmoji
+            customEmojiId={telegramEmojiStatusId}
+            sizePx={SPECIAL_USER_BADGE_SIZE_PX}
+          />
+        ) : null}
       </View>
     </View>
   );

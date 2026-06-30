@@ -1,8 +1,10 @@
 import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
-import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
+import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
+import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
+import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -17,6 +19,8 @@ const LIVE_UPDATE_TYPES = new Set([
   "updateMessageEdited",
   "updateDeleteMessages",
   "updateUserStatus",
+  "updateUser",
+  "updateUserEmojiStatus",
   "updateUserChatAction",
   "updateChatReadOutbox",
 ]);
@@ -97,6 +101,7 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
       const chat = (await client.invoke({ _: "getChat", chat_id: message.chat_id })) as TdChat;
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
         subtitle: preview,
+        subtitle_segments: previewSegmentsFromMessage(lastMessage),
         last_message: lastMessage,
       });
       logLiveSync(record, "live_chat_message_applied", {
@@ -124,6 +129,7 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
       const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
         subtitle: lastMessage ? previewFromMessage(lastMessage) : null,
+        subtitle_segments: lastMessage ? previewSegmentsFromMessage(lastMessage) : null,
         last_message: lastMessage ?? chat.last_message ?? null,
       });
     } catch {
@@ -178,6 +184,32 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     logLiveSync(record, "live_chat_presence_applied", {
       peerUserId: userId,
       kind: presence.kind,
+    });
+    return;
+  }
+
+  if (type === "updateUser") {
+    const user = update.user;
+    if (!user || typeof user !== "object") return;
+    const userId = (user as { id?: number }).id;
+    if (typeof userId !== "number") return;
+    const customEmojiId = emojiStatusCustomIdFromUser(user);
+    patchLiveChatEmojiStatus(record.telegramUsername, userId, customEmojiId);
+    logLiveSync(record, "live_chat_user_profile_applied", {
+      peerUserId: userId,
+      hasEmojiStatus: Boolean(customEmojiId),
+    });
+    return;
+  }
+
+  if (type === "updateUserEmojiStatus") {
+    const userId = update.user_id;
+    if (typeof userId !== "number") return;
+    const customEmojiId = parseEmojiStatusCustomId(update.emoji_status ?? update.emojiStatus);
+    patchLiveChatEmojiStatus(record.telegramUsername, userId, customEmojiId);
+    logLiveSync(record, "live_chat_emoji_status_applied", {
+      peerUserId: userId,
+      hasCustomEmoji: Boolean(customEmojiId),
     });
     return;
   }
@@ -268,7 +300,7 @@ export function attachLiveChatSync(record: LiveSyncRecord): void {
     const type = update._;
     if (typeof type !== "string" || !LIVE_UPDATE_TYPES.has(type)) return;
 
-    if (type === "updateNewMessage" || type === "updateChatLastMessage" || type === "updateUserStatus" || type === "updateUserChatAction" || type === "updateChatReadOutbox") {
+    if (type === "updateNewMessage" || type === "updateChatLastMessage" || type === "updateUserStatus" || type === "updateUser" || type === "updateUserEmojiStatus" || type === "updateUserChatAction" || type === "updateChatReadOutbox") {
       void applyLiveUpdate(record, update);
       return;
     }

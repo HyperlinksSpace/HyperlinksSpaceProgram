@@ -8,14 +8,19 @@ import {
   gatewayHealth,
   getChatAvatarImageForUser,
   getChatHistoryForUser,
+  ensureLiveChatPeerEmojiStatuses,
+  getTelegramEmojiForUser,
   getMessageMediaForUser,
   getUserAvatarImageForUser,
   getConnectAttempt,
   getLiveChatList,
   getLiveChatListRevision,
+  getUserConnectSnapshot,
   resyncUserChats,
   restorePersistedGatewaySessions,
   resumeExistingSession,
+  RESYNC_HTTP_SESSION_WAIT_MS,
+  RESYNC_RESTORE_SESSION_WAIT_MS,
   searchChatsForUser,
   searchContactsForUser,
   focusChatForUser,
@@ -134,7 +139,11 @@ export function startTdlibGatewayServer(): http.Server {
         }
 
         if (req.method === "POST" && pathname === "/v1/connect/resync") {
-          const body = (await readJson(req)) as { telegramUsername?: string; chatIds?: number[] };
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatIds?: number[];
+            maxWaitMs?: number;
+          };
           const telegramUsername = (body.telegramUsername || "").trim();
           if (!telegramUsername) {
             sendJson(res, 400, { ok: false, error: "username_required" });
@@ -143,9 +152,13 @@ export function startTdlibGatewayServer(): http.Server {
           const chatIds = Array.isArray(body.chatIds)
             ? body.chatIds.filter((id) => typeof id === "number" && Number.isFinite(id))
             : undefined;
+          const maxWaitMs =
+            typeof body.maxWaitMs === "number" && Number.isFinite(body.maxWaitMs) && body.maxWaitMs > 0
+              ? Math.min(body.maxWaitMs, RESYNC_RESTORE_SESSION_WAIT_MS)
+              : RESYNC_HTTP_SESSION_WAIT_MS;
           const result = await resyncUserChats(
             telegramUsername,
-            chatIds?.length ? { chatIds } : undefined,
+            chatIds?.length ? { chatIds, maxWaitMs } : { maxWaitMs },
           );
           sendJson(res, 200, {
             ok: !result.error,
@@ -191,6 +204,7 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "username_required" });
             return;
           }
+          await ensureLiveChatPeerEmojiStatuses(telegramUsername);
           const chats = getLiveChatList(telegramUsername);
           const revision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = (chats ?? []).filter(
@@ -342,6 +356,46 @@ export function startTdlibGatewayServer(): http.Server {
           return;
         }
 
+        if (req.method === "GET" && pathname === "/v1/custom-emoji") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const customEmojiId = (url.searchParams.get("customEmojiId") || "").trim();
+          const emoji = (url.searchParams.get("emoji") || "").trim();
+          logGateway("custom_emoji_request", {
+            telegramUsername: telegramUsername || null,
+            hasCustomEmojiId: Boolean(customEmojiId),
+            hasEmoji: Boolean(emoji),
+          });
+          if (!telegramUsername || (!customEmojiId && !emoji)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const sticker = await getTelegramEmojiForUser(telegramUsername, { customEmojiId, emoji });
+          if (!sticker) {
+            logGateway("custom_emoji_unavailable", {
+              telegramUsername,
+              customEmojiId: customEmojiId || null,
+              emoji: emoji || null,
+              ms: Date.now() - started,
+            });
+            sendJson(res, 404, { ok: false, error: "custom_emoji_unavailable" });
+            return;
+          }
+          logGateway("custom_emoji_served", {
+            telegramUsername,
+            customEmojiId: customEmojiId || null,
+            emoji: emoji || null,
+            bytes: sticker.data.length,
+            mime: sticker.mime,
+            ms: Date.now() - started,
+          });
+          res.statusCode = 200;
+          res.setHeader("Content-Type", sticker.mime);
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          res.end(sticker.data);
+          return;
+        }
+
         if (req.method === "GET" && pathname === "/v1/user/avatar") {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const userId = Number(url.searchParams.get("userId"));
@@ -435,6 +489,21 @@ export function startTdlibGatewayServer(): http.Server {
           return;
         }
 
+        if (req.method === "GET" && pathname === "/v1/connect/user-status") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          const snap = getUserConnectSnapshot(telegramUsername);
+          if (!snap) {
+            sendJson(res, 200, { ok: true, active: false });
+            return;
+          }
+          sendJson(res, 200, { ok: true, active: true, ...snap });
+          return;
+        }
+
         if (req.method === "POST" && pathname === "/v1/connect/phone") {
           const body = (await readJson(req)) as {
             attemptId?: string;
@@ -520,6 +589,7 @@ export function startTdlibGatewayServer(): http.Server {
           return;
         }
 
+        logGateway("route_not_found", { method: req.method, path: pathname });
         sendJson(res, 404, { ok: false, error: "not_found" });
       } catch (err) {
         const message = err instanceof Error ? err.message : "internal_error";
