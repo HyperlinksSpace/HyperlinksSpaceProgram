@@ -4,7 +4,7 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { BottomBarHeightReporter, useBottomBarLayout } from "../BottomBarLayoutContext";
 import { useTelegram } from "../Telegram";
-import { layout, typographyRect15, useColors } from "../../theme";
+import { layout, typographyFixedRow40Label, useColors } from "../../theme";
 
 const { barMinHeight: BAR_HEIGHT, horizontalPadding: HORIZONTAL_PADDING, textToSendIconGapPx: TEXT_TO_BUTTON_GAP_PX } =
   layout.bottomBar;
@@ -60,7 +60,7 @@ export function SmartColumnFooter() {
       ]}
     >
       <Text
-        style={[typographyRect15, styles.fullLabelMeasure, { color: colors.primary }]}
+        style={[typographyFixedRow40Label, styles.fullLabelMeasure, { color: colors.primary }]}
         onLayout={(event) => onFullLabelMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
       >
         {fullDeployCostLabel}
@@ -73,7 +73,7 @@ export function SmartColumnFooter() {
             onLayout={(event) => onLabelSlotLayout(Math.round(event.nativeEvent.layout.width))}
           >
             <Text
-              style={[typographyRect15, styles.costLabel, { color: colors.primary }]}
+              style={[typographyFixedRow40Label, styles.costLabel, { color: colors.primary }]}
               numberOfLines={1}
               accessibilityLabel={fullDeployCostLabel}
             >
@@ -84,7 +84,7 @@ export function SmartColumnFooter() {
             accessibilityRole="button"
             style={[styles.footerButton, { backgroundColor: colors.undercover }]}
           >
-            <Text style={[typographyRect15, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
+            <Text style={[typographyFixedRow40Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
               {t("smart.footer.deployButton")}
             </Text>
           </View>

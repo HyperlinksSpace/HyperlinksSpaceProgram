@@ -1,6 +1,6 @@
 import { inflate } from "pako";
 
-/** Telegram `.tgs` (gzip Lottie JSON) → animation object for lottie-react. */
+/** Telegram `.tgs` (gzip Lottie JSON) → animation object for TgsCanvasPlayer. */
 export async function loadTgsAnimationFromBytes(compressed: Uint8Array): Promise<object> {
   const json = new TextDecoder().decode(inflate(compressed));
   return JSON.parse(json) as object;

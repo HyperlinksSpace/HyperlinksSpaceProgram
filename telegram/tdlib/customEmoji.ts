@@ -22,6 +22,12 @@ function pickTdlibFileId(value: unknown): number | null {
     if (Number.isFinite(nestedId) && nestedId > 0) return nestedId;
   }
 
+  const file = row.file;
+  if (file && typeof file === "object") {
+    const fileId = Number((file as { id?: number }).id);
+    if (Number.isFinite(fileId) && fileId > 0) return fileId;
+  }
+
   const direct = Number(row.id);
   if (Number.isFinite(direct) && direct > 0) return direct;
 

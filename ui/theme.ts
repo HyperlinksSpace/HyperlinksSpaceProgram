@@ -414,6 +414,54 @@ export const typographyRect15: TextStyle = {
   paddingVertical: 0,
 };
 
+/** Standard 40px-tall button / glass-pill row height. */
+export const FIXED_ROW_40_HEIGHT_PX = 40;
+
+/** Line box for 15px labels in {@link FIXED_ROW_40_HEIGHT_PX} rows (Cyrillic/Latin descenders). */
+export const FIXED_ROW_40_LABEL_LINE_HEIGHT_PX = 21;
+
+/** Standard 30px-tall action button row height. */
+export const FIXED_ROW_30_HEIGHT_PX = 30;
+
+/** Line box for 15px labels in {@link FIXED_ROW_30_HEIGHT_PX} rows. */
+export const FIXED_ROW_30_LABEL_LINE_HEIGHT_PX = 18;
+
+/**
+ * Labels in fixed-height button rows (40px auth buttons, modal actions, Telegram connect pill, etc.).
+ *
+ * Pairs with global `uiTextVerticalCompensationY` on `Text`, but on web we reset `translateY` inside
+ * `[role="button"]` / overflow-hidden chips — otherwise `numberOfLines={1}` clips descenders.
+ */
+export const typographyFixedRow40Label: TextStyle = {
+  fontSize: 15,
+  lineHeight: FIXED_ROW_40_LABEL_LINE_HEIGHT_PX,
+  fontWeight: "400",
+  includeFontPadding: false,
+  textAlignVertical: "center",
+  paddingVertical: 0,
+  ...Platform.select({
+    web: { transform: [{ translateY: 0 }] },
+    default: {},
+  }),
+};
+
+/** Labels in 30px-tall action rows (swap/send/smart footer chips). */
+export const typographyFixedRow30Label: TextStyle = {
+  fontSize: 15,
+  lineHeight: FIXED_ROW_30_LABEL_LINE_HEIGHT_PX,
+  fontWeight: "400",
+  includeFontPadding: false,
+  textAlignVertical: "center",
+  paddingVertical: 0,
+  ...Platform.select({
+    web: { transform: [{ translateY: 0 }] },
+    default: {},
+  }),
+};
+
+/** @deprecated Use {@link typographyFixedRow40Label}. */
+export const typographyTelegramConnectPillLabel: TextStyle = typographyFixedRow40Label;
+
 /** Wide home menu labels under SVG icons (15 / 15 — tight line box). */
 export const homeWideMenuItemLabel: TextStyle = {
   fontSize: 15,

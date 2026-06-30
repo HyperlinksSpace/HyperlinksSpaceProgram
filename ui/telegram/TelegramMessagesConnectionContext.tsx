@@ -148,35 +148,49 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     warmupInFlightRef.current = true;
     logTelegramConnect("silent_warmup_start");
     try {
-      const response = await fetch(buildApiUrl("/api/telegram-messages-warmup"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const json = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        connected?: boolean;
-        gatewayReady?: boolean;
-        needsReconnect?: boolean;
-        warming?: boolean;
-        authState?: string;
-        error?: string | null;
-      };
-      logTelegramConnect("silent_warmup_done", {
-        ok: json.ok ?? false,
-        gatewayReady: json.gatewayReady ?? false,
-        warming: json.warming ?? false,
-        authState: json.authState ?? null,
-        error: json.error ?? null,
-        status: response.status,
-      });
-      if (json.needsReconnect || json.connected === false) {
-        setConnected(false);
+      const maxAttempts = 4;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const response = await fetch(buildApiUrl("/api/telegram-messages-warmup"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          connected?: boolean;
+          gatewayReady?: boolean;
+          needsReconnect?: boolean;
+          warming?: boolean;
+          authState?: string;
+          error?: string | null;
+        };
+        logTelegramConnect("silent_warmup_done", {
+          attempt: attempt + 1,
+          ok: json.ok ?? false,
+          gatewayReady: json.gatewayReady ?? false,
+          warming: json.warming ?? false,
+          authState: json.authState ?? null,
+          error: json.error ?? null,
+          status: response.status,
+        });
+        if (json.needsReconnect || json.connected === false) {
+          setConnected(false);
+          return;
+        }
+        if (json.gatewayReady) {
+          setConnected(true);
+          logPageDisplay("telegram_messages_gateway_ready");
+          return;
+        }
+        if (json.warming && attempt + 1 < maxAttempts) {
+          await new Promise((resolve) => setTimeout(resolve, 3_000));
+          continue;
+        }
+        if (json.connected !== false) {
+          setConnected(true);
+        }
         return;
-      }
-      if (json.gatewayReady) {
-        logPageDisplay("telegram_messages_gateway_ready");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

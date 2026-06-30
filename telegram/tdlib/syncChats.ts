@@ -11,6 +11,7 @@ import {
   mainListOrderKey,
   normalizeUnreadCount,
   lastReadOutboxMessageIdFromChat,
+  memberCountFromChat,
   peerUserIdFromChat,
   presenceFromTdlibStatus,
   resolveLastMessagePreview,
@@ -37,6 +38,7 @@ const AVATAR_DOWNLOAD_TIMEOUT_MS = 15_000;
 const AVATAR_SYNC_CONCURRENCY = 3;
 const PREVIEW_SYNC_CONCURRENCY = 8;
 const PRESENCE_SYNC_CONCURRENCY = 8;
+const MEMBER_COUNT_SYNC_CONCURRENCY = 6;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -219,15 +221,28 @@ function mimeFromPath(filePath: string): string {
 
 async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile | null> {
   const deadline = Date.now() + AVATAR_DOWNLOAD_TIMEOUT_MS;
+  let syncAttempted = false;
+
   while (Date.now() < deadline) {
     try {
       const file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
       if (file.local?.is_downloading_completed && file.local.path) return file;
-      if (file.local?.is_downloading_active === false && !file.local?.is_downloading_completed) {
-        return null;
+
+      if (!file.local?.is_downloading_active && !file.local?.is_downloading_completed) {
+        await client.invoke({
+          _: "downloadFile",
+          file_id: fileId,
+          priority: 16,
+          offset: 0,
+          limit: 0,
+          synchronous: syncAttempted,
+        });
+        syncAttempted = true;
+        const refreshed = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        if (refreshed.local?.is_downloading_completed && refreshed.local.path) return refreshed;
       }
     } catch {
-      return null;
+      /* keep polling */
     }
     await sleep(150);
   }
@@ -306,8 +321,14 @@ export async function readChatAvatarBytes(
 }
 
 type TdUserProfile = {
-  profile_photo?: { small?: { id?: number } };
+  profile_photo?: { small?: { id?: number }; big?: { id?: number } };
 };
+
+function profilePhotoFileIds(user: TdUserProfile): number[] {
+  return [user.profile_photo?.small?.id, user.profile_photo?.big?.id].filter(
+    (id): id is number => typeof id === "number" && id > 0,
+  );
+}
 
 export async function readUserAvatarBytes(
   client: Client,
@@ -315,25 +336,33 @@ export async function readUserAvatarBytes(
 ): Promise<{ data: Buffer; mime: string } | typeof TELEGRAM_THREAD_NO_AVATAR | null> {
   try {
     const user = (await client.invoke({ _: "getUser", user_id: userId })) as TdUserProfile;
-    const fileId = user.profile_photo?.small?.id;
-    if (typeof fileId !== "number") return TELEGRAM_THREAD_NO_AVATAR;
-    let file = user.profile_photo?.small as TdFile | undefined;
-    if (!file?.local?.is_downloading_completed || !file.local.path) {
-      await client.invoke({
-        _: "downloadFile",
-        file_id: fileId,
-        priority: 16,
-        offset: 0,
-        limit: 0,
-        synchronous: true,
-      });
-      file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+    const fileIds = profilePhotoFileIds(user);
+    if (fileIds.length === 0) return TELEGRAM_THREAD_NO_AVATAR;
+
+    for (const fileId of fileIds) {
+      try {
+        let file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        if (!file?.local?.is_downloading_completed || !file.local.path) {
+          await client.invoke({
+            _: "downloadFile",
+            file_id: fileId,
+            priority: 16,
+            offset: 0,
+            limit: 0,
+            synchronous: true,
+          });
+          file = (await waitForLocalFile(client, fileId)) ?? (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
+        }
+        const filePath = file?.local?.path;
+        if (!filePath) continue;
+        const buf = await fs.promises.readFile(filePath);
+        if (buf.length === 0) continue;
+        return { data: buf, mime: mimeFromPath(filePath) };
+      } catch {
+        /* try next size */
+      }
     }
-    const filePath = file?.local?.path;
-    if (!filePath) return null;
-    const buf = await fs.promises.readFile(filePath);
-    if (buf.length === 0) return null;
-    return { data: buf, mime: mimeFromPath(filePath) };
+    return null;
   } catch {
     return null;
   }
@@ -510,6 +539,9 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   let presences = await mapWithConcurrency(chats, PRESENCE_SYNC_CONCURRENCY, (chat) =>
     resolvePeerProfile(client, chat),
   );
+  let memberCounts = await mapWithConcurrency(chats, MEMBER_COUNT_SYNC_CONCURRENCY, (chat) =>
+    memberCountFromChat(client, chat),
+  );
 
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < chats.length; i++) {
@@ -534,6 +566,7 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
       peer_user_id: peerUserIdFromChat(chat),
+      member_count: memberCounts[i] ?? null,
       peer_emoji_status_custom_emoji_id: profile?.emojiStatusCustomEmojiId ?? null,
       presence_kind: profile?.presence?.kind ?? null,
       presence_at: profile?.presence?.at ?? null,

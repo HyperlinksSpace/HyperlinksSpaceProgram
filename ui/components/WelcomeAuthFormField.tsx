@@ -1,6 +1,7 @@
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useState } from "react";
 import {
+  typographyFixedRow40Label,
   typographyRect15,
   uiTextVerticalCompensationTransform,
   useColors,
@@ -12,7 +13,7 @@ import { useTelegram } from "./Telegram";
 export const WELCOME_AUTH_MAX_WIDTH = 360;
 
 const BUTTON_HEIGHT = 40;
-const EMAIL_ROW_LINE_HEIGHT = 18;
+const EMAIL_ROW_LINE_HEIGHT = 21;
 const BUTTON_H_PADDING = 20;
 const EMAIL_LABEL_TO_INPUT_GAP = 10;
 const INPUT_TO_BUTTON_GAP = 20;
@@ -157,7 +158,10 @@ const styles = StyleSheet.create({
   },
   inputInner: {
     ...typographyRect15,
-    ...uiTextVerticalCompensationTransform,
+    ...Platform.select({
+      web: typographyFixedRow40Label,
+      default: uiTextVerticalCompensationTransform,
+    }),
     flex: 1,
     alignSelf: "stretch",
     width: "100%",
@@ -194,7 +198,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   submitLabel: {
-    ...typographyRect15,
+    ...typographyFixedRow40Label,
     flexShrink: 1,
   },
 });

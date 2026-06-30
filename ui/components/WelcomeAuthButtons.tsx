@@ -6,7 +6,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
 import {
   useColors,
-  typographyRect15,
+  typographyFixedRow40Label,
   uiIconButtonVerticalCompensationY,
   welcomeAuthButtonHoverBackground,
   welcomeAuthButtonActiveBackground,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     gap: ICON_GAP,
   },
   label: {
-    ...typographyRect15,
+    ...typographyFixedRow40Label,
     flexShrink: 1,
   },
   iconDims: {

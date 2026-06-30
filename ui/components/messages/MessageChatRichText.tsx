@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
 import {
-  enrichSegmentsWithStandardEmojis,
   normalizeFormattedTextSegments,
   segmentsContainTelegramEmoji,
 } from "../../../shared/formattedTextSegments";
@@ -29,6 +28,8 @@ type Props = {
   style: StyleProp<TextStyle>;
   linkColor?: string;
   emojiSizePx?: number;
+  /** Lower canvas quality + lazy fetch for chat-list rows. */
+  lowPriorityEmoji?: boolean;
 } & Pick<TextProps, "numberOfLines">;
 
 function resolveSegments(
@@ -36,12 +37,13 @@ function resolveSegments(
   segments?: FormattedTextSegment[] | null,
 ): FormattedTextSegment[] {
   const normalized = segments ? normalizeFormattedTextSegments(segments) : null;
-  const base =
+  if (
     normalized &&
     (segmentsContainTelegramEmoji(normalized) || normalized.some((segment) => segment.kind === "link"))
-      ? normalized
-      : parseMessageTextLinks(text);
-  return enrichSegmentsWithStandardEmojis(base);
+  ) {
+    return normalized;
+  }
+  return parseMessageTextLinks(text);
 }
 
 function textStyleFromProp(style: StyleProp<TextStyle>): TextStyle {
@@ -51,6 +53,7 @@ function textStyleFromProp(style: StyleProp<TextStyle>): TextStyle {
 function renderTelegramEmojiNode(
   segment: Extract<FormattedTextSegment, { kind: "custom_emoji" | "animated_emoji" }>,
   sizePx: number,
+  lowPriority?: boolean,
 ) {
   return (
     <MessageChatInlineTgsEmoji
@@ -58,6 +61,7 @@ function renderTelegramEmojiNode(
       emoji={segment.kind === "animated_emoji" ? segment.emoji : undefined}
       sizePx={sizePx}
       fallbackText={segment.text}
+      lowPriority={lowPriority}
     />
   );
 }
@@ -68,12 +72,14 @@ function RichTextWebRow({
   linkColor,
   emojiSizePx,
   numberOfLines,
+  lowPriorityEmoji,
 }: {
   segments: FormattedTextSegment[];
   style: TextStyle;
   linkColor: string;
   emojiSizePx: number;
   numberOfLines?: number;
+  lowPriorityEmoji?: boolean;
 }) {
   const wrapStyle =
     Platform.OS === "web" ? (messageChatBubbleTextWebWrapStyle as TextStyle) : null;
@@ -119,7 +125,7 @@ function RichTextWebRow({
                 justifyContent: "center",
               }}
             >
-              {renderTelegramEmojiNode(segment, emojiSizePx)}
+              {renderTelegramEmojiNode(segment, emojiSizePx, lowPriorityEmoji)}
             </View>
           );
         }
@@ -143,8 +149,9 @@ function renderTelegramEmojiInline(
   segment: Extract<FormattedTextSegment, { kind: "custom_emoji" | "animated_emoji" }>,
   sizePx: number,
   key: number,
+  lowPriority?: boolean,
 ) {
-  const emojiNode = renderTelegramEmojiNode(segment, sizePx);
+  const emojiNode = renderTelegramEmojiNode(segment, sizePx, lowPriority);
 
   if (Platform.OS === "web") {
     return createElement(
@@ -177,6 +184,7 @@ export function MessageChatRichText({
   linkColor = MESSAGE_LINK_COLOR,
   emojiSizePx = DEFAULT_INLINE_EMOJI_SIZE_PX,
   numberOfLines,
+  lowPriorityEmoji = false,
 }: Props) {
   const resolvedSegments = useMemo(() => resolveSegments(text, segments), [text, segments]);
   const hasTelegramEmoji = segmentsContainTelegramEmoji(resolvedSegments);
@@ -207,6 +215,7 @@ export function MessageChatRichText({
         linkColor={linkColor}
         emojiSizePx={emojiSizePx}
         numberOfLines={numberOfLines}
+        lowPriorityEmoji={lowPriorityEmoji}
       />
     );
   }
@@ -226,7 +235,7 @@ export function MessageChatRichText({
           return <Text key={index}>{segment.text}</Text>;
         }
         if (segment.kind === "custom_emoji" || segment.kind === "animated_emoji") {
-          return renderTelegramEmojiInline(segment, emojiSizePx, index);
+          return renderTelegramEmojiInline(segment, emojiSizePx, index, lowPriorityEmoji);
         }
         return (
           <Text

@@ -1,3 +1,4 @@
+import { emitLiveChatRevision } from "./liveChatRevisionNotify.js";
 import {
   CHAT_ACTION_TTL_MS,
   chatTitle,
@@ -25,6 +26,7 @@ export type LiveChatRow = {
   last_message_at: string;
   unread_count: number;
   peer_user_id: number | null;
+  member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
@@ -65,6 +67,9 @@ function sortLiveChatRows(rows: LiveChatRow[]): LiveChatRow[] {
 type UserCache = {
   chats: Map<number, LiveChatRow>;
   revision: number;
+  /** Avoid re-sorting on every read when revision is unchanged. */
+  sortedList: LiveChatRow[] | null;
+  sortedListRevision: number;
 };
 
 const caches = new Map<string, UserCache>();
@@ -90,14 +95,16 @@ function expireChatActionIfStale(row: LiveChatRow): LiveChatRow {
 function userCache(telegramUsername: string): UserCache {
   let cache = caches.get(telegramUsername);
   if (!cache) {
-    cache = { chats: new Map(), revision: 0 };
+    cache = { chats: new Map(), revision: 0, sortedList: null, sortedListRevision: -1 };
     caches.set(telegramUsername, cache);
   }
   return cache;
 }
 
-function bumpRevision(cache: UserCache): number {
+function bumpRevision(cache: UserCache, telegramUsername: string): number {
   cache.revision += 1;
+  cache.sortedList = null;
+  emitLiveChatRevision(telegramUsername, cache.revision);
   return cache.revision;
 }
 
@@ -112,7 +119,13 @@ export function getLiveChatListRevision(telegramUsername: string): number {
 export function getLiveChatList(telegramUsername: string): LiveChatRow[] | null {
   const cache = caches.get(telegramUsername);
   if (!cache || cache.chats.size === 0) return null;
-  return sortLiveChatRows([...cache.chats.values()].map(expireChatActionIfStale));
+  if (cache.sortedList && cache.sortedListRevision === cache.revision) {
+    return cache.sortedList.map(expireChatActionIfStale);
+  }
+  const sorted = sortLiveChatRows([...cache.chats.values()].map(expireChatActionIfStale));
+  cache.sortedList = sorted;
+  cache.sortedListRevision = cache.revision;
+  return sorted;
 }
 
 export function seedLiveChatList(
@@ -121,7 +134,7 @@ export function seedLiveChatList(
 ): void {
   const cache = userCache(telegramUsername);
   cache.chats.clear();
-  const rev = bumpRevision(cache);
+  const rev = bumpRevision(cache, telegramUsername);
   for (const row of rows) {
     cache.chats.set(row.telegram_chat_id, { ...row, revision: rev });
   }
@@ -132,7 +145,7 @@ export function upsertLiveChatRow(
   row: Omit<LiveChatRow, "revision">,
 ): LiveChatRow {
   const cache = userCache(telegramUsername);
-  const rev = bumpRevision(cache);
+  const rev = bumpRevision(cache, telegramUsername);
   const next: LiveChatRow = { ...row, revision: rev };
   cache.chats.set(row.telegram_chat_id, next);
   return next;
@@ -170,6 +183,7 @@ export function patchLiveChatFromTdlib(
     last_message_at: lastMessageAtIso(chat, lastMessage),
     unread_count: normalizeUnreadCount(chat),
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
+    member_count: existing?.member_count ?? null,
     peer_emoji_status_custom_emoji_id:
       input.peer_emoji_status_custom_emoji_id !== undefined
         ? input.peer_emoji_status_custom_emoji_id
@@ -214,6 +228,7 @@ export function patchLiveChatAction(
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
+    member_count: existing.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing.presence_kind,
     presence_at: existing.presence_at,
@@ -245,6 +260,7 @@ export function patchLiveChatPresence(
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
+      member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: row.peer_emoji_status_custom_emoji_id ?? null,
       presence_kind: presence.kind,
       presence_at: presence.at,
@@ -278,6 +294,7 @@ export function patchLiveChatEmojiStatus(
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
+      member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: customEmojiId,
       presence_kind: row.presence_kind,
       presence_at: row.presence_at,
@@ -318,6 +335,7 @@ export function applyLiveMessageUpdate(
         ? unreadCount
         : (existing?.unread_count ?? 0),
     peer_user_id: existing?.peer_user_id ?? null,
+    member_count: existing?.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing?.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,

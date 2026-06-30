@@ -2,7 +2,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { BottomBarHeightReporter, useBottomBarLayout } from "./BottomBarLayoutContext";
 import { useTelegram } from "./Telegram";
-import { layout, typographyRect15, useColors } from "../theme";
+import { layout, typographyFixedRow40Label, useColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 
 const { barMinHeight: BAR_HEIGHT, horizontalPadding: HORIZONTAL_PADDING } = layout.bottomBar;
@@ -34,7 +34,7 @@ export function InactiveWelcomeColumnFooter({ label, active = false, onPress }: 
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
 
   const buttonInner = (
-    <Text style={[typographyRect15, { color: labelColor, textAlign: "center" }]} numberOfLines={1}>
+    <Text style={[typographyFixedRow40Label, { color: labelColor, textAlign: "center" }]} numberOfLines={1}>
       {label}
     </Text>
   );

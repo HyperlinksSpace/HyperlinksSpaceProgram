@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { buildApiUrl } from "../../api/_base";
-import { normalizeFormattedTextSegments } from "../../shared/formattedTextSegments";
+import { normalizeFormattedTextSegments, type FormattedTextSegment } from "../../shared/formattedTextSegments";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
@@ -15,6 +15,7 @@ import {
 } from "../authenticatedHomeSelectedChat";
 import { MessageChatRow, type MessageChatRowData } from "./messages/MessageChatRow";
 import { homeListShellStyle } from "./messages/messageListLayout";
+import { useTelegramMessagesChatListStream } from "./messages/useTelegramMessagesChatListStream";
 
 type Props = {
   colors: ThemeColors;
@@ -36,6 +37,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
       : null;
   const unread = Number(row.unread_count);
   const peerUserId = Number(row.peer_user_id);
+  const memberCount = Number(row.member_count);
   const presenceKindRaw = row.presence_kind;
   const presenceKind =
     presenceKindRaw === "online" ||
@@ -76,6 +78,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     last_message_at: lastAt == null ? null : String(lastAt),
     unread_count: Number.isFinite(unread) ? unread : 0,
     peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
+    member_count: Number.isFinite(memberCount) && memberCount > 0 ? Math.trunc(memberCount) : null,
     peer_emoji_status_custom_emoji_id:
       typeof row.peer_emoji_status_custom_emoji_id === "string" &&
       row.peer_emoji_status_custom_emoji_id.trim()
@@ -95,6 +98,32 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
   };
 }
 
+function subtitleSegmentsEqual(
+  a: FormattedTextSegment[] | null | undefined,
+  b: FormattedTextSegment[] | null | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i]!;
+    const right = b[i]!;
+    if (left.kind !== right.kind || left.text !== right.text) return false;
+    if (left.kind === "link" && right.kind === "link" && left.url !== right.url) return false;
+    if (
+      left.kind === "custom_emoji" &&
+      right.kind === "custom_emoji" &&
+      left.custom_emoji_id !== right.custom_emoji_id
+    ) {
+      return false;
+    }
+    if (left.kind === "animated_emoji" && right.kind === "animated_emoji" && left.emoji !== right.emoji) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): boolean {
   if (prev.length !== next.length) return true;
   for (let i = 0; i < next.length; i++) {
@@ -106,11 +135,12 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
     if (
       a.title !== b.title ||
       a.subtitle !== b.subtitle ||
-      JSON.stringify(a.subtitle_segments ?? null) !== JSON.stringify(b.subtitle_segments ?? null) ||
+      !subtitleSegmentsEqual(a.subtitle_segments, b.subtitle_segments) ||
       a.last_message_at !== b.last_message_at ||
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
       a.peer_emoji_status_custom_emoji_id !== b.peer_emoji_status_custom_emoji_id ||
+      a.member_count !== b.member_count ||
       a.presence_kind !== b.presence_kind ||
       a.presence_at !== b.presence_at ||
       a.chat_action !== b.chat_action ||
@@ -137,8 +167,12 @@ function sortChatRows(rows: MessageChatRowData[]): MessageChatRowData[] {
   });
 }
 
-const MESSAGES_POLL_MS = 1_500;
-const MESSAGES_RESYNC_MS = 60_000;
+const MESSAGES_POLL_FAST_MS = 2_000;
+const MESSAGES_POLL_SLOW_MS = 5_000;
+const MESSAGES_POLL_SLOW_AFTER = 4;
+/** Web uses SSE push; slow poll is a reconnect safety net only. */
+const MESSAGES_POLL_STREAM_FALLBACK_MS = 60_000;
+const CHAT_LIST_STREAM_ENABLED = typeof EventSource !== "undefined";
 
 export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Props) {
   const { t } = useAppStrings();
@@ -156,6 +190,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
   const lastLiveRevisionRef = useRef<number | null>(null);
+  const pollInFlightRef = useRef(false);
+  const unchangedPollStreakRef = useRef(0);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerGatewayResync = useCallback(async (reason: string) => {
     const url = buildApiUrl("/api/telegram-messages-resync");
@@ -214,12 +251,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setLoading(true);
       setError(null);
     }
-    const url = buildApiUrl("/api/telegram-messages-chats");
+    const params = new URLSearchParams();
+    if (
+      options?.silent &&
+      lastLiveRevisionRef.current != null &&
+      lastLiveRevisionRef.current > 0
+    ) {
+      params.set("since_revision", String(lastLiveRevisionRef.current));
+    }
+    const query = params.toString();
+    const url = buildApiUrl(query ? `/api/telegram-messages-chats?${query}` : "/api/telegram-messages-chats");
     const started = Date.now();
     try {
       const response = await fetch(url, { method: "GET", credentials: "include" });
       const json = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
+        unchanged?: boolean;
         chats?: unknown[];
         error?: string;
         source?: string;
@@ -228,6 +275,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (!response.ok || !json.ok) {
         throw new Error(json.error || `HTTP_${response.status}`);
       }
+      if (json.unchanged) {
+        if (typeof json.revision === "number") {
+          lastLiveRevisionRef.current = json.revision;
+        }
+        unchangedPollStreakRef.current += 1;
+        if (options?.silent && pollCountRef.current % 10 === 0) {
+          logPageDisplay("messages_chats_poll_unchanged", {
+            poll: pollCountRef.current,
+            revision: json.revision ?? null,
+            elapsedMs: Date.now() - started,
+          });
+        }
+        return;
+      }
+      unchangedPollStreakRef.current = 0;
       const rows: MessageChatRowData[] = [];
       if (Array.isArray(json.chats)) {
         for (const raw of json.chats) {
@@ -235,14 +297,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (row) rows.push(row);
         }
       }
-      rows.sort((a, b) => {
-        const aPinned = Boolean(a.is_pinned);
-        const bPinned = Boolean(b.is_pinned);
-        if (aPinned !== bPinned) return aPinned ? -1 : 1;
-        const ta = a.last_message_at ? Date.parse(a.last_message_at) : 0;
-        const tb = b.last_message_at ? Date.parse(b.last_message_at) : 0;
-        return tb - ta;
-      });
       const missingPreviewCount = rows.filter((row) => !row.subtitle.trim()).length;
       const missingAvatarFieldCount = rows.filter((row) => !row.avatar_url).length;
       if (json.source === "live" && typeof json.revision === "number") {
@@ -307,7 +361,67 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [isAuthenticated, isTelegramMessagesConnected, triggerGatewayResync]);
+  }, [isAuthenticated, isTelegramMessagesConnected]);
+
+  const streamRevisionPendingRef = useRef<number | null>(null);
+  const streamLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushStreamChatLoad = useCallback(async () => {
+    const pendingRevision = streamRevisionPendingRef.current;
+    if (
+      pendingRevision != null &&
+      lastLiveRevisionRef.current != null &&
+      pendingRevision <= lastLiveRevisionRef.current
+    ) {
+      return;
+    }
+    if (pollInFlightRef.current) {
+      streamLoadTimerRef.current = setTimeout(() => {
+        void flushStreamChatLoad();
+      }, 250);
+      return;
+    }
+    pollInFlightRef.current = true;
+    try {
+      await loadChats({ silent: true, allowAvatarResync: false });
+    } finally {
+      pollInFlightRef.current = false;
+      const stillPending = streamRevisionPendingRef.current;
+      if (
+        stillPending != null &&
+        (lastLiveRevisionRef.current == null || stillPending > lastLiveRevisionRef.current)
+      ) {
+        streamLoadTimerRef.current = setTimeout(() => {
+          void flushStreamChatLoad();
+        }, 150);
+      }
+    }
+  }, [loadChats]);
+
+  const onStreamRevision = useCallback(
+    (revision: number) => {
+      if (lastLiveRevisionRef.current != null && revision <= lastLiveRevisionRef.current) {
+        return;
+      }
+      streamRevisionPendingRef.current = revision;
+      unchangedPollStreakRef.current = 0;
+      if (streamLoadTimerRef.current != null) {
+        clearTimeout(streamLoadTimerRef.current);
+      }
+      streamLoadTimerRef.current = setTimeout(() => {
+        streamLoadTimerRef.current = null;
+        logPageDisplay("messages_chats_stream_revision", { revision });
+        void flushStreamChatLoad();
+      }, 350);
+    },
+    [flushStreamChatLoad],
+  );
+
+  useTelegramMessagesChatListStream({
+    enabled: authReady && isTelegramMessagesConnected,
+    getSinceRevision: () => lastLiveRevisionRef.current,
+    onRevision: onStreamRevision,
+  });
 
   useEffect(() => {
     if (!authReady) return;
@@ -325,20 +439,64 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected) return;
-    const poll = () => {
+
+    let cancelled = false;
+
+    const runPoll = async () => {
+      if (cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       pollCountRef.current += 1;
-      const dueResync = Date.now() - lastGatewayResyncRef.current >= MESSAGES_RESYNC_MS;
-      void (async () => {
-        if (dueResync) {
-          await triggerGatewayResync("poll_interval");
-        }
+      try {
         await loadChats({ silent: true, allowAvatarResync: false });
-      })();
+      } finally {
+        pollInFlightRef.current = false;
+      }
     };
-    const timer = setInterval(poll, MESSAGES_POLL_MS);
-    return () => clearInterval(timer);
-  }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
+
+    const scheduleNext = () => {
+      if (cancelled) return;
+      const delay = CHAT_LIST_STREAM_ENABLED
+        ? MESSAGES_POLL_STREAM_FALLBACK_MS
+        : unchangedPollStreakRef.current >= MESSAGES_POLL_SLOW_AFTER
+          ? MESSAGES_POLL_SLOW_MS
+          : MESSAGES_POLL_FAST_MS;
+      pollTimerRef.current = setTimeout(() => {
+        void runPoll().finally(scheduleNext);
+      }, delay);
+    };
+
+    const onVisibilityChange = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+      unchangedPollStreakRef.current = 0;
+      if (pollTimerRef.current != null) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      void runPoll().finally(scheduleNext);
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      if (pollTimerRef.current != null) {
+        clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+      if (streamLoadTimerRef.current != null) {
+        clearTimeout(streamLoadTimerRef.current);
+        streamLoadTimerRef.current = null;
+      }
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      }
+    };
+  }, [authReady, isTelegramMessagesConnected, loadChats]);
 
   const handleChatPress = useCallback(
     (item: MessageChatRowData) => {

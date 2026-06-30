@@ -22,6 +22,10 @@
       "destination": "/api/telegram-messages-chats"
     },
     {
+      "source": "/api/telegram/messages/chats/stream",
+      "destination": "/api/telegram-messages-chats-stream"
+    },
+    {
       "source": "/api/telegram/messages/send",
       "destination": "/api/telegram-messages-send"
     },

@@ -7,7 +7,16 @@ function presenceTimeLabel(raw: string | null | undefined): string {
   return formatMessageChatWallClock(raw);
 }
 
-/** Localized presence / last-seen line for the chat header. */
+/** Localized member count for group / channel chat headers. */
+export function formatMessageChatMemberCountLabel(
+  chat: MessageChatRowData,
+  locale: AppLocale,
+): string {
+  const count = chat.member_count;
+  if (count == null || count <= 0) return "";
+  return formatAppString(locale, "messages.chatMemberCount", { count: String(count) });
+}
+/** Localized presence / last-seen line for private chat headers. */
 export function formatMessageChatPresenceLabel(
   chat: MessageChatRowData,
   locale: AppLocale,

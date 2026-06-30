@@ -1,3 +1,5 @@
+import { parseCustomEmojiId } from "./telegramCustomEmojiId";
+
 export type FormattedTextSegment =
   | { kind: "text"; text: string }
   | { kind: "link"; text: string; url: string }
@@ -71,16 +73,13 @@ export function normalizeFormattedTextSegments(raw: unknown): FormattedTextSegme
       segments.push({ kind: "link", text: row.text, url: row.url });
       continue;
     }
-    if (
-      row.kind === "custom_emoji" &&
-      typeof row.text === "string" &&
-      typeof row.custom_emoji_id === "string" &&
-      row.custom_emoji_id.trim()
-    ) {
+    if (row.kind === "custom_emoji" && typeof row.text === "string") {
+      const customEmojiId = parseCustomEmojiId(row.custom_emoji_id);
+      if (!customEmojiId) continue;
       segments.push({
         kind: "custom_emoji",
         text: row.text,
-        custom_emoji_id: row.custom_emoji_id.trim(),
+        custom_emoji_id: customEmojiId,
       });
       continue;
     }

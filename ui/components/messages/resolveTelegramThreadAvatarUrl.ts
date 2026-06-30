@@ -18,15 +18,13 @@ function validChatIdForAvatar(id: unknown): number | null {
 }
 
 function avatarProxyUrl(params: { userId?: number | null; chatId?: number | null }): string | null {
-  const userId = safeTelegramUserIdForLog(params.userId);
-  if (userId != null) {
-    return buildApiUrl(`/api/telegram-messages-avatar?user_id=${userId}`);
-  }
+  const query = new URLSearchParams();
   const chatId = validChatIdForAvatar(params.chatId);
-  if (chatId != null) {
-    return buildApiUrl(`/api/telegram-messages-avatar?chat_id=${chatId}`);
-  }
-  return null;
+  const userId = safeTelegramUserIdForLog(params.userId);
+  if (chatId != null) query.set("chat_id", String(chatId));
+  if (userId != null) query.set("user_id", String(userId));
+  if (!query.toString()) return null;
+  return buildApiUrl(`/api/telegram-messages-avatar?${query.toString()}`);
 }
 
 /** Avatar for a chat list row or an open-thread message bubble. */
@@ -54,7 +52,7 @@ export function resolveTelegramThreadAvatarUrl(
 
     const senderUserId = safeTelegramUserIdForLog(item.sender_user_id);
     if (senderUserId != null) {
-      return avatarProxyUrl({ userId: senderUserId });
+      return avatarProxyUrl({ userId: senderUserId, chatId: validChatIdForAvatar(item.sender_chat_id) });
     }
 
     if (item.is_outgoing) {
@@ -66,7 +64,7 @@ export function resolveTelegramThreadAvatarUrl(
 
   const peerUserId = safeTelegramUserIdForLog(chat.peer_user_id);
   if (peerUserId != null) {
-    return avatarProxyUrl({ userId: peerUserId });
+    return avatarProxyUrl({ chatId: chat.telegram_chat_id, userId: peerUserId });
   }
 
   return avatarProxyUrl({ chatId: chat.telegram_chat_id });

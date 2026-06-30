@@ -12,6 +12,10 @@ export type TelegramEmojiAsset = {
 
 const bytesCache = new Map<string, TelegramEmojiAsset>();
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function cacheKey(ref: TelegramEmojiFetchRef): string {
   return ref.kind === "custom" ? `custom:${ref.customEmojiId}` : `animated:${ref.emoji}`;
 }
@@ -43,7 +47,15 @@ export async function fetchTelegramEmojiAsset(
   }
 
   const url = buildApiUrl(`/api/telegram-messages-custom-emoji?${params.toString()}`);
-  const response = await fetch(url, { credentials: "include" });
+  let response = await fetch(url, { credentials: "include" });
+  if (response.status === 403 || response.status === 503) {
+    await sleep(1200);
+    response = await fetch(url, { credentials: "include" });
+  }
+  if (!response.ok && ref.kind === "custom") {
+    await sleep(800);
+    response = await fetch(url, { credentials: "include" });
+  }
   if (!response.ok) return null;
 
   const bytes = new Uint8Array(await response.arrayBuffer());

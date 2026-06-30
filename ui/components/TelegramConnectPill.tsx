@@ -7,7 +7,7 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { layout, typographyRect15, useColors } from "../theme";
+import { layout, typographyFixedRow40Label, useColors } from "../theme";
 import { TelegramLogoIcon } from "./icons/TelegramLogoIcon";
 import { LiquidGlassShaderUndercover } from "./LiquidGlassShaderUndercover";
 import { logTelegramConnect } from "../telegram/telegramConnectDebug";
@@ -119,7 +119,7 @@ export function TelegramConnectPill({ onPress, maxStripWidthPx, phaseOffset = 0.
         {Platform.OS !== "web" ? (
           <Text
             key={label}
-            style={[typographyRect15, { position: "absolute", opacity: 0, top: -10000 }]}
+            style={[typographyFixedRow40Label, { position: "absolute", opacity: 0, top: -10000 }]}
             numberOfLines={1}
             onTextLayout={onNativeLabelTextLayout}
           >
@@ -135,7 +135,7 @@ export function TelegramConnectPill({ onPress, maxStripWidthPx, phaseOffset = 0.
       {Platform.OS !== "web" ? (
         <Text
           key={label}
-          style={[typographyRect15, { position: "absolute", opacity: 0, top: -10000 }]}
+          style={[typographyFixedRow40Label, { position: "absolute", opacity: 0, top: -10000 }]}
           numberOfLines={1}
           onTextLayout={onNativeLabelTextLayout}
         >
@@ -178,8 +178,7 @@ export function TelegramConnectPill({ onPress, maxStripWidthPx, phaseOffset = 0.
               <TelegramLogoIcon size={TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX} />
             </View>
             <Text
-              style={[typographyRect15, { color: colors.primary, flexShrink: 1, minWidth: 0 }]}
-              numberOfLines={1}
+              style={[typographyFixedRow40Label, { color: colors.primary, flexShrink: 1, minWidth: 0 }]}
             >
               {label}
             </Text>

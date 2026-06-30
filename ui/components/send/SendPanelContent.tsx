@@ -21,7 +21,7 @@ import {
   layout,
   typographyAeroport15,
   typographyAeroport20,
-  typographyRect15,
+  typographyFixedRow30Label,
   useColors,
 } from "../../theme";
 
@@ -97,7 +97,7 @@ function SendActionRow({ address }: { address: string }) {
   return (
     <View style={sendActionRowStyles.wrapper}>
       <Text
-        style={[typographyRect15, sendActionRowStyles.fullLabelMeasure, { color: colors.primary }]}
+        style={[typographyFixedRow30Label, sendActionRowStyles.fullLabelMeasure, { color: colors.primary }]}
         onLayout={(event) => onFullLabelMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
       >
         {fullSummaryLabel}
@@ -108,7 +108,7 @@ function SendActionRow({ address }: { address: string }) {
           onLayout={(event) => onLabelSlotLayout(Math.round(event.nativeEvent.layout.width))}
         >
           <Text
-            style={[typographyRect15, sendActionRowStyles.summaryLabel, { color: colors.primary }]}
+            style={[typographyFixedRow30Label, sendActionRowStyles.summaryLabel, { color: colors.primary }]}
             numberOfLines={1}
             accessibilityLabel={fullSummaryLabel}
           >
@@ -119,7 +119,7 @@ function SendActionRow({ address }: { address: string }) {
           accessibilityRole="button"
           style={[sendActionRowStyles.actionButton, { backgroundColor: colors.undercover }]}
         >
-          <Text style={[typographyRect15, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
+          <Text style={[typographyFixedRow30Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
             {t("send.action.button")}
           </Text>
         </Pressable>

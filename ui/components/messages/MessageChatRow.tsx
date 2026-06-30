@@ -46,6 +46,7 @@ export type MessageChatRowData = {
   last_message_at: string | null;
   unread_count: number;
   peer_user_id?: number | null;
+  member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
   presence_at?: string | null;
@@ -248,6 +249,7 @@ export function MessageChatRow({
             segments={subtitleSegments}
             numberOfLines={1}
             emojiSizePx={16}
+            lowPriorityEmoji
             style={{
               ...textBase,
               flex: 1,

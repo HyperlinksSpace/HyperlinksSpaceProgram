@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { typographyRect15, useColors } from "../theme";
+import { typographyFixedRow40Label, typographyRect15, useColors } from "../theme";
 import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
@@ -246,7 +246,7 @@ export function TelegramConnectSheet() {
                 ]}
                 disabled={connectPending}
               >
-                <Text style={[typographyRect15, { color: colors.primary }]}>
+                <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
                   {t("messages.connectRetry")}
                 </Text>
               </Pressable>
@@ -307,7 +307,7 @@ export function TelegramConnectSheet() {
                 },
               ]}
             >
-              <Text style={[typographyRect15, { color: colors.primary }]}>
+              <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
                 {t("messages.connectSheetPassToTelegramApp")}
               </Text>
             </Pressable>
@@ -372,7 +372,7 @@ export function TelegramConnectSheet() {
               style={[appModalSheetStyles.button, { marginTop: 8, alignSelf: "center" }]}
               disabled={connectPending}
             >
-              <Text style={[typographyRect15, { color: colors.primary }]}>
+              <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
                 {t("messages.connectSheetCodeResend")}
               </Text>
             </Pressable>
@@ -383,7 +383,7 @@ export function TelegramConnectSheet() {
             style={[appModalSheetStyles.button, { marginTop: 8, alignSelf: "center" }]}
             disabled={connectPending}
           >
-            <Text style={[typographyRect15, { color: colors.primary }]}>
+            <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
               {t("messages.connectSheetUseQrInstead")}
             </Text>
           </Pressable>

@@ -10,6 +10,7 @@ type Props = {
   emoji?: string;
   sizePx: number;
   fallbackText?: string;
+  lowPriority?: boolean;
 };
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {

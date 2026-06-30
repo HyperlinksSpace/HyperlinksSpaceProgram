@@ -270,6 +270,7 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.last_message_at !== selectedChat.last_message_at ||
     fresh.unread_count !== selectedChat.unread_count ||
     fresh.avatar_url !== selectedChat.avatar_url ||
+    fresh.member_count !== selectedChat.member_count ||
     fresh.presence_kind !== selectedChat.presence_kind ||
     fresh.presence_at !== selectedChat.presence_at ||
     fresh.chat_action !== selectedChat.chat_action ||

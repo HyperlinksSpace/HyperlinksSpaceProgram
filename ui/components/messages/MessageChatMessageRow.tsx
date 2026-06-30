@@ -231,6 +231,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     bodyText,
     bubbleInnerMaxWidth,
     bubbleMaxWidth,
+    checksWidthPx,
     extraInnerWidthPx,
     effectiveMediaWidthPx,
     hasMediaCaption,

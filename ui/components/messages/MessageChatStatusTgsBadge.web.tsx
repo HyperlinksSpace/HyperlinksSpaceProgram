@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import Lottie from "lottie-react";
 import { loadStatusTgsAnimation } from "./loadStatusTgsAnimation";
+import { getCachedTgsAnimationByKey } from "./tgsAnimationCache";
+import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
 
 type Props = {
   size?: number;
 };
+
+const STATUS_TGS_CACHE_KEY = "asset:status.tgs";
 
 /** Looping Telegram status sticker from `assets/status.tgs` (web). */
 export function MessageChatStatusTgsBadge({ size = 20 }: Props) {
@@ -13,7 +16,7 @@ export function MessageChatStatusTgsBadge({ size = 20 }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    loadStatusTgsAnimation()
+    void getCachedTgsAnimationByKey(STATUS_TGS_CACHE_KEY, loadStatusTgsAnimation)
       .then((data) => {
         if (!cancelled) setAnimationData(data);
       })
@@ -30,12 +33,6 @@ export function MessageChatStatusTgsBadge({ size = 20 }: Props) {
   }
 
   return (
-    <Lottie
-      animationData={animationData}
-      loop
-      autoplay
-      style={{ width: size, height: size }}
-      rendererSettings={{ preserveAspectRatio: "xMidYMid meet" }}
-    />
+    <TgsCanvasPlayer animationData={animationData} widthPx={size} heightPx={size} lowPriority />
   );
 }

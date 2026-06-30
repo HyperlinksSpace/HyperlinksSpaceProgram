@@ -13,7 +13,12 @@ import {
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { authenticatedHomeBottomBarDock, layout, typographyRect15, useColors } from "../theme";
+import {
+  authenticatedHomeBottomBarDock,
+  layout,
+  typographyFixedRow40Label,
+  useColors,
+} from "../theme";
 import { useAuth } from "../../auth/AuthContext";
 import { useResolvedPathname } from "../useResolvedPathname";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
@@ -176,7 +181,7 @@ export function TelegramConnectFooterStrip({
       {Platform.OS !== "web" && stripWidth > 0 ? (
         <Text
           key={label}
-          style={[typographyRect15, styles.pillLabelMeasure]}
+          style={[typographyFixedRow40Label, styles.pillLabelMeasure]}
           numberOfLines={1}
           onTextLayout={onNativeLabelTextLayout}
         >
@@ -224,8 +229,7 @@ export function TelegramConnectFooterStrip({
                     <TelegramLogoIcon size={TELEGRAM_CONNECT_PILL_LOGO_SIZE_PX} />
                   </View>
                   <Text
-                    style={[typographyRect15, styles.pillLabel, { color: colors.primary }]}
-                    numberOfLines={1}
+                    style={[typographyFixedRow40Label, styles.pillLabel, { color: colors.primary }]}
                   >
                     {label}
                   </Text>

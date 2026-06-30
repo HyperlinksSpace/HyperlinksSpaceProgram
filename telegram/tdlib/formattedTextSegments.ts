@@ -3,7 +3,7 @@ import {
   segmentsContainTelegramEmoji,
   segmentsPlainText,
 } from "../../shared/formattedTextSegments.js";
-import { parseCustomEmojiId } from "./emojiStatus.js";
+import { readCustomEmojiIdField } from "../../shared/telegramCustomEmojiId.js";
 
 export type { FormattedTextSegment };
 
@@ -38,7 +38,8 @@ function parseEntityRange(entity: unknown): EntityRange | null {
     type === "textEntityTypeCustomEmoji" ||
     type === "textEntityCustomEmoji"
   ) {
-    const customEmojiId = parseCustomEmojiId(typeRow.custom_emoji_id);
+    const customEmojiId =
+      readCustomEmojiIdField(typeRow) ?? readCustomEmojiIdField(row);
     if (!customEmojiId) return null;
     return { offset, length, kind: "custom_emoji", custom_emoji_id: customEmojiId };
   }
@@ -133,9 +134,9 @@ export function animatedEmojiSegments(content: Record<string, unknown>): Formatt
   const animated = content.animated_emoji as Record<string, unknown> | undefined;
   const sticker = animated?.sticker as Record<string, unknown> | undefined;
   const customEmojiId =
-    parseCustomEmojiId(animated?.custom_emoji_id) ??
-    parseCustomEmojiId(sticker?.custom_emoji_id) ??
-    parseCustomEmojiId(content.custom_emoji_id);
+    readCustomEmojiIdField(animated ?? {}) ??
+    readCustomEmojiIdField(sticker ?? {}) ??
+    readCustomEmojiIdField(content);
 
   const fallback =
     (typeof animated?.emoji === "string" && animated.emoji) ||

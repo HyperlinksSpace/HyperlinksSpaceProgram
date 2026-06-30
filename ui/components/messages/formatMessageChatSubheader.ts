@@ -1,5 +1,5 @@
 import { formatAppString, type AppLocale } from "../../../locales/appStrings";
-import { formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
+import { formatMessageChatMemberCountLabel, formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { specialUserDisplayName } from "./specialTelegramUserDisplay";
 
@@ -70,10 +70,13 @@ function formatChatActionLabel(chat: MessageChatRowData, locale: AppLocale): str
   return formatAppString(locale, "messages.chatAction.typingNamed", { name: actorName || peerName });
 }
 
-/** Header subheader: live chat action overrides presence / last seen. */
+/** Header subheader: live chat action overrides presence / member count. */
 export function formatMessageChatSubheaderLabel(chat: MessageChatRowData, locale: AppLocale): string {
   if (isChatActionLive(chat)) {
     return formatChatActionLabel(chat, locale);
+  }
+  if (chat.peer_user_id == null) {
+    return formatMessageChatMemberCountLabel(chat, locale);
   }
   return formatMessageChatPresenceLabel(chat, locale);
 }

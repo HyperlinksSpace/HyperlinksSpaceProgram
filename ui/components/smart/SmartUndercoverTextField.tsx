@@ -2,11 +2,11 @@ import { Platform, StyleSheet, TextInput, View, type TextInputProps } from "reac
 
 import { hairlineBorderWidthPx } from "../../scrollIndicatorPx";
 import { undercoverHairlineRingStyle } from "../../undercoverHairlineRing";
-import { typographyRect15, uiTextVerticalCompensationTransform, useColors } from "../../theme";
+import { typographyRect15, useColors, typographyFixedRow40Label } from "../../theme";
 
 /** Matches welcome email field row height (`WelcomeAuthButtons`). */
 export const SMART_UNDERCOVER_FIELD_HEIGHT_PX = 40;
-const ROW_LINE_HEIGHT_PX = 18;
+const ROW_LINE_HEIGHT_PX = 21;
 const TEXT_INSET_LEFT_PX = 10;
 const TEXT_INSET_RIGHT_PX = 20;
 
@@ -84,7 +84,10 @@ const styles = StyleSheet.create({
   },
   input: {
     ...typographyRect15,
-    ...uiTextVerticalCompensationTransform,
+    ...Platform.select({
+      web: typographyFixedRow40Label,
+      default: {},
+    }),
     flex: 1,
     alignSelf: "stretch",
     width: "100%",

@@ -190,12 +190,31 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Whether TDLib session files for this user exist on the gateway disk (survives redeploy with volume). */
+export async function gatewayUserHasPersistedSession(telegramUsername: string): Promise<boolean> {
+  const base = getGatewayBaseUrl();
+  const secret = getGatewaySecret();
+  const params = new URLSearchParams({ telegramUsername });
+  const url = `${base}/v1/connect/persisted?${params.toString()}`;
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+    });
+    if (!response.ok) return false;
+    const json = (await response.json().catch(() => ({}))) as { persisted?: boolean };
+    return json.persisted === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Resume TDLib from on-disk session on the gateway (no QR). Polls until ready or timeout. */
 export async function gatewayWarmupSession(
   telegramUsername: string,
   options?: { maxPollMs?: number; pollMs?: number },
 ): Promise<{ ok: boolean; authState: string; error?: string }> {
-  const maxPollMs = options?.maxPollMs ?? 45_000;
+  const maxPollMs = options?.maxPollMs ?? 90_000;
   const pollMs = options?.pollMs ?? 2_000;
 
   const resolveAttempt = async (): Promise<{
@@ -303,10 +322,22 @@ export async function gatewayFocusChat(
 
 export async function gatewayFetchLiveChats(
   telegramUsername: string,
-): Promise<{ chats: Record<string, unknown>[]; revision: number } | null> {
+  options?: { sinceRevision?: number | null },
+): Promise<{
+  chats: Record<string, unknown>[];
+  revision: number;
+  unchanged?: boolean;
+} | null> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
   const params = new URLSearchParams({ telegramUsername });
+  if (
+    options?.sinceRevision != null &&
+    Number.isFinite(options.sinceRevision) &&
+    options.sinceRevision > 0
+  ) {
+    params.set("sinceRevision", String(options.sinceRevision));
+  }
   const url = `${base}/v1/chats/list?${params.toString()}`;
   const started = Date.now();
   logTdlibGatewayApi("gateway_fetch_start", {
@@ -330,9 +361,25 @@ export async function gatewayFetchLiveChats(
     }
     const json = (await response.json()) as {
       ok?: boolean;
+      unchanged?: boolean;
       chats?: Record<string, unknown>[];
       revision?: number;
     };
+    if (json.unchanged === true) {
+      logTdlibGatewayApi("gateway_fetch_done", {
+        path: "/v1/chats/list",
+        status: response.status,
+        ok: true,
+        elapsedMs: Date.now() - started,
+        revision: Number(json.revision) || 0,
+        unchanged: true,
+      });
+      return {
+        chats: [],
+        revision: Number(json.revision) || 0,
+        unchanged: true,
+      };
+    }
     if (!Array.isArray(json.chats)) {
       logTdlibGatewayApi("gateway_fetch_done", {
         path: "/v1/chats/list",
@@ -355,6 +402,67 @@ export async function gatewayFetchLiveChats(
   } catch (err) {
     logTdlibGatewayApi("gateway_fetch_error", {
       path: "/v1/chats/list",
+      elapsedMs: Date.now() - started,
+      fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+    });
+    return null;
+  }
+}
+
+export function gatewayLiveChatsStreamUrl(
+  telegramUsername: string,
+  sinceRevision?: number | null,
+): string {
+  const base = getGatewayBaseUrl();
+  const params = new URLSearchParams({ telegramUsername });
+  if (
+    sinceRevision != null &&
+    Number.isFinite(sinceRevision) &&
+    sinceRevision > 0
+  ) {
+    params.set("sinceRevision", String(sinceRevision));
+  }
+  return `${base}/v1/chats/stream?${params.toString()}`;
+}
+
+export async function gatewayOpenLiveChatsStream(
+  telegramUsername: string,
+  sinceRevision?: number | null,
+  signal?: AbortSignal,
+): Promise<Response | null> {
+  const url = gatewayLiveChatsStreamUrl(telegramUsername, sinceRevision);
+  const secret = getGatewaySecret();
+  const started = Date.now();
+  logTdlibGatewayApi("gateway_stream_start", {
+    method: "GET",
+    path: "/v1/chats/stream",
+    gatewayHost: safeHost(url),
+  });
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "X-Gateway-Secret": secret },
+      signal,
+    });
+    if (!response.ok || !response.body) {
+      logTdlibGatewayApi("gateway_stream_done", {
+        path: "/v1/chats/stream",
+        status: response.status,
+        ok: false,
+        elapsedMs: Date.now() - started,
+      });
+      return null;
+    }
+    logTdlibGatewayApi("gateway_stream_open", {
+      path: "/v1/chats/stream",
+      status: response.status,
+      ok: true,
+      elapsedMs: Date.now() - started,
+    });
+    return response;
+  } catch (err) {
+    logTdlibGatewayApi("gateway_stream_error", {
+      path: "/v1/chats/stream",
       elapsedMs: Date.now() - started,
       fetchError: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
     });

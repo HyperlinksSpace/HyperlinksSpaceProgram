@@ -3,6 +3,7 @@ import { URL } from "url";
 import { getGatewayBindHost, getGatewayPort, getGatewaySecret } from "./env.js";
 import { logGateway } from "./gatewayLog.js";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
+import { serveLiveChatRevisionStream } from "./liveChatStream.js";
 import {
   disconnectUserSession,
   gatewayHealth,
@@ -19,6 +20,8 @@ import {
   resyncUserChats,
   restorePersistedGatewaySessions,
   resumeExistingSession,
+  hasPersistedTdlibSession,
+  listPersistedSessionUsernames,
   RESYNC_HTTP_SESSION_WAIT_MS,
   RESYNC_RESTORE_SESSION_WAIT_MS,
   searchChatsForUser,
@@ -31,6 +34,17 @@ import {
   submitConnectPhoneNumber,
   sendChatMessageForUser,
 } from "./connectAttempts.js";
+
+const PEER_EMOJI_STATUS_MIN_INTERVAL_MS = 5 * 60_000;
+const peerEmojiStatusLastRun = new Map<string, number>();
+
+async function ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername: string): Promise<void> {
+  const now = Date.now();
+  const last = peerEmojiStatusLastRun.get(telegramUsername) ?? 0;
+  if (now - last < PEER_EMOJI_STATUS_MIN_INTERVAL_MS) return;
+  peerEmojiStatusLastRun.set(telegramUsername, now);
+  await ensureLiveChatPeerEmojiStatuses(telegramUsername);
+}
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -82,11 +96,17 @@ export function startTdlibGatewayServer(): http.Server {
         const pathname = url.pathname;
 
         if (req.method === "GET" && (pathname === "/" || pathname === "/v1/health")) {
-          const body = { ...gatewayHealth(), hint: "TDLib gateway is running" };
+          const persistedSessions = listPersistedSessionUsernames().length;
+          const body = {
+            ...gatewayHealth(),
+            persistedSessions,
+            hint: "TDLib gateway is running",
+          };
           logGateway("health", {
             method: req.method,
             path: pathname,
             remote: req.socket.remoteAddress ?? null,
+            persistedSessions,
           });
           sendJson(res, 200, body);
           return;
@@ -95,6 +115,17 @@ export function startTdlibGatewayServer(): http.Server {
         if (!authorized(req)) {
           logGateway("unauthorized", { method: req.method, path: pathname });
           sendJson(res, 401, { ok: false, error: "unauthorized" });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/connect/persisted") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          const persisted = hasPersistedTdlibSession(telegramUsername);
+          sendJson(res, 200, { ok: true, persisted, telegramUsername });
           return;
         }
 
@@ -204,9 +235,29 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "username_required" });
             return;
           }
-          await ensureLiveChatPeerEmojiStatuses(telegramUsername);
-          const chats = getLiveChatList(telegramUsername);
+          const sinceRevisionRaw = url.searchParams.get("sinceRevision");
+          const sinceRevision =
+            sinceRevisionRaw != null && sinceRevisionRaw.trim() !== ""
+              ? Number(sinceRevisionRaw)
+              : null;
           const revision = getLiveChatListRevision(telegramUsername);
+          if (
+            sinceRevision != null &&
+            Number.isFinite(sinceRevision) &&
+            sinceRevision > 0 &&
+            sinceRevision === revision
+          ) {
+            sendJson(res, 200, {
+              ok: true,
+              unchanged: true,
+              source: "live",
+              revision,
+            });
+            return;
+          }
+          await ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername);
+          const chats = getLiveChatList(telegramUsername);
+          const currentRevision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = (chats ?? []).filter(
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
           ).length;
@@ -215,7 +266,7 @@ export function startTdlibGatewayServer(): http.Server {
           logGateway("chats_list_served", {
             telegramUsername,
             count: chats?.length ?? 0,
-            revision,
+            revision: currentRevision,
             missingPreviewCount,
             missingAvatarCount,
             firstId: first?.telegram_chat_id ?? null,
@@ -225,9 +276,29 @@ export function startTdlibGatewayServer(): http.Server {
           sendJson(res, 200, {
             ok: true,
             source: "live",
-            revision,
+            revision: currentRevision,
             chats: chats ?? [],
           });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/chats/stream") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          const sinceRevisionRaw = url.searchParams.get("sinceRevision");
+          const sinceRevision =
+            sinceRevisionRaw != null && sinceRevisionRaw.trim() !== ""
+              ? Number(sinceRevisionRaw)
+              : null;
+          serveLiveChatRevisionStream(
+            req,
+            res,
+            telegramUsername,
+            sinceRevision != null && Number.isFinite(sinceRevision) ? sinceRevision : null,
+          );
           return;
         }
 

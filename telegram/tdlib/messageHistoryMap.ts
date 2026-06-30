@@ -384,8 +384,12 @@ export async function enrichOutgoingReadStatuses(
 
 export { lastReadOutboxMessageIdFromChat };
 
-function resolveOutgoingStatus(message: TdMessage, chat: TdChat): MessageOutgoingStatus | null {
-  if (!messageIsOutgoing(message)) return null;
+function resolveOutgoingStatus(
+  message: TdMessage,
+  chat: TdChat,
+  myUserId?: number | null,
+): MessageOutgoingStatus | null {
+  if (!messageIsOutgoing(message, myUserId)) return null;
 
   const sendingState = message.sending_state?._;
   if (sendingState === "messageSendingStateFailed") return "failed";
@@ -454,6 +458,7 @@ export async function mapHistoryMessage(
   chat: TdChat,
   userCache: Map<number, string>,
   chatCache: Map<number, { title: string; isChannel: boolean }>,
+  myUserId?: number | null,
 ): Promise<MappedChatHistoryMessage | null> {
   const resolved = await resolveFullMessage(client, message, chat.id);
   const telegramMessageId = Number(resolved.id);
@@ -480,8 +485,8 @@ export async function mapHistoryMessage(
     sender_user_id: senderUserId(resolved),
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
-    is_outgoing: messageIsOutgoing(resolved),
-    outgoing_status: resolveOutgoingStatus(resolved, chat),
+    is_outgoing: messageIsOutgoing(resolved, myUserId),
+    outgoing_status: resolveOutgoingStatus(resolved, chat, myUserId),
     content_kind: messageContentKind(resolved),
     has_media: hasMedia,
     media_width: dimensions.width,

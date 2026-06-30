@@ -9,7 +9,7 @@ import {
   View,
   type ReactNode,
 } from "react-native";
-import { layout, typographyRect15, useColors } from "../theme";
+import { layout, typographyFixedRow40Label, typographyRect15, useColors } from "../theme";
 import { HspScrollColumn } from "./HspScrollColumn";
 
 export const appModalSheetStyles = StyleSheet.create({
@@ -185,7 +185,7 @@ export function AppModalSheetBackFooter({
         style={[appModalSheetStyles.button, { backgroundColor: colors.undercover }]}
         disabled={disabled}
       >
-        <Text style={[typographyRect15, { color: colors.secondary }]}>{label}</Text>
+        <Text style={[typographyFixedRow40Label, { color: colors.secondary }]}>{label}</Text>
       </Pressable>
       {extraActions}
     </View>

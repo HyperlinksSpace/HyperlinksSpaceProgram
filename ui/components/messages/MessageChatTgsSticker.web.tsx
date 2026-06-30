@@ -1,22 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import Lottie from "lottie-react";
-import { loadTgsAnimationFromBytes } from "./loadTgsAnimation";
+import { getCachedTgsAnimationFromBytes } from "./tgsAnimationCache";
+import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
+import { useElementVisible } from "./useElementVisible.web";
 
 type Props = {
   data: Uint8Array;
   widthPx: number;
   heightPx: number;
+  lowPriority?: boolean;
 };
 
 /** Looping Telegram `.tgs` sticker (web). */
-export function MessageChatTgsSticker({ data, widthPx, heightPx }: Props) {
+export function MessageChatTgsSticker({ data, widthPx, heightPx, lowPriority = false }: Props) {
   const [animationData, setAnimationData] = useState<object | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const visible = useElementVisible(hostRef);
 
   useEffect(() => {
     let cancelled = false;
     setAnimationData(null);
-    void loadTgsAnimationFromBytes(data)
+    if (!visible) return;
+    void getCachedTgsAnimationFromBytes(data)
       .then((parsed) => {
         if (!cancelled) setAnimationData(parsed);
       })
@@ -26,19 +31,18 @@ export function MessageChatTgsSticker({ data, widthPx, heightPx }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [data]);
-
-  if (!animationData) {
-    return <View style={{ width: widthPx, height: heightPx }} />;
-  }
+  }, [data, visible]);
 
   return (
-    <Lottie
-      animationData={animationData}
-      loop
-      autoplay
-      style={{ width: widthPx, height: heightPx }}
-      rendererSettings={{ preserveAspectRatio: "xMidYMid meet" }}
-    />
+    <View ref={hostRef as never} style={{ width: widthPx, height: heightPx }}>
+      {animationData ? (
+        <TgsCanvasPlayer
+          animationData={animationData}
+          widthPx={widthPx}
+          heightPx={heightPx}
+          lowPriority={lowPriority}
+        />
+      ) : null}
+    </View>
   );
 }

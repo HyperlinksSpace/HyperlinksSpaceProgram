@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { formatSwapTokenAmount } from "../../swap/swapChartFormat";
-import { layout, typographyRect15, useColors } from "../../theme";
+import { layout, typographyFixedRow30Label, useColors } from "../../theme";
 
 const ACTION_BUTTON_HEIGHT_PX = 30;
 const ACTION_BUTTON_TEXT_INSET_PX = 30;
@@ -44,7 +44,7 @@ export function SwapActionRow({ dllrAmount }: Props) {
   return (
     <View style={styles.wrapper}>
       <Text
-        style={[typographyRect15, styles.fullLabelMeasure, { color: colors.primary }]}
+        style={[typographyFixedRow30Label, styles.fullLabelMeasure, { color: colors.primary }]}
         onLayout={(event) => onFullLabelMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
       >
         {fullSummaryLabel}
@@ -55,7 +55,7 @@ export function SwapActionRow({ dllrAmount }: Props) {
           onLayout={(event) => onLabelSlotLayout(Math.round(event.nativeEvent.layout.width))}
         >
           <Text
-            style={[typographyRect15, styles.summaryLabel, { color: colors.primary }]}
+            style={[typographyFixedRow30Label, styles.summaryLabel, { color: colors.primary }]}
             numberOfLines={1}
             accessibilityLabel={fullSummaryLabel}
           >
@@ -66,7 +66,7 @@ export function SwapActionRow({ dllrAmount }: Props) {
           accessibilityRole="button"
           style={[styles.actionButton, { backgroundColor: colors.undercover }]}
         >
-          <Text style={[typographyRect15, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
+          <Text style={[typographyFixedRow30Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
             {t("swap.action.button")}
           </Text>
         </Pressable>

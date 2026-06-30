@@ -5,7 +5,7 @@ const STATUS_TGS_URL = "/status.tgs";
 let cachedAnimation: object | null = null;
 let loadPromise: Promise<object> | null = null;
 
-/** Telegram `.tgs` (gzip Lottie JSON) → animation object for lottie-react. */
+/** Telegram `.tgs` (gzip Lottie JSON) → animation object for TgsCanvasPlayer. */
 export async function loadStatusTgsAnimation(): Promise<object> {
   if (cachedAnimation) return cachedAnimation;
   if (!loadPromise) {

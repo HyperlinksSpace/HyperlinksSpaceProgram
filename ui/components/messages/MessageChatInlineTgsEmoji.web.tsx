@@ -1,17 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
-import Lottie from "lottie-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Text } from "react-native";
 import {
   fetchTelegramEmojiAsset,
   type TelegramEmojiFetchRef,
 } from "./fetchTelegramEmojiBytes";
-import { loadTgsAnimationFromBytes, bytesLookLikeTgs } from "./loadTgsAnimation";
+import { bytesLookLikeTgs } from "./loadTgsAnimation";
+import { getCachedTgsAnimationFromBytes } from "./tgsAnimationCache";
+import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
+import { useElementVisible } from "./useElementVisible.web";
 
 type Props = {
   customEmojiId?: string;
   emoji?: string;
   sizePx: number;
   fallbackText?: string;
+  lowPriority?: boolean;
 };
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {
@@ -30,13 +33,35 @@ function isImageMime(mime: string): boolean {
   return mime.startsWith("image/");
 }
 
+function isLikelyCustomEmojiPlaceholder(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return true;
+  if (/\p{Extended_Pictographic}/u.test(trimmed)) return false;
+  if (trimmed.length <= 2) {
+    const codePoint = trimmed.codePointAt(0);
+    if (codePoint == null) return true;
+    if (codePoint >= 0xe000 && codePoint <= 0xf8ff) return true;
+  }
+  return false;
+}
+
 /** Inline Telegram emoji sticker (.tgs / .webm / static) on web. */
 export function MessageChatInlineTgsEmoji(props: Props) {
-  const { sizePx, fallbackText = "" } = props;
+  const { sizePx, fallbackText = "", lowPriority = false } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
+  const hostRef = useRef<HTMLSpanElement>(null);
+  const visible = useElementVisible(hostRef, { enabled: Boolean(fetchRef) });
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);
+
+  const displayFallback = useMemo(() => {
+    const fromEmoji = props.emoji?.trim();
+    if (fromEmoji) return fromEmoji;
+    const trimmed = fallbackText.trim();
+    if (trimmed && !isLikelyCustomEmojiPlaceholder(trimmed)) return trimmed;
+    return "🎭";
+  }, [fallbackText, props.emoji]);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,12 +82,12 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           asset.mime.endsWith("+tgs") ||
           bytesLookLikeTgs(asset.bytes)
         ) {
-          const parsed = await loadTgsAnimationFromBytes(asset.bytes);
+          const parsed = await getCachedTgsAnimationFromBytes(asset.bytes);
           if (!cancelled) setAnimationData(parsed);
           return;
         }
         if (isVideoMime(asset.mime)) {
-          const blob = new Blob([asset.bytes], { type: asset.mime });
+          const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
           const url = URL.createObjectURL(blob);
           if (!cancelled) {
             setMediaUrl(url);
@@ -73,7 +98,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           return;
         }
         if (isImageMime(asset.mime)) {
-          const blob = new Blob([asset.bytes], { type: asset.mime });
+          const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
           const url = URL.createObjectURL(blob);
           if (!cancelled) {
             setMediaUrl(url);
@@ -84,7 +109,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
         }
       })
       .catch(() => {
-        /* leave fallback */
+        /* keep fallback glyph */
       });
 
     return () => {
@@ -98,62 +123,69 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     };
   }, [mediaUrl]);
 
-  if (animationData) {
-    return (
-      <Lottie
-        animationData={animationData}
-        loop
-        autoplay
-        style={{
-          width: sizePx,
-          height: sizePx,
-          display: "inline-block",
-          verticalAlign: "text-bottom",
-        }}
-        rendererSettings={{ preserveAspectRatio: "xMidYMid meet" }}
-      />
-    );
-  }
+  const hostStyle: CSSProperties = {
+    display: "inline-block",
+    width: sizePx,
+    height: sizePx,
+    verticalAlign: "text-bottom",
+    lineHeight: 1,
+    position: "relative",
+    flexShrink: 0,
+  };
 
-  if (mediaUrl && mediaKind === "video") {
-    return (
-      <video
-        src={mediaUrl}
-        autoPlay
-        loop
-        muted
-        playsInline
-        style={{
-          width: sizePx,
-          height: sizePx,
-          display: "inline-block",
-          verticalAlign: "text-bottom",
-          objectFit: "contain",
-        }}
-      />
-    );
-  }
-
-  if (mediaUrl && mediaKind === "image") {
-    return (
-      <img
-        src={mediaUrl}
-        alt={fallbackText || "emoji"}
-        style={{
-          width: sizePx,
-          height: sizePx,
-          display: "inline-block",
-          verticalAlign: "text-bottom",
-          objectFit: "contain",
-        }}
-      />
-    );
-  }
-
-  if (fallbackText) {
-    return (
-      <Text style={{ fontSize: Math.round(sizePx * 0.85), lineHeight: sizePx }}>{fallbackText}</Text>
-    );
-  }
-  return <View style={{ width: sizePx, height: sizePx }} />;
+  return (
+    <span ref={hostRef} style={hostStyle}>
+      {animationData ? (
+        <TgsCanvasPlayer
+          animationData={animationData}
+          widthPx={sizePx}
+          heightPx={sizePx}
+          lowPriority={lowPriority}
+          style={{
+            display: "block",
+            width: sizePx,
+            height: sizePx,
+          }}
+        />
+      ) : null}
+      {mediaUrl && mediaKind === "video" ? (
+        <video
+          src={mediaUrl}
+          autoPlay={visible}
+          loop
+          muted
+          playsInline
+          style={{
+            width: sizePx,
+            height: sizePx,
+            display: "block",
+            objectFit: "contain",
+          }}
+        />
+      ) : null}
+      {mediaUrl && mediaKind === "image" ? (
+        <img
+          src={mediaUrl}
+          alt={displayFallback}
+          style={{
+            width: sizePx,
+            height: sizePx,
+            display: "block",
+            objectFit: "contain",
+          }}
+        />
+      ) : null}
+      {!animationData && !mediaUrl ? (
+        <Text
+          style={{
+            fontSize: Math.round(sizePx * 0.85),
+            lineHeight: sizePx,
+            textAlign: "center",
+          }}
+        >
+          {displayFallback}
+        </Text>
+      ) : null}
+    </span>
+  );
 }

@@ -1,10 +1,5 @@
-/** Parse TDLib int64 custom emoji ids (string or number). */
-export function parseCustomEmojiId(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) return value.trim();
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) return String(value);
-  if (typeof value === "bigint" && value > 0n) return value.toString();
-  return null;
-}
+export { parseCustomEmojiId, readCustomEmojiIdField } from "../../shared/telegramCustomEmojiId.js";
+import { readCustomEmojiIdField } from "../../shared/telegramCustomEmojiId.js";
 
 /**
  * Read `custom_emoji_id` from a TDLib {@link emojiStatus} object.
@@ -15,8 +10,16 @@ export function parseEmojiStatusCustomId(status: unknown): string | null {
   if (typeof status !== "object") return null;
 
   const row = status as Record<string, unknown>;
-  const direct = parseCustomEmojiId(row.custom_emoji_id);
+  const direct = readCustomEmojiIdField(row);
   if (direct) return direct;
+
+  const typeName = row._;
+  if (
+    typeName === "emojiStatusTypeCustomEmoji" ||
+    typeName === "emojiStatusTypeCustom"
+  ) {
+    return readCustomEmojiIdField(row);
+  }
 
   const type = row.type;
   if (!type || typeof type !== "object") return null;
@@ -26,7 +29,7 @@ export function parseEmojiStatusCustomId(status: unknown): string | null {
     typeRow._ === "emojiStatusTypeCustomEmoji" ||
     typeRow._ === "emojiStatusTypeCustom"
   ) {
-    return parseCustomEmojiId(typeRow.custom_emoji_id);
+    return readCustomEmojiIdField(typeRow);
   }
 
   return null;

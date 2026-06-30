@@ -35,6 +35,15 @@ function oldestRawMessageId(messages: TdMessage[]): number | null {
   return oldest;
 }
 
+async function resolveMyUserId(client: Client): Promise<number | null> {
+  try {
+    const me = (await client.invoke({ _: "getMe" })) as { id?: number };
+    return typeof me.id === "number" ? me.id : null;
+  } catch {
+    return null;
+  }
+}
+
 async function mapHistoryBatch(
   client: Client,
   messages: TdMessage[],
@@ -42,8 +51,11 @@ async function mapHistoryBatch(
 ): Promise<MappedChatHistoryMessage[]> {
   const userCache = new Map<number, string>();
   const chatCache = new Map<number, { title: string; isChannel: boolean }>();
+  const myUserId = await resolveMyUserId(client);
   const mapped = await Promise.all(
-    messages.map((message) => mapHistoryMessage(client, message, chat, userCache, chatCache)),
+    messages.map((message) =>
+      mapHistoryMessage(client, message, chat, userCache, chatCache, myUserId),
+    ),
   );
   const rows: MappedChatHistoryMessage[] = [];
   const seenIds = new Set<number>();
@@ -222,7 +234,8 @@ export async function sendChatTextMessage(
   })) as TdMessage;
 
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map());
+  const myUserId = await resolveMyUserId(client);
+  const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map(), myUserId);
   if (!mapped || !mapped.is_outgoing) return mapped;
   if (mapped.outgoing_status === "failed") return mapped;
   return { ...mapped, outgoing_status: "delivered" };

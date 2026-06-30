@@ -29,6 +29,9 @@ export type TdChat = {
     last_name?: string;
     username?: string;
     user_id?: number;
+    basic_group_id?: number;
+    supergroup_id?: number;
+    is_channel?: boolean;
   };
   last_message?: TdMessage;
   unread_count?: number;
@@ -109,6 +112,40 @@ export function peerUserIdFromChat(chat: TdChat): number | null {
   if (chat.type?._ !== "chatTypePrivate") return null;
   const userId = chat.type.user_id;
   return typeof userId === "number" && Number.isFinite(userId) ? userId : null;
+}
+
+/** Member count for groups, supergroups, and channels (null for private chats). */
+export async function memberCountFromChat(client: Client, chat: TdChat): Promise<number | null> {
+  const type = chat.type?._;
+  if (type === "chatTypePrivate") return null;
+
+  try {
+    if (type === "chatTypeBasicGroup") {
+      const basicGroupId = chat.type?.basic_group_id;
+      if (typeof basicGroupId !== "number") return null;
+      const group = (await client.invoke({
+        _: "getBasicGroup",
+        basic_group_id: basicGroupId,
+      })) as { member_count?: number };
+      const count = group.member_count;
+      return typeof count === "number" && count > 0 ? count : null;
+    }
+
+    if (type === "chatTypeSupergroup" || type === "chatTypeChannel") {
+      const supergroupId = chat.type?.supergroup_id;
+      if (typeof supergroupId !== "number") return null;
+      const group = (await client.invoke({
+        _: "getSupergroup",
+        supergroup_id: supergroupId,
+      })) as { member_count?: number };
+      const count = group.member_count;
+      return typeof count === "number" && count > 0 ? count : null;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 export function presenceFromTdlibStatus(status: unknown): ChatPresence | null {
@@ -351,9 +388,21 @@ export function messageReadDateFromTdMessage(message: TdMessage): number | null 
   return Number.isFinite(date) && date > 0 ? date : null;
 }
 
-export function messageIsOutgoing(message: TdMessage): boolean {
+export function messageIsOutgoing(message: TdMessage, myUserId?: number | null): boolean {
   const row = message as Record<string, unknown>;
-  return Boolean(message.is_outgoing ?? row.isOutgoing);
+  if (message.is_outgoing === true || row.isOutgoing === true) return true;
+  const sendingState = message.sending_state?._;
+  if (
+    sendingState === "messageSendingStatePending" ||
+    sendingState === "messageSendingStateFailed"
+  ) {
+    return true;
+  }
+  if (myUserId != null) {
+    const sender = message.sender_id;
+    if (sender?._ === "messageSenderUser" && sender.user_id === myUserId) return true;
+  }
+  return false;
 }
 
 async function fetchLatestMessagePreview(client: Client, chatId: number): Promise<string | null> {

@@ -270,6 +270,27 @@ function mergeMediaFields(
   };
 }
 
+function outgoingStatusRank(status: MessageOutgoingStatus | null | undefined): number {
+  if (status === "read") return 4;
+  if (status === "delivered") return 3;
+  if (status === "pending") return 2;
+  if (status === "failed") return 1;
+  return 0;
+}
+
+function mergeOutgoingStatus(
+  prev: MessageOutgoingStatus | null | undefined,
+  incoming: MessageOutgoingStatus | null | undefined,
+  isOutgoing: boolean,
+): MessageOutgoingStatus | null {
+  if (!isOutgoing) return null;
+  const prevStatus = coalesceOutgoingStatus(prev, true);
+  const incomingStatus = coalesceOutgoingStatus(incoming, true);
+  return outgoingStatusRank(prevStatus) >= outgoingStatusRank(incomingStatus)
+    ? prevStatus
+    : incomingStatus;
+}
+
 /** Merge two rows for the same telegram_message_id, keeping the richest media metadata. */
 export function mergeHistoryMessageRow(
   prev: MessageChatHistoryItem | undefined,
@@ -279,18 +300,17 @@ export function mergeHistoryMessageRow(
   if (!prev) return incomingEnriched;
 
   const prevEnriched = enrichHistoryMessageDisplay(prev);
-  let outgoingStatus = incomingEnriched.outgoing_status;
-  if (
-    prevEnriched.is_outgoing &&
-    prevEnriched.outgoing_status === "read" &&
-    incomingEnriched.outgoing_status === "delivered"
-  ) {
-    outgoingStatus = "read";
-  }
+  const isOutgoing = incomingEnriched.is_outgoing || prevEnriched.is_outgoing;
+  const outgoingStatus = mergeOutgoingStatus(
+    prevEnriched.outgoing_status,
+    incomingEnriched.outgoing_status,
+    isOutgoing,
+  );
 
   return enrichHistoryMessageDisplay({
     ...mergeTextFields(mergeMediaFields(incomingEnriched, prevEnriched), prevEnriched),
     text_segments: incomingEnriched.text_segments ?? prevEnriched.text_segments ?? null,
+    is_outgoing: isOutgoing,
     outgoing_status: outgoingStatus,
   });
 }

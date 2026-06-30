@@ -752,6 +752,69 @@ function getActiveRecord(telegramUsername: string): AttemptRecord | null {
   return attempts.get(attemptId) ?? null;
 }
 
+/** On-disk TDLib database exists for this app user (survives gateway process restarts when volume mounted). */
+export function hasPersistedTdlibSession(telegramUsername: string): boolean {
+  return fs.existsSync(path.join(getTdlibUserDir(telegramUsername), "db"));
+}
+
+/** Usernames with a persisted TDLib `db` directory under {@link getTdlibDbRoot}. */
+export function listPersistedSessionUsernames(): string[] {
+  const root = getTdlibDbRoot();
+  if (!fs.existsSync(root)) return [];
+  const usernames: string[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (fs.existsSync(path.join(root, entry.name, "db"))) usernames.push(entry.name);
+  }
+  return usernames;
+}
+
+const sessionRestoreInflight = new Map<string, Promise<AttemptRecord | null>>();
+
+/**
+ * Ensure TDLib is loaded for a user — restores from on-disk session after gateway redeploy.
+ * Deduplicates concurrent restore attempts for the same username.
+ */
+export async function ensureGatewayUserSession(
+  telegramUsername: string,
+  timeoutMs: number,
+): Promise<AttemptRecord | null> {
+  const active = getActiveRecord(telegramUsername);
+  if (active?.client && active.authState === "ready") return active;
+
+  if (!hasPersistedTdlibSession(telegramUsername)) {
+    return active;
+  }
+
+  const inflight = sessionRestoreInflight.get(telegramUsername);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    try {
+      let record = getActiveRecord(telegramUsername);
+      if (record?.client && record.authState === "ready") return record;
+      if (!record || record.authState === "failed") {
+        await startConnectAttempt(telegramUsername);
+      }
+      return await waitForUserSessionReady(telegramUsername, timeoutMs);
+    } finally {
+      sessionRestoreInflight.delete(telegramUsername);
+    }
+  })();
+
+  sessionRestoreInflight.set(telegramUsername, promise);
+  return promise;
+}
+
+async function requireReadySession(
+  telegramUsername: string,
+  timeoutMs: number,
+): Promise<AttemptRecord | null> {
+  const record = await ensureGatewayUserSession(telegramUsername, timeoutMs);
+  if (!record?.client || record.authState !== "ready") return null;
+  return record;
+}
+
 /** Active in-memory connect attempt for a user, if any. */
 export function getUserConnectSnapshot(telegramUsername: string): ConnectAttemptSnapshot | null {
   const record = getActiveRecord(telegramUsername);
@@ -807,14 +870,8 @@ export async function listContactsForUser(
     chatId: number | null;
   }>
 > {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    const base = getTdlibUserDir(telegramUsername);
-    if (!fs.existsSync(path.join(base, "db"))) return [];
-    await startConnectAttempt(telegramUsername);
-    record = await waitForUserSessionReady(telegramUsername, 90_000);
-  }
-  if (!record?.client || record.authState !== "ready") return [];
+  const record = await requireReadySession(telegramUsername, 90_000);
+  if (!record) return [];
 
   try {
     const result = (await record.client.invoke({ _: "getContacts" })) as { user_ids?: number[] };
@@ -861,14 +918,8 @@ export async function searchChatsForUser(
   telegramUsername: string,
   query: string,
 ): Promise<Array<{ chatId: number; title: string; peerUserId: number | null }>> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    const base = getTdlibUserDir(telegramUsername);
-    if (!fs.existsSync(path.join(base, "db"))) return [];
-    await startConnectAttempt(telegramUsername);
-    record = await waitForUserSessionReady(telegramUsername, 90_000);
-  }
-  if (!record?.client || record.authState !== "ready") return [];
+  const record = await requireReadySession(telegramUsername, 90_000);
+  if (!record) return [];
 
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -922,14 +973,8 @@ export async function searchContactsForUser(
     chatId: number | null;
   }>
 > {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    const base = getTdlibUserDir(telegramUsername);
-    if (!fs.existsSync(path.join(base, "db"))) return [];
-    await startConnectAttempt(telegramUsername);
-    record = await waitForUserSessionReady(telegramUsername, 90_000);
-  }
-  if (!record?.client || record.authState !== "ready") return [];
+  const record = await requireReadySession(telegramUsername, 90_000);
+  if (!record) return [];
 
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -998,14 +1043,12 @@ export async function resyncUserChats(
 
   let record = getActiveRecord(telegramUsername);
   if (!record?.client || record.authState !== "ready") {
-    const base = getTdlibUserDir(telegramUsername);
-    if (!fs.existsSync(path.join(base, "db"))) {
+    if (!hasPersistedTdlibSession(telegramUsername)) {
       logGateway("connect_resync_no_session", { telegramUsername });
       return { chatCount: 0, backfillCount: 0, error: "no_session" };
     }
-    await startConnectAttempt(telegramUsername);
     const maxWaitMs = options?.maxWaitMs ?? RESYNC_RESTORE_SESSION_WAIT_MS;
-    record = await waitForUserSessionReady(telegramUsername, maxWaitMs);
+    record = await ensureGatewayUserSession(telegramUsername, maxWaitMs);
   }
 
   if (!record?.client || record.authState !== "ready") {
@@ -1039,30 +1082,33 @@ export async function resyncUserChats(
 
 /** After gateway restart, reload TDLib sessions from disk so live updates resume. */
 export function restorePersistedGatewaySessions(): void {
-  const root = getTdlibDbRoot();
-  if (!fs.existsSync(root)) return;
+  const usernames = listPersistedSessionUsernames();
 
-  const usernames: string[] = [];
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dbPath = path.join(root, entry.name, "db");
-    if (fs.existsSync(dbPath)) usernames.push(entry.name);
+  if (usernames.length === 0) {
+    logGateway("connect_restore_sessions_none", { tdlibDbRoot: getTdlibDbRoot() });
+    return;
   }
-
-  if (usernames.length === 0) return;
 
   logGateway("connect_restore_sessions_start", { count: usernames.length });
 
   for (const telegramUsername of usernames) {
     void (async () => {
       try {
-        const result = await resyncUserChats(telegramUsername, {
-          maxWaitMs: RESYNC_RESTORE_SESSION_WAIT_MS,
-        });
+        const record = await ensureGatewayUserSession(telegramUsername, RESYNC_RESTORE_SESSION_WAIT_MS);
+        if (!record?.client || record.authState !== "ready") {
+          logGateway("connect_restore_session_not_ready", {
+            telegramUsername,
+            authState: record?.authState ?? null,
+            error: record?.error ?? null,
+          });
+          return;
+        }
+        attachLiveChatSync(record);
+        const chatCount = await syncChatThreads(record.client, telegramUsername);
         logGateway("connect_restore_session_done", {
           telegramUsername,
-          chatCount: result.chatCount,
-          error: result.error,
+          chatCount,
+          error: null,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1076,13 +1122,8 @@ export async function getChatAvatarImageForUser(
   telegramUsername: string,
   chatId: number,
 ): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 15_000);
-  }
-  if (!record?.client || record.authState !== "ready") {
-    return null;
-  }
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return null;
   const result = await readChatAvatarBytes(record.client, chatId);
   if (result === TELEGRAM_THREAD_NO_AVATAR) return "no_avatar";
   return result;
@@ -1092,13 +1133,8 @@ export async function getUserAvatarImageForUser(
   telegramUsername: string,
   userId: number,
 ): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 15_000);
-  }
-  if (!record?.client || record.authState !== "ready") {
-    return null;
-  }
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return null;
   const result = await readUserAvatarBytes(record.client, userId);
   if (result === TELEGRAM_THREAD_NO_AVATAR) return "no_avatar";
   return result;
@@ -1117,11 +1153,8 @@ export async function getChatHistoryForUser(
   last_read_outbox_message_id: number | null;
   error: string | null;
 }> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 30_000);
-  }
-  if (!record?.client || record.authState !== "ready") {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
     return {
       chat_kind: "private",
       messages: [],
@@ -1167,11 +1200,8 @@ export async function sendChatMessageForUser(
     return { message: null, error: "text_too_long" };
   }
 
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 30_000);
-  }
-  if (!record?.client || record.authState !== "ready") {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
     return { message: null, error: "session_not_ready" };
   }
 
@@ -1195,11 +1225,8 @@ export async function focusChatForUser(
     return { ok: false, error: "invalid_chat_id" };
   }
 
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 15_000);
-  }
-  if (!record?.client || record.authState !== "ready") {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
     return { ok: false, error: "session_not_ready" };
   }
 
@@ -1225,11 +1252,8 @@ export async function getMessageMediaForUser(
   messageId: number,
   mode: "full" | "preview" = "full",
 ): Promise<{ data: Buffer; mime: string } | null> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 15_000);
-  }
-  if (!record?.client || record.authState !== "ready") return null;
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return null;
   const { readMessageMediaBytes } = await import("./messageMedia.js");
   return readMessageMediaBytes(record.client, chatId, messageId, mode);
 }
@@ -1238,21 +1262,15 @@ export async function getTelegramEmojiForUser(
   telegramUsername: string,
   options: { customEmojiId?: string; emoji?: string },
 ): Promise<{ data: Buffer; mime: string } | null> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 15_000);
-  }
-  if (!record?.client || record.authState !== "ready") return null;
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return null;
   const { readTelegramEmojiBytes } = await import("./customEmoji.js");
   return readTelegramEmojiBytes(record.client, options);
 }
 
 export async function ensureLiveChatPeerEmojiStatuses(telegramUsername: string): Promise<number> {
-  let record = getActiveRecord(telegramUsername);
-  if (!record?.client || record.authState !== "ready") {
-    record = await waitForUserSessionReady(telegramUsername, 8_000);
-  }
-  if (!record?.client || record.authState !== "ready") return 0;
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return 0;
   const { refreshMissingPeerEmojiStatuses } = await import("./syncChats.js");
   return refreshMissingPeerEmojiStatuses(record.client, telegramUsername);
 }

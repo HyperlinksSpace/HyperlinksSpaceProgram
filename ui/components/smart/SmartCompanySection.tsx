@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
-import { typographyRect15, useColors } from "../../theme";
+import { typographyFixedRow40Label, typographyRect15, useColors } from "../../theme";
 import { SmartFormBottomTextLane } from "./SmartFormBottomTextLane";
 import { SmartFounderBlock } from "./SmartFounderBlock";
 import { SmartFounderCountStepper } from "./SmartFounderCountStepper";
@@ -88,7 +88,7 @@ export function SmartCompanySection() {
           /* wired when image upload lands */
         }}
       >
-        <Text style={[typographyRect15, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
+        <Text style={[typographyFixedRow40Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
           {t("smart.company.addImageButton")}
         </Text>
       </Pressable>

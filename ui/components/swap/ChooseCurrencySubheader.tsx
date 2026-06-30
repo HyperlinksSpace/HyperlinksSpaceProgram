@@ -4,7 +4,7 @@ import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import {
   layout,
-  typographyRect15,
+  typographyFixedRow30Label,
   useColors,
   welcomeAuthButtonActiveBackground,
   welcomeAuthButtonHoverBackground,
@@ -169,7 +169,7 @@ export function ChooseCurrencySubheader({
                 ];
               }}
             >
-              <Text style={[typographyRect15, { color: colors.primary }]} numberOfLines={1}>
+              <Text style={[typographyFixedRow30Label, { color: colors.primary }]} numberOfLines={1}>
                 {t("common.back")}
               </Text>
             </Pressable>

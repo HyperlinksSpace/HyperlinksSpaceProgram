@@ -1,9 +1,11 @@
+Icon aapearing in the AI and Search
+Reactions, msg history loading dsgn, 
+Emoji statuses, slow loading
 ИИ / Поиск
 Date in chats
 Slow chat loading
 Loading on program start (chat + messages), no chats yet bug
 Messages history
-Emoji statuses
 profile
 Desktop, log in methods, Telegram connect and 2FA
 Time style, second checmark, photos and videos

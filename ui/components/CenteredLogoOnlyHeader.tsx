@@ -7,7 +7,7 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
 import {
   layout,
-  typographyRect15,
+  typographyFixedRow40Label,
   useColors,
   welcomeAuthButtonActiveBackground,
   welcomeAuthButtonHoverBackground,
@@ -151,7 +151,7 @@ export function CenteredLogoOnlyHeader({
               ];
             }}
           >
-            <Text style={[typographyRect15, { color: colors.primary }]} numberOfLines={1}>
+            <Text style={[typographyFixedRow40Label, { color: colors.primary }]} numberOfLines={1}>
               {t("common.back")}
             </Text>
           </Pressable>
