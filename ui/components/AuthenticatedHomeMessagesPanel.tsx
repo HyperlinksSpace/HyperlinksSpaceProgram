@@ -13,7 +13,7 @@ import {
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { MessageChatRow, type MessageChatRowData } from "./messages/MessageChatRow";
+import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
 import { homeListShellStyle } from "./messages/messageListLayout";
 import { useTelegramMessagesChatListStream } from "./messages/useTelegramMessagesChatListStream";
 
@@ -21,6 +21,13 @@ type Props = {
   colors: ThemeColors;
   scrollable?: boolean;
 };
+
+function normalizeChatKind(raw: unknown): MessageChatKind | null {
+  if (raw === "private" || raw === "group" || raw === "supergroup" || raw === "channel") {
+    return raw;
+  }
+  return null;
+}
 
 function normalizeChat(raw: unknown): MessageChatRowData | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -37,6 +44,14 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
       : null;
   const unread = Number(row.unread_count);
   const peerUserId = Number(row.peer_user_id);
+  const peerUsername =
+    typeof row.peer_username === "string" && row.peer_username.trim()
+      ? row.peer_username.trim().replace(/^@+/, "")
+      : null;
+  const chatUsername =
+    typeof row.chat_username === "string" && row.chat_username.trim()
+      ? row.chat_username.trim().replace(/^@+/, "")
+      : null;
   const memberCount = Number(row.member_count);
   const presenceKindRaw = row.presence_kind;
   const presenceKind =
@@ -78,6 +93,9 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     last_message_at: lastAt == null ? null : String(lastAt),
     unread_count: Number.isFinite(unread) ? unread : 0,
     peer_user_id: Number.isFinite(peerUserId) ? peerUserId : null,
+    peer_username: peerUsername,
+    chat_username: chatUsername,
+    chat_kind: normalizeChatKind(row.chat_kind),
     member_count: Number.isFinite(memberCount) && memberCount > 0 ? Math.trunc(memberCount) : null,
     peer_emoji_status_custom_emoji_id:
       typeof row.peer_emoji_status_custom_emoji_id === "string" &&
@@ -140,6 +158,7 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
       a.peer_emoji_status_custom_emoji_id !== b.peer_emoji_status_custom_emoji_id ||
+      a.chat_kind !== b.chat_kind ||
       a.member_count !== b.member_count ||
       a.presence_kind !== b.presence_kind ||
       a.presence_at !== b.presence_at ||
@@ -430,11 +449,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (isTelegramMessagesConnected) {
       setGatewayWarming(true);
     }
-    void (async () => {
-      await loadChats({ silent: true });
-      await triggerGatewayResync("initial_mount");
-      await loadChats({ silent: true });
-    })();
+    void loadChats({ silent: false });
+    void triggerGatewayResync("initial_mount").then(() => loadChats({ silent: true }));
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
   useEffect(() => {

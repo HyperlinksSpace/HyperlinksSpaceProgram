@@ -10,6 +10,7 @@ import {
   getChatAvatarImageForUser,
   getChatHistoryForUser,
   ensureLiveChatPeerEmojiStatuses,
+  ensureLiveChatMemberCounts,
   getTelegramEmojiForUser,
   getMessageMediaForUser,
   getUserAvatarImageForUser,
@@ -33,10 +34,13 @@ import {
   submitConnectPassword,
   submitConnectPhoneNumber,
   sendChatMessageForUser,
+  editChatMessageForUser,
 } from "./connectAttempts.js";
 
-const PEER_EMOJI_STATUS_MIN_INTERVAL_MS = 5 * 60_000;
+const PEER_EMOJI_STATUS_MIN_INTERVAL_MS = 45_000;
+const MEMBER_COUNT_MIN_INTERVAL_MS = 45_000;
 const peerEmojiStatusLastRun = new Map<string, number>();
+const memberCountLastRun = new Map<string, number>();
 
 async function ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername: string): Promise<void> {
   const now = Date.now();
@@ -44,6 +48,14 @@ async function ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername: string
   if (now - last < PEER_EMOJI_STATUS_MIN_INTERVAL_MS) return;
   peerEmojiStatusLastRun.set(telegramUsername, now);
   await ensureLiveChatPeerEmojiStatuses(telegramUsername);
+}
+
+async function ensureLiveChatMemberCountsThrottled(telegramUsername: string): Promise<void> {
+  const now = Date.now();
+  const last = memberCountLastRun.get(telegramUsername) ?? 0;
+  if (now - last < MEMBER_COUNT_MIN_INTERVAL_MS) return;
+  memberCountLastRun.set(telegramUsername, now);
+  await ensureLiveChatMemberCounts(telegramUsername);
 }
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {
@@ -256,6 +268,7 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           await ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername);
+          await ensureLiveChatMemberCountsThrottled(telegramUsername);
           const chats = getLiveChatList(telegramUsername);
           const currentRevision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = (chats ?? []).filter(
@@ -349,6 +362,8 @@ export function startTdlibGatewayServer(): http.Server {
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             chat_kind: result.chat_kind,
+            member_count: result.member_count,
+            self_user_id: result.self_user_id,
             messages: result.messages,
             has_more_older: !result.error && result.has_more_older,
             next_before_message_id: result.next_before_message_id,
@@ -363,22 +378,69 @@ export function startTdlibGatewayServer(): http.Server {
             telegramUsername?: string;
             chatId?: number;
             text?: string;
+            replyToMessageId?: number;
           };
           const telegramUsername = (body.telegramUsername || "").trim();
           const chatId = Number(body.chatId);
           const text = typeof body.text === "string" ? body.text : "";
+          const replyToMessageId = Number(body.replyToMessageId);
           if (!telegramUsername || !Number.isFinite(chatId)) {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
           const started = Date.now();
-          const result = await sendChatMessageForUser(telegramUsername, chatId, text);
+          const result = await sendChatMessageForUser(
+            telegramUsername,
+            chatId,
+            text,
+            Number.isFinite(replyToMessageId) && replyToMessageId > 0
+              ? Math.trunc(replyToMessageId)
+              : null,
+          );
           logGateway("chat_message_sent", {
             telegramUsername,
             chatId,
             userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
             ok: !result.error,
             messageId: result.message?.telegram_message_id ?? null,
+            replyToMessageId:
+              Number.isFinite(replyToMessageId) && replyToMessageId > 0
+                ? Math.trunc(replyToMessageId)
+                : null,
+            error: result.error,
+            ms: Date.now() - started,
+          });
+          sendJson(res, result.error ? 503 : 200, {
+            ok: !result.error,
+            message: result.message,
+            error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/chat/messages/edit") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            messageId?: number;
+            text?: string;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const messageId = Number(body.messageId);
+          const text = typeof body.text === "string" ? body.text : "";
+          if (!telegramUsername || !Number.isFinite(chatId) || !Number.isFinite(messageId)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await editChatMessageForUser(telegramUsername, chatId, messageId, text);
+          logGateway("chat_message_edited", {
+            telegramUsername,
+            chatId,
+            userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
+            ok: !result.error,
+            messageId: result.message?.telegram_message_id ?? messageId,
             error: result.error,
             ms: Date.now() - started,
           });

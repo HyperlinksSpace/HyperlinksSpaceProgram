@@ -2,11 +2,11 @@ import { buildApiUrl } from "../../api/_base";
 import type { MessageChatHistoryItem } from "../components/messages/messageChatHistoryTypes";
 import { coalesceOutgoingStatus } from "../components/messages/messageChatHistoryTypes";
 
-export type SendTelegramChatMessageResult =
+export type EditTelegramChatMessageResult =
   | { ok: true; message: MessageChatHistoryItem }
   | { ok: false; error: string };
 
-function normalizeSentMessage(raw: unknown): MessageChatHistoryItem | null {
+function normalizeEditedMessage(raw: unknown): MessageChatHistoryItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
   const telegramMessageId = Number(row.telegram_message_id);
@@ -34,27 +34,24 @@ function normalizeSentMessage(raw: unknown): MessageChatHistoryItem | null {
   };
 }
 
-export async function sendTelegramChatMessage(
+export async function editTelegramChatMessage(
   chatId: number,
+  messageId: number,
   text: string,
-  replyToMessageId?: number | null,
-): Promise<SendTelegramChatMessageResult> {
+): Promise<EditTelegramChatMessageResult> {
   const trimmed = text.trim();
   if (!trimmed) {
     return { ok: false, error: "text_required" };
   }
 
-  const replyId = Number(replyToMessageId);
-  const response = await fetch(buildApiUrl("/api/telegram-messages-send"), {
+  const response = await fetch(buildApiUrl("/api/telegram-messages-edit"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       chat_id: chatId,
+      message_id: messageId,
       text: trimmed,
-      ...(Number.isFinite(replyId) && replyId > 0
-        ? { reply_to_message_id: Math.trunc(replyId) }
-        : {}),
     }),
   });
   const json = (await response.json().catch(() => ({}))) as {
@@ -64,10 +61,10 @@ export async function sendTelegramChatMessage(
   };
 
   if (!response.ok || !json.ok) {
-    return { ok: false, error: json.error ?? "send_failed" };
+    return { ok: false, error: json.error ?? "edit_failed" };
   }
 
-  const message = normalizeSentMessage(json.message);
+  const message = normalizeEditedMessage(json.message);
   if (!message) {
     return { ok: false, error: "invalid_response" };
   }

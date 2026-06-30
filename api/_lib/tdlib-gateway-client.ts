@@ -478,10 +478,12 @@ export async function gatewayFetchChatMessages(
 ): Promise<{
   messages: Record<string, unknown>[];
   chatKind: string | null;
+  memberCount: number | null;
   error: string | null;
   hasMoreOlder: boolean;
   nextBeforeMessageId: number | null;
   lastReadOutboxMessageId: number | null;
+  selfUserId: number | null;
 }> {
   const base = getGatewayBaseUrl();
   const secret = getGatewaySecret();
@@ -507,9 +509,11 @@ export async function gatewayFetchChatMessages(
       ok?: boolean;
       messages?: Record<string, unknown>[];
       chat_kind?: string;
+      member_count?: number;
       has_more_older?: boolean;
       next_before_message_id?: number;
       last_read_outbox_message_id?: number;
+      self_user_id?: number;
       error?: string;
     };
     if (!response.ok || !json.ok) {
@@ -520,9 +524,13 @@ export async function gatewayFetchChatMessages(
         hasMoreOlder: false,
         nextBeforeMessageId: null,
         lastReadOutboxMessageId: null,
+        memberCount: null,
+        selfUserId: null,
       };
     }
     const lastReadRaw = Number(json.last_read_outbox_message_id);
+    const memberRaw = Number(json.member_count);
+    const selfUserRaw = Number(json.self_user_id);
     return {
       messages: Array.isArray(json.messages) ? json.messages : [],
       chatKind: typeof json.chat_kind === "string" ? json.chat_kind : null,
@@ -536,6 +544,10 @@ export async function gatewayFetchChatMessages(
           : null,
       lastReadOutboxMessageId:
         Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
+      memberCount:
+        Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
+      selfUserId:
+        Number.isFinite(selfUserRaw) && selfUserRaw > 0 ? Math.trunc(selfUserRaw) : null,
     };
   } catch (err) {
     return {
@@ -545,6 +557,8 @@ export async function gatewayFetchChatMessages(
       hasMoreOlder: false,
       nextBeforeMessageId: null,
       lastReadOutboxMessageId: null,
+      memberCount: null,
+      selfUserId: null,
     };
   }
 }
@@ -553,10 +567,17 @@ export async function gatewaySendChatMessage(
   telegramUsername: string,
   chatId: number,
   text: string,
+  replyToMessageId?: number | null,
 ): Promise<{ message: Record<string, unknown> | null; error: string | null }> {
+  const replyId = Number(replyToMessageId);
   const { response, json } = await gatewayFetch("/v1/chat/messages/send", {
     method: "POST",
-    body: JSON.stringify({ telegramUsername, chatId, text }),
+    body: JSON.stringify({
+      telegramUsername,
+      chatId,
+      text,
+      ...(Number.isFinite(replyId) && replyId > 0 ? { replyToMessageId: Math.trunc(replyId) } : {}),
+    }),
   });
   const message =
     json.message && typeof json.message === "object" && !Array.isArray(json.message)
@@ -566,6 +587,29 @@ export async function gatewaySendChatMessage(
     return {
       message: null,
       error: typeof json.error === "string" ? json.error : "send_failed",
+    };
+  }
+  return { message, error: null };
+}
+
+export async function gatewayEditChatMessage(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  text: string,
+): Promise<{ message: Record<string, unknown> | null; error: string | null }> {
+  const { response, json } = await gatewayFetch("/v1/chat/messages/edit", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername, chatId, messageId, text }),
+  });
+  const message =
+    json.message && typeof json.message === "object" && !Array.isArray(json.message)
+      ? (json.message as Record<string, unknown>)
+      : null;
+  if (!response.ok || !json.ok) {
+    return {
+      message: null,
+      error: typeof json.error === "string" ? json.error : "edit_failed",
     };
   }
   return { message, error: null };

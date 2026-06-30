@@ -35,6 +35,25 @@ function readStoredChat(): MessageChatRowData | null {
             : null,
         unread_count: Number.isFinite(Number(row.unread_count)) ? Number(row.unread_count) : 0,
         peer_user_id: Number.isFinite(Number(row.peer_user_id)) ? Number(row.peer_user_id) : null,
+        peer_username:
+          typeof row.peer_username === "string" && row.peer_username.trim()
+            ? row.peer_username.trim().replace(/^@+/, "")
+            : null,
+        chat_username:
+          typeof row.chat_username === "string" && row.chat_username.trim()
+            ? row.chat_username.trim().replace(/^@+/, "")
+            : null,
+        chat_kind:
+          row.chat_kind === "private" ||
+          row.chat_kind === "group" ||
+          row.chat_kind === "supergroup" ||
+          row.chat_kind === "channel"
+            ? row.chat_kind
+            : null,
+        member_count: (() => {
+          const raw = Number(row.member_count);
+          return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : null;
+        })(),
         presence_kind:
           row.presence_kind === "online" ||
           row.presence_kind === "recently" ||
@@ -243,6 +262,24 @@ export function useAuthenticatedHomeHistoryLoadTarget(): AuthenticatedHomeHistor
   );
 }
 
+/** Refresh open chat header meta after history load or live list sync. */
+export function patchAuthenticatedHomeSelectedChatGroupMeta(
+  chatId: number,
+  meta: {
+    chat_kind?: MessageChatRowData["chat_kind"];
+    member_count?: number | null;
+  },
+): void {
+  hydrateFromStorageIfNeeded();
+  if (selectedChat?.telegram_chat_id !== chatId) return;
+  const next: MessageChatRowData = { ...selectedChat };
+  if (meta.chat_kind !== undefined) next.chat_kind = meta.chat_kind;
+  if (meta.member_count !== undefined) next.member_count = meta.member_count;
+  selectedChat = next;
+  writeStoredChat(selectedChat);
+  emit();
+}
+
 /** Keep read-receipt cursor in sync after history loads or live updates. */
 export function patchAuthenticatedHomeSelectedChatReadOutbox(messageId: number | null | undefined) {
   hydrateFromStorageIfNeeded();
@@ -270,6 +307,9 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.last_message_at !== selectedChat.last_message_at ||
     fresh.unread_count !== selectedChat.unread_count ||
     fresh.avatar_url !== selectedChat.avatar_url ||
+    fresh.peer_username !== selectedChat.peer_username ||
+    fresh.chat_username !== selectedChat.chat_username ||
+    fresh.chat_kind !== selectedChat.chat_kind ||
     fresh.member_count !== selectedChat.member_count ||
     fresh.presence_kind !== selectedChat.presence_kind ||
     fresh.presence_at !== selectedChat.presence_at ||

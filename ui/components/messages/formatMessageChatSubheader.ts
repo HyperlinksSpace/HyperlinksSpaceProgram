@@ -1,6 +1,8 @@
 import { formatAppString, type AppLocale } from "../../../locales/appStrings";
 import { formatMessageChatMemberCountLabel, formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
+import { formatMessageChatRowUsernameLabel } from "./formatTelegramChatRowUsername";
 import type { MessageChatRowData } from "./MessageChatRow";
+import { isGroupLikeChatRow } from "./isGroupLikeChatRow";
 import { specialUserDisplayName } from "./specialTelegramUserDisplay";
 
 function isChatActionLive(chat: MessageChatRowData): boolean {
@@ -15,59 +17,88 @@ export function isMessageChatActionLive(chat: MessageChatRowData): boolean {
 
 function chatActionActorName(chat: MessageChatRowData): string {
   const fromAction = chat.chat_action_user_name?.trim();
-  if (fromAction) return fromAction;
-  if (chat.chat_action_user_id != null && chat.chat_action_user_id === chat.peer_user_id) {
-    return specialUserDisplayName(chat.peer_user_id, chat.title);
+  if (fromAction) {
+    return specialUserDisplayName(chat.chat_action_user_id, fromAction, chat.telegram_chat_id);
+  }
+  if (chat.peer_user_id != null && !isGroupLikeChatRow(chat)) {
+    return specialUserDisplayName(chat.peer_user_id, chat.title, chat.telegram_chat_id);
+  }
+  if (chat.chat_action_user_id != null) {
+    return specialUserDisplayName(chat.chat_action_user_id, chat.title, chat.telegram_chat_id);
   }
   return "";
 }
 
+function formatNamedChatAction(
+  locale: AppLocale,
+  genericKey: Parameters<typeof formatAppString>[1],
+  namedKey: Parameters<typeof formatAppString>[1],
+  actorName: string,
+): string {
+  const name = actorName.trim();
+  if (name) return formatAppString(locale, namedKey, { name });
+  return formatAppString(locale, genericKey);
+}
+
 function formatChatActionLabel(chat: MessageChatRowData, locale: AppLocale): string {
   const action = chat.chat_action!;
-  const peerName = specialUserDisplayName(chat.peer_user_id, chat.title);
   const actorName = chatActionActorName(chat);
-  const isPrivatePeerAction =
-    chat.peer_user_id != null && chat.chat_action_user_id === chat.peer_user_id;
 
   if (action === "typing") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.typing");
-    }
-    return formatAppString(locale, "messages.chatAction.typingNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.typing",
+      "messages.chatAction.typingNamed",
+      actorName,
+    );
   }
   if (action === "recording_voice") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.recordingVoice");
-    }
-    return formatAppString(locale, "messages.chatAction.recordingVoiceNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.recordingVoice",
+      "messages.chatAction.recordingVoiceNamed",
+      actorName,
+    );
   }
   if (action === "recording_video") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.recordingVideo");
-    }
-    return formatAppString(locale, "messages.chatAction.recordingVideoNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.recordingVideo",
+      "messages.chatAction.recordingVideoNamed",
+      actorName,
+    );
   }
   if (action === "uploading_photo") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.uploadingPhoto");
-    }
-    return formatAppString(locale, "messages.chatAction.uploadingPhotoNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.uploadingPhoto",
+      "messages.chatAction.uploadingPhotoNamed",
+      actorName,
+    );
   }
   if (action === "uploading_video") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.uploadingVideo");
-    }
-    return formatAppString(locale, "messages.chatAction.uploadingVideoNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.uploadingVideo",
+      "messages.chatAction.uploadingVideoNamed",
+      actorName,
+    );
   }
   if (action === "uploading_file") {
-    if (isPrivatePeerAction || !actorName) {
-      return formatAppString(locale, "messages.chatAction.uploadingFile");
-    }
-    return formatAppString(locale, "messages.chatAction.uploadingFileNamed", { name: actorName });
+    return formatNamedChatAction(
+      locale,
+      "messages.chatAction.uploadingFile",
+      "messages.chatAction.uploadingFileNamed",
+      actorName,
+    );
   }
 
-  if (!actorName) return formatAppString(locale, "messages.chatAction.typing");
-  return formatAppString(locale, "messages.chatAction.typingNamed", { name: actorName || peerName });
+  return formatNamedChatAction(
+    locale,
+    "messages.chatAction.typing",
+    "messages.chatAction.typingNamed",
+    actorName,
+  );
 }
 
 /** Header subheader: live chat action overrides presence / member count. */
@@ -75,10 +106,18 @@ export function formatMessageChatSubheaderLabel(chat: MessageChatRowData, locale
   if (isChatActionLive(chat)) {
     return formatChatActionLabel(chat, locale);
   }
-  if (chat.peer_user_id == null) {
-    return formatMessageChatMemberCountLabel(chat, locale);
+  if (isGroupLikeChatRow(chat)) {
+    const usernameLabel = formatMessageChatRowUsernameLabel(chat);
+    const memberCount = formatMessageChatMemberCountLabel(chat, locale);
+    if (usernameLabel && memberCount) return `${usernameLabel} · ${memberCount}`;
+    if (usernameLabel) return usernameLabel;
+    return memberCount;
   }
-  return formatMessageChatPresenceLabel(chat, locale);
+  const usernameLabel = formatMessageChatRowUsernameLabel(chat);
+  const presence = formatMessageChatPresenceLabel(chat, locale);
+  if (usernameLabel && presence) return `${usernameLabel} · ${presence}`;
+  if (usernameLabel) return usernameLabel;
+  return presence;
 }
 
 /** Chat list preview line: typing/recording overrides last message snippet. */

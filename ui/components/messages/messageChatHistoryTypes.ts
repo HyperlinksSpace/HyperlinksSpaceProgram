@@ -47,6 +47,53 @@ export type MessageChatHistoryItem = {
   call_success?: boolean | null;
 };
 
+export type HistoryMessageContext = {
+  peerUserId?: number | null;
+  selfUserId?: number | null;
+};
+
+/** Resolve whether a history row is outgoing (only our messages get delivery ticks). */
+export function resolveHistoryMessageIsOutgoing(params: {
+  rawIsOutgoing: unknown;
+  senderUserId: number | null;
+  peerUserId?: number | null;
+  selfUserId?: number | null;
+}): boolean {
+  const { rawIsOutgoing, senderUserId, peerUserId, selfUserId } = params;
+
+  if (peerUserId != null && senderUserId === peerUserId) return false;
+  if (selfUserId != null && senderUserId != null && senderUserId !== selfUserId) {
+    return false;
+  }
+
+  if (rawIsOutgoing === true) return true;
+  if (rawIsOutgoing === false) return false;
+
+  if (selfUserId != null && senderUserId === selfUserId) return true;
+  if (peerUserId != null && senderUserId != null && senderUserId !== peerUserId) {
+    return true;
+  }
+
+  return false;
+}
+
+/** Delivery ticks render only on messages we actually sent. */
+export function messageShowsOutgoingChecks(
+  item: Pick<MessageChatHistoryItem, "is_outgoing" | "sender_user_id">,
+  ctx?: HistoryMessageContext,
+): boolean {
+  if (!item.is_outgoing) return false;
+  if (ctx?.peerUserId != null && item.sender_user_id === ctx.peerUserId) return false;
+  if (
+    ctx?.selfUserId != null &&
+    item.sender_user_id != null &&
+    item.sender_user_id !== ctx.selfUserId
+  ) {
+    return false;
+  }
+  return true;
+}
+
 /** Outgoing ticks: TDLib may briefly report `pending` after send; show delivered in UI. */
 export function coalesceOutgoingStatus(
   raw: unknown,
@@ -278,6 +325,21 @@ function outgoingStatusRank(status: MessageOutgoingStatus | null | undefined): n
   return 0;
 }
 
+function mergeIsOutgoing(
+  prev: MessageChatHistoryItem,
+  incoming: MessageChatHistoryItem,
+  ctx?: HistoryMessageContext,
+): boolean {
+  const senderId = incoming.sender_user_id ?? prev.sender_user_id;
+  if (ctx?.peerUserId != null && senderId === ctx.peerUserId) return false;
+  if (ctx?.selfUserId != null && senderId != null && senderId !== ctx.selfUserId) {
+    return false;
+  }
+  if (incoming.is_outgoing) return true;
+  if (prev.is_outgoing && prev.outgoing_status != null) return true;
+  return false;
+}
+
 function mergeOutgoingStatus(
   prev: MessageOutgoingStatus | null | undefined,
   incoming: MessageOutgoingStatus | null | undefined,
@@ -295,12 +357,13 @@ function mergeOutgoingStatus(
 export function mergeHistoryMessageRow(
   prev: MessageChatHistoryItem | undefined,
   incoming: MessageChatHistoryItem,
+  ctx?: HistoryMessageContext,
 ): MessageChatHistoryItem {
   const incomingEnriched = enrichHistoryMessageDisplay(incoming);
   if (!prev) return incomingEnriched;
 
   const prevEnriched = enrichHistoryMessageDisplay(prev);
-  const isOutgoing = incomingEnriched.is_outgoing || prevEnriched.is_outgoing;
+  const isOutgoing = mergeIsOutgoing(prevEnriched, incomingEnriched, ctx);
   const outgoingStatus = mergeOutgoingStatus(
     prevEnriched.outgoing_status,
     incomingEnriched.outgoing_status,

@@ -7,7 +7,7 @@ import { revokeMtprotoSession } from "../../database/telegramMtproto.js";
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayOpenLiveChatsStream, gatewayResyncChats, gatewaySendChatMessage, gatewayUserHasPersistedSession, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayFetchUserAvatar, gatewayFocusChat, gatewayOpenLiveChatsStream, gatewayResyncChats, gatewaySendChatMessage, gatewayEditChatMessage, gatewayUserHasPersistedSession, gatewayWarmupSession } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -157,6 +157,21 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     last_message_at: row.last_message_at,
     unread_count: row.unread_count ?? 0,
     peer_user_id: row.peer_user_id ?? null,
+    peer_username:
+      typeof row.peer_username === "string" && row.peer_username.trim()
+        ? row.peer_username.trim().replace(/^@+/, "")
+        : null,
+    chat_username:
+      typeof row.chat_username === "string" && row.chat_username.trim()
+        ? row.chat_username.trim().replace(/^@+/, "")
+        : null,
+    chat_kind:
+      row.chat_kind === "private" ||
+      row.chat_kind === "group" ||
+      row.chat_kind === "supergroup" ||
+      row.chat_kind === "channel"
+        ? row.chat_kind
+        : null,
     member_count:
       typeof row.member_count === "number" && Number.isFinite(row.member_count) && row.member_count > 0
         ? Math.trunc(row.member_count)
@@ -710,6 +725,8 @@ export async function telegramMessagesHistoryHandler(
     {
       ok: true,
       chat_kind: result.chatKind,
+      member_count: result.memberCount,
+      self_user_id: result.selfUserId,
       messages: result.messages,
       has_more_older: result.hasMoreOlder,
       next_before_message_id: result.nextBeforeMessageId,
@@ -879,10 +896,15 @@ export async function telegramMessagesSendHandler(
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
 
-  const body = await parseRequestBody<{ chat_id?: unknown; text?: unknown }>(request);
+  const body = await parseRequestBody<{
+    chat_id?: unknown;
+    text?: unknown;
+    reply_to_message_id?: unknown;
+  }>(request);
 
   const chatId = Number(body.chat_id);
   const text = typeof body.text === "string" ? body.text.trim() : "";
+  const replyToMessageId = Number(body.reply_to_message_id);
   if (!Number.isFinite(chatId) || chatId === 0) {
     logTelegramMessagesApi("messages_send_bad_request", {
       telegramUsername: userOrRes,
@@ -900,15 +922,97 @@ export async function telegramMessagesSendHandler(
   }
 
   const started = Date.now();
-  const result = await gatewaySendChatMessage(userOrRes, chatId, text);
+  const result = await gatewaySendChatMessage(
+    userOrRes,
+    chatId,
+    text,
+    Number.isFinite(replyToMessageId) && replyToMessageId > 0
+      ? Math.trunc(replyToMessageId)
+      : null,
+  );
   logTelegramMessagesApi("messages_send", {
     telegramUsername: userOrRes,
     chatId,
     ok: !result.error,
+    replyToMessageId:
+      Number.isFinite(replyToMessageId) && replyToMessageId > 0
+        ? Math.trunc(replyToMessageId)
+        : null,
     messageId:
       result.message && typeof result.message.telegram_message_id === "number"
         ? result.message.telegram_message_id
         : null,
+    error: result.error,
+    elapsedMs: Date.now() - started,
+  });
+
+  if (result.error) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: result.error, message: null },
+      result.error === "session_not_ready" ? 503 : 502,
+    );
+  }
+
+  return finishJson(request, res, { ok: true, message: result.message }, 200);
+}
+
+export async function telegramMessagesEditHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const body = await parseRequestBody<{
+    chat_id?: unknown;
+    message_id?: unknown;
+    text?: unknown;
+  }>(request);
+
+  const chatId = Number(body.chat_id);
+  const messageId = Number(body.message_id);
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  if (!Number.isFinite(chatId) || chatId === 0) {
+    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+  }
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return finishJson(request, res, { ok: false, error: "message_id_required" }, 400);
+  }
+  if (!text) {
+    return finishJson(request, res, { ok: false, error: "text_required" }, 400);
+  }
+  if (text.length > 4096) {
+    return finishJson(request, res, { ok: false, error: "text_too_long" }, 400);
+  }
+
+  const started = Date.now();
+  const result = await gatewayEditChatMessage(userOrRes, chatId, messageId, text);
+  logTelegramMessagesApi("messages_edit", {
+    telegramUsername: userOrRes,
+    chatId,
+    messageId,
+    ok: !result.error,
     error: result.error,
     elapsedMs: Date.now() - started,
   });

@@ -56,15 +56,33 @@ function specialUserRuleByDisplayName(displayName: string): SpecialUserRule | nu
   if (/андрей|andrey/.test(normalized) && /genn|генн/.test(normalized)) {
     return ANDREY_DISPLAY_RULE;
   }
+  if (/the\s*devs/.test(normalized)) {
+    return { shine: true, badge: "status_tgs" };
+  }
   return null;
+}
+
+/** Private chats whose TDLib chat id should inherit a configured peer rule. */
+const SPECIAL_USER_RULE_BY_CHAT_ID: Record<number, number> = {
+  [THE_DEVS_TELEGRAM_USER_ID]: THE_DEVS_TELEGRAM_USER_ID,
+};
+
+function specialUserRuleByChatId(telegramChatId: number | null | undefined): SpecialUserRule | null {
+  const chatId = Number(telegramChatId);
+  if (!Number.isFinite(chatId) || chatId <= 0) return null;
+  const mappedPeerId = SPECIAL_USER_RULE_BY_CHAT_ID[chatId] ?? chatId;
+  return specialUserRule(mappedPeerId);
 }
 
 export function resolveSpecialUserRule(
   telegramUserId: number | null | undefined,
   displayName: string,
+  telegramChatId?: number | null,
 ): SpecialUserRule | null {
   const byId = specialUserRule(telegramUserId);
   if (byId) return byId;
+  const byChat = specialUserRuleByChatId(telegramChatId);
+  if (byChat) return byChat;
   return specialUserRuleByDisplayName(displayName);
 }
 
@@ -76,8 +94,9 @@ export function specialUserRule(telegramUserId: number | null | undefined): Spec
 export function specialUserDisplayName(
   telegramUserId: number | null | undefined,
   fallbackName: string,
+  telegramChatId?: number | null,
 ): string {
-  const override = resolveSpecialUserRule(telegramUserId, fallbackName)?.displayName;
+  const override = resolveSpecialUserRule(telegramUserId, fallbackName, telegramChatId)?.displayName;
   if (override?.trim()) return override.trim();
   return fallbackName.trim();
 }
@@ -85,22 +104,25 @@ export function specialUserDisplayName(
 export function specialUserShowsShineName(
   telegramUserId: number | null | undefined,
   fallbackName = "",
+  telegramChatId?: number | null,
 ): boolean {
-  return resolveSpecialUserRule(telegramUserId, fallbackName)?.shine ?? false;
+  return resolveSpecialUserRule(telegramUserId, fallbackName, telegramChatId)?.shine ?? false;
 }
 
 export function specialUserBadgeKind(
   telegramUserId: number | null | undefined,
   fallbackName = "",
+  telegramChatId?: number | null,
 ): SpecialUserBadgeKind | null {
-  return resolveSpecialUserRule(telegramUserId, fallbackName)?.badge ?? null;
+  return resolveSpecialUserRule(telegramUserId, fallbackName, telegramChatId)?.badge ?? null;
 }
 
 export function specialUserBadgeExtraWidthPx(
   telegramUserId: number | null | undefined,
   fallbackName = "",
+  telegramChatId?: number | null,
 ): number {
-  if (!specialUserBadgeKind(telegramUserId, fallbackName)) return 0;
+  if (!specialUserBadgeKind(telegramUserId, fallbackName, telegramChatId)) return 0;
   return SPECIAL_USER_BADGE_GAP_PX + SPECIAL_USER_BADGE_SIZE_PX;
 }
 

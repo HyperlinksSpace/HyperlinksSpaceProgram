@@ -106,6 +106,9 @@ export type GlobalBottomBarOptions = {
   useLocalDraft?: boolean;
   /** When set, replaces default AI navigation on send. */
   onSubmit?: (text: string) => void;
+  /** Controlled draft for local compose bars (e.g. chat reply/edit). */
+  draft?: string;
+  onDraftChange?: (next: string) => void;
 };
 
 export function GlobalBottomBar(options?: GlobalBottomBarOptions) {
@@ -126,8 +129,17 @@ export function GlobalBottomBar(options?: GlobalBottomBarOptions) {
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge, draftText, setDraftText } = useBottomBarLayout();
   const useLocalDraft = options?.useLocalDraft ?? false;
-  const value = useLocalDraft ? localDraft : draftText;
-  const setValue = useLocalDraft ? setLocalDraft : setDraftText;
+  const controlledDraft = options?.onDraftChange != null;
+  const value = controlledDraft
+    ? (options?.draft ?? "")
+    : useLocalDraft
+      ? localDraft
+      : draftText;
+  const setValue = controlledDraft
+    ? options!.onDraftChange!
+    : useLocalDraft
+      ? setLocalDraft
+      : setDraftText;
   const iconRotationDeg = options?.iconRotationDeg ?? 0;
   const sendAccessibilityLabel = options?.sendAccessibilityLabel;
   const onSubmitOverride = options?.onSubmit;

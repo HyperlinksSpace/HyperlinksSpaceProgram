@@ -130,7 +130,9 @@ export function resolveBubbleMetaPlacementFromLineWidths(
   const longest = Math.max(...lineWidths);
   const lastLine = lineWidths[lineWidths.length - 1]!;
   const metaBlock = metaGapPx + metaWidthPx;
-  // Meta sits on the last line only when it fits in the tail of the longest line.
+  if (lastLine + metaBlock <= maxContentWidth) {
+    return "lastLine";
+  }
   if (longest - lastLine >= metaBlock) {
     return "lastLine";
   }

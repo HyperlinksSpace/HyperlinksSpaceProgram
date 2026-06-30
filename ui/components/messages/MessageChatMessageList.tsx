@@ -23,7 +23,7 @@ import type {
   MessageChatHistoryItem,
   MessageChatKind,
 } from "./messageChatHistoryTypes";
-import { patchAuthenticatedHomeSelectedChatReadOutbox } from "../../authenticatedHomeSelectedChat";
+import { patchAuthenticatedHomeSelectedChatReadOutbox, patchAuthenticatedHomeSelectedChatGroupMeta } from "../../authenticatedHomeSelectedChat";
 import {
   coalesceOutgoingStatus,
   effectiveReadOutboxMessageId as mergeReadOutboxCursor,
@@ -31,6 +31,8 @@ import {
   maxReadOutboxMessageIdFromItems,
   mergeHistoryMessageRow,
   patchOutgoingStatusesWithReadOutbox,
+  resolveHistoryMessageIsOutgoing,
+  type HistoryMessageContext,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
 import type { MessageChatRowData } from "./MessageChatRow";
@@ -59,6 +61,7 @@ function chatLiveSignature(chat: MessageChatRowData): string {
 function normalizeHistoryMessage(
   raw: unknown,
   peerUserId: number | null | undefined,
+  selfUserId: number | null | undefined,
 ): MessageChatHistoryItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const row = raw as Record<string, unknown>;
@@ -83,15 +86,13 @@ function normalizeHistoryMessage(
   const senderUserId = Number(row.sender_user_id);
   const senderChatId = Number(row.sender_chat_id);
   const safeSenderUserId = safeTelegramUserIdForLog(senderUserId) ?? null;
-  let isOutgoing = Boolean(row.is_outgoing ?? row.isOutgoing);
-  if (
-    !isOutgoing &&
-    peerUserId != null &&
-    safeSenderUserId != null &&
-    safeSenderUserId !== peerUserId
-  ) {
-    isOutgoing = true;
-  }
+  const rawOutgoing = row.is_outgoing ?? row.isOutgoing;
+  const isOutgoing = resolveHistoryMessageIsOutgoing({
+    rawIsOutgoing: rawOutgoing,
+    senderUserId: safeSenderUserId,
+    peerUserId,
+    selfUserId,
+  });
   const outgoingRaw = row.outgoing_status ?? row.outgoingStatus;
   const outgoingStatus = coalesceOutgoingStatus(outgoingRaw, isOutgoing);
   let replyTo: MessageChatHistoryItem["reply_to"] = null;
@@ -147,7 +148,10 @@ function normalizeChatKind(raw: unknown): MessageChatKind | null {
   return null;
 }
 
-function collapseOutgoingEchoDuplicates(items: MessageChatHistoryItem[]): MessageChatHistoryItem[] {
+function collapseOutgoingEchoDuplicates(
+  items: MessageChatHistoryItem[],
+  ctx?: HistoryMessageContext,
+): MessageChatHistoryItem[] {
   const result: MessageChatHistoryItem[] = [];
   for (const item of items) {
     if (!item.is_outgoing) {
@@ -164,7 +168,7 @@ function collapseOutgoingEchoDuplicates(items: MessageChatHistoryItem[]): Messag
       return Math.abs(sentAt - rowSent) < 60_000;
     });
     if (dupIdx >= 0) {
-      result[dupIdx] = mergeHistoryMessageRow(result[dupIdx]!, item);
+      result[dupIdx] = mergeHistoryMessageRow(result[dupIdx]!, item, ctx);
       continue;
     }
     result.push(item);
@@ -175,6 +179,7 @@ function collapseOutgoingEchoDuplicates(items: MessageChatHistoryItem[]): Messag
 function mergeHistoryMessages(
   existing: MessageChatHistoryItem[],
   incoming: MessageChatHistoryItem[],
+  ctx?: HistoryMessageContext,
 ): MessageChatHistoryItem[] {
   const byId = new Map<number, MessageChatHistoryItem>();
   for (const row of existing) {
@@ -182,14 +187,14 @@ function mergeHistoryMessages(
   }
   for (const row of incoming) {
     const prev = byId.get(row.telegram_message_id);
-    byId.set(row.telegram_message_id, mergeHistoryMessageRow(prev, row));
+    byId.set(row.telegram_message_id, mergeHistoryMessageRow(prev, row, ctx));
   }
   const sorted = [...byId.values()].sort((a, b) => {
     const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
     if (byTime !== 0) return byTime;
     return a.telegram_message_id - b.telegram_message_id;
   });
-  return collapseOutgoingEchoDuplicates(sorted);
+  return collapseOutgoingEchoDuplicates(sorted, ctx);
 }
 
 async function warmupTelegramSession(chatId: number): Promise<void> {
@@ -208,6 +213,8 @@ async function fetchChatHistoryPage(
   hasMoreOlder: boolean;
   nextBeforeMessageId: number | null;
   lastReadOutboxMessageId: number | null;
+  memberCount: number | null;
+  selfUserId: number | null;
 }> {
   const params = new URLSearchParams({
     chat_id: String(chatId),
@@ -226,9 +233,11 @@ async function fetchChatHistoryPage(
     ok?: boolean;
     messages?: unknown[];
     chat_kind?: unknown;
+    member_count?: unknown;
     has_more_older?: boolean;
     next_before_message_id?: number;
     last_read_outbox_message_id?: number;
+    self_user_id?: number;
     error?: string;
   };
   if (!response.ok || !json.ok) {
@@ -239,16 +248,24 @@ async function fetchChatHistoryPage(
       hasMoreOlder: false,
       nextBeforeMessageId: null,
       lastReadOutboxMessageId: null,
+      memberCount: null,
+      selfUserId: null,
     };
   }
   const rows: MessageChatHistoryItem[] = [];
+  const selfUserRaw = Number(json.self_user_id);
+  const selfUserId =
+    Number.isFinite(selfUserRaw) && selfUserRaw > 0
+      ? safeTelegramUserIdForLog(selfUserRaw) ?? null
+      : null;
   if (Array.isArray(json.messages)) {
     for (const raw of json.messages) {
-      const row = normalizeHistoryMessage(raw, peerUserId);
+      const row = normalizeHistoryMessage(raw, peerUserId, selfUserId);
       if (row) rows.push(row);
     }
   }
   const lastReadRaw = Number(json.last_read_outbox_message_id);
+  const memberRaw = Number(json.member_count);
   return {
     messages: rows,
     chatKind: normalizeChatKind(json.chat_kind),
@@ -262,7 +279,22 @@ async function fetchChatHistoryPage(
         : null,
     lastReadOutboxMessageId:
       Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
+    memberCount:
+      Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
+    selfUserId,
   };
+}
+
+function applyHistoryMetaToSelectedChat(
+  chatId: number,
+  chatKind: MessageChatKind | null,
+  memberCount: number | null,
+): void {
+  if (chatKind == null && memberCount == null) return;
+  patchAuthenticatedHomeSelectedChatGroupMeta(chatId, {
+    ...(chatKind != null ? { chat_kind: chatKind } : {}),
+    ...(memberCount != null ? { member_count: memberCount } : {}),
+  });
 }
 
 export function MessageChatMessageList({ chat, colors }: Props) {
@@ -281,6 +313,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [nextBeforeMessageId, setNextBeforeMessageId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastReadOutboxFromHistory, setLastReadOutboxFromHistory] = useState<number | null>(null);
+  const [selfUserId, setSelfUserId] = useState<number | null>(null);
   const [columnWidthPx, setColumnWidthPx] = useState(0);
   const scrollControllerRef = useRef<HspScrollColumnHandle | null>(null);
   const loadingOlderRef = useRef(false);
@@ -290,6 +323,13 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const historyPollInFlightRef = useRef(false);
   const historyPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatLiveSignatureValue = chatLiveSignature(chat);
+  const historyMessageContext = useMemo(
+    (): HistoryMessageContext => ({
+      peerUserId: chat.peer_user_id,
+      selfUserId,
+    }),
+    [chat.peer_user_id, selfUserId],
+  );
 
   useEffect(() => {
     lastLiveSignatureRef.current = "";
@@ -342,10 +382,10 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   useEffect(() => {
     return subscribeOutgoingChatMessages(({ chatId, message }) => {
       if (chatId !== chat.telegram_chat_id) return;
-      setMessages((prev) => mergeHistoryMessages(prev, [message]));
+      setMessages((prev) => mergeHistoryMessages(prev, [message], historyMessageContext));
       scrollToBottom();
     });
-  }, [chat.telegram_chat_id, scrollToBottom]);
+  }, [chat.telegram_chat_id, historyMessageContext, scrollToBottom]);
 
   useEffect(() => {
     if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {
@@ -357,6 +397,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       setHasMoreOlder(false);
       setNextBeforeMessageId(null);
       setLastReadOutboxFromHistory(null);
+      setSelfUserId(null);
       return;
     }
 
@@ -369,6 +410,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     setHasMoreOlder(false);
     setNextBeforeMessageId(null);
     setLastReadOutboxFromHistory(null);
+    setSelfUserId(null);
 
     logPageDisplay("messages_history_load_start", chatLogFields({
       chatId: chat.telegram_chat_id,
@@ -378,7 +420,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
     void (async () => {
       try {
-        await warmupTelegramSession(chat.telegram_chat_id);
+        const warmupPromise = warmupTelegramSession(chat.telegram_chat_id);
         let result = await fetchChatHistoryPage(
           chat.telegram_chat_id,
           MESSAGE_CHAT_HISTORY_PAGE_SIZE,
@@ -389,7 +431,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           result.error === "history_unavailable" ||
           result.error === "not_found"
         ) {
-          await warmupTelegramSession(chat.telegram_chat_id);
+          await warmupPromise;
           result = await fetchChatHistoryPage(
             chat.telegram_chat_id,
             MESSAGE_CHAT_HISTORY_PAGE_SIZE,
@@ -402,6 +444,14 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         }
         setMessages(result.messages);
         setChatKind(result.chatKind);
+        if (result.selfUserId != null) {
+          setSelfUserId(result.selfUserId);
+        }
+        applyHistoryMetaToSelectedChat(
+          chat.telegram_chat_id,
+          result.chatKind,
+          result.memberCount,
+        );
         setHasMoreOlder(result.hasMoreOlder);
         setNextBeforeMessageId(result.nextBeforeMessageId);
         setLastReadOutboxFromHistory((prev) =>
@@ -476,7 +526,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
         lastLiveSignatureRef.current = signature;
         setMessages((prev) => {
-          const merged = mergeHistoryMessages(prev, result.messages);
+          const merged = mergeHistoryMessages(prev, result.messages, historyMessageContext);
           const prevMaxId = prev.length > 0 ? prev[prev.length - 1]!.telegram_message_id : 0;
           const mergedMaxId =
             merged.length > 0 ? merged[merged.length - 1]!.telegram_message_id : 0;
@@ -485,8 +535,16 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           }
           return merged;
         });
+        if (result.selfUserId != null) {
+          setSelfUserId(result.selfUserId);
+        }
         setLastReadOutboxFromHistory((prev) =>
           mergeReadOutboxCursor(prev, result.lastReadOutboxMessageId),
+        );
+        applyHistoryMetaToSelectedChat(
+          chat.telegram_chat_id,
+          result.chatKind,
+          result.memberCount,
         );
       } finally {
         historyPollInFlightRef.current = false;
@@ -523,6 +581,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   }, [
     chat.telegram_chat_id,
     chatLiveSignatureValue,
+    historyMessageContext,
     isAuthenticated,
     isTelegramMessagesConnected,
     loadingInitial,
@@ -625,7 +684,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
       let addedCount = 0;
       setMessages((prev) => {
-        const merged = mergeHistoryMessages(prev, result.messages);
+        const merged = mergeHistoryMessages(prev, result.messages, historyMessageContext);
         addedCount = merged.length - prev.length;
         return merged;
       });
@@ -662,6 +721,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         });
         return;
       }
+      if (result.selfUserId != null) {
+        setSelfUserId(result.selfUserId);
+      }
       if (scrollAnchor) {
         pendingScrollAnchorRef.current = scrollAnchor;
       }
@@ -691,6 +753,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     chat.telegram_chat_id,
     chat.title,
     hasMoreOlder,
+    historyMessageContext,
     loadingInitial,
   ]);
 
@@ -780,6 +843,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
               item={item}
               colors={colors}
               columnWidthPx={innerWidthPx}
+              selfUserId={selfUserId}
             />
           </View>
         ))}

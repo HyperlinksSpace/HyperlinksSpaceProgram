@@ -1,0 +1,30 @@
+import type { MessageChatHistoryItem } from "./messageChatHistoryTypes";
+
+/** Short label for reply preview when the message has no text body. */
+export function messageChatActionPreviewText(item: MessageChatHistoryItem): string {
+  const text = item.text.trim();
+  if (text) return text;
+  const kind = item.content_kind;
+  if (kind === "photo") return "Photo";
+  if (kind === "video") return "Video";
+  if (kind === "animation") return "GIF";
+  if (kind === "sticker") return "Sticker";
+  if (kind === "document") return "File";
+  if (kind === "call") return "Call";
+  if (item.has_media) return "Media";
+  return "Message";
+}
+
+export function canReplyToMessage(_item: MessageChatHistoryItem): boolean {
+  return true;
+}
+
+/** Only outgoing plain-text messages can be edited in Telegram. */
+export function canEditMessage(item: MessageChatHistoryItem): boolean {
+  if (!item.is_outgoing) return false;
+  if (item.content_kind === "call") return false;
+  if (item.has_media && item.content_kind !== "text" && item.content_kind !== undefined) {
+    return false;
+  }
+  return item.text.trim().length > 0;
+}

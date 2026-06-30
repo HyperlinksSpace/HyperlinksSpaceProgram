@@ -75,6 +75,7 @@ export async function fetchChatHistory(
   beforeMessageId?: number | null,
 ): Promise<{
   chat_kind: ChatKind;
+  self_user_id: number | null;
   messages: MappedChatHistoryMessage[];
   has_more_older: boolean;
   next_before_message_id: number | null;
@@ -95,6 +96,7 @@ export async function fetchChatHistory(
 
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
   const chatKind = chatKindFromTdChat(chat);
+  const selfUserId = await resolveMyUserId(client);
 
   const loadPage = async (cursorMessageId?: number | null): Promise<TdMessage[]> => {
     const fromMessageId =
@@ -197,6 +199,7 @@ export async function fetchChatHistory(
 
   return {
     chat_kind: chatKind,
+    self_user_id: selfUserId,
     messages,
     has_more_older: hasMoreOlder,
     next_before_message_id: nextBeforeMessageId,
@@ -210,6 +213,7 @@ export async function sendChatTextMessage(
   client: Client,
   chatId: number,
   text: string,
+  replyToMessageId?: number | null,
 ): Promise<MappedChatHistoryMessage | null> {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > MAX_OUTGOING_TEXT_LENGTH) return null;
@@ -220,9 +224,18 @@ export async function sendChatTextMessage(
     /* already open or TDLib will reject send with a clearer error */
   }
 
+  const replyId = Number(replyToMessageId);
   const message = (await client.invoke({
     _: "sendMessage",
     chat_id: chatId,
+    ...(Number.isFinite(replyId) && replyId > 0
+      ? {
+          reply_to: {
+            _: "inputMessageReplyToMessage",
+            message_id: Math.trunc(replyId),
+          },
+        }
+      : {}),
     input_message_content: {
       _: "inputMessageText",
       text: {
@@ -239,4 +252,37 @@ export async function sendChatTextMessage(
   if (!mapped || !mapped.is_outgoing) return mapped;
   if (mapped.outgoing_status === "failed") return mapped;
   return { ...mapped, outgoing_status: "delivered" };
+}
+
+export async function editChatTextMessage(
+  client: Client,
+  chatId: number,
+  messageId: number,
+  text: string,
+): Promise<MappedChatHistoryMessage | null> {
+  const trimmed = text.trim();
+  const telegramMessageId = Number(messageId);
+  if (!trimmed || trimmed.length > MAX_OUTGOING_TEXT_LENGTH) return null;
+  if (!Number.isFinite(telegramMessageId) || telegramMessageId <= 0) return null;
+
+  const message = (await client.invoke({
+    _: "editMessageText",
+    chat_id: chatId,
+    message_id: Math.trunc(telegramMessageId),
+    input_message_content: {
+      _: "inputMessageText",
+      text: {
+        _: "formattedText",
+        text: trimmed,
+        entities: [],
+      },
+    },
+  })) as TdMessage;
+
+  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const myUserId = await resolveMyUserId(client);
+  const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map(), myUserId);
+  if (!mapped || !mapped.is_outgoing) return mapped;
+  if (mapped.outgoing_status === "failed") return mapped;
+  return { ...mapped, outgoing_status: mapped.outgoing_status ?? "delivered" };
 }

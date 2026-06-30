@@ -2,7 +2,7 @@ import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
 import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
-import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, type TdChat, type TdMessage } from "./chatPreview.js";
+import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 
@@ -238,10 +238,14 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
         first_name?: string;
         last_name?: string;
         username?: string;
+        usernames?: { active_usernames?: string[]; editable_username?: string };
       };
       const parts = [user.first_name, user.last_name].filter(Boolean);
       userName = parts.join(" ").trim();
-      if (!userName && user.username) userName = `@${user.username}`;
+      if (!userName) {
+        const username = usernameFromTdUser(user);
+        if (username) userName = `@${username}`;
+      }
     } catch {
       /* optional display name */
     }

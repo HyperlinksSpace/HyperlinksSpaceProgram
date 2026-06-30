@@ -8,7 +8,7 @@ import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./en
 import { logGateway } from "./gatewayLog.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
-import { fetchChatHistory, sendChatTextMessage } from "./chatHistory.js";
+import { fetchChatHistory, sendChatTextMessage, editChatTextMessage } from "./chatHistory.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
@@ -1147,41 +1147,53 @@ export async function getChatHistoryForUser(
   beforeMessageId?: number | null,
 ): Promise<{
   chat_kind: Awaited<ReturnType<typeof fetchChatHistory>>["chat_kind"];
+  self_user_id: number | null;
   messages: Awaited<ReturnType<typeof fetchChatHistory>>["messages"];
   has_more_older: boolean;
   next_before_message_id: number | null;
   last_read_outbox_message_id: number | null;
+  member_count: number | null;
   error: string | null;
 }> {
   const record = await requireReadySession(telegramUsername, 30_000);
   if (!record) {
     return {
       chat_kind: "private",
+      self_user_id: null,
       messages: [],
       has_more_older: false,
       next_before_message_id: null,
       last_read_outbox_message_id: null,
+      member_count: null,
       error: "session_not_ready",
     };
   }
   try {
     const result = await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
+    const liveRow = getLiveChatList(telegramUsername)?.find((row) => row.telegram_chat_id === chatId);
     return {
-      chat_kind: result.chat_kind,
+      chat_kind: liveRow?.chat_kind ?? result.chat_kind,
+      self_user_id: result.self_user_id,
       messages: result.messages,
       has_more_older: result.has_more_older,
       next_before_message_id: result.next_before_message_id,
       last_read_outbox_message_id: result.last_read_outbox_message_id,
+      member_count:
+        typeof liveRow?.member_count === "number" && liveRow.member_count > 0
+          ? liveRow.member_count
+          : null,
       error: null,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "history_failed";
     return {
       chat_kind: "private",
+      self_user_id: null,
       messages: [],
       has_more_older: false,
       next_before_message_id: null,
       last_read_outbox_message_id: null,
+      member_count: null,
       error: message,
     };
   }
@@ -1191,6 +1203,7 @@ export async function sendChatMessageForUser(
   telegramUsername: string,
   chatId: number,
   text: string,
+  replyToMessageId?: number | null,
 ): Promise<{ message: Awaited<ReturnType<typeof sendChatTextMessage>>; error: string | null }> {
   const trimmed = text.trim();
   if (!trimmed) {
@@ -1206,13 +1219,53 @@ export async function sendChatMessageForUser(
   }
 
   try {
-    const message = await sendChatTextMessage(record.client, chatId, trimmed);
+    const message = await sendChatTextMessage(record.client, chatId, trimmed, replyToMessageId);
     if (!message) {
       return { message: null, error: "send_failed" };
     }
     return { message, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "send_failed";
+    return { message: null, error: message };
+  }
+}
+
+export async function editChatMessageForUser(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  text: string,
+): Promise<{ message: Awaited<ReturnType<typeof editChatTextMessage>>; error: string | null }> {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { message: null, error: "text_required" };
+  }
+  if (trimmed.length > 4096) {
+    return { message: null, error: "text_too_long" };
+  }
+  const telegramMessageId = Number(messageId);
+  if (!Number.isFinite(telegramMessageId) || telegramMessageId <= 0) {
+    return { message: null, error: "message_id_required" };
+  }
+
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { message: null, error: "session_not_ready" };
+  }
+
+  try {
+    const message = await editChatTextMessage(
+      record.client,
+      chatId,
+      telegramMessageId,
+      trimmed,
+    );
+    if (!message) {
+      return { message: null, error: "edit_failed" };
+    }
+    return { message, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "edit_failed";
     return { message: null, error: message };
   }
 }
@@ -1273,6 +1326,13 @@ export async function ensureLiveChatPeerEmojiStatuses(telegramUsername: string):
   if (!record) return 0;
   const { refreshMissingPeerEmojiStatuses } = await import("./syncChats.js");
   return refreshMissingPeerEmojiStatuses(record.client, telegramUsername);
+}
+
+export async function ensureLiveChatMemberCounts(telegramUsername: string): Promise<number> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return 0;
+  const { refreshMissingMemberCounts } = await import("./syncChats.js");
+  return refreshMissingMemberCounts(record.client, telegramUsername);
 }
 
 export async function getCustomEmojiForUser(

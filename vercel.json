@@ -30,6 +30,10 @@
       "destination": "/api/telegram-messages-send"
     },
     {
+      "source": "/api/telegram/messages/edit",
+      "destination": "/api/telegram-messages-edit"
+    },
+    {
       "source": "/api/telegram/mtproto/connect/start",
       "destination": "/api/telegram-mtproto-connect-start"
     },

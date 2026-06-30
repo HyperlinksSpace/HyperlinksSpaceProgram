@@ -9,12 +9,15 @@ import {
   normalizeUnreadCount,
   peerUserIdFromChat,
   previewFromMessage,
+  peerUsernameFromChat,
+  chatUsernameFromChat,
   type ChatActionKind,
   type ChatPresenceKind,
   type TdChat,
   type TdMessage,
 } from "./chatPreview.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
+import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 
 export type LiveChatRow = {
@@ -26,6 +29,9 @@ export type LiveChatRow = {
   last_message_at: string;
   unread_count: number;
   peer_user_id: number | null;
+  peer_username: string | null;
+  chat_username: string | null;
+  chat_kind?: "private" | "group" | "supergroup" | "channel" | null;
   member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind: ChatPresenceKind | null;
@@ -160,6 +166,8 @@ export function patchLiveChatFromTdlib(
     avatar_url?: string | null;
     last_message?: TdMessage | null;
     peer_emoji_status_custom_emoji_id?: string | null;
+    peer_username?: string | null;
+    chat_username?: string | null;
   },
 ): LiveChatRow {
   const cache = userCache(telegramUsername);
@@ -183,6 +191,15 @@ export function patchLiveChatFromTdlib(
     last_message_at: lastMessageAtIso(chat, lastMessage),
     unread_count: normalizeUnreadCount(chat),
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
+    peer_username:
+      input.peer_username !== undefined
+        ? input.peer_username
+        : (existing?.peer_username ?? peerUsernameFromChat(chat)),
+    chat_username:
+      input.chat_username !== undefined
+        ? input.chat_username
+        : (existing?.chat_username ?? chatUsernameFromChat(chat)),
+    chat_kind: chatKindFromTdChat(chat),
     member_count: existing?.member_count ?? null,
     peer_emoji_status_custom_emoji_id:
       input.peer_emoji_status_custom_emoji_id !== undefined
@@ -228,6 +245,9 @@ export function patchLiveChatAction(
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
+    peer_username: existing.peer_username ?? null,
+    chat_username: existing.chat_username ?? null,
+    chat_kind: existing.chat_kind ?? null,
     member_count: existing.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing.presence_kind,
@@ -260,6 +280,9 @@ export function patchLiveChatPresence(
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
+      peer_username: row.peer_username ?? null,
+      chat_username: row.chat_username ?? null,
+      chat_kind: row.chat_kind ?? null,
       member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: row.peer_emoji_status_custom_emoji_id ?? null,
       presence_kind: presence.kind,
@@ -294,6 +317,9 @@ export function patchLiveChatEmojiStatus(
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
+      peer_username: row.peer_username ?? null,
+      chat_username: row.chat_username ?? null,
+      chat_kind: row.chat_kind ?? null,
       member_count: row.member_count ?? null,
       peer_emoji_status_custom_emoji_id: customEmojiId,
       presence_kind: row.presence_kind,
@@ -335,6 +361,9 @@ export function applyLiveMessageUpdate(
         ? unreadCount
         : (existing?.unread_count ?? 0),
     peer_user_id: existing?.peer_user_id ?? null,
+    peer_username: existing?.peer_username ?? null,
+    chat_username: existing?.chat_username ?? null,
+    chat_kind: existing?.chat_kind ?? null,
     member_count: existing?.member_count ?? null,
     peer_emoji_status_custom_emoji_id: existing?.peer_emoji_status_custom_emoji_id ?? null,
     presence_kind: existing?.presence_kind ?? null,
@@ -348,4 +377,43 @@ export function applyLiveMessageUpdate(
     pin_order: existing?.pin_order ?? "0",
   };
   return upsertLiveChatRow(telegramUsername, row);
+}
+
+export function patchLiveChatMemberMeta(
+  telegramUsername: string,
+  chatId: number,
+  input: {
+    member_count?: number | null;
+    chat_kind?: LiveChatRow["chat_kind"];
+  },
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  const existing = cache.chats.get(chatId);
+  if (!existing) return null;
+  return upsertLiveChatRow(telegramUsername, {
+    telegram_chat_id: existing.telegram_chat_id,
+    title: existing.title,
+    subtitle: existing.subtitle,
+    ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
+    avatar_url: existing.avatar_url,
+    last_message_at: existing.last_message_at,
+    unread_count: existing.unread_count,
+    peer_user_id: existing.peer_user_id,
+    peer_username: existing.peer_username ?? null,
+    chat_username: existing.chat_username ?? null,
+    chat_kind: input.chat_kind !== undefined ? input.chat_kind : (existing.chat_kind ?? null),
+    member_count:
+      input.member_count !== undefined ? input.member_count : (existing.member_count ?? null),
+    peer_emoji_status_custom_emoji_id: existing.peer_emoji_status_custom_emoji_id ?? null,
+    presence_kind: existing.presence_kind,
+    presence_at: existing.presence_at,
+    chat_action: existing.chat_action,
+    chat_action_user_id: existing.chat_action_user_id,
+    chat_action_user_name: existing.chat_action_user_name,
+    chat_action_expires_at: existing.chat_action_expires_at,
+    last_read_outbox_message_id: existing.last_read_outbox_message_id,
+    is_pinned: existing.is_pinned,
+    pin_order: existing.pin_order,
+  });
 }

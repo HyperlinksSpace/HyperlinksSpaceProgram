@@ -49,11 +49,11 @@ export async function fetchTelegramEmojiAsset(
   const url = buildApiUrl(`/api/telegram-messages-custom-emoji?${params.toString()}`);
   let response = await fetch(url, { credentials: "include" });
   if (response.status === 403 || response.status === 503) {
-    await sleep(1200);
+    await sleep(600);
     response = await fetch(url, { credentials: "include" });
   }
   if (!response.ok && ref.kind === "custom") {
-    await sleep(800);
+    await sleep(400);
     response = await fetch(url, { credentials: "include" });
   }
   if (!response.ok) return null;

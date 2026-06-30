@@ -17,6 +17,7 @@ import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { MessageChatRichText } from "./MessageChatRichText";
 import { formatMessageChatListSubtitle } from "./formatMessageChatSubheader";
+import { formatMessageChatRowUsernameLabel } from "./formatTelegramChatRowUsername";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import {
@@ -36,6 +37,8 @@ export type MessageChatActionKind =
   | "uploading_video"
   | "uploading_file";
 
+export type MessageChatKind = "private" | "group" | "supergroup" | "channel";
+
 export type MessageChatRowData = {
   id: number;
   telegram_chat_id: number;
@@ -46,6 +49,9 @@ export type MessageChatRowData = {
   last_message_at: string | null;
   unread_count: number;
   peer_user_id?: number | null;
+  peer_username?: string | null;
+  chat_username?: string | null;
+  chat_kind?: MessageChatKind | null;
   member_count?: number | null;
   peer_emoji_status_custom_emoji_id?: string | null;
   presence_kind?: "online" | "recently" | "last_week" | "last_month" | "offline" | null;
@@ -86,6 +92,7 @@ export function MessageChatRow({
 }) {
   const { locale } = useAppStrings();
   const title = item.title.trim();
+  const usernameLabel = formatMessageChatRowUsernameLabel(item);
   const subtitle = formatMessageChatListSubtitle(item, locale);
   const subtitleSegments = useMemo(
     () => normalizeFormattedTextSegments(item.subtitle_segments),
@@ -208,7 +215,7 @@ export function MessageChatRow({
         <View
           style={{
             flexDirection: "row",
-            alignItems: "center",
+            alignItems: usernameLabel ? "flex-start" : "center",
             minHeight: MESSAGE_LINE_HEIGHT_PX,
           }}
         >
@@ -216,12 +223,24 @@ export function MessageChatRow({
             <SpecialTelegramUserName
               name={title}
               telegramUserId={item.peer_user_id ?? null}
+              telegramChatId={item.telegram_chat_id}
               emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
               textStyle={{
                 ...textBase,
                 color: colors.primary,
               }}
             />
+            {usernameLabel ? (
+              <Text
+                numberOfLines={1}
+                style={{
+                  ...textBase,
+                  color: colors.secondary,
+                }}
+              >
+                {usernameLabel}
+              </Text>
+            ) : null}
           </View>
           {gapTitleTime ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {timeLabel ? (

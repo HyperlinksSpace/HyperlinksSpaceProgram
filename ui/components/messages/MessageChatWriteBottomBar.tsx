@@ -1,20 +1,43 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeSelectedChat } from "../../authenticatedHomeSelectedChat";
+import {
+  clearMessageChatCompose,
+  useMessageChatCompose,
+} from "../../messageChatCompose";
 import { publishOutgoingChatMessage } from "../../messageChatOutgoing";
+import { editTelegramChatMessage } from "../../telegram/editTelegramChatMessage";
 import { sendTelegramChatMessage } from "../../telegram/sendTelegramChatMessage";
 import { enrichHistoryMessageDisplay } from "../messages/messageChatHistoryTypes";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { appWarn } from "../../../shared/appLog";
+import { useColors } from "../../theme";
 import { GlobalBottomBar } from "../GlobalBottomBar";
+import { MessageChatComposeStrip } from "../messages/MessageChatComposeStrip";
 
 /** Chat compose bar in wide three-column layout — same chrome as {@link GlobalBottomBar}. */
 export function MessageChatWriteBottomBar() {
   const { t } = useAppStrings();
+  const colors = useColors();
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const { isTelegramMessagesConnected } = useTelegramMessagesConnection();
+  const compose = useMessageChatCompose(selectedChat?.telegram_chat_id);
+  const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
+  const editPrefillRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (compose?.edit) {
+      if (editPrefillRef.current !== compose.edit.telegram_message_id) {
+        editPrefillRef.current = compose.edit.telegram_message_id;
+        setDraft(compose.edit.text);
+      }
+      return;
+    }
+    editPrefillRef.current = null;
+  }, [compose?.edit]);
 
   const onSubmit = useCallback(
     async (text: string) => {
@@ -22,12 +45,39 @@ export function MessageChatWriteBottomBar() {
       sendingRef.current = true;
       setSending(true);
       try {
-        const result = await sendTelegramChatMessage(selectedChat.telegram_chat_id, text);
+        if (compose?.edit) {
+          const result = await editTelegramChatMessage(
+            selectedChat.telegram_chat_id,
+            compose.edit.telegram_message_id,
+            text,
+          );
+          if (result.ok) {
+            publishOutgoingChatMessage(
+              selectedChat.telegram_chat_id,
+              enrichHistoryMessageDisplay(result.message),
+            );
+            clearMessageChatCompose(selectedChat.telegram_chat_id);
+            setDraft("");
+          } else {
+            appWarn("[message-edit]", String(result.error), {
+              chatId: selectedChat.telegram_chat_id,
+              messageId: compose.edit.telegram_message_id,
+            });
+          }
+          return;
+        }
+
+        const result = await sendTelegramChatMessage(
+          selectedChat.telegram_chat_id,
+          text,
+          compose?.reply?.telegram_message_id ?? null,
+        );
         if (result.ok) {
           publishOutgoingChatMessage(
             selectedChat.telegram_chat_id,
             enrichHistoryMessageDisplay(result.message),
           );
+          clearMessageChatCompose(selectedChat.telegram_chat_id);
         } else {
           appWarn("[message-send]", String(result.error), {
             chatId: selectedChat.telegram_chat_id,
@@ -38,18 +88,35 @@ export function MessageChatWriteBottomBar() {
         setSending(false);
       }
     },
-    [isTelegramMessagesConnected, selectedChat],
+    [compose, isTelegramMessagesConnected, selectedChat],
   );
+
+  const onDismissCompose = useCallback(() => {
+    if (compose?.edit) {
+      setDraft("");
+    }
+  }, [compose?.edit]);
 
   const canSend = selectedChat != null && isTelegramMessagesConnected && !sending;
 
+  if (selectedChat?.chat_kind === "channel") {
+    return null;
+  }
+
   return (
-    <GlobalBottomBar
-      placeholderText={t("messages.chatWrite.placeholder")}
-      iconRotationDeg={-45}
-      sendAccessibilityLabel={t("messages.chatWrite.send")}
-      useLocalDraft
-      onSubmit={canSend ? onSubmit : () => {}}
-    />
+    <View>
+      {compose ? (
+        <MessageChatComposeStrip compose={compose} colors={colors} onDismiss={onDismissCompose} />
+      ) : null}
+      <GlobalBottomBar
+        placeholderText={t("messages.chatWrite.placeholder")}
+        iconRotationDeg={-45}
+        sendAccessibilityLabel={t("messages.chatWrite.send")}
+        useLocalDraft
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={canSend ? onSubmit : () => {}}
+      />
+    </View>
   );
 }

@@ -18,6 +18,7 @@ import {
 type Props = {
   name: string;
   telegramUserId: number | null | undefined;
+  telegramChatId?: number | null;
   emojiStatusCustomEmojiId?: string | null;
   textStyle: TextStyle;
   numberOfLines?: number;
@@ -58,19 +59,20 @@ function SpecialUserBadge({ kind, size }: { kind: NonNullable<ReturnType<typeof 
 export function SpecialTelegramUserName({
   name,
   telegramUserId,
+  telegramChatId = null,
   emojiStatusCustomEmojiId,
   textStyle,
   numberOfLines = 1,
   textAlign = "left",
   containerStyle,
 }: Props) {
-  const displayName = specialUserDisplayName(telegramUserId, name);
-  const badgeKind = specialUserBadgeKind(telegramUserId, name);
+  const displayName = specialUserDisplayName(telegramUserId, name, telegramChatId);
+  const badgeKind = specialUserBadgeKind(telegramUserId, name, telegramChatId);
   const showSpecialBadge = badgeKind != null;
   const telegramEmojiStatusId = emojiStatusCustomEmojiId?.trim() || null;
   const showTelegramEmojiStatus = !showSpecialBadge && Boolean(telegramEmojiStatusId);
   const showBadge = showSpecialBadge || showTelegramEmojiStatus;
-  const showShine = specialUserShowsShineName(telegramUserId, name);
+  const showShine = specialUserShowsShineName(telegramUserId, name, telegramChatId);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
 
   const nameContent =

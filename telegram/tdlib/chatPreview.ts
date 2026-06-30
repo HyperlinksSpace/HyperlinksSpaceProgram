@@ -114,6 +114,41 @@ export function peerUserIdFromChat(chat: TdChat): number | null {
   return typeof userId === "number" && Number.isFinite(userId) ? userId : null;
 }
 
+export function normalizeTelegramUsername(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim().replace(/^@+/, "");
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function usernameFromTdUser(user: {
+  username?: string;
+  usernames?: { active_usernames?: string[]; editable_username?: string };
+}): string | null {
+  const active = user.usernames?.active_usernames;
+  if (Array.isArray(active)) {
+    for (const entry of active) {
+      const normalized = normalizeTelegramUsername(entry);
+      if (normalized) return normalized;
+    }
+  }
+  const editable = normalizeTelegramUsername(user.usernames?.editable_username);
+  if (editable) return editable;
+  return normalizeTelegramUsername(user.username);
+}
+
+export function peerUsernameFromChat(chat: TdChat): string | null {
+  if (chat.type?._ !== "chatTypePrivate") return null;
+  return normalizeTelegramUsername(chat.type?.username);
+}
+
+export function chatUsernameFromChat(chat: TdChat): string | null {
+  const type = chat.type?._;
+  if (type === "chatTypeSupergroup" || type === "chatTypeChannel") {
+    return normalizeTelegramUsername(chat.type?.username);
+  }
+  return null;
+}
+
 /** Member count for groups, supergroups, and channels (null for private chats). */
 export async function memberCountFromChat(client: Client, chat: TdChat): Promise<number | null> {
   const type = chat.type?._;
@@ -390,6 +425,13 @@ export function messageReadDateFromTdMessage(message: TdMessage): number | null 
 
 export function messageIsOutgoing(message: TdMessage, myUserId?: number | null): boolean {
   const row = message as Record<string, unknown>;
+  if (message.is_outgoing === false || row.isOutgoing === false) return false;
+
+  const sender = message.sender_id;
+  if (sender?._ === "messageSenderUser" && myUserId != null) {
+    return sender.user_id === myUserId;
+  }
+
   if (message.is_outgoing === true || row.isOutgoing === true) return true;
   const sendingState = message.sending_state?._;
   if (
@@ -397,10 +439,6 @@ export function messageIsOutgoing(message: TdMessage, myUserId?: number | null):
     sendingState === "messageSendingStateFailed"
   ) {
     return true;
-  }
-  if (myUserId != null) {
-    const sender = message.sender_id;
-    if (sender?._ === "messageSenderUser" && sender.user_id === myUserId) return true;
   }
   return false;
 }

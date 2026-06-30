@@ -1639,7 +1639,7 @@ export function HomeAuthenticatedScreen() {
         left={homeLeftColumn}
         right={homeWideRightColumn}
         middleColumnFooter={
-          messagesChatOpen && isTripleColumn
+          messagesChatOpen && isTripleColumn && selectedMessageChat?.chat_kind !== "channel"
             ? <MessageChatWriteBottomBar />
             : messagesChatOpen
             ? aiBarDock === "splitColumn2"

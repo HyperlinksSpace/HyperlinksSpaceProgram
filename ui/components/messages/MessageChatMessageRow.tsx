@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Text, View, type TextLayoutEvent } from "react-native";
+import { Platform, Pressable, Text, View, type TextLayoutEvent } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
@@ -13,6 +13,7 @@ import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHisto
 import {
   isDisplayableMediaMessage,
   isGroupLikeChatKind,
+  messageShowsOutgoingChecks,
   resolveMessageOutgoingStatus,
 } from "./messageChatHistoryTypes";
 import {
@@ -42,6 +43,15 @@ import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import { specialUserBadgeExtraWidthPx, specialUserDisplayName } from "./specialTelegramUserDisplay";
+import {
+  canEditMessage,
+  canReplyToMessage,
+} from "./messageChatActionUtils";
+import { MessageChatMessageActionSheet } from "./MessageChatMessageActionSheet";
+import {
+  setMessageChatComposeEdit,
+  setMessageChatComposeReply,
+} from "../../messageChatCompose";
 
 function fittedBubbleLayoutFromTextLayout(
   event: TextLayoutEvent,
@@ -94,9 +104,17 @@ type Props = {
   item: MessageChatHistoryItem;
   colors: ThemeColors;
   columnWidthPx: number;
+  selfUserId?: number | null;
 };
 
-export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidthPx }: Props) {
+export function MessageChatMessageRow({
+  chat,
+  chatKind,
+  item,
+  colors,
+  columnWidthPx,
+  selfUserId = null,
+}: Props) {
   const { t } = useAppStrings();
   const iconUrl = resolveTelegramThreadAvatarUrl(chat, item, chatKind);
   const avatarInitials = useMemo(() => {
@@ -118,6 +136,7 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     placement: BubbleMetaPlacement;
   } | null>(null);
   const [liveMediaWidthPx, setLiveMediaWidthPx] = useState<number | null>(null);
+  const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
 
@@ -143,7 +162,13 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     if (status === "read" && chatKind !== "private") return "delivered" as const;
     return status;
   })();
-  const checksWidthPx = messageChatOutgoingChecksWidthPx(outgoingStatusForLayout);
+  const showOutgoingChecks = messageShowsOutgoingChecks(item, {
+    peerUserId: chat.peer_user_id,
+    selfUserId,
+  });
+  const checksWidthPx = showOutgoingChecks
+    ? messageChatOutgoingChecksWidthPx(outgoingStatusForLayout)
+    : 0;
   const callArrowWidthPx = messageChatCallArrowWidthPx(isCall);
   const metaWidthPx = measureMessageBubbleMetaWidthPx(
     timeLabel,
@@ -160,22 +185,27 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
   );
   const effectiveMediaWidthPx = liveMediaWidthPx ?? mediaWidthPx;
 
+  const showSenderHeader =
+    isGroupLikeChatKind(chatKind) &&
+    chatKind !== "channel" &&
+    !item.is_outgoing &&
+    item.sender_name.trim().length > 0;
+
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;
     if (showMedia) extra = Math.max(extra, effectiveMediaWidthPx);
-    const senderName =
-      chatKind === "channel"
-        ? ""
-        : specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
-    if (senderName) {
-      extra = Math.max(
-        extra,
-        measureTextGlyphWidth(
-          senderName,
-          MESSAGE_BUBBLE_FONT_SIZE_PX,
-          MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-        ) + specialUserBadgeExtraWidthPx(item.sender_user_id, senderName),
-      );
+    if (showSenderHeader) {
+      const senderName = specialUserDisplayName(item.sender_user_id, item.sender_name.trim());
+      if (senderName) {
+        extra = Math.max(
+          extra,
+          measureTextGlyphWidth(
+            senderName,
+            MESSAGE_BUBBLE_FONT_SIZE_PX,
+            MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+          ) + specialUserBadgeExtraWidthPx(item.sender_user_id, senderName, chat.telegram_chat_id),
+        );
+      }
     }
     const reply = item.reply_to;
     if (reply) {
@@ -191,7 +221,16 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
       extra = Math.max(extra, replySenderWidth + 12, replyTextWidth + 12);
     }
     return extra;
-  }, [bubbleInnerMaxWidth, chatKind, effectiveMediaWidthPx, item.reply_to, item.sender_name, showMedia]);
+  }, [
+    bubbleInnerMaxWidth,
+    chat.telegram_chat_id,
+    effectiveMediaWidthPx,
+    item.reply_to,
+    item.sender_name,
+    item.sender_user_id,
+    showMedia,
+    showSenderHeader,
+  ]);
 
   useEffect(() => {
     setLiveMediaWidthPx(null);
@@ -312,11 +351,6 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     metaPlacement === "inline";
   const bubbleWidth = useWebFitContent ? null : bubbleLayout?.width ?? null;
   const measureText = bodyText || " ";
-  const showSenderHeader =
-    isGroupLikeChatKind(chatKind) &&
-    chatKind !== "channel" &&
-    !item.is_outgoing &&
-    item.sender_name.trim().length > 0;
   const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
   const isCompactSingleLineRow =
     !showMedia &&
@@ -325,6 +359,34 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
     !showChannelBadge &&
     metaPlacement === "inline" &&
     bodyText.length > 0;
+
+  const canReply = canReplyToMessage(item);
+  const canEdit = canEditMessage(item);
+  const showActionSheet = canReply || canEdit;
+
+  const openActionSheet = useCallback(() => {
+    if (!showActionSheet) return;
+    setActionSheetVisible(true);
+  }, [showActionSheet]);
+
+  const onContextMenu = useCallback(
+    (event: { preventDefault?: () => void }) => {
+      if (Platform.OS !== "web" || !showActionSheet) return;
+      event.preventDefault?.();
+      openActionSheet();
+    },
+    [openActionSheet, showActionSheet],
+  );
+
+  const onReply = useCallback(() => {
+    setActionSheetVisible(false);
+    setMessageChatComposeReply(chat.telegram_chat_id, item);
+  }, [chat.telegram_chat_id, item]);
+
+  const onEdit = useCallback(() => {
+    setActionSheetVisible(false);
+    setMessageChatComposeEdit(chat.telegram_chat_id, item);
+  }, [chat.telegram_chat_id, item]);
 
   if (columnWidthPx <= 0) {
     return (
@@ -377,75 +439,93 @@ export function MessageChatMessageRow({ chat, chatKind, item, colors, columnWidt
         )}
       </View>
       <View style={{ width: MESSAGE_BUBBLE_AVATAR_GAP_PX }} />
-      <View style={{ alignSelf: "flex-start", maxWidth: bubbleMaxWidth }}>
-        {Platform.OS !== "web" && bubbleMaxWidth > 0 ? (
-          <Text
-            style={[
-              typographyRect15,
-              {
-                position: "absolute",
-                opacity: 0,
-                width: bubbleInnerMaxWidth,
-                left: 0,
-                top: 0,
-                zIndex: -1,
-                pointerEvents: "none",
-                fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-                lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-              },
-            ]}
-            onTextLayout={onMeasureTextLayout}
-          >
-            {measureText}
-          </Text>
-        ) : null}
-        <View
-          style={[
-            {
-              alignSelf: "flex-start",
-              ...(showMedia
-                ? {
-                    backgroundColor: "transparent",
-                    paddingHorizontal: 0,
-                    paddingVertical: 0,
-                    borderRadius: 0,
-                  }
-                : {
-                    borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
-                    paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
-                    paddingVertical: isCompactSingleLineRow
-                      ? 0
-                      : MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
-                    ...(isCompactSingleLineRow
-                      ? {
-                          height: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
-                          minHeight: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
-                          justifyContent: "center",
-                        }
-                      : null),
-                    backgroundColor: colors.undercover,
-                    overflow: "hidden",
-                  }),
-            },
-            bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,
-            useWebFitContent
-              ? ({ width: "fit-content", maxWidth: bubbleMaxWidth } as object)
-              : null,
-          ]}
+        <Pressable
+          onLongPress={showActionSheet ? openActionSheet : undefined}
+          onContextMenu={onContextMenu}
+          style={({ pressed }) => ({
+            alignSelf: "flex-start",
+            maxWidth: bubbleMaxWidth,
+            opacity: pressed && showActionSheet ? 0.92 : 1,
+          })}
         >
-          <MessageChatBubbleBody
-            chatId={chat.telegram_chat_id}
-            item={item}
-            chatKind={chatKind}
-            colors={colors}
-            maxWidthPx={bubbleContentWidthPx}
-            mediaColumnMaxWidthPx={bubbleInnerMaxWidth}
-            metaPlacement={metaPlacement}
-            compactSingleLine={isCompactSingleLineRow}
-            onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
-          />
-        </View>
-      </View>
+          {Platform.OS !== "web" && bubbleMaxWidth > 0 ? (
+            <Text
+              style={[
+                typographyRect15,
+                {
+                  position: "absolute",
+                  opacity: 0,
+                  width: bubbleInnerMaxWidth,
+                  left: 0,
+                  top: 0,
+                  zIndex: -1,
+                  pointerEvents: "none",
+                  fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+                  lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+                },
+              ]}
+              onTextLayout={onMeasureTextLayout}
+            >
+              {measureText}
+            </Text>
+          ) : null}
+          <View
+            style={[
+              {
+                alignSelf: "flex-start",
+                ...(showMedia
+                  ? {
+                      backgroundColor: "transparent",
+                      paddingHorizontal: 0,
+                      paddingVertical: 0,
+                      borderRadius: 0,
+                    }
+                  : {
+                      borderRadius: MESSAGE_BUBBLE_BORDER_RADIUS_PX,
+                      paddingHorizontal: MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX,
+                      paddingVertical: isCompactSingleLineRow
+                        ? 0
+                        : MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
+                      ...(isCompactSingleLineRow
+                        ? {
+                            height: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
+                            minHeight: MESSAGE_BUBBLE_COMPACT_HEIGHT_PX,
+                            justifyContent: "center",
+                          }
+                        : null),
+                      backgroundColor: colors.undercover,
+                      overflow: "hidden",
+                    }),
+              },
+              bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,
+              useWebFitContent
+                ? ({ width: "fit-content", maxWidth: bubbleMaxWidth } as object)
+                : null,
+            ]}
+          >
+            <MessageChatBubbleBody
+              chatId={chat.telegram_chat_id}
+              item={item}
+              chatKind={chatKind}
+              colors={colors}
+              maxWidthPx={bubbleContentWidthPx}
+              mediaColumnMaxWidthPx={bubbleInnerMaxWidth}
+              metaPlacement={metaPlacement}
+              compactSingleLine={isCompactSingleLineRow}
+              onMediaDisplaySizeChange={(widthPx) => setLiveMediaWidthPx(widthPx)}
+              peerUserId={chat.peer_user_id}
+              selfUserId={selfUserId}
+            />
+          </View>
+        </Pressable>
+      <MessageChatMessageActionSheet
+        visible={actionSheetVisible}
+        colors={colors}
+        canEdit={canEdit}
+        onClose={() => setActionSheetVisible(false)}
+        onReply={onReply}
+        onEdit={onEdit}
+      />
     </View>
   );
 }

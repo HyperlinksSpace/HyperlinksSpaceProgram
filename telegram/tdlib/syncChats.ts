@@ -6,6 +6,7 @@ import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.
 import { getTdlibUserDir } from "./env.js";
 import {
   chatTitle,
+  chatUsernameFromChat,
   isChatPinnedInMainList,
   lastMessageAtIso,
   mainListOrderKey,
@@ -13,11 +14,14 @@ import {
   lastReadOutboxMessageIdFromChat,
   memberCountFromChat,
   peerUserIdFromChat,
+  peerUsernameFromChat,
   presenceFromTdlibStatus,
   resolveLastMessagePreview,
+  usernameFromTdUser,
   type TdChat,
 } from "./chatPreview.js";
-import { patchLiveChatEmojiStatus, patchLiveChatFromTdlib, seedLiveChatList, getLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import { patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatMemberMeta, seedLiveChatList, getLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { emojiStatusCustomIdFromUser } from "./emojiStatus.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import {
@@ -465,22 +469,26 @@ async function resolvePeerProfile(
 ): Promise<{
   presence: { kind: LiveChatRow["presence_kind"]; at: string | null } | null;
   emojiStatusCustomEmojiId: string | null;
+  username: string | null;
 }> {
   const peerUserId = peerUserIdFromChat(chat);
   if (peerUserId == null) {
-    return { presence: null, emojiStatusCustomEmojiId: null };
+    return { presence: null, emojiStatusCustomEmojiId: null, username: null };
   }
   try {
     const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as {
       status?: unknown;
       emoji_status?: unknown;
+      username?: string;
+      usernames?: { active_usernames?: string[]; editable_username?: string };
     };
     return {
       presence: presenceFromTdlibStatus(user.status),
       emojiStatusCustomEmojiId: emojiStatusCustomIdFromUser(user),
+      username: usernameFromTdUser(user),
     };
   } catch {
-    return { presence: null, emojiStatusCustomEmojiId: null };
+    return { presence: null, emojiStatusCustomEmojiId: null, username: null };
   }
 }
 
@@ -517,11 +525,43 @@ export async function refreshMissingPeerEmojiStatuses(
     try {
       const user = (await client.invoke({ _: "getUser", user_id: peerUserId })) as unknown;
       const customEmojiId = emojiStatusCustomIdFromUser(user);
-      if (!customEmojiId && !row.peer_emoji_status_custom_emoji_id) continue;
       patchLiveChatEmojiStatus(telegramUsername, peerUserId, customEmojiId);
       refreshed += 1;
     } catch {
       /* per-peer fetch may fail for deleted users */
+    }
+  }
+  return refreshed;
+}
+
+/** Backfill member counts for group / channel rows missing them in the live cache. */
+export async function refreshMissingMemberCounts(
+  client: Client,
+  telegramUsername: string,
+  maxChats = 32,
+): Promise<number> {
+  const rows = getLiveChatList(telegramUsername);
+  if (!rows?.length) return 0;
+
+  let refreshed = 0;
+  for (const row of rows) {
+    if (refreshed >= maxChats) break;
+    const kind = row.chat_kind;
+    const isPrivate =
+      kind === "private" || (kind == null && row.peer_user_id != null);
+    if (isPrivate) continue;
+    if (row.member_count != null && row.member_count > 0 && kind != null) continue;
+    try {
+      const chat = (await client.invoke({ _: "getChat", chat_id: row.telegram_chat_id })) as TdChat;
+      const chatKind = chatKindFromTdChat(chat);
+      const count = await memberCountFromChat(client, chat);
+      patchLiveChatMemberMeta(telegramUsername, row.telegram_chat_id, {
+        member_count: count,
+        chat_kind: chatKind,
+      });
+      refreshed += 1;
+    } catch {
+      /* per-chat fetch may fail for deleted chats */
     }
   }
   return refreshed;
@@ -566,6 +606,9 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
       peer_user_id: peerUserIdFromChat(chat),
+      peer_username: profile?.username ?? peerUsernameFromChat(chat),
+      chat_username: chatUsernameFromChat(chat),
+      chat_kind: chatKindFromTdChat(chat),
       member_count: memberCounts[i] ?? null,
       peer_emoji_status_custom_emoji_id: profile?.emojiStatusCustomEmojiId ?? null,
       presence_kind: profile?.presence?.kind ?? null,
