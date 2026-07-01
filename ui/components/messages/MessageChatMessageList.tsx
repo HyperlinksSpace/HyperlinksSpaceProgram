@@ -2,6 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, Text, View, type LayoutChangeEvent } from "react-native";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import {
+  clearRecentChatSenderStatusRules,
+  syncRecentChatSenderStatusRules,
+} from "../../../shared/specialTelegramUsers";
 import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSelectedChat";
 import { chatLogFields, logPageDisplay } from "../../pageDisplayLog";
 import {
@@ -208,6 +212,13 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   useEffect(() => {
     patchAuthenticatedHomeSelectedChatReadOutbox(readOutboxCursor);
   }, [readOutboxCursor]);
+
+  useEffect(() => {
+    syncRecentChatSenderStatusRules(chat.telegram_chat_id, messages);
+    return () => {
+      clearRecentChatSenderStatusRules(chat.telegram_chat_id);
+    };
+  }, [chat.telegram_chat_id, messages]);
 
   const displayMessages = useMemo(() => {
     const enriched = messages.map(enrichHistoryMessageDisplay);

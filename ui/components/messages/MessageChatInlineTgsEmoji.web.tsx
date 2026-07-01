@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { Text } from "react-native";
 import {
   fetchTelegramEmojiAsset,
@@ -8,6 +8,7 @@ import { bytesLookLikeTgs } from "./loadTgsAnimation";
 import { getCachedTgsAnimationFromBytes } from "./tgsAnimationCache";
 import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
+import { useElementVisible } from "./useElementVisible";
 
 type Props = {
   customEmojiId?: string;
@@ -52,6 +53,11 @@ export function MessageChatInlineTgsEmoji(props: Props) {
   const { sizePx, fallbackText = "", lowPriority = false, priority = false } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
   const hostRef = useRef<HTMLSpanElement>(null);
+  const visible = useElementVisible(hostRef as RefObject<Element | null>, {
+    enabled: !priority,
+    rootMargin: "96px",
+  });
+  const shouldFetch = priority || visible;
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);
@@ -75,8 +81,10 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     setMediaKind(null);
     setFetchSettled(false);
 
-    if (!fetchRef) {
-      telegramEmojiDebug.inlineNoRef("web", props);
+    if (!fetchRef || !shouldFetch) {
+      if (!fetchRef) {
+        telegramEmojiDebug.inlineNoRef("web", props);
+      }
       return;
     }
 
@@ -137,7 +145,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [fetchRef]);
+  }, [fetchRef, shouldFetch]);
 
   useEffect(() => {
     if (!fetchRef || !fetchSettled || animationData || mediaUrl) return;

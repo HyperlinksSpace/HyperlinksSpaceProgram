@@ -13,7 +13,7 @@ import {
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { prefetchChatHistory, prefetchChatHistoryForList, prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
+import { prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
 import { telegramEmojiDebug } from "./messages/telegramEmojiDebug";
 import { homeListShellStyle } from "./messages/messageListLayout";
@@ -198,6 +198,42 @@ function sortChatRows(rows: MessageChatRowData[]): MessageChatRowData[] {
   });
 }
 
+/** Keep stable rows when the gateway returns a truncated snapshot during resync. */
+const CHAT_LIST_OVERSIZED_THRESHOLD = 250;
+
+function mergeChatRows(
+  prev: MessageChatRowData[],
+  incoming: MessageChatRowData[],
+): MessageChatRowData[] {
+  if (incoming.length === 0) return prev;
+  if (prev.length === 0) return sortChatRows(incoming);
+  if (
+    prev.length >= CHAT_LIST_OVERSIZED_THRESHOLD &&
+    incoming.length < prev.length * 0.25
+  ) {
+    return sortChatRows(incoming);
+  }
+  if (incoming.length >= prev.length * 0.9) return sortChatRows(incoming);
+
+  const byId = new Map(incoming.map((row) => [row.telegram_chat_id, row]));
+  const seen = new Set<number>();
+  const merged: MessageChatRowData[] = [];
+
+  for (const row of prev) {
+    const fresh = byId.get(row.telegram_chat_id);
+    if (fresh) {
+      merged.push(fresh);
+      seen.add(row.telegram_chat_id);
+    } else {
+      merged.push(row);
+    }
+  }
+  for (const row of incoming) {
+    if (!seen.has(row.telegram_chat_id)) merged.push(row);
+  }
+  return sortChatRows(merged);
+}
+
 const MESSAGES_POLL_FAST_MS = 2_000;
 const MESSAGES_POLL_SLOW_MS = 5_000;
 const MESSAGES_POLL_SLOW_AFTER = 4;
@@ -336,15 +372,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         lastLiveRevisionRef.current = json.revision;
       }
       setChats((prev) => {
-        const changed = chatsChanged(prev, rows);
+        const next = mergeChatRows(prev, rows);
+        const changed = chatsChanged(prev, next);
         if (rows.length > 0) {
           setGatewayWarming(false);
         }
         if (options?.silent) {
           if (changed) {
             logPageDisplay("messages_chats_poll_updated", {
-              count: rows.length,
-              ...firstChatListLogFields(rows),
+              count: next.length,
+              ...firstChatListLogFields(next),
               poll: pollCountRef.current,
               source: json.source ?? null,
               revision: json.revision ?? null,
@@ -354,22 +391,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             });
           } else if (pollCountRef.current % 10 === 0) {
             logPageDisplay("messages_chats_poll_steady", {
-              count: rows.length,
+              count: next.length,
               poll: pollCountRef.current,
               source: json.source ?? null,
               revision: json.revision ?? null,
               elapsedMs: Date.now() - started,
             });
           }
-          return changed ? sortChatRows(rows) : prev;
+          return changed ? next : prev;
         }
-        return sortChatRows(rows);
+        return next;
       });
       syncAuthenticatedHomeSelectedChat(rows);
-      const openChat = selectedChatRef.current;
-      prefetchChatHistoryForList(rows, { skipChatId: openChat?.telegram_chat_id ?? null });
-      if (openChat) {
-        prefetchChatHistoryPriority(openChat);
+      if (!options?.silent) {
+        const openChat = selectedChatRef.current;
+        if (openChat) prefetchChatHistoryPriority(openChat);
       }
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
@@ -451,7 +487,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         streamLoadTimerRef.current = null;
         logPageDisplay("messages_chats_stream_revision", { revision });
         void flushStreamChatLoad();
-      }, 350);
+      }, 600);
     },
     [flushStreamChatLoad],
   );
@@ -469,14 +505,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (isTelegramMessagesConnected) {
       setGatewayWarming(true);
     }
-    void loadChats({ silent: false });
-    void triggerGatewayResync("initial_mount").then(() => loadChats({ silent: true }));
+    void (async () => {
+      await loadChats({ silent: true });
+      await triggerGatewayResync("initial_mount");
+      await loadChats({ silent: true });
+    })();
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
-
-  useEffect(() => {
-    if (!isTelegramMessagesConnected || !selectedChat) return;
-    prefetchChatHistoryPriority(selectedChat);
-  }, [isTelegramMessagesConnected, selectedChat]);
 
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected) return;
@@ -617,7 +651,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             colors={colors}
             timePendingLabel={t("feed.timePending")}
             onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
-            onPrefetch={chatSelectionEnabled ? () => prefetchChatHistory(item) : undefined}
           />
         ))}
       </View>
@@ -643,7 +676,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           colors={colors}
           timePendingLabel={t("feed.timePending")}
           onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
-          onPrefetch={chatSelectionEnabled ? () => prefetchChatHistory(item) : undefined}
         />
       ))}
       <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={handleClearSelection} />

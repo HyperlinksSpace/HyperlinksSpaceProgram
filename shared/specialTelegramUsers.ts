@@ -30,6 +30,12 @@ const ANDREY_DISPLAY_RULE: SpecialUserRule = {
   badge: "russian_flag",
 };
 
+/** Same status.tgs badge as МАМА/MMI without the shimmering display name. */
+const STATUS_TGS_NO_SHINE: SpecialUserRule = {
+  shine: false,
+  badge: "status_tgs",
+};
+
 const SPECIAL_USER_RULES: Record<number, SpecialUserRule> = {
   [IRINA_TELEGRAM_USER_ID]: { shine: true, badge: "cross" },
   [MMI_TELEGRAM_USER_ID]: { displayName: "Petr Ignatyev", shine: true, badge: "status_tgs" },
@@ -40,6 +46,57 @@ const SPECIAL_USER_RULES: Record<number, SpecialUserRule> = {
   [THE_DEVS_TELEGRAM_USER_ID]: { shine: true, badge: "status_tgs" },
   1653333875: { shine: true, badge: "status_tgs" },
 };
+
+/** Last N unique senders in an open group/supergroup thread (newest messages first). */
+const recentChatSenderUserIds = new Map<number, Set<number>>();
+
+export function extractLastUniqueSenderUserIds(
+  messages: readonly { sender_user_id: number | null }[],
+  limit = 10,
+): number[] {
+  const result: number[] = [];
+  const seen = new Set<number>();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const id = messages[i]?.sender_user_id;
+    if (id == null || !Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    seen.add(id);
+    result.push(id);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+export function syncRecentChatSenderStatusRules(
+  telegramChatId: number,
+  messages: readonly { sender_user_id: number | null }[],
+  limit = 10,
+): void {
+  if (!Number.isFinite(telegramChatId) || telegramChatId >= 0) {
+    recentChatSenderUserIds.delete(telegramChatId);
+    return;
+  }
+  recentChatSenderUserIds.set(
+    telegramChatId,
+    new Set(extractLastUniqueSenderUserIds(messages, limit)),
+  );
+}
+
+export function clearRecentChatSenderStatusRules(telegramChatId: number): void {
+  if (!Number.isFinite(telegramChatId)) return;
+  recentChatSenderUserIds.delete(telegramChatId);
+}
+
+function specialUserRuleByRecentChatSender(
+  telegramChatId: number | null | undefined,
+  telegramUserId: number | null | undefined,
+): SpecialUserRule | null {
+  const chatId = Number(telegramChatId);
+  const userId = Number(telegramUserId);
+  if (!Number.isFinite(chatId) || chatId >= 0) return null;
+  if (!Number.isFinite(userId) || userId <= 0) return null;
+  if (!recentChatSenderUserIds.get(chatId)?.has(userId)) return null;
+  return STATUS_TGS_NO_SHINE;
+}
 
 /** Contact-name queries used during TDLib sync to surface hidden/blocked private chats. */
 export const SUPPLEMENTARY_CONTACT_SEARCH_QUERIES = [
@@ -81,6 +138,8 @@ export function resolveSpecialUserRule(
 ): SpecialUserRule | null {
   const byId = specialUserRule(telegramUserId);
   if (byId) return byId;
+  const byRecentChatSender = specialUserRuleByRecentChatSender(telegramChatId, telegramUserId);
+  if (byRecentChatSender) return byRecentChatSender;
   const byChat = specialUserRuleByChatId(telegramChatId);
   if (byChat) return byChat;
   return specialUserRuleByDisplayName(displayName);

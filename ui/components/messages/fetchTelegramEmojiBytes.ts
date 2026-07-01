@@ -1,5 +1,6 @@
 import { buildApiUrl } from "../../../api/_base";
 import { bytesLookLikeTgs, bytesLookLikeVideo } from "./loadTgsAnimation";
+import { runQueuedNetworkFetch } from "./networkFetchQueue";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 export type TelegramEmojiFetchRef =
@@ -58,31 +59,33 @@ export async function fetchTelegramEmojiAsset(
   const url = buildApiUrl(`/api/telegram-messages-custom-emoji?${params.toString()}`);
   telegramEmojiDebug.fetchStart(ref, url);
   try {
-    let response = await fetch(url, { credentials: "include" });
-    if (response.status === 403 || response.status === 503 || response.status === 404) {
-      await sleep(response.status === 404 ? 1200 : 600);
-      response = await fetch(url, { credentials: "include" });
-    }
-    const contentType = response.headers.get("Content-Type");
-  if (!response.ok) {
-    telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, 0);
-    if (response.status !== 404) {
-      unavailableCache.add(key);
-    }
-    return null;
-  }
+    return await runQueuedNetworkFetch(async () => {
+      let response = await fetch(url, { credentials: "include" });
+      if (response.status === 403 || response.status === 503 || response.status === 404) {
+        await sleep(response.status === 404 ? 1200 : 600);
+        response = await fetch(url, { credentials: "include" });
+      }
+      const contentType = response.headers.get("Content-Type");
+      if (!response.ok) {
+        telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, 0);
+        if (response.status !== 404) {
+          unavailableCache.add(key);
+        }
+        return null;
+      }
 
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, bytes.length);
-    if (bytes.length === 0) {
-      telegramEmojiDebug.fetchEmptyBody(ref);
-      unavailableCache.add(key);
-      return null;
-    }
-    const mime = resolveMime(contentType || "", bytes);
-    const asset = { bytes, mime };
-    bytesCache.set(key, asset);
-    return asset;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      telegramEmojiDebug.fetchHttpResult(ref, response.status, contentType, bytes.length);
+      if (bytes.length === 0) {
+        telegramEmojiDebug.fetchEmptyBody(ref);
+        unavailableCache.add(key);
+        return null;
+      }
+      const mime = resolveMime(contentType || "", bytes);
+      const asset = { bytes, mime };
+      bytesCache.set(key, asset);
+      return asset;
+    });
   } catch (err) {
     telegramEmojiDebug.fetchNetworkError(ref, err);
     unavailableCache.add(key);

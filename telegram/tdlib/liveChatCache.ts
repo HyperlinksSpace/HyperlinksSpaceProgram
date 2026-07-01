@@ -116,6 +116,21 @@ function bumpRevision(cache: UserCache, telegramUsername: string): number {
   return cache.revision;
 }
 
+/** Metadata-only row update — does not bump list revision or emit SSE. */
+function replaceLiveChatRowQuietly(
+  telegramUsername: string,
+  row: Omit<LiveChatRow, "revision">,
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  const existing = cache.chats.get(row.telegram_chat_id);
+  if (!existing) return null;
+  const next: LiveChatRow = { ...row, revision: existing.revision };
+  cache.chats.set(row.telegram_chat_id, next);
+  cache.sortedList = null;
+  return next;
+}
+
 export function clearLiveChatCache(telegramUsername: string): void {
   caches.delete(telegramUsername);
 }
@@ -277,7 +292,7 @@ export function patchLiveChatPresence(
   if (!cache) return null;
   for (const row of cache.chats.values()) {
     if (row.peer_user_id !== peerUserId) continue;
-    return upsertLiveChatRow(telegramUsername, {
+    return replaceLiveChatRowQuietly(telegramUsername, {
       telegram_chat_id: row.telegram_chat_id,
       title: row.title,
       subtitle: row.subtitle,
@@ -318,7 +333,7 @@ export function patchLiveChatEmojiStatus(
   if (!cache) return null;
   for (const row of cache.chats.values()) {
     if (row.peer_user_id !== peerUserId) continue;
-    return upsertLiveChatRow(telegramUsername, {
+    return replaceLiveChatRowQuietly(telegramUsername, {
       telegram_chat_id: row.telegram_chat_id,
       title: row.title,
       subtitle: row.subtitle,
@@ -405,7 +420,7 @@ export function patchLiveChatMemberMeta(
   if (!cache) return null;
   const existing = cache.chats.get(chatId);
   if (!existing) return null;
-  return upsertLiveChatRow(telegramUsername, {
+  return replaceLiveChatRowQuietly(telegramUsername, {
     telegram_chat_id: existing.telegram_chat_id,
     title: existing.title,
     subtitle: existing.subtitle,

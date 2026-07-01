@@ -1,3 +1,5 @@
+Broken layout in the chat, 
+think of chats appearing and loading, overwhelming all the limits
 No loading indicator
 Icon aapearing in the AI and Search
 Reactions, msg history loading dsgn, 

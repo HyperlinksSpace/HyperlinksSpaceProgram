@@ -9,8 +9,6 @@ import {
   gatewayHealth,
   getChatAvatarImageForUser,
   getChatHistoryForUser,
-  ensureLiveChatPeerEmojiStatuses,
-  ensureLiveChatMemberCounts,
   getTelegramEmojiForUser,
   getMessageMediaForUser,
   getUserAvatarImageForUser,
@@ -37,27 +35,6 @@ import {
   editChatMessageForUser,
   resolvePublicChatForUser,
 } from "./connectAttempts.js";
-
-const PEER_EMOJI_STATUS_MIN_INTERVAL_MS = 45_000;
-const MEMBER_COUNT_MIN_INTERVAL_MS = 45_000;
-const peerEmojiStatusLastRun = new Map<string, number>();
-const memberCountLastRun = new Map<string, number>();
-
-async function ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername: string): Promise<void> {
-  const now = Date.now();
-  const last = peerEmojiStatusLastRun.get(telegramUsername) ?? 0;
-  if (now - last < PEER_EMOJI_STATUS_MIN_INTERVAL_MS) return;
-  peerEmojiStatusLastRun.set(telegramUsername, now);
-  await ensureLiveChatPeerEmojiStatuses(telegramUsername);
-}
-
-async function ensureLiveChatMemberCountsThrottled(telegramUsername: string): Promise<void> {
-  const now = Date.now();
-  const last = memberCountLastRun.get(telegramUsername) ?? 0;
-  if (now - last < MEMBER_COUNT_MIN_INTERVAL_MS) return;
-  memberCountLastRun.set(telegramUsername, now);
-  await ensureLiveChatMemberCounts(telegramUsername);
-}
 
 function readJson(req: http.IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -268,8 +245,6 @@ export function startTdlibGatewayServer(): http.Server {
             });
             return;
           }
-          await ensureLiveChatPeerEmojiStatusesThrottled(telegramUsername);
-          await ensureLiveChatMemberCountsThrottled(telegramUsername);
           const chats = getLiveChatList(telegramUsername);
           const currentRevision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = (chats ?? []).filter(

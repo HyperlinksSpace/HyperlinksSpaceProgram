@@ -1,5 +1,5 @@
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Platform, Text, View } from "react-native";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -18,6 +18,7 @@ import { MessageChatRichText } from "./MessageChatRichText";
 import { formatMessageChatListPreview } from "./formatMessageChatSubheader";
 import { formatMessageChatWallClock } from "./formatMessageChatTime";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import { useElementVisible } from "./useElementVisible";
 import {
   MESSAGE_AVATAR_PX,
   MESSAGE_ICON_TEXT_GAP_PX,
@@ -107,8 +108,15 @@ export function MessageChatRow({
   const avatarLogOnceRef = useRef(false);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
-  const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
+  const rowRef = useRef<View>(null);
+  const rowInView = useElementVisible(rowRef as RefObject<Element | null>, {
+    rootMargin: "120px",
+  });
+  const avatarLoadEnabled = rowInView || Boolean(isActive);
+  const showAvatarImage = !!iconUrl && !avatarLoadFailed;
+  const isProxyAvatar = Boolean(iconUrl?.includes("/api/telegram-messages-avatar"));
+  const deferAvatarFetch = isProxyAvatar && !avatarLoadEnabled;
 
   useEffect(() => {
     setAvatarLoadFailed(false);
@@ -160,6 +168,7 @@ export function MessageChatRow({
       onHoverIn={onPrefetch}
     >
       <View
+        ref={rowRef}
         style={{
           flexDirection: "row",
           alignItems: "center",
@@ -176,10 +185,11 @@ export function MessageChatRow({
           justifyContent: "center",
         }}
       >
-        {showAvatarImage ? (
+        {showAvatarImage && !deferAvatarFetch ? (
           <MessageChatAvatarImage
             uri={iconUrl}
             sizePx={MESSAGE_AVATAR_PX}
+            loadEnabled={!isProxyAvatar || avatarLoadEnabled}
             onLoad={() => {
               logPageDisplay("messages_avatar_load_ok", {
                 ...chatLogFields({

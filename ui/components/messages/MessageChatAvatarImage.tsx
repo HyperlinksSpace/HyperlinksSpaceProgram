@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
+import { runQueuedNetworkFetch } from "./networkFetchQueue";
 
 function needsAuthenticatedFetch(uri: string): boolean {
   return uri.includes("/api/telegram-messages-avatar");
@@ -18,12 +19,21 @@ type Props = {
   uri: string;
   sizePx: number;
   style?: StyleProp<ImageStyle>;
+  /** When false, skip proxy fetch until the row scrolls into view. */
+  loadEnabled?: boolean;
   onLoad?: () => void;
   onError?: (error?: unknown) => void;
 };
 
 /** Renders chat avatars; API proxy URLs are fetched with session cookies (required on web). */
-export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: Props) {
+export function MessageChatAvatarImage({
+  uri,
+  sizePx,
+  style,
+  loadEnabled = true,
+  onLoad,
+  onError,
+}: Props) {
   const [displayUri, setDisplayUri] = useState<string | null>(() => readCachedDisplayUri(uri));
   const onLoadRef = useRef(onLoad);
   const onErrorRef = useRef(onError);
@@ -34,6 +44,8 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
   }, [onLoad, onError]);
 
   useEffect(() => {
+    if (!loadEnabled) return;
+
     if (!needsAuthenticatedFetch(uri)) {
       setDisplayUri(uri);
       return;
@@ -47,7 +59,7 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
 
     let cancelled = false;
 
-    void (async () => {
+    void runQueuedNetworkFetch(async () => {
       try {
         const response = await fetch(uri, { method: "GET", credentials: "include" });
         if (!response.ok) throw new Error(`HTTP_${response.status}`);
@@ -58,12 +70,12 @@ export function MessageChatAvatarImage({ uri, sizePx, style, onLoad, onError }: 
       } catch (err) {
         if (!cancelled) onErrorRef.current?.(err);
       }
-    })();
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [uri]);
+  }, [uri, loadEnabled]);
 
   if (!displayUri) return null;
 
