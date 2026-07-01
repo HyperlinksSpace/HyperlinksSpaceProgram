@@ -222,26 +222,24 @@ export async function fetchTelegramChatHistoryPage(
 export async function loadTelegramChatHistoryFirstPage(
   chatId: number,
   peerUserId: number | null | undefined,
-  options?: { warmup?: boolean },
+  options?: { warmup?: boolean; limit?: number },
 ): Promise<ChatHistoryPageResult> {
   const warmup = options?.warmup !== false;
+  const limit =
+    typeof options?.limit === "number" &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
+      ? Math.trunc(options.limit)
+      : MESSAGE_CHAT_HISTORY_PAGE_SIZE;
   const warmupPromise = warmup ? warmupTelegramChatSession(chatId) : Promise.resolve();
-  let result = await fetchTelegramChatHistoryPage(
-    chatId,
-    MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-    peerUserId,
-  );
+  let result = await fetchTelegramChatHistoryPage(chatId, limit, peerUserId);
   if (
     result.error === "session_not_ready" ||
     result.error === "history_unavailable" ||
     result.error === "not_found"
   ) {
     await warmupPromise;
-    result = await fetchTelegramChatHistoryPage(
-      chatId,
-      MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-      peerUserId,
-    );
+    result = await fetchTelegramChatHistoryPage(chatId, limit, peerUserId);
   }
   return result;
 }

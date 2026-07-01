@@ -10,6 +10,7 @@ import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSe
 import { chatLogFields, logPageDisplay } from "../../pageDisplayLog";
 import {
   getCachedChatHistory,
+  isChatHistoryCacheComplete,
   isChatHistoryCacheFresh,
   setCachedChatHistory,
   subscribeChatHistoryCache,
@@ -325,7 +326,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
     void (async () => {
       try {
-        if (cacheHit && isChatHistoryCacheFresh(chat.telegram_chat_id)) {
+        const cacheComplete =
+          cacheHit && isChatHistoryCacheComplete(chat.telegram_chat_id);
+        if (cacheComplete && isChatHistoryCacheFresh(chat.telegram_chat_id)) {
           return;
         }
         const result = await loadTelegramChatHistoryFirstPage(
@@ -336,7 +339,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         if (result.error) {
           throw new Error(result.error);
         }
-        setCachedChatHistory(chat.telegram_chat_id, result);
+        setCachedChatHistory(chat.telegram_chat_id, result, { previewOnly: false });
         setMessages(result.messages);
         setChatKind(result.chatKind);
         if (result.selfUserId != null) {

@@ -13,7 +13,7 @@ import {
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
+import { prefetchChatHistory, prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
 import { telegramEmojiDebug } from "./messages/telegramEmojiDebug";
 import { homeListShellStyle } from "./messages/messageListLayout";
@@ -213,24 +213,16 @@ function mergeChatRows(
   ) {
     return sortChatRows(incoming);
   }
-  if (incoming.length >= prev.length * 0.9) return sortChatRows(incoming);
 
   const byId = new Map(incoming.map((row) => [row.telegram_chat_id, row]));
-  const seen = new Set<number>();
   const merged: MessageChatRowData[] = [];
 
   for (const row of prev) {
-    const fresh = byId.get(row.telegram_chat_id);
-    if (fresh) {
-      merged.push(fresh);
-      seen.add(row.telegram_chat_id);
-    } else {
-      merged.push(row);
-    }
+    merged.push(byId.get(row.telegram_chat_id) ?? row);
   }
-  for (const row of incoming) {
-    if (!seen.has(row.telegram_chat_id)) merged.push(row);
-  }
+
+  if (incoming.length >= prev.length * 0.9) return sortChatRows(incoming);
+
   return sortChatRows(merged);
 }
 
@@ -586,6 +578,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [chatSelectionEnabled],
   );
 
+  const handleRowPrefetch = useCallback((item: MessageChatRowData) => {
+    prefetchChatHistory(item);
+  }, []);
+
   const handleClearSelection = useCallback(() => {
     if (!chatSelectionEnabled) return;
     clearAuthenticatedHomeSelectedChat();
@@ -651,6 +647,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             colors={colors}
             timePendingLabel={t("feed.timePending")}
             onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
+            onPrefetch={() => handleRowPrefetch(item)}
           />
         ))}
       </View>
@@ -676,6 +673,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           colors={colors}
           timePendingLabel={t("feed.timePending")}
           onPress={chatSelectionEnabled ? () => handleChatPress(item) : undefined}
+          onPrefetch={() => handleRowPrefetch(item)}
         />
       ))}
       <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={handleClearSelection} />

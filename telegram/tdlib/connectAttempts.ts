@@ -8,7 +8,14 @@ import { getTdlibDbRoot, getTelegramApiCredentials, getTdlibUserDir } from "./en
 import { logGateway } from "./gatewayLog.js";
 import { classifyTdlibSendError } from "../../shared/telegramSendError.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
-import { persistMtprotoConnection, readChatAvatarBytes, readUserAvatarBytes, refreshLiveChats, syncChatThreads } from "./syncChats.js";
+import {
+  persistMtprotoConnection,
+  readChatAvatarBytes,
+  readUserAvatarBytes,
+  refreshLiveChats,
+  syncChatThreads,
+  INITIAL_MAIN_CHAT_SYNC_LIMIT,
+} from "./syncChats.js";
 import { fetchChatHistory, sendChatTextMessage, editChatTextMessage } from "./chatHistory.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
@@ -323,7 +330,13 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   }
 
   try {
-    record.chatCount = await syncChatThreads(client, record.telegramUsername);
+    record.chatCount = await syncChatThreads(client, record.telegramUsername, {
+      maxMainChats: INITIAL_MAIN_CHAT_SYNC_LIMIT,
+      includeArchive: false,
+      includeSupplementarySearch: false,
+      skipMemberCounts: true,
+      replaceCache: true,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_sync_warning", { message });
@@ -1070,7 +1083,13 @@ export async function resyncUserChats(
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
     }
 
-    const count = await syncChatThreads(record.client, telegramUsername);
+    const count = await syncChatThreads(record.client, telegramUsername, {
+      maxMainChats: INITIAL_MAIN_CHAT_SYNC_LIMIT,
+      includeArchive: false,
+      includeSupplementarySearch: false,
+      skipMemberCounts: true,
+      replaceCache: true,
+    });
     record.chatCount = count;
     logConnectEvent(record, "connect_resync_ok", { chatCount: count });
     return { chatCount: count, backfillCount: 0, error: null };
@@ -1105,7 +1124,13 @@ export function restorePersistedGatewaySessions(): void {
           return;
         }
         attachLiveChatSync(record);
-        const chatCount = await syncChatThreads(record.client, telegramUsername);
+        const chatCount = await syncChatThreads(record.client, telegramUsername, {
+          maxMainChats: INITIAL_MAIN_CHAT_SYNC_LIMIT,
+          includeArchive: false,
+          includeSupplementarySearch: false,
+          skipMemberCounts: true,
+          replaceCache: true,
+        });
         logGateway("connect_restore_session_done", {
           telegramUsername,
           chatCount,

@@ -50,6 +50,22 @@ export function isChatPinnedInMainList(chat: TdChat): boolean {
   return positions.some((row) => row.list?._ === "chatListMain" && row.is_pinned === true);
 }
 
+/** True when TDLib places the chat on the main chat list (not archive-only / search-only). */
+export function isChatInMainList(chat: TdChat): boolean {
+  const positions = chat.positions;
+  if (!Array.isArray(positions)) return false;
+  return positions.some(
+    (row) =>
+      row.list?._ === "chatListMain" &&
+      typeof row.order === "string" &&
+      row.order !== "0",
+  );
+}
+
+export function isPrivateTdChat(chat: TdChat): boolean {
+  return chat.type?._ === "chatTypePrivate";
+}
+
 export function mainListOrderKey(chat: TdChat): string {
   const positions = chat.positions;
   if (!Array.isArray(positions)) return "0";

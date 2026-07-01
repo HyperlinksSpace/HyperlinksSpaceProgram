@@ -114,6 +114,12 @@ export function MessageChatRow({
     rootMargin: "120px",
   });
   const avatarLoadEnabled = rowInView || Boolean(isActive);
+  const prefetchOnceRef = useRef(false);
+  useEffect(() => {
+    if (!rowInView || prefetchOnceRef.current) return;
+    prefetchOnceRef.current = true;
+    onPrefetch?.();
+  }, [onPrefetch, rowInView]);
   const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const isProxyAvatar = Boolean(iconUrl?.includes("/api/telegram-messages-avatar"));
   const deferAvatarFetch = isProxyAvatar && !avatarLoadEnabled;
@@ -123,7 +129,7 @@ export function MessageChatRow({
   }, [iconUrl]);
 
   useEffect(() => {
-    if (avatarLogOnceRef.current) return;
+    if (avatarLogOnceRef.current || !avatarLoadEnabled) return;
     avatarLogOnceRef.current = true;
     logPageDisplay("messages_avatar_source", {
       ...chatLogFields({
@@ -149,7 +155,7 @@ export function MessageChatRow({
             ? "url"
             : "none",
     });
-  }, [iconUrl, item.avatar_url, item.peer_user_id, item.telegram_chat_id, item.title]);
+  }, [avatarLoadEnabled, iconUrl, item.avatar_url, item.peer_user_id, item.telegram_chat_id, item.title]);
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -235,6 +241,7 @@ export function MessageChatRow({
               telegramUserId={item.peer_user_id ?? null}
               telegramChatId={item.telegram_chat_id}
               emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
+              emojiStatusPriority={avatarLoadEnabled}
               textStyle={{
                 ...textBase,
                 color: colors.primary,
@@ -268,6 +275,7 @@ export function MessageChatRow({
             numberOfLines={1}
             emojiSizePx={16}
             lowPriorityEmoji
+            emojiFetchEnabled={avatarLoadEnabled}
             style={{
               ...textBase,
               flex: 1,

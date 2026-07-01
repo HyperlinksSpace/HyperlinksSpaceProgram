@@ -18,6 +18,8 @@ type Props = {
   lowPriority?: boolean;
   /** Premium/status emoji beside usernames — always paint even when off-screen. */
   priority?: boolean;
+  /** Parent can defer fetches until the row is visible. */
+  fetchEnabled?: boolean;
 };
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {
@@ -50,14 +52,20 @@ function isLikelyCustomEmojiPlaceholder(text: string): boolean {
 
 /** Inline Telegram emoji sticker (.tgs / .webm / static) on web. */
 export function MessageChatInlineTgsEmoji(props: Props) {
-  const { sizePx, fallbackText = "", lowPriority = false, priority = false } = props;
+  const {
+    sizePx,
+    fallbackText = "",
+    lowPriority = false,
+    priority = false,
+    fetchEnabled = true,
+  } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
   const hostRef = useRef<HTMLSpanElement>(null);
   const visible = useElementVisible(hostRef as RefObject<Element | null>, {
     enabled: !priority,
     rootMargin: "96px",
   });
-  const shouldFetch = priority || visible;
+  const shouldFetch = fetchEnabled && (priority || visible);
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);

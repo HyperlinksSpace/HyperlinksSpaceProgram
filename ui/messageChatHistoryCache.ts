@@ -2,6 +2,8 @@ import type { ChatHistoryPageResult } from "./telegram/fetchTelegramChatHistoryP
 
 export type CachedChatHistoryPage = ChatHistoryPageResult & {
   fetchedAt: number;
+  /** True when only a short preview page was prefetched for the list. */
+  previewOnly?: boolean;
 };
 
 const cache = new Map<number, CachedChatHistoryPage>();
@@ -108,9 +110,20 @@ export function isChatHistoryCacheFresh(chatId: number, maxAgeMs = FRESH_MS): bo
   return Date.now() - entry.fetchedAt < maxAgeMs;
 }
 
-export function setCachedChatHistory(chatId: number, page: ChatHistoryPageResult): void {
+/** Full first page ready to show without another network round-trip. */
+export function isChatHistoryCacheComplete(chatId: number): boolean {
+  const entry = getCachedChatHistory(chatId);
+  if (!entry || entry.messages.length === 0) return false;
+  return !entry.previewOnly;
+}
+
+export function setCachedChatHistory(
+  chatId: number,
+  page: ChatHistoryPageResult,
+  options?: { previewOnly?: boolean },
+): void {
   if (page.error) return;
-  const entry = { ...page, fetchedAt: Date.now() };
+  const entry = { ...page, fetchedAt: Date.now(), previewOnly: options?.previewOnly === true };
   cache.set(chatId, entry);
   writeSessionCache(chatId, entry);
   trimCache();

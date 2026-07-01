@@ -174,41 +174,60 @@ export async function readCustomEmojiBytes(
   const cached = bytesCache.get(key);
   if (cached) return cached;
 
-  try {
-    const result = (await client.invoke({
-      _: "getCustomEmojiStickers",
-      custom_emoji_ids: [tdlibCustomEmojiIdParam(id)],
-    })) as { stickers?: unknown[] };
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const result = (await client.invoke({
+        _: "getCustomEmojiStickers",
+        custom_emoji_ids: [tdlibCustomEmojiIdParam(id)],
+      })) as { stickers?: unknown[] };
 
-    const sticker = result.stickers?.[0];
-    const fileIds = pickTdlibFileIds(sticker);
-    if (fileIds.length === 0) {
-      logGateway("custom_emoji_sticker_missing", {
-        customEmojiId: id,
-        stickerKeys:
-          sticker && typeof sticker === "object"
-            ? Object.keys(sticker as object)
-            : null,
-      });
+      const sticker = result.stickers?.[0];
+      const fileIds = pickTdlibFileIds(sticker);
+      if (fileIds.length === 0) {
+        logGateway("custom_emoji_sticker_missing", {
+          customEmojiId: id,
+          attempt,
+          stickerCount: Array.isArray(result.stickers) ? result.stickers.length : 0,
+          stickerKeys:
+            sticker && typeof sticker === "object"
+              ? Object.keys(sticker as object)
+              : null,
+        });
+        if (attempt < 3) {
+          await sleep(500 * (attempt + 1));
+          continue;
+        }
+        return null;
+      }
+
+      for (const fileId of fileIds) {
+        const resolved = await readDownloadedFile(client, fileId, {
+          customEmojiId: id,
+          source: "custom",
+          attempt,
+        });
+        if (resolved) {
+          bytesCache.set(key, resolved);
+          return resolved;
+        }
+      }
+      if (attempt < 3) {
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      return null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logGateway("custom_emoji_error", { customEmojiId: id, message, attempt });
+      if (attempt < 3) {
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
       return null;
     }
-
-    for (const fileId of fileIds) {
-      const resolved = await readDownloadedFile(client, fileId, {
-        customEmojiId: id,
-        source: "custom",
-      });
-      if (resolved) {
-        bytesCache.set(key, resolved);
-        return resolved;
-      }
-    }
-    return null;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logGateway("custom_emoji_error", { customEmojiId: id, message });
-    return null;
   }
+
+  return null;
 }
 
 export async function readAnimatedEmojiBytes(

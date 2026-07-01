@@ -1,5 +1,9 @@
 import type { MessageChatRowData } from "./components/messages/MessageChatRow";
 import {
+  MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+  MESSAGE_CHAT_HISTORY_PREVIEW_SIZE,
+} from "./components/messages/messageChatLayout";
+import {
   getCachedChatHistory,
   isChatHistoryCacheFresh,
   setCachedChatHistory,
@@ -7,29 +11,39 @@ import {
 import { logPageDisplay } from "./pageDisplayLog";
 import { loadTelegramChatHistoryFirstPage } from "./telegram/fetchTelegramChatHistoryPage";
 
-const PREFETCH_TOP_N = 12;
+/** Max visible chats we warm in the background (viewport-driven). */
+const PREFETCH_VISIBLE_MAX = 7;
 const MAX_CONCURRENT = 2;
 
 const inFlight = new Map<number, Promise<void>>();
-const queued: Array<{ chatId: number; peerUserId: number | null; priority: boolean }> = [];
+const queued: Array<{
+  chatId: number;
+  peerUserId: number | null;
+  priority: boolean;
+  limit: number;
+  previewOnly: boolean;
+}> = [];
 let activeCount = 0;
 
 async function prefetchChatHistoryNow(
   chatId: number,
   peerUserId: number | null,
-  options?: { warmup?: boolean },
+  options: { warmup?: boolean; limit: number; previewOnly: boolean },
 ): Promise<void> {
   const started = Date.now();
   const result = await loadTelegramChatHistoryFirstPage(chatId, peerUserId, {
-    warmup: options?.warmup !== false,
+    warmup: options.warmup !== false,
+    limit: options.limit,
   });
   if (!result.error && result.messages.length > 0) {
-    setCachedChatHistory(chatId, result);
+    setCachedChatHistory(chatId, result, { previewOnly: options.previewOnly });
     logPageDisplay("messages_history_prefetch_ok", {
       chatId,
       count: result.messages.length,
       elapsedMs: Date.now() - started,
-      priority: options?.warmup === true,
+      priority: options.warmup === true,
+      previewOnly: options.previewOnly,
+      limit: options.limit,
     });
     return;
   }
@@ -38,7 +52,9 @@ async function prefetchChatHistoryNow(
       chatId,
       error: result.error,
       elapsedMs: Date.now() - started,
-      priority: options?.warmup === true,
+      priority: options.warmup === true,
+      previewOnly: options.previewOnly,
+      limit: options.limit,
     });
   }
 }
@@ -51,6 +67,8 @@ function scheduleDrain(): void {
     activeCount += 1;
     const promise = prefetchChatHistoryNow(next.chatId, next.peerUserId, {
       warmup: next.priority,
+      limit: next.limit,
+      previewOnly: next.previewOnly,
     }).finally(() => {
       activeCount -= 1;
       inFlight.delete(next.chatId);
@@ -63,45 +81,61 @@ function scheduleDrain(): void {
 function enqueuePrefetch(
   chatId: number,
   peerUserId: number | null | undefined,
-  priority = false,
+  options: { priority?: boolean; limit: number; previewOnly: boolean },
 ): void {
   if (!Number.isFinite(chatId)) return;
   if (isChatHistoryCacheFresh(chatId) || inFlight.has(chatId)) return;
 
+  const priority = options.priority === true;
   const existingIdx = queued.findIndex((row) => row.chatId === chatId);
   if (existingIdx >= 0) {
     if (priority) {
       const [row] = queued.splice(existingIdx, 1);
-      if (row) queued.unshift({ ...row, priority: true });
+      if (row) {
+        queued.unshift({
+          ...row,
+          priority: true,
+          limit: options.limit,
+          previewOnly: options.previewOnly,
+        });
+      }
       scheduleDrain();
     }
     return;
   }
 
+  if (!priority && queued.length + inFlight.size >= PREFETCH_VISIBLE_MAX) return;
+
   const row = {
     chatId,
     peerUserId: Number.isFinite(Number(peerUserId)) ? Number(peerUserId) : null,
     priority,
+    limit: options.limit,
+    previewOnly: options.previewOnly,
   };
   if (priority) queued.unshift(row);
   else queued.push(row);
   scheduleDrain();
 }
 
-/** Prefetch first history page for one chat (deduped). */
+/** Prefetch a short preview page when a list row scrolls into view. */
 export function prefetchChatHistory(
   chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id">,
 ): void {
-  enqueuePrefetch(chat.telegram_chat_id, chat.peer_user_id ?? null);
+  enqueuePrefetch(chat.telegram_chat_id, chat.peer_user_id ?? null, {
+    limit: MESSAGE_CHAT_HISTORY_PREVIEW_SIZE,
+    previewOnly: true,
+  });
 }
 
-/** High-priority prefetch for the open chat — jumps the queue and warms the gateway. */
+/** High-priority prefetch for the open chat — full page, warms the gateway. */
 export function prefetchChatHistoryPriority(
   chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id">,
 ): void {
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
-  if (isChatHistoryCacheFresh(chatId)) return;
+  const cached = getCachedChatHistory(chatId);
+  if (cached && !cached.previewOnly && isChatHistoryCacheFresh(chatId)) return;
 
   if (inFlight.has(chatId)) return;
 
@@ -109,17 +143,19 @@ export function prefetchChatHistoryPriority(
   if (existingIdx >= 0) queued.splice(existingIdx, 1);
 
   activeCount += 1;
-  const promise = prefetchChatHistoryNow(chatId, chat.peer_user_id ?? null, { warmup: true }).finally(
-    () => {
-      activeCount -= 1;
-      inFlight.delete(chatId);
-      scheduleDrain();
-    },
-  );
+  const promise = prefetchChatHistoryNow(chatId, chat.peer_user_id ?? null, {
+    warmup: true,
+    limit: MESSAGE_CHAT_HISTORY_PAGE_SIZE,
+    previewOnly: false,
+  }).finally(() => {
+    activeCount -= 1;
+    inFlight.delete(chatId);
+    scheduleDrain();
+  });
   inFlight.set(chatId, promise);
 }
 
-/** Warm cache for visible chats after the chat list loads. */
+/** @deprecated Use viewport-driven {@link prefetchChatHistory} from visible rows. */
 export function prefetchChatHistoryForList(
   chats: readonly MessageChatRowData[],
   options?: { skipChatId?: number | null },
@@ -128,8 +164,8 @@ export function prefetchChatHistoryForList(
   const skipId = options?.skipChatId ?? null;
   for (const chat of chats) {
     if (skipId != null && chat.telegram_chat_id === skipId) continue;
-    if (queued.length + inFlight.size >= PREFETCH_TOP_N) break;
-    enqueuePrefetch(chat.telegram_chat_id, chat.peer_user_id ?? null);
+    if (queued.length + inFlight.size >= PREFETCH_VISIBLE_MAX) break;
+    prefetchChatHistory(chat);
   }
 }
 

@@ -62,7 +62,11 @@ export async function fetchTelegramEmojiAsset(
     return await runQueuedNetworkFetch(async () => {
       let response = await fetch(url, { credentials: "include" });
       if (response.status === 403 || response.status === 503 || response.status === 404) {
-        await sleep(response.status === 404 ? 1200 : 600);
+        await sleep(response.status === 404 ? 1800 : 800);
+        response = await fetch(url, { credentials: "include" });
+      }
+      if (!response.ok && (response.status === 403 || response.status === 503 || response.status === 404)) {
+        await sleep(response.status === 404 ? 2400 : 1200);
         response = await fetch(url, { credentials: "include" });
       }
       const contentType = response.headers.get("Content-Type");

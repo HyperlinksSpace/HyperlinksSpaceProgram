@@ -61,5 +61,8 @@ export const messageChatBubbleTextWebWrapStyle = {
 /** Initial / paginated history page size (scroll up to load older). */
 export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;
 
+/** Background list prefetch — enough for a quick open, not a full thread. */
+export const MESSAGE_CHAT_HISTORY_PREVIEW_SIZE = 7;
+
 /** Distance from top (px) that triggers loading the previous page. */
 export const MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX = 120;

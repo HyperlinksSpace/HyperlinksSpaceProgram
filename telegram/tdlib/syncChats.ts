@@ -20,7 +20,16 @@ import {
   usernameFromTdUser,
   type TdChat,
 } from "./chatPreview.js";
-import { patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatMemberMeta, seedLiveChatList, getLiveChatList, type LiveChatRow } from "./liveChatCache.js";
+import {
+  patchLiveChatEmojiStatus,
+  patchLiveChatFromTdlib,
+  patchLiveChatMemberMeta,
+  seedLiveChatList,
+  mergeLiveChatRows,
+  getLiveChatList,
+  type LiveChatRow,
+} from "./liveChatCache.js";
+import { logGateway } from "./gatewayLog.js";
 import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
@@ -28,6 +37,7 @@ import {
   specialUserForceIncludedPeerUserIds,
   SUPPLEMENTARY_CONTACT_SEARCH_QUERIES,
 } from "../../shared/specialTelegramUsers.js";
+import { filterChatsForList } from "./chatListFilter.js";
 
 type TdFile = {
   id?: number;
@@ -44,6 +54,25 @@ const PREVIEW_SYNC_CONCURRENCY = 8;
 const PRESENCE_SYNC_CONCURRENCY = 8;
 const MEMBER_COUNT_SYNC_CONCURRENCY = 6;
 
+/** First paint: only the top of {@link chatListMain} via TDLib `loadChats` / `getChats`. */
+export const INITIAL_MAIN_CHAT_SYNC_LIMIT = 50;
+/** Each deferred page after the initial snapshot. */
+export const BACKGROUND_CHAT_SYNC_PAGE_SIZE = 35;
+const BACKGROUND_CHAT_SYNC_PAGE_DELAY_MS = 2_500;
+const BACKGROUND_CHAT_SYNC_START_DELAY_MS = 1_500;
+
+export type SyncChatThreadsOptions = {
+  /** Cap main-list chats (skips archive and full pagination when set). */
+  maxMainChats?: number | null;
+  includeArchive?: boolean;
+  /** Contact/chat search supplements — expensive; off on the fast path. */
+  includeSupplementarySearch?: boolean;
+  /** Skip group member-count TDLib calls on the fast path. */
+  skipMemberCounts?: boolean;
+  /** Replace live cache (`seed`) vs merge pages (`mergeLiveChatRows`). */
+  replaceCache?: boolean;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -51,13 +80,18 @@ function sleep(ms: number): Promise<void> {
 async function loadChatsFromList(
   client: Client,
   chatList: { _: "chatListMain" } | { _: "chatListArchive" },
+  options?: { maxChats?: number },
 ): Promise<TdChat[]> {
+  const maxChats = options?.maxChats;
   const collected = new Map<number, TdChat>();
   let offsetOrder = "9223372036854775807";
   let offsetChatId = 0;
   let warmedUp = false;
+  const pageSize = maxChats != null ? Math.min(100, Math.max(maxChats, 20)) : 100;
 
   for (let round = 0; round < 80; round++) {
+    if (maxChats != null && collected.size >= maxChats) break;
+
     let list: { chat_ids?: number[] };
     try {
       list = (await client.invoke({
@@ -65,7 +99,7 @@ async function loadChatsFromList(
         chat_list: chatList,
         offset_order: offsetOrder,
         offset_chat_id: offsetChatId,
-        limit: 100,
+        limit: maxChats != null ? Math.min(pageSize, maxChats - collected.size) : pageSize,
       })) as { chat_ids?: number[] };
     } catch {
       break;
@@ -76,7 +110,9 @@ async function loadChatsFromList(
       if (warmedUp) break;
       warmedUp = true;
       try {
-        await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
+        const loadLimit =
+          maxChats != null ? Math.min(pageSize, maxChats) : 100;
+        await client.invoke({ _: "loadChats", chat_list: chatList, limit: loadLimit });
       } catch {
         break;
       }
@@ -85,6 +121,7 @@ async function loadChatsFromList(
     }
 
     for (const chatId of ids) {
+      if (maxChats != null && collected.size >= maxChats) break;
       if (collected.has(chatId)) continue;
       try {
         const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
@@ -94,7 +131,8 @@ async function loadChatsFromList(
       }
     }
 
-    if (ids.length < 100) break;
+    if (maxChats != null && collected.size >= maxChats) break;
+    if (ids.length < pageSize) break;
     const lastChat = [...ids]
       .reverse()
       .map((chatId) => collected.get(chatId))
@@ -185,10 +223,14 @@ async function discoverPrivateChatsByChatSearch(
   return [...collected.values()];
 }
 
+async function loadForcedPrivateChats(client: Client): Promise<TdChat[]> {
+  return openPrivateChatsForUserIds(client, specialUserForceIncludedPeerUserIds());
+}
+
 async function loadSupplementaryPrivateChats(client: Client): Promise<TdChat[]> {
   const merged = new Map<number, TdChat>();
 
-  for (const chat of await openPrivateChatsForUserIds(client, specialUserForceIncludedPeerUserIds())) {
+  for (const chat of await loadForcedPrivateChats(client)) {
     merged.set(chat.id, chat);
   }
 
@@ -196,24 +238,41 @@ async function loadSupplementaryPrivateChats(client: Client): Promise<TdChat[]> 
     merged.set(chat.id, chat);
   }
 
-  for (const chat of await discoverPrivateChatsByChatSearch(client, SUPPLEMENTARY_CONTACT_SEARCH_QUERIES)) {
-    merged.set(chat.id, chat);
-  }
-
   return [...merged.values()];
 }
 
-async function loadAllChats(client: Client): Promise<TdChat[]> {
+type LoadAllChatsOptions = {
+  maxMainChats?: number | null;
+  includeArchive?: boolean;
+  includeSupplementarySearch?: boolean;
+};
+
+async function loadAllChats(client: Client, options?: LoadAllChatsOptions): Promise<TdChat[]> {
   const collected = new Map<number, TdChat>();
   const merge = (chats: TdChat[]) => {
     for (const chat of chats) collected.set(chat.id, chat);
   };
 
-  merge(await loadChatsFromList(client, { _: "chatListMain" }));
-  merge(await loadChatsFromList(client, { _: "chatListArchive" }));
-  merge(await loadSupplementaryPrivateChats(client));
+  merge(
+    await loadChatsFromList(
+      client,
+      { _: "chatListMain" },
+      options?.maxMainChats != null ? { maxChats: options.maxMainChats } : undefined,
+    ),
+  );
 
-  return [...collected.values()];
+  if (options?.includeArchive !== false && options?.maxMainChats == null) {
+    merge(await loadChatsFromList(client, { _: "chatListArchive" }));
+  }
+
+  if (options?.includeSupplementarySearch === false) {
+    merge(await loadForcedPrivateChats(client));
+  } else {
+    merge(await loadSupplementaryPrivateChats(client));
+  }
+
+  const allowSupplementaryPrivate = options?.includeSupplementarySearch !== false;
+  return filterChatsForList([...collected.values()], { allowSupplementaryPrivate });
 }
 
 function mimeFromPath(filePath: string): string {
@@ -596,8 +655,46 @@ export async function refreshMissingMemberCounts(
   return refreshed;
 }
 
-export async function syncChatThreads(client: Client, telegramUsername: string): Promise<number> {
-  const chats = await loadAllChats(client);
+export async function syncChatThreads(
+  client: Client,
+  telegramUsername: string,
+  options?: SyncChatThreadsOptions,
+): Promise<number> {
+  const chats = await loadAllChats(client, {
+    maxMainChats: options?.maxMainChats ?? null,
+    includeArchive: options?.includeArchive,
+    includeSupplementarySearch: options?.includeSupplementarySearch,
+  });
+
+  const liveRows = await buildLiveRowsForChats(client, chats, {
+    skipMemberCounts: options?.skipMemberCounts === true,
+  });
+
+  if (options?.replaceCache === false) {
+    mergeLiveChatRows(telegramUsername, liveRows);
+  } else {
+    seedLiveChatList(telegramUsername, liveRows);
+  }
+  await touchMtprotoSync(telegramUsername);
+
+  logGateway("sync_chat_threads_done", {
+    telegramUsername,
+    chatCount: chats.length,
+    rowCount: liveRows.length,
+    maxMainChats: options?.maxMainChats ?? null,
+    includeArchive: options?.includeArchive !== false,
+    replaceCache: options?.replaceCache !== false,
+  });
+
+  return chats.length;
+}
+
+async function buildLiveRowsForChats(
+  client: Client,
+  chats: TdChat[],
+  options?: { skipMemberCounts?: boolean },
+): Promise<Omit<LiveChatRow, "revision">[]> {
+  if (chats.length === 0) return [];
 
   let subtitles = await mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
     resolveLastMessagePreview(client, chat),
@@ -608,9 +705,11 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
   let presences = await mapWithConcurrency(chats, PRESENCE_SYNC_CONCURRENCY, (chat) =>
     resolvePeerProfile(client, chat),
   );
-  let memberCounts = await mapWithConcurrency(chats, MEMBER_COUNT_SYNC_CONCURRENCY, (chat) =>
-    memberCountFromChat(client, chat),
-  );
+  let memberCounts = options?.skipMemberCounts
+    ? chats.map(() => null as number | null)
+    : await mapWithConcurrency(chats, MEMBER_COUNT_SYNC_CONCURRENCY, (chat) =>
+        memberCountFromChat(client, chat),
+      );
 
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < chats.length; i++) {
@@ -653,10 +752,135 @@ export async function syncChatThreads(client: Client, telegramUsername: string):
       pin_order: mainListOrderKey(chat),
     });
   }
+  return liveRows;
+}
 
-  seedLiveChatList(telegramUsername, liveRows);
+const backgroundSyncInflight = new Set<string>();
+
+/** Load archive + remaining main-list chats in small TDLib pages (non-blocking). */
+export async function syncRemainingChatsInBackground(
+  client: Client,
+  telegramUsername: string,
+): Promise<number> {
+  await sleep(BACKGROUND_CHAT_SYNC_START_DELAY_MS);
+
+  const cachedIds = new Set(
+    (getLiveChatList(telegramUsername) ?? []).map((row) => row.telegram_chat_id),
+  );
+
+  logGateway("sync_chat_background_start", {
+    telegramUsername,
+    cachedCount: cachedIds.size,
+    pageSize: BACKGROUND_CHAT_SYNC_PAGE_SIZE,
+  });
+
+  let merged = 0;
+
+  const syncChatList = async (
+    chatList: { _: "chatListMain" } | { _: "chatListArchive" },
+  ): Promise<void> => {
+    let offsetOrder = "9223372036854775807";
+    let offsetChatId = 0;
+    let warmedUp = false;
+
+    for (let round = 0; round < 80; round++) {
+      let list: { chat_ids?: number[] };
+      try {
+        list = (await client.invoke({
+          _: "getChats",
+          chat_list: chatList,
+          offset_order: offsetOrder,
+          offset_chat_id: offsetChatId,
+          limit: 100,
+        })) as { chat_ids?: number[] };
+      } catch {
+        break;
+      }
+
+      const rawIds = list.chat_ids ?? [];
+      const ids = rawIds.filter((id) => !cachedIds.has(id));
+      if (rawIds.length === 0) {
+        if (warmedUp) break;
+        warmedUp = true;
+        try {
+          await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
+        } catch {
+          break;
+        }
+        await sleep(400);
+        continue;
+      }
+
+      const pageChats: TdChat[] = [];
+      for (const chatId of ids) {
+        try {
+          const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+          if (!filterChatsForList([chat]).length) continue;
+          pageChats.push(chat);
+          cachedIds.add(chatId);
+        } catch {
+          /* skip */
+        }
+      }
+
+      for (let offset = 0; offset < pageChats.length; offset += BACKGROUND_CHAT_SYNC_PAGE_SIZE) {
+        const slice = pageChats.slice(offset, offset + BACKGROUND_CHAT_SYNC_PAGE_SIZE);
+        if (slice.length === 0) continue;
+        const rows = await buildLiveRowsForChats(client, slice);
+        mergeLiveChatRows(telegramUsername, rows);
+        merged += rows.length;
+        if (offset + BACKGROUND_CHAT_SYNC_PAGE_SIZE < pageChats.length) {
+          await sleep(BACKGROUND_CHAT_SYNC_PAGE_DELAY_MS);
+        }
+      }
+
+      if (rawIds.length < 100) break;
+      const lastId = rawIds[rawIds.length - 1];
+      let anchor: TdChat | null = pageChats.find((c) => c.id === lastId) ?? null;
+      if (!anchor && lastId != null) {
+        try {
+          anchor = (await client.invoke({ _: "getChat", chat_id: lastId })) as TdChat;
+        } catch {
+          anchor = null;
+        }
+      }
+      if (!anchor) break;
+      const nextOffsetOrder = mainListOrderKey(anchor);
+      if (!nextOffsetOrder || nextOffsetOrder === "0") break;
+      if (nextOffsetOrder === offsetOrder && anchor.id === offsetChatId) break;
+      offsetOrder = nextOffsetOrder;
+      offsetChatId = anchor.id;
+
+      if (pageChats.length > 0) {
+        await sleep(BACKGROUND_CHAT_SYNC_PAGE_DELAY_MS);
+      }
+    }
+  };
+
+  await syncChatList({ _: "chatListMain" });
+
   await touchMtprotoSync(telegramUsername);
-  return chats.length;
+  logGateway("sync_chat_background_done", {
+    telegramUsername,
+    mergedCount: merged,
+    totalCached: getLiveChatList(telegramUsername)?.length ?? 0,
+  });
+  return merged;
+}
+
+export function scheduleBackgroundChatSync(client: Client, telegramUsername: string): void {
+  if (backgroundSyncInflight.has(telegramUsername)) return;
+  backgroundSyncInflight.add(telegramUsername);
+  void (async () => {
+    try {
+      await syncRemainingChatsInBackground(client, telegramUsername);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logGateway("sync_chat_background_error", { telegramUsername, message });
+    } finally {
+      backgroundSyncInflight.delete(telegramUsername);
+    }
+  })();
 }
 
 export async function syncChatsFromTdlib(
@@ -664,5 +888,12 @@ export async function syncChatsFromTdlib(
   telegramUsername: string,
 ): Promise<number> {
   await persistMtprotoConnection(client, telegramUsername);
-  return syncChatThreads(client, telegramUsername);
+  const count = await syncChatThreads(client, telegramUsername, {
+    maxMainChats: INITIAL_MAIN_CHAT_SYNC_LIMIT,
+    includeArchive: false,
+    includeSupplementarySearch: false,
+    skipMemberCounts: true,
+    replaceCache: true,
+  });
+  return count;
 }

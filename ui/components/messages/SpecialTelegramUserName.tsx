@@ -21,6 +21,8 @@ type Props = {
   telegramUserId: number | null | undefined;
   telegramChatId?: number | null;
   emojiStatusCustomEmojiId?: string | null;
+  /** When true, fetch/render Telegram emoji status immediately (open thread). */
+  emojiStatusPriority?: boolean;
   textStyle: TextStyle;
   numberOfLines?: number;
   textAlign?: "left" | "center" | "right";
@@ -62,6 +64,7 @@ export function SpecialTelegramUserName({
   telegramUserId,
   telegramChatId = null,
   emojiStatusCustomEmojiId,
+  emojiStatusPriority = true,
   textStyle,
   numberOfLines = 1,
   textAlign = "left",
@@ -167,7 +170,8 @@ export function SpecialTelegramUserName({
           <MessageChatInlineTgsEmoji
             customEmojiId={telegramEmojiStatusId}
             sizePx={SPECIAL_USER_BADGE_SIZE_PX}
-            priority
+            priority={emojiStatusPriority}
+            fetchEnabled={emojiStatusPriority}
           />
         ) : null}
       </View>

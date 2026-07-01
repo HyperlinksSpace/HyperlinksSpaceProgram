@@ -3,6 +3,7 @@ import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
 import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
+import { shouldIncludeChatInList } from "./chatListFilter.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
@@ -171,6 +172,7 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
   if (type === "updateNewChat") {
     const chat = update.chat as TdChat | undefined;
     if (!chat?.id) return;
+    if (!shouldIncludeChatInList(chat)) return;
     patchLiveChatFromTdlib(record.telegramUsername, chat, {});
     return;
   }

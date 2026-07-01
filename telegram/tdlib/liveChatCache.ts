@@ -1,4 +1,5 @@
 import { emitLiveChatRevision } from "./liveChatRevisionNotify.js";
+import { specialUserForceIncludedPeerUserIds } from "../../shared/specialTelegramUsers.js";
 import {
   CHAT_ACTION_TTL_MS,
   chatTitle,
@@ -17,7 +18,7 @@ import {
   type TdMessage,
 } from "./chatPreview.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
-import { chatKindFromTdChat } from "./messageHistoryMap.js";
+import { shouldIncludeChatInList } from "./chatListFilter.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 
 export type LiveChatRow = {
@@ -163,6 +164,27 @@ export function seedLiveChatList(
   }
 }
 
+/** Merge rows into the live cache with a single revision bump (background paging). */
+export function mergeLiveChatRows(
+  telegramUsername: string,
+  rows: Omit<LiveChatRow, "revision">[],
+): number {
+  const cache = userCache(telegramUsername);
+  const forcedPeerIds = new Set(specialUserForceIncludedPeerUserIds());
+  const filtered = rows.filter((row) => {
+    if (cache.chats.has(row.telegram_chat_id)) return true;
+    if (row.pin_order !== "0") return true;
+    const peerUserId = row.peer_user_id;
+    return peerUserId != null && forcedPeerIds.has(peerUserId);
+  });
+  if (filtered.length === 0) return cache.revision;
+  const rev = bumpRevision(cache, telegramUsername);
+  for (const row of filtered) {
+    cache.chats.set(row.telegram_chat_id, { ...row, revision: rev });
+  }
+  return rev;
+}
+
 export function upsertLiveChatRow(
   telegramUsername: string,
   row: Omit<LiveChatRow, "revision">,
@@ -186,9 +208,12 @@ export function patchLiveChatFromTdlib(
     peer_username?: string | null;
     chat_username?: string | null;
   },
-): LiveChatRow {
+): LiveChatRow | null {
   const cache = userCache(telegramUsername);
   const existing = cache.chats.get(chat.id);
+  if (!existing && !shouldIncludeChatInList(chat)) {
+    return null;
+  }
   const lastMessage = input.last_message ?? chat.last_message ?? null;
   const subtitleSegments =
     input.subtitle_segments !== undefined
