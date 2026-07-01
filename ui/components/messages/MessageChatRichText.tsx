@@ -33,6 +33,8 @@ type Props = {
   lowPriorityEmoji?: boolean;
   /** When false, defer custom/animated emoji network fetches (list rows off-screen). */
   emojiFetchEnabled?: boolean;
+  /** Chat-list rows: mirror status-badge fetch gating (row visible / active). */
+  emojiFetchPriority?: boolean;
   /** Single-line bubble row: do not break words (inline time + checks). */
   nowrap?: boolean;
 } & Pick<TextProps, "numberOfLines">;
@@ -60,7 +62,10 @@ function renderTelegramEmojiNode(
   sizePx: number,
   lowPriority?: boolean,
   fetchEnabled = true,
+  fetchPriority?: boolean,
 ) {
+  const priority = fetchPriority ?? false;
+  const effectiveFetchEnabled = fetchPriority !== undefined ? fetchPriority : fetchEnabled;
   return (
     <MessageChatInlineTgsEmoji
       customEmojiId={segment.kind === "custom_emoji" ? segment.custom_emoji_id : undefined}
@@ -68,7 +73,8 @@ function renderTelegramEmojiNode(
       sizePx={sizePx}
       fallbackText={segment.text}
       lowPriority={lowPriority}
-      fetchEnabled={fetchEnabled}
+      priority={priority}
+      fetchEnabled={effectiveFetchEnabled}
     />
   );
 }
@@ -81,6 +87,7 @@ function RichTextWebRow({
   numberOfLines,
   lowPriorityEmoji,
   emojiFetchEnabled = true,
+  emojiFetchPriority,
   nowrap = false,
 }: {
   segments: FormattedTextSegment[];
@@ -90,6 +97,7 @@ function RichTextWebRow({
   numberOfLines?: number;
   lowPriorityEmoji?: boolean;
   emojiFetchEnabled?: boolean;
+  emojiFetchPriority?: boolean;
   nowrap?: boolean;
 }) {
   const wrapStyle =
@@ -138,19 +146,13 @@ function RichTextWebRow({
           );
         }
         if (segment.kind === "custom_emoji" || segment.kind === "animated_emoji") {
-          return (
-            <View
-              key={index}
-              style={{
-                width: emojiSizePx,
-                height: emojiSizePx,
-                flexShrink: 0,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {renderTelegramEmojiNode(segment, emojiSizePx, lowPriorityEmoji, emojiFetchEnabled)}
-            </View>
+          return renderTelegramEmojiInline(
+            segment,
+            emojiSizePx,
+            index,
+            lowPriorityEmoji,
+            emojiFetchEnabled,
+            emojiFetchPriority,
           );
         }
         return (
@@ -175,8 +177,15 @@ function renderTelegramEmojiInline(
   key: number,
   lowPriority?: boolean,
   fetchEnabled = true,
+  fetchPriority?: boolean,
 ) {
-  const emojiNode = renderTelegramEmojiNode(segment, sizePx, lowPriority, fetchEnabled);
+  const emojiNode = renderTelegramEmojiNode(
+    segment,
+    sizePx,
+    lowPriority,
+    fetchEnabled,
+    fetchPriority,
+  );
 
   if (Platform.OS === "web") {
     return createElement(
@@ -211,6 +220,7 @@ export function MessageChatRichText({
   numberOfLines,
   lowPriorityEmoji = false,
   emojiFetchEnabled = true,
+  emojiFetchPriority,
   nowrap = false,
 }: Props) {
   const resolvedSegments = useMemo(() => resolveSegments(text, segments), [text, segments]);
@@ -255,6 +265,7 @@ export function MessageChatRichText({
         numberOfLines={numberOfLines}
         lowPriorityEmoji={lowPriorityEmoji}
         emojiFetchEnabled={emojiFetchEnabled}
+        emojiFetchPriority={emojiFetchPriority}
         nowrap={nowrap}
       />
     );
@@ -284,6 +295,7 @@ export function MessageChatRichText({
             index,
             lowPriorityEmoji,
             emojiFetchEnabled,
+            emojiFetchPriority,
           );
         }
         return (

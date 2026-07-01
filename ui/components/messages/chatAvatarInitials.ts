@@ -1,3 +1,4 @@
+import { stripInvisibleDisplayNameChars } from "../../../shared/telegramDisplayName";
 import type { ThemeColors, ThemeName } from "../../theme";
 
 /** Soft luminous hues — readable on dark undercover fills (#323232 range). */
@@ -83,10 +84,18 @@ function mixRgbHex(from: string, to: string, t: number): string {
   return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
 }
 
+function isInvisibleInitialGrapheme(grapheme: string): boolean {
+  if (!grapheme) return true;
+  return stripInvisibleDisplayNameChars(grapheme).length === 0;
+}
+
 function firstGrapheme(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
-  return Array.from(trimmed)[0] ?? "";
+  for (const grapheme of Array.from(trimmed)) {
+    if (!isInvisibleInitialGrapheme(grapheme)) return grapheme;
+  }
+  return "";
 }
 
 function letterPalette(scheme: ThemeName): readonly string[] {
@@ -124,7 +133,7 @@ export function chatAvatarFallbackBackground(colors: ThemeColors, scheme: ThemeN
  * Returns an empty array when no displayable symbols exist (e.g. placeholder "Chat 123").
  */
 export function extractChatAvatarInitials(title: string): string[] {
-  const trimmed = title.trim();
+  const trimmed = stripInvisibleDisplayNameChars(title).trim();
   if (!trimmed || /^Chat \d+$/.test(trimmed)) return [];
 
   if (trimmed.startsWith("@")) {
@@ -132,7 +141,7 @@ export function extractChatAvatarInitials(title: string): string[] {
     return letter ? [letter.toUpperCase()] : [];
   }
 
-  const words = trimmed.split(/\s+/).filter(Boolean);
+  const words = trimmed.split(/\s+/).filter((word) => stripInvisibleDisplayNameChars(word).trim().length > 0);
   if (words.length >= 2) {
     const first = firstGrapheme(words[0]);
     const second = firstGrapheme(words[1]);

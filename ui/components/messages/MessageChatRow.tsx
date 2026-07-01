@@ -2,15 +2,16 @@ import type { FormattedTextSegment } from "../../../shared/formattedTextSegments
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Platform, Text, View } from "react-native";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
+import { resolveTelegramDisplayName } from "../../../shared/telegramDisplayName";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { logPageDisplay, chatLogFields } from "../../pageDisplayLog";
 import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { HomeListRowShell } from "../HomeListRowShell";
-import { ChatAvatarFallback } from "./ChatAvatarFallback";
+import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
+import { specialUserDisplayName } from "./specialTelegramUserDisplay";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
 import { MessageChatPinIcon } from "./MessageChatPinIcon";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
@@ -106,8 +107,15 @@ export function MessageChatRow({
   const timeLabel = parsedClock || timePendingLabel;
   const gapTitleTime = !!(title && timeLabel.trim());
   const avatarLogOnceRef = useRef(false);
-  const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
-  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const avatarLabel = useMemo(() => {
+    const display = specialUserDisplayName(item.peer_user_id, title, item.telegram_chat_id);
+    return resolveTelegramDisplayName({
+      name: display,
+      username: item.peer_username,
+      userId: item.peer_user_id,
+    });
+  }, [item.peer_user_id, item.peer_username, item.telegram_chat_id, title]);
+  const avatarInitials = useMemo(() => extractChatAvatarInitials(avatarLabel), [avatarLabel]);
   const { colorScheme } = useTelegram();
   const rowRef = useRef<View>(null);
   const rowInView = useElementVisible(rowRef as RefObject<Element | null>, {
@@ -120,13 +128,9 @@ export function MessageChatRow({
     prefetchOnceRef.current = true;
     onPrefetch?.();
   }, [onPrefetch, rowInView]);
-  const showAvatarImage = !!iconUrl && !avatarLoadFailed;
+  const showAvatarImage = !!iconUrl;
   const isProxyAvatar = Boolean(iconUrl?.includes("/api/telegram-messages-avatar"));
-  const deferAvatarFetch = isProxyAvatar && !avatarLoadEnabled;
-
-  useEffect(() => {
-    setAvatarLoadFailed(false);
-  }, [iconUrl]);
+  const avatarFetchEnabled = !isProxyAvatar || avatarLoadEnabled;
 
   useEffect(() => {
     if (avatarLogOnceRef.current || !avatarLoadEnabled) return;
@@ -191,40 +195,33 @@ export function MessageChatRow({
           justifyContent: "center",
         }}
       >
-        {showAvatarImage && !deferAvatarFetch ? (
-          <MessageChatAvatarImage
-            uri={iconUrl}
-            sizePx={MESSAGE_AVATAR_PX}
-            loadEnabled={!isProxyAvatar || avatarLoadEnabled}
-            onLoad={() => {
-              logPageDisplay("messages_avatar_load_ok", {
-                ...chatLogFields({
-                  chatId: item.telegram_chat_id,
-                  peerUserId: item.peer_user_id,
-                  title: item.title,
-                }),
-              });
-            }}
-            onError={(error) => {
-              setAvatarLoadFailed(true);
-              logPageDisplay("messages_avatar_load_error", {
-                ...chatLogFields({
-                  chatId: item.telegram_chat_id,
-                  peerUserId: item.peer_user_id,
-                  title: item.title,
-                }),
-                error: error ?? "unknown_avatar_error",
-              });
-            }}
-          />
-        ) : (
-          <ChatAvatarFallback
-            initials={avatarInitials}
-            sizePx={MESSAGE_AVATAR_PX}
-            colors={colors}
-            scheme={colorScheme}
-          />
-        )}
+        <MessageChatAvatarSlot
+          iconUrl={showAvatarImage ? iconUrl : null}
+          initials={avatarInitials}
+          sizePx={MESSAGE_AVATAR_PX}
+          colors={colors}
+          scheme={colorScheme}
+          loadEnabled={avatarFetchEnabled}
+          onLoad={() => {
+            logPageDisplay("messages_avatar_load_ok", {
+              ...chatLogFields({
+                chatId: item.telegram_chat_id,
+                peerUserId: item.peer_user_id,
+                title: item.title,
+              }),
+            });
+          }}
+          onError={(error) => {
+            logPageDisplay("messages_avatar_load_error", {
+              ...chatLogFields({
+                chatId: item.telegram_chat_id,
+                peerUserId: item.peer_user_id,
+                title: item.title,
+              }),
+              error: error ?? "unknown_avatar_error",
+            });
+          }}
+        />
       </View>
       <View style={{ width: MESSAGE_ICON_TEXT_GAP_PX }} />
       <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
@@ -275,7 +272,7 @@ export function MessageChatRow({
             numberOfLines={1}
             emojiSizePx={16}
             lowPriorityEmoji
-            emojiFetchEnabled={avatarLoadEnabled}
+            emojiFetchPriority={avatarLoadEnabled}
             style={{
               ...textBase,
               flex: 1,

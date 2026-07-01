@@ -37,6 +37,9 @@ export function resolveTelegramThreadAvatarUrl(
   chatKind?: MessageChatKind | null,
 ): string | null {
   const inChannelThread = chatKind === "channel";
+  if (chat.avatar_url === TELEGRAM_THREAD_NO_AVATAR) {
+    return null;
+  }
   const storedChatAvatar = resolveStoredAvatarUrl(chat.avatar_url);
 
   if (inChannelThread || item?.sender_is_channel) {

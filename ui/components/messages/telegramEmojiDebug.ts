@@ -90,6 +90,24 @@ export const telegramEmojiDebug = {
     });
   },
 
+  fetchSkipped(
+    ref: TelegramEmojiFetchRef,
+    details: {
+      fetchEnabled: boolean;
+      priority: boolean;
+      lowPriority: boolean;
+      visible: boolean;
+    },
+  ) {
+    const key = `fetch:skipped:${refLabel(ref)}`;
+    if (!shouldLog(key)) return;
+    appLog(TAG, "fetch_skipped", {
+      ref: refLabel(ref),
+      ...details,
+      hint: "shouldFetch=false — emoji stays on Unicode placeholder until gate opens",
+    });
+  },
+
   inlineDecode(
     ref: TelegramEmojiFetchRef,
     path: "tgs" | "video" | "image" | "unsupported",

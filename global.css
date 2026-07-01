@@ -93,6 +93,28 @@
   backface-visibility: hidden;
 }
 
+@keyframes hsp-chat-older-history-load-line-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.hsp-chat-older-history-load-line {
+  width: 100%;
+  transform-origin: left center;
+  animation: hsp-chat-older-history-load-line-grow 1.3s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.hsp-chat-older-history-load-line--done {
+  animation: none;
+  transform: scaleX(1);
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+}
+
 /*
  * Document may scroll when the user zooms the page (browser pinch / Ctrl+wheel) so content can be panned
  * in both axes. Inner app column still uses its own ScrollView for vertical flow.

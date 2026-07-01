@@ -6,6 +6,7 @@ import {
 } from "./fetchTelegramEmojiBytes";
 import { bytesLookLikeTgs } from "./loadTgsAnimation";
 import { getCachedTgsAnimationFromBytes } from "./tgsAnimationCache";
+import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 import { useElementVisible } from "./useElementVisible";
@@ -60,12 +61,13 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     fetchEnabled = true,
   } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
+  const { emojiFetchEpoch } = useTelegramMessagesConnection();
   const hostRef = useRef<HTMLSpanElement>(null);
   const visible = useElementVisible(hostRef as RefObject<Element | null>, {
     enabled: !priority,
     rootMargin: "96px",
   });
-  const shouldFetch = fetchEnabled && (priority || visible);
+  const shouldFetch = fetchEnabled && (priority || lowPriority || visible);
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);
@@ -92,6 +94,13 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     if (!fetchRef || !shouldFetch) {
       if (!fetchRef) {
         telegramEmojiDebug.inlineNoRef("web", props);
+      } else if (!shouldFetch) {
+        telegramEmojiDebug.fetchSkipped(fetchRef, {
+          fetchEnabled,
+          priority,
+          lowPriority,
+          visible,
+        });
       }
       return;
     }
@@ -153,7 +162,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     return () => {
       cancelled = true;
     };
-  }, [fetchRef, shouldFetch]);
+  }, [fetchRef, shouldFetch, emojiFetchEpoch]);
 
   useEffect(() => {
     if (!fetchRef || !fetchSettled || animationData || mediaUrl) return;

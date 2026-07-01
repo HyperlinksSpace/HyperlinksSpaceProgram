@@ -18,6 +18,7 @@ import {
   type TdMessage,
 } from "./chatPreview.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
+import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 

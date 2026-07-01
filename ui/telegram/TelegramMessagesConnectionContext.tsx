@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { buildApiUrl } from "../../api/_base";
+import { resetTelegramEmojiFetchCaches } from "../components/messages/fetchTelegramEmojiBytes";
 import { useAuth } from "../../auth/AuthContext";
 import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
@@ -37,6 +38,8 @@ export type MtprotoAuthState =
 
 type TelegramMessagesConnectionCtx = {
   isTelegramMessagesConnected: boolean;
+  /** Bumps when Telegram connects so inline emoji components refetch sticker bytes. */
+  emojiFetchEpoch: number;
   connectPending: boolean;
   connectSheetVisible: boolean;
   connectAuthState: MtprotoAuthState;
@@ -96,6 +99,7 @@ function isMidConnectAuth(state: MtprotoAuthState): boolean {
 export function TelegramMessagesConnectionProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, authReady, sessionTelegramMessagesConnected } = useAuth();
   const [isTelegramMessagesConnected, setConnected] = useState(false);
+  const [emojiFetchEpoch, setEmojiFetchEpoch] = useState(0);
   const [connectPending, setConnectPending] = useState(false);
   const [connectSheetVisible, setConnectSheetVisible] = useState(false);
   const [connectAuthState, setConnectAuthState] = useState<MtprotoAuthState>("idle");
@@ -112,6 +116,19 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const connectStartAbortRef = useRef<AbortController | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const warmupInFlightRef = useRef(false);
+  const wasTelegramConnectedRef = useRef(false);
+
+  const bumpEmojiFetchEpoch = useCallback(() => {
+    resetTelegramEmojiFetchCaches();
+    setEmojiFetchEpoch((epoch) => epoch + 1);
+  }, []);
+
+  useEffect(() => {
+    if (isTelegramMessagesConnected && !wasTelegramConnectedRef.current) {
+      bumpEmojiFetchEpoch();
+    }
+    wasTelegramConnectedRef.current = isTelegramMessagesConnected;
+  }, [bumpEmojiFetchEpoch, isTelegramMessagesConnected]);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -758,6 +775,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const value = useMemo(
     (): TelegramMessagesConnectionCtx => ({
       isTelegramMessagesConnected,
+      emojiFetchEpoch,
       connectPending,
       connectSheetVisible,
       connectAuthState,
@@ -778,6 +796,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     }),
     [
       isTelegramMessagesConnected,
+      emojiFetchEpoch,
       connectPending,
       connectSheetVisible,
       connectAuthState,

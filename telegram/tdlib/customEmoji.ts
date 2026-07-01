@@ -1,6 +1,6 @@
 import fs from "fs";
 import type { Client } from "tdl";
-import { tdlibCustomEmojiIdParam } from "../../shared/telegramCustomEmojiId.js";
+import { parseTdlibFileId, tdlibCustomEmojiIdParam } from "../../shared/telegramCustomEmojiId.js";
 import { logGateway } from "./gatewayLog.js";
 
 type TdFile = {
@@ -11,34 +11,41 @@ type TdFile = {
   };
 };
 
+function isTdlibFileObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return row._ === "file" || ("local" in row && "remote" in row);
+}
+
+function fileIdFromTdlibFile(value: unknown): number | null {
+  if (!isTdlibFileObject(value)) return null;
+  return parseTdlibFileId((value as { id?: unknown }).id);
+}
+
 /** TDLib `file` object, or `sticker` object (bytes on nested `sticker` file field). */
 function pickTdlibFileId(value: unknown): number | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
 
-  // Sticker objects expose a top-level `id` (sticker row) and nested `sticker.id` (file to download).
-  const nested = row.sticker;
-  if (nested && typeof nested === "object") {
-    const nestedId = Number((nested as { id?: number }).id);
-    if (Number.isFinite(nestedId) && nestedId > 0) return nestedId;
+  const directFile = fileIdFromTdlibFile(row);
+  if (directFile != null) return directFile;
+
+  const stickerFile = fileIdFromTdlibFile(row.sticker);
+  if (stickerFile != null) return stickerFile;
+
+  if (row.sticker && typeof row.sticker === "object") {
+    const nestedSticker = row.sticker as Record<string, unknown>;
+    const deepFile = fileIdFromTdlibFile(nestedSticker.sticker);
+    if (deepFile != null) return deepFile;
   }
 
-  const file = row.file;
-  if (file && typeof file === "object") {
-    const fileId = Number((file as { id?: number }).id);
-    if (Number.isFinite(fileId) && fileId > 0) return fileId;
-  }
-
-  const direct = Number(row.id);
-  if (Number.isFinite(direct) && direct > 0) return direct;
+  const topFile = fileIdFromTdlibFile(row.file);
+  if (topFile != null) return topFile;
 
   const thumbnail = row.thumbnail;
   if (thumbnail && typeof thumbnail === "object") {
-    const file = (thumbnail as { file?: unknown }).file;
-    if (file && typeof file === "object") {
-      const fileId = Number((file as { id?: number }).id);
-      if (Number.isFinite(fileId) && fileId > 0) return fileId;
-    }
+    const thumbFile = fileIdFromTdlibFile((thumbnail as { file?: unknown }).file);
+    if (thumbFile != null) return thumbFile;
   }
 
   const preview = row.preview;
@@ -47,21 +54,30 @@ function pickTdlibFileId(value: unknown): number | null {
     if (fileId != null) return fileId;
   }
 
+  // Sticker row `id` is not a downloadable file id — only use top-level id for bare file refs.
+  if (!("sticker" in row) && !("thumbnail" in row) && !("set_id" in row)) {
+    const fallback = parseTdlibFileId(row.id);
+    if (fallback != null) return fallback;
+  }
+
   return null;
 }
 
 function pickTdlibFileIds(value: unknown): number[] {
-  const primary = pickTdlibFileId(value);
-  const ids: number[] = primary != null ? [primary] : [];
+  const ids: number[] = [];
+  const push = (id: number | null) => {
+    if (id != null && id > 0 && !ids.includes(id)) ids.push(id);
+  };
+  push(pickTdlibFileId(value));
   if (!value || typeof value !== "object") return ids;
   const row = value as Record<string, unknown>;
   const thumbnail = row.thumbnail;
   if (thumbnail && typeof thumbnail === "object") {
-    const file = (thumbnail as { file?: unknown }).file;
-    if (file && typeof file === "object") {
-      const fileId = Number((file as { id?: number }).id);
-      if (Number.isFinite(fileId) && fileId > 0 && !ids.includes(fileId)) ids.push(fileId);
-    }
+    push(fileIdFromTdlibFile((thumbnail as { file?: unknown }).file));
+  }
+  const minithumbnail = row.minithumbnail;
+  if (minithumbnail && typeof minithumbnail === "object") {
+    push(fileIdFromTdlibFile((minithumbnail as { file?: unknown }).file));
   }
   return ids;
 }
@@ -163,6 +179,30 @@ function cacheKey(kind: "custom" | "animated", id: string): string {
   return `${kind}:${id}`;
 }
 
+async function fetchCustomEmojiSticker(
+  client: Client,
+  id: string,
+  attempt: number,
+): Promise<unknown | null> {
+  const customEmojiIdParam = tdlibCustomEmojiIdParam(id);
+  if (!customEmojiIdParam) return null;
+
+  const result = (await client.invoke({
+    _: "getCustomEmojiStickers",
+    custom_emoji_ids: [customEmojiIdParam],
+  })) as { stickers?: unknown[] };
+
+  const sticker = result.stickers?.[0];
+  if (sticker) return sticker;
+
+  logGateway("custom_emoji_sticker_missing", {
+    customEmojiId: id,
+    attempt,
+    stickerCount: Array.isArray(result.stickers) ? result.stickers.length : 0,
+  });
+  return null;
+}
+
 export async function readCustomEmojiBytes(
   client: Client,
   customEmojiId: string,
@@ -176,18 +216,13 @@ export async function readCustomEmojiBytes(
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const result = (await client.invoke({
-        _: "getCustomEmojiStickers",
-        custom_emoji_ids: [tdlibCustomEmojiIdParam(id)],
-      })) as { stickers?: unknown[] };
-
-      const sticker = result.stickers?.[0];
+      const sticker = await fetchCustomEmojiSticker(client, id, attempt);
       const fileIds = pickTdlibFileIds(sticker);
       if (fileIds.length === 0) {
         logGateway("custom_emoji_sticker_missing", {
           customEmojiId: id,
           attempt,
-          stickerCount: Array.isArray(result.stickers) ? result.stickers.length : 0,
+          stickerCount: sticker ? 1 : 0,
           stickerKeys:
             sticker && typeof sticker === "object"
               ? Object.keys(sticker as object)

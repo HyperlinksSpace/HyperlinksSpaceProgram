@@ -4,8 +4,7 @@ import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographyRect15 } from "../../theme";
 import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
-import { ChatAvatarFallback } from "./ChatAvatarFallback";
-import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
+import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
@@ -126,31 +125,22 @@ export function MessageChatMessageRow({
     const name =
       chatKind === "channel"
         ? chat.title
-        : item.is_outgoing
-          ? item.sender_name || chat.title
-          : item.sender_name || chat.title;
-    return extractChatAvatarInitials(name);
-  }, [chatKind, chat.title, item.is_outgoing, item.sender_name]);
-  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
-  const onAvatarError = useCallback(() => {
-    setAvatarLoadFailed(true);
-  }, []);
+        : item.sender_name || chat.title;
+    return extractChatAvatarInitials(
+      resolveMessageSenderDisplayName(name, item.sender_user_id, chat.telegram_chat_id),
+    );
+  }, [chatKind, chat.title, chat.telegram_chat_id, item.sender_name, item.sender_user_id]);
+  const [liveMediaWidthPx, setLiveMediaWidthPx] = useState<number | null>(null);
   const [nativeBubbleLayout, setNativeBubbleLayout] = useState<{
     width: number;
     innerWidthPx: number;
     placement: BubbleMetaPlacement;
   } | null>(null);
-  const [liveMediaWidthPx, setLiveMediaWidthPx] = useState<number | null>(null);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<MessageContextMenuAnchor | null>(null);
   const lastPointerRef = useRef<MessageContextMenuAnchor | null>(null);
   const bubblePressableRef = useRef<View | null>(null);
-  const showAvatarImage = !!iconUrl && !avatarLoadFailed;
   const { colorScheme } = useTelegram();
-
-  useEffect(() => {
-    setAvatarLoadFailed(false);
-  }, [iconUrl]);
 
   const bubbleMaxWidth = Math.max(
     0,
@@ -461,20 +451,13 @@ export function MessageChatMessageRow({
           flexShrink: 0,
         }}
       >
-        {showAvatarImage ? (
-          <MessageChatAvatarImage
-            uri={iconUrl}
-            sizePx={MESSAGE_BUBBLE_AVATAR_PX}
-            onError={onAvatarError}
-          />
-        ) : (
-          <ChatAvatarFallback
-            initials={avatarInitials}
-            sizePx={MESSAGE_BUBBLE_AVATAR_PX}
-            colors={colors}
-            scheme={colorScheme}
-          />
-        )}
+        <MessageChatAvatarSlot
+          iconUrl={iconUrl}
+          initials={avatarInitials}
+          sizePx={MESSAGE_BUBBLE_AVATAR_PX}
+          colors={colors}
+          scheme={colorScheme}
+        />
       </View>
       <View style={{ width: MESSAGE_BUBBLE_AVATAR_GAP_PX }} />
         <Pressable

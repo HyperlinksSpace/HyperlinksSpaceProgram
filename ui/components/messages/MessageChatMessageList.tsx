@@ -2,10 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, Text, View, type LayoutChangeEvent } from "react-native";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppStrings } from "../../../locales/AppStringsContext";
-import {
-  clearRecentChatSenderStatusRules,
-  syncRecentChatSenderStatusRules,
-} from "../../../shared/specialTelegramUsers";
 import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSelectedChat";
 import { chatLogFields, logPageDisplay } from "../../pageDisplayLog";
 import {
@@ -42,6 +38,7 @@ import {
   type HistoryMessageContext,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
+import { MessageChatOlderHistoryLoadLine } from "./MessageChatOlderHistoryLoadLine";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
@@ -149,6 +146,10 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const loadingOlderRef = useRef(false);
   const nextBeforeMessageIdRef = useRef<number | null>(null);
   const pendingScrollAnchorRef = useRef<HspScrollAnchor | null>(null);
+  const pendingInitialScrollRef = useRef(false);
+  const followingBottomRef = useRef(true);
+  const prevDisplayLengthRef = useRef(0);
+  const prevDisplayLastIdRef = useRef(0);
   const lastLiveSignatureRef = useRef("");
   const historyPollInFlightRef = useRef(false);
   const historyPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -163,7 +164,11 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
   useEffect(() => {
     lastLiveSignatureRef.current = "";
-  }, [chat.telegram_chat_id]);
+    pendingInitialScrollRef.current = true;
+    followingBottomRef.current = true;
+    prevDisplayLengthRef.current = 0;
+    prevDisplayLastIdRef.current = 0;
+  }, [chat.telegram_chat_id, historyLoad.generation]);
 
   const onColumnLayout = useCallback((event: LayoutChangeEvent) => {
     const next = Math.round(event.nativeEvent.layout.width);
@@ -214,13 +219,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     patchAuthenticatedHomeSelectedChatReadOutbox(readOutboxCursor);
   }, [readOutboxCursor]);
 
-  useEffect(() => {
-    syncRecentChatSenderStatusRules(chat.telegram_chat_id, messages);
-    return () => {
-      clearRecentChatSenderStatusRules(chat.telegram_chat_id);
-    };
-  }, [chat.telegram_chat_id, messages]);
-
   const displayMessages = useMemo(() => {
     const enriched = messages.map(enrichHistoryMessageDisplay);
     const effectiveChatKind = chatKind ?? chat.chat_kind ?? null;
@@ -231,6 +229,37 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   useEffect(() => {
     nextBeforeMessageIdRef.current = nextBeforeMessageId;
   }, [nextBeforeMessageId]);
+
+  const lastDisplayMessageId =
+    displayMessages.length > 0
+      ? displayMessages[displayMessages.length - 1]!.telegram_message_id
+      : 0;
+
+  useLayoutEffect(() => {
+    if (displayMessages.length === 0) return;
+    if (pendingScrollAnchorRef.current) return;
+
+    if (pendingInitialScrollRef.current) {
+      pendingInitialScrollRef.current = false;
+      prevDisplayLengthRef.current = displayMessages.length;
+      prevDisplayLastIdRef.current = lastDisplayMessageId;
+      scrollToBottom();
+      return;
+    }
+
+    const lengthGrew = displayMessages.length > prevDisplayLengthRef.current;
+    const newerTail = lastDisplayMessageId > prevDisplayLastIdRef.current;
+    prevDisplayLengthRef.current = displayMessages.length;
+    prevDisplayLastIdRef.current = lastDisplayMessageId;
+
+    if (
+      followingBottomRef.current &&
+      !loadingOlderRef.current &&
+      (newerTail || lengthGrew)
+    ) {
+      scrollToBottom();
+    }
+  }, [displayMessages.length, lastDisplayMessageId, scrollToBottom]);
 
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
@@ -243,10 +272,10 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   useEffect(() => {
     return subscribeOutgoingChatMessages(({ chatId, message }) => {
       if (chatId !== chat.telegram_chat_id) return;
+      followingBottomRef.current = true;
       setMessages((prev) => mergeHistoryMessages(prev, [message], historyMessageContext));
-      scrollToBottom();
     });
-  }, [chat.telegram_chat_id, historyMessageContext, scrollToBottom]);
+  }, [chat.telegram_chat_id, historyMessageContext]);
 
   useEffect(() => {
     if (!shouldLoadHistory) return;
@@ -265,14 +294,12 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         fresh: isChatHistoryCacheFresh(chat.telegram_chat_id),
         source: "cache_listener",
       });
-      scrollToBottom();
     });
   }, [
     applyCachedHistoryPage,
     chat.peer_user_id,
     chat.telegram_chat_id,
     chat.title,
-    scrollToBottom,
     shouldLoadHistory,
   ]);
 
@@ -282,7 +309,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       setChatKind(null);
       setError(null);
       setLoadingInitial(false);
-      setLoadingOlder(false);
       setHasMoreOlder(false);
       setNextBeforeMessageId(null);
       setLastReadOutboxFromHistory(null);
@@ -291,7 +317,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     }
 
     let cancelled = false;
-    setLoadingOlder(false);
     setError(null);
 
     const cached = getCachedChatHistory(chat.telegram_chat_id);
@@ -308,7 +333,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         count: cached.messages.length,
         fresh: isChatHistoryCacheFresh(chat.telegram_chat_id),
       });
-      scrollToBottom();
     } else {
       setLoadingInitial(true);
       setMessages([]);
@@ -369,7 +393,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           result.messages,
           chat.peer_emoji_status_custom_emoji_id ?? null,
         );
-        scrollToBottom();
       } catch (e) {
         if (cancelled) return;
         const message = e instanceof Error ? e.message : String(e);
@@ -411,8 +434,8 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     historyLoad.generation,
     isAuthenticated,
     isTelegramMessagesConnected,
-    scrollToBottom,
     shouldLoadHistory,
+    applyCachedHistoryPage,
   ]);
 
   useEffect(() => {
@@ -444,7 +467,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           const mergedMaxId =
             merged.length > 0 ? merged[merged.length - 1]!.telegram_message_id : 0;
           if (mergedMaxId > prevMaxId) {
-            scrollToBottom();
+            followingBottomRef.current = true;
           }
           return merged;
         });
@@ -498,8 +521,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     historyMessageContext,
     isAuthenticated,
     isTelegramMessagesConnected,
-    loadingInitial,
-    scrollToBottom,
     shouldLoadHistory,
   ]);
 
@@ -516,6 +537,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
     loadingOlderRef.current = true;
     setLoadingOlder(true);
+    followingBottomRef.current = false;
     const scrollAnchor = scrollControllerRef.current?.captureScrollAnchor();
 
     logPageDisplay("messages_history_load_older_start", {
@@ -672,6 +694,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   ]);
 
   const handleNearTop = useCallback(() => {
+    followingBottomRef.current = false;
     void loadOlderMessages();
   }, [loadOlderMessages]);
 
@@ -703,12 +726,13 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       }}
       onLayout={onColumnLayout}
     >
+      <MessageChatOlderHistoryLoadLine active={loadingOlder} color={colors.accent} />
       <HspScrollColumn
         key={`${chat.telegram_chat_id}-${historyLoad.generation}`}
         style={{ flex: 1, minHeight: 0 }}
         indicatorColor={colors.accent}
         scrollbarRightInsetPx={layout.scrollIndicatorRightInsetPx}
-        initialScrollPosition="bottom"
+        initialScrollPosition="top"
         nearTopThresholdPx={MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX}
         onNearTop={hasMoreOlder ? handleNearTop : undefined}
         scrollControllerRef={scrollControllerRef}
@@ -762,21 +786,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           </View>
         ))}
       </HspScrollColumn>
-
-      {loadingOlder ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            top: MESSAGE_CHAT_BODY_PADDING_PX,
-            left: 0,
-            right: 0,
-            alignItems: "center",
-          }}
-        >
-          <ActivityIndicator size="small" color={colors.primary} />
-        </View>
-      ) : null}
     </View>
   );
 }

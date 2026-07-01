@@ -45,6 +45,17 @@ export function useElementVisible(
       },
     );
     observer.observe(node);
+    const rect = node.getBoundingClientRect();
+    if (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.top < window.innerHeight &&
+      rect.right > 0 &&
+      rect.left < window.innerWidth
+    ) {
+      setVisible(true);
+    }
     return () => {
       observer.disconnect();
     };
