@@ -12,7 +12,7 @@ export function useElementVisible(
   ref: RefObject<Element | null>,
   options?: Options,
 ): boolean {
-  const [visible, setVisible] = useState(false);
+  const [visible, setVisible] = useState(true);
   const [observedNode, setObservedNode] = useState<Element | null>(null);
   const enabled = options?.enabled !== false;
 

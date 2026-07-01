@@ -24,6 +24,7 @@ import {
   MESSAGE_AVATAR_PX,
   MESSAGE_ICON_TEXT_GAP_PX,
   MESSAGE_LINE_HEIGHT_PX,
+  MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
   MESSAGE_NAME_TIME_GAP_PX,
   MESSAGE_ROW_HEIGHT_PX,
   MESSAGE_FONT_SIZE_PX,
@@ -238,7 +239,7 @@ export function MessageChatRow({
               telegramUserId={item.peer_user_id ?? null}
               telegramChatId={item.telegram_chat_id}
               emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
-              emojiStatusPriority={avatarLoadEnabled}
+              emojiStatusPriority={true}
               textStyle={{
                 ...textBase,
                 color: colors.primary,
@@ -261,25 +262,30 @@ export function MessageChatRow({
         </View>
         <View
           style={{
+            flex: 1,
+            minWidth: 0,
             flexDirection: "row",
-            alignItems: "center",
+            alignItems: "flex-start",
             minHeight: MESSAGE_LINE_HEIGHT_PX,
+            overflow: "hidden",
           }}
         >
-          <MessageChatRichText
-            text={subtitle}
-            segments={subtitleSegments}
-            numberOfLines={1}
-            emojiSizePx={16}
-            lowPriorityEmoji
-            emojiFetchPriority={avatarLoadEnabled}
-            style={{
-              ...textBase,
-              flex: 1,
-              minWidth: 0,
-              color: colors.secondary,
-            }}
-          />
+          <View style={{ flex: 1, minWidth: 0, alignSelf: "stretch" }}>
+            <MessageChatRichText
+              text={subtitle}
+              segments={subtitleSegments}
+              numberOfLines={1}
+              emojiSizePx={MESSAGE_LIST_INLINE_EMOJI_SIZE_PX}
+              lowPriorityEmoji
+              enrichStandardEmojis
+              emojiFetchEnabled={rowInView || Boolean(isActive)}
+              emojiFetchPriority={rowInView || Boolean(isActive)}
+              style={{
+                ...textBase,
+                color: colors.secondary,
+              }}
+            />
+          </View>
           {showPin || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
           {showPin ? <MessageChatPinIcon size={20} color={colors.accent} /> : null}
           {trailing ? <MessageUnreadCountBadge label={trailing} colors={colors} /> : null}

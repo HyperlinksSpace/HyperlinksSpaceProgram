@@ -12,6 +12,42 @@ export const MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX = 15;
 export const MESSAGE_BUBBLE_PADDING_VERTICAL_PX = 10;
 export const MESSAGE_BUBBLE_FONT_SIZE_PX = 15;
 export const MESSAGE_BUBBLE_LINE_HEIGHT_PX = 25;
+/** Inline emoji sticker height in bubbles — fits inside the line box without clipping. */
+export const MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX = Math.round(MESSAGE_BUBBLE_FONT_SIZE_PX * 1.25);
+/** CSS vertical-align for inline Telegram emoji beside body text. */
+export const MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS = "-0.1em";
+/** Horizontal breathing room so stickers do not overlap adjacent glyphs. */
+export const MESSAGE_INLINE_EMOJI_MARGIN_LEFT_PX = 3;
+export const MESSAGE_INLINE_EMOJI_MARGIN_RIGHT_PX = 3;
+
+export function inlineEmojiHostCss(
+  emojiSizePx: number,
+  textLabel: boolean,
+): Record<string, string | number> {
+  const margin = {
+    marginLeft: MESSAGE_INLINE_EMOJI_MARGIN_LEFT_PX,
+    marginRight: MESSAGE_INLINE_EMOJI_MARGIN_RIGHT_PX,
+  };
+  if (textLabel) {
+    return {
+      display: "inline-block",
+      height: emojiSizePx,
+      width: "auto",
+      maxWidth: "100%",
+      verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
+      lineHeight: 1,
+      ...margin,
+    };
+  }
+  return {
+    display: "inline-block",
+    width: emojiSizePx,
+    height: emojiSizePx,
+    verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
+    lineHeight: 1,
+    ...margin,
+  };
+}
 export const MESSAGE_BUBBLE_TIME_FONT_SIZE_PX = 11;
 export const MESSAGE_BUBBLE_TIME_LINE_HEIGHT_PX = 15;
 export const MESSAGE_BUBBLE_TIME_MIN_WIDTH_PX = 52;

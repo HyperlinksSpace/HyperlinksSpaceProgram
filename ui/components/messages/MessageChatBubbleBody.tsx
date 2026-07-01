@@ -17,6 +17,7 @@ import { isDisplayableMediaMessage, isGroupLikeChatKind, messageShowsOutgoingChe
 import {
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
+  MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX,
   MESSAGE_BUBBLE_LINE_HEIGHT_PX,
   MESSAGE_BUBBLE_META_GAP_PX,
   MESSAGE_BUBBLE_INLINE_META_BASELINE_OFFSET_PX,
@@ -61,6 +62,8 @@ type Props = {
   onMediaDisplaySizeChange?: (widthPx: number, heightPx: number) => void;
   peerUserId?: number | null;
   selfUserId?: number | null;
+  /** Message row is on-screen — unlock inline emoji fetches in bubble text. */
+  emojiContentActive?: boolean;
 };
 
 function resolveMediaUrl(chatId: number, messageId: number): string {
@@ -83,6 +86,7 @@ function MessageChatBubbleTextContent({
   metaReserveWidthPx = 0,
   callIndicator = null,
   doubleCheckDelivered = false,
+  emojiContentActive = true,
 }: {
   bodyText: string;
   bodyTextSegments?: FormattedTextSegment[] | null;
@@ -97,6 +101,7 @@ function MessageChatBubbleTextContent({
   metaReserveWidthPx?: number;
   callIndicator?: { outgoing: boolean; successful: boolean } | null;
   doubleCheckDelivered?: boolean;
+  emojiContentActive?: boolean;
 }) {
   if (!bodyText && !timeLabel) return null;
 
@@ -129,7 +134,7 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           flexDirection: "row",
-          alignItems: "baseline",
+          alignItems: Platform.OS === "web" ? "center" : "baseline",
           alignSelf: "flex-start",
           flexWrap: "nowrap",
         }}
@@ -140,6 +145,9 @@ function MessageChatBubbleTextContent({
           style={inlineTextStyle}
           numberOfLines={1}
           nowrap
+          emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
+          emojiFetchPriority
+          enrichStandardEmojis
         />
         <View
           style={{
@@ -177,6 +185,9 @@ function MessageChatBubbleTextContent({
               paddingRight: metaPadRight,
             },
           ]}
+          emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
+          emojiFetchPriority
+          enrichStandardEmojis
         />
         <View
           style={{
@@ -208,6 +219,9 @@ function MessageChatBubbleTextContent({
           text={bodyText}
           segments={bodyTextSegments}
           style={[textStyle, { textAlign: "left" }]}
+          emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
+          emojiFetchPriority
+          enrichStandardEmojis
         />
       ) : null}
       {timeRow ? (
@@ -315,11 +329,13 @@ function MessageChatReplyBlock({
   colors,
   maxWidthPx,
   telegramChatId,
+  emojiContentActive = true,
 }: {
   reply: MessageChatReplyPreview;
   colors: ThemeColors;
   maxWidthPx: number;
   telegramChatId: number;
+  emojiContentActive?: boolean;
 }) {
   const { colorScheme } = useTelegram();
   const barColor = groupSenderDisplayColor(
@@ -349,6 +365,7 @@ function MessageChatReplyBlock({
           telegramUserId={reply.sender_user_id}
           telegramChatId={telegramChatId}
           emojiStatusCustomEmojiId={reply.sender_emoji_status_custom_emoji_id ?? null}
+          emojiStatusPriority
           textStyle={{
             ...typographyRect15,
             fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -363,6 +380,9 @@ function MessageChatReplyBlock({
           text={reply.text}
           segments={reply.text_segments}
           numberOfLines={2}
+          emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
+          emojiFetchPriority
+          enrichStandardEmojis
           style={[
             typographyRect15,
             {
@@ -393,6 +413,7 @@ export function MessageChatBubbleBody({
   onMediaDisplaySizeChange,
   peerUserId = null,
   selfUserId = null,
+  emojiContentActive = true,
 }: Props) {
   const { t } = useAppStrings();
   const { colorScheme } = useTelegram();
@@ -509,6 +530,7 @@ export function MessageChatBubbleBody({
           colors={colors}
           maxWidthPx={maxWidthPx}
           telegramChatId={chatId}
+          emojiContentActive={emojiContentActive}
         />
       ) : null}
 
@@ -518,6 +540,7 @@ export function MessageChatBubbleBody({
           telegramUserId={item.sender_user_id}
           telegramChatId={chatId}
           emojiStatusCustomEmojiId={item.sender_emoji_status_custom_emoji_id ?? null}
+          emojiStatusPriority
           textStyle={{
             ...typographyRect15,
             fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -640,6 +663,7 @@ export function MessageChatBubbleBody({
             metaReserveWidthPx={metaReserveWidthPx}
             callIndicator={callIndicator}
             doubleCheckDelivered={false}
+            emojiContentActive={emojiContentActive}
           />
         </View>
       ) : null}

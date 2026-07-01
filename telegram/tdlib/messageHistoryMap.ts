@@ -13,6 +13,7 @@ import {
   type TdMessage,
 } from "./chatPreview.js";
 import { messageTextSegments } from "./formattedTextSegments.js";
+import { segmentsContainTelegramEmoji } from "../../shared/formattedTextSegments.js";
 import { largestPhotoDimensions } from "./photoParse.js";
 import { resolveTdUserProfile, type TdUserProfileCache } from "./tdUserProfile.js";
 
@@ -151,12 +152,19 @@ function bodyText(message: TdMessage): string {
 
 function messageNeedsFullFetch(message: TdMessage): boolean {
   const text = bodyText(message).trim();
-  if (text && !isGenericMessagePreviewLabel(text)) return false;
   const content = message.content;
   if (!content || typeof content !== "object") return true;
   const type = content._;
   if (type === "messageText") {
-    return !formattedTextPlain((content as { text?: unknown }).text);
+    const textRow = (content as { text?: { text?: string; entities?: unknown[] } }).text;
+    const plain = typeof textRow?.text === "string" ? textRow.text.trim() : "";
+    if (!plain || isGenericMessagePreviewLabel(plain)) return true;
+    const entities = Array.isArray(textRow?.entities) ? textRow.entities : [];
+    if (entities.length > 0) {
+      const segments = messageTextSegments(message);
+      if (!segments || !segmentsContainTelegramEmoji(segments)) return true;
+    }
+    return false;
   }
   if (typeof type === "string" && type.startsWith("message")) {
     return !text || isGenericMessagePreviewLabel(text);

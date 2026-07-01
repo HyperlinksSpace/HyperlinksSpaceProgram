@@ -3,6 +3,7 @@ import type { AnimationConfig, AnimationItem } from "lottie-web";
 import lottie from "lottie-web/build/player/lottie_canvas";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 import { useElementVisible } from "./useElementVisible.web";
+import { MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS } from "./messageChatLayout";
 
 type Props = {
   animationData: object;
@@ -48,7 +49,7 @@ function styleLottieCanvas(host: HTMLElement, widthPx: number, heightPx: number)
   canvas.style.width = `${widthPx}px`;
   canvas.style.height = `${heightPx}px`;
   canvas.style.display = "block";
-  canvas.style.verticalAlign = "text-bottom";
+  canvas.style.verticalAlign = MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS;
 }
 
 /** Canvas-based TGS loop — avoids lottie-react SVG DOM churn. */
@@ -165,9 +166,9 @@ export function TgsCanvasPlayer({
         display: "inline-block",
         width: widthPx,
         height,
-        verticalAlign: "text-bottom",
+        verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
         lineHeight: 1,
-        overflow: "hidden",
+        overflow: "visible",
         flexShrink: 0,
         ...style,
       }}

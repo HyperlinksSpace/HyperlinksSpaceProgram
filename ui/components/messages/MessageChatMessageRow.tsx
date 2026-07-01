@@ -437,7 +437,7 @@ export function MessageChatMessageRow({
     <View
       style={{
         flexDirection: "row",
-        alignItems: isCompactSingleLineRow ? "center" : "flex-start",
+        alignItems: isCompactSingleLineRow ? "center" : "flex-end",
         width: "100%",
         alignSelf: "stretch",
       }}
@@ -517,7 +517,7 @@ export function MessageChatMessageRow({
                           }
                         : null),
                       backgroundColor: colors.undercover,
-                      overflow: "hidden",
+                      overflow: "visible",
                     }),
               },
               bubbleWidth != null && bubbleWidth > 0 && !useWebFitContent ? { width: bubbleWidth } : null,

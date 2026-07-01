@@ -1,5 +1,6 @@
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 import {
+  enrichSegmentsWithStandardEmojis,
   segmentsContainTelegramEmoji,
   segmentsPlainText,
 } from "../../shared/formattedTextSegments.js";
@@ -154,22 +155,34 @@ export function animatedEmojiSegments(content: Record<string, unknown>): Formatt
   return null;
 }
 
-export function messageTextSegments(message: {
+export function messageTextSegments(
+  message: {
   content?: Record<string, unknown> | null;
-} | null | undefined): FormattedTextSegment[] | null {
+} | null | undefined,
+  options?: { enrichStandardEmojis?: boolean },
+): FormattedTextSegment[] | null {
   if (!message) return null;
   const content = message.content;
   if (!content || typeof content !== "object") return null;
   const row = content as Record<string, unknown>;
   const type = row._;
 
+  const finalize = (segments: FormattedTextSegment[] | null): FormattedTextSegment[] | null => {
+    if (!segments || segments.length === 0) return null;
+    if (options?.enrichStandardEmojis) {
+      const enriched = enrichSegmentsWithStandardEmojis(segments);
+      return enriched.length > 0 ? enriched : null;
+    }
+    return segments;
+  };
+
   if (type === "messageText") {
     const parsed = parseFormattedTextSegments(row.text);
-    if (parsed) return parsed;
+    if (parsed) return finalize(parsed);
     const plain = typeof (row.text as { text?: string } | undefined)?.text === "string"
       ? (row.text as { text: string }).text
       : "";
-    return plain ? [{ kind: "text", text: plain }] : null;
+    return plain ? finalize([{ kind: "text", text: plain }]) : null;
   }
   if (type === "messageAnimatedEmoji") {
     return animatedEmojiSegments(row);
@@ -183,10 +196,10 @@ export function messageTextSegments(message: {
     type === "messageVoiceNote" ||
     type === "messagePaidMedia"
   ) {
-    return parseFormattedTextSegments(row.caption);
+    return finalize(parseFormattedTextSegments(row.caption));
   }
   if (type === "messageWebPage") {
-    return parseFormattedTextSegments(row.caption);
+    return finalize(parseFormattedTextSegments(row.caption));
   }
   return null;
 }

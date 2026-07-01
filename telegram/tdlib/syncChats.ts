@@ -17,6 +17,7 @@ import {
   peerUsernameFromChat,
   presenceFromTdlibStatus,
   resolveLastMessagePreview,
+  resolveLastMessagePreviewPayload,
   usernameFromTdUser,
   type TdChat,
 } from "./chatPreview.js";
@@ -32,7 +33,6 @@ import {
 import { logGateway } from "./gatewayLog.js";
 import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
-import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import {
   specialUserForceIncludedPeerUserIds,
   SUPPLEMENTARY_CONTACT_SEARCH_QUERIES,
@@ -478,10 +478,11 @@ export async function refreshLiveChatFromTdlib(
   chatId: number,
 ): Promise<void> {
   const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  const subtitle = await resolveLastMessagePreview(client, chat);
+  const { subtitle, subtitleSegments } = await resolveLastMessagePreviewPayload(client, chat);
   const avatarUrl = await resolveChatAvatarUrl(client, chat);
   patchLiveChatFromTdlib(telegramUsername, chat, {
     subtitle,
+    subtitle_segments: subtitleSegments,
     avatar_url: avatarUrl,
     last_message: chat.last_message ?? null,
   });
@@ -696,8 +697,8 @@ async function buildLiveRowsForChats(
 ): Promise<Omit<LiveChatRow, "revision">[]> {
   if (chats.length === 0) return [];
 
-  let subtitles = await mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
-    resolveLastMessagePreview(client, chat),
+  let previewPayloads = await mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
+    resolveLastMessagePreviewPayload(client, chat),
   );
   let avatarUrls = await mapWithConcurrency(chats, AVATAR_SYNC_CONCURRENCY, (chat) =>
     resolveChatAvatarUrl(client, chat),
@@ -713,10 +714,13 @@ async function buildLiveRowsForChats(
 
   for (let pass = 0; pass < 3; pass++) {
     for (let i = 0; i < chats.length; i++) {
-      if (subtitles[i] && avatarUrls[i]) continue;
-      const enriched = await enrichChatRow(client, chats[i], subtitles[i] ?? null, avatarUrls[i] ?? null);
-      subtitles[i] = enriched.subtitle;
-      avatarUrls[i] = enriched.avatarUrl;
+      if (previewPayloads[i]?.subtitle && avatarUrls[i]) continue;
+      if (!previewPayloads[i]?.subtitle) {
+        previewPayloads[i] = await resolveLastMessagePreviewPayload(client, chats[i]);
+      }
+      if (!avatarUrls[i]) {
+        avatarUrls[i] = await resolveChatAvatarUrl(client, chats[i]);
+      }
     }
   }
 
@@ -724,11 +728,12 @@ async function buildLiveRowsForChats(
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
     const profile = presences[i];
-    const subtitleSegments = previewSegmentsFromMessage(chat.last_message);
+    const preview = previewPayloads[i];
+    const subtitleSegments = preview?.subtitleSegments ?? null;
     liveRows.push({
       telegram_chat_id: chat.id,
       title: chatTitle(chat),
-      subtitle: subtitles[i] ?? "",
+      subtitle: preview?.subtitle ?? "",
       ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : {}),
       avatar_url: avatarUrls[i] ?? null,
       last_message_at: lastMessageAtIso(chat),

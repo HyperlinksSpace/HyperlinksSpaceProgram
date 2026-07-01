@@ -8,6 +8,8 @@ export const MESSAGE_ICON_TEXT_GAP_PX = 15;
 export const MESSAGE_NAME_TIME_GAP_PX = 15;
 export const MESSAGE_FONT_SIZE_PX = 15;
 export const MESSAGE_LINE_HEIGHT_PX = 20;
+/** Inline emoji sticker height in chat-list previews. */
+export const MESSAGE_LIST_INLINE_EMOJI_SIZE_PX = Math.round(MESSAGE_FONT_SIZE_PX * 1.067);
 /** Unread-count pill horizontal inset inside the 20px-tall badge. */
 export const MESSAGE_UNREAD_BADGE_PADDING_X_PX = 5;
 

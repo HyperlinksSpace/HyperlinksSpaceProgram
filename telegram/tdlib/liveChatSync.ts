@@ -2,10 +2,9 @@ import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
 import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
-import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
+import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
-import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
@@ -101,9 +100,13 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
         }
       }
       const chat = (await client.invoke({ _: "getChat", chat_id: message.chat_id })) as TdChat;
+      const { subtitle: resolvedSubtitle, subtitleSegments } = await resolveLastMessagePreviewPayload(
+        client,
+        { ...chat, last_message: lastMessage },
+      );
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
-        subtitle: preview,
-        subtitle_segments: previewSegmentsFromMessage(lastMessage),
+        subtitle: resolvedSubtitle ?? preview,
+        subtitle_segments: subtitleSegments,
         last_message: lastMessage,
       });
       logLiveSync(record, "live_chat_message_applied", {
@@ -129,10 +132,15 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     if (typeof chatId !== "number") return;
     try {
       const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+      const mergedChat: TdChat = {
+        ...chat,
+        last_message: lastMessage ?? chat.last_message ?? undefined,
+      };
+      const { subtitle, subtitleSegments } = await resolveLastMessagePreviewPayload(client, mergedChat);
       patchLiveChatFromTdlib(record.telegramUsername, chat, {
-        subtitle: lastMessage ? previewFromMessage(lastMessage) : null,
-        subtitle_segments: lastMessage ? previewSegmentsFromMessage(lastMessage) : null,
-        last_message: lastMessage ?? chat.last_message ?? null,
+        subtitle,
+        subtitle_segments: subtitleSegments,
+        last_message: mergedChat.last_message ?? null,
       });
     } catch {
       /* ignore */

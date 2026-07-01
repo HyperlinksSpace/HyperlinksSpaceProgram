@@ -1,4 +1,6 @@
 import type { Client } from "tdl";
+import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
+import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
 
 export type TdMessage = {
   id?: number;
@@ -487,6 +489,61 @@ async function fetchLatestMessagePreview(client: Client, chatId: number): Promis
 }
 
 export async function resolveLastMessagePreview(client: Client, chat: TdChat): Promise<string | null> {
+  const payload = await resolveLastMessagePreviewPayload(client, chat);
+  return payload.subtitle;
+}
+
+async function fetchMessageById(
+  client: Client,
+  chatId: number,
+  messageId: number,
+): Promise<TdMessage | null> {
+  try {
+    return (await client.invoke({
+      _: "getMessage",
+      chat_id: chatId,
+      message_id: messageId,
+    })) as TdMessage;
+  } catch {
+    return null;
+  }
+}
+
+/** Subtitle text plus rich segments (custom emoji, links) for chat-list previews. */
+export async function resolveLastMessagePreviewPayload(
+  client: Client,
+  chat: TdChat,
+): Promise<{ subtitle: string | null; subtitleSegments: FormattedTextSegment[] | null }> {
+  let message = chat.last_message ?? null;
+  let subtitle = previewFromMessage(message);
+  let subtitleSegments = previewSegmentsFromMessage(message);
+
+  if (!subtitleSegments && typeof message?.id === "number") {
+    const full = await fetchMessageById(client, chat.id, message.id);
+    if (full) {
+      message = full;
+      subtitleSegments = previewSegmentsFromMessage(full);
+      if (!subtitle) subtitle = previewFromMessage(full);
+    }
+  }
+
+  if (!subtitle) {
+    subtitle = await resolveLastMessagePreviewText(client, chat);
+    if (!subtitleSegments) {
+      const messageId = message?.id ?? chat.last_message?.id;
+      if (typeof messageId === "number") {
+        const full = await fetchMessageById(client, chat.id, messageId);
+        if (full) {
+          subtitleSegments = previewSegmentsFromMessage(full);
+        }
+      }
+    }
+  }
+
+  return { subtitle, subtitleSegments };
+}
+
+async function resolveLastMessagePreviewText(client: Client, chat: TdChat): Promise<string | null> {
   const direct = previewFromMessage(chat.last_message);
   if (direct) return direct;
 

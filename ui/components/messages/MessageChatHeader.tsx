@@ -91,6 +91,7 @@ export function MessageChatHeader({ chat, colors }: Props) {
             telegramUserId={chat.peer_user_id ?? null}
             telegramChatId={chat.telegram_chat_id}
             emojiStatusCustomEmojiId={chat.peer_emoji_status_custom_emoji_id ?? null}
+            emojiStatusPriority
             textAlign="center"
             numberOfLines={1}
             textStyle={{

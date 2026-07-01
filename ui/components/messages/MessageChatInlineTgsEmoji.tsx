@@ -12,6 +12,8 @@ type Props = {
   sizePx: number;
   fallbackText?: string;
   lowPriority?: boolean;
+  priority?: boolean;
+  fetchEnabled?: boolean;
 };
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {

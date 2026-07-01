@@ -171,7 +171,7 @@ export function SpecialTelegramUserName({
             customEmojiId={telegramEmojiStatusId}
             sizePx={SPECIAL_USER_BADGE_SIZE_PX}
             priority={emojiStatusPriority}
-            fetchEnabled={emojiStatusPriority}
+            fetchEnabled
           />
         ) : null}
       </View>

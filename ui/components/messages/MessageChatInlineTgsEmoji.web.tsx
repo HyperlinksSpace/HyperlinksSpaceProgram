@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
-import { Text } from "react-native";
 import {
   fetchTelegramEmojiAsset,
   type TelegramEmojiFetchRef,
@@ -10,6 +9,7 @@ import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesCo
 import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 import { useElementVisible } from "./useElementVisible";
+import { MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS } from "./messageChatLayout";
 
 type Props = {
   customEmojiId?: string;
@@ -21,7 +21,16 @@ type Props = {
   priority?: boolean;
   /** Parent can defer fetches until the row is visible. */
   fetchEnabled?: boolean;
+  /** Wide sticker replacing a word (e.g. styled "Alipay") — not a square pictograph. */
+  textLabel?: boolean;
 };
+
+function lottieRenderSize(animationData: object, heightPx: number): { widthPx: number; heightPx: number } {
+  const w = (animationData as { w?: number }).w ?? 512;
+  const h = (animationData as { h?: number }).h ?? 512;
+  if (!h || h <= 0) return { widthPx: heightPx, heightPx };
+  return { widthPx: Math.max(heightPx, Math.round((heightPx * w) / h)), heightPx };
+}
 
 function resolveFetchRef(props: Props): TelegramEmojiFetchRef | null {
   const customEmojiId = props.customEmojiId?.trim();
@@ -59,6 +68,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     lowPriority = false,
     priority = false,
     fetchEnabled = true,
+    textLabel = false,
   } = props;
   const fetchRef = useMemo(() => resolveFetchRef(props), [props.customEmojiId, props.emoji]);
   const { emojiFetchEpoch } = useTelegramMessagesConnection();
@@ -67,7 +77,11 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     enabled: !priority,
     rootMargin: "96px",
   });
-  const shouldFetch = fetchEnabled && (priority || lowPriority || visible);
+  const shouldFetch = priority
+    ? fetchEnabled
+    : lowPriority
+      ? fetchEnabled || visible
+      : fetchEnabled && visible;
   const [animationData, setAnimationData] = useState<object | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<"video" | "image" | null>(null);
@@ -82,7 +96,6 @@ export function MessageChatInlineTgsEmoji(props: Props) {
   }, [fallbackText, props.emoji]);
 
   useEffect(() => {
-    let cancelled = false;
     setAnimationData(null);
     setMediaUrl((current) => {
       if (current) URL.revokeObjectURL(current);
@@ -90,18 +103,70 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     });
     setMediaKind(null);
     setFetchSettled(false);
+  }, [fetchRef]);
 
-    if (!fetchRef || !shouldFetch) {
-      if (!fetchRef) {
-        telegramEmojiDebug.inlineNoRef("web", props);
-      } else if (!shouldFetch) {
-        telegramEmojiDebug.fetchSkipped(fetchRef, {
-          fetchEnabled,
-          priority,
-          lowPriority,
-          visible,
-        });
-      }
+  useEffect(() => {
+    if (!fetchRef || shouldFetch || animationData || mediaUrl) return;
+    if (!visible && !priority && !lowPriority) return;
+
+    let cancelled = false;
+    void fetchTelegramEmojiAsset(fetchRef)
+      .then(async (asset) => {
+        if (cancelled || !asset) return;
+        if (
+          asset.mime === "application/x-tgsticker" ||
+          asset.mime.endsWith("+tgs") ||
+          bytesLookLikeTgs(asset.bytes)
+        ) {
+          const parsed = await getCachedTgsAnimationFromBytes(asset.bytes);
+          if (!cancelled) setAnimationData(parsed);
+          return;
+        }
+        if (isVideoMime(asset.mime)) {
+          const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
+          const url = URL.createObjectURL(blob);
+          if (!cancelled) {
+            setMediaUrl(url);
+            setMediaKind("video");
+          } else {
+            URL.revokeObjectURL(url);
+          }
+          return;
+        }
+        if (isImageMime(asset.mime)) {
+          const blob = new Blob([Uint8Array.from(asset.bytes)], { type: asset.mime });
+          const url = URL.createObjectURL(blob);
+          if (!cancelled) {
+            setMediaUrl(url);
+            setMediaKind("image");
+          } else {
+            URL.revokeObjectURL(url);
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFetchSettled(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [animationData, fetchRef, lowPriority, mediaUrl, priority, shouldFetch, visible]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!fetchRef) {
+      telegramEmojiDebug.inlineNoRef("web", props);
+      return;
+    }
+    if (!shouldFetch) {
+      telegramEmojiDebug.fetchSkipped(fetchRef, {
+        fetchEnabled,
+        priority,
+        lowPriority,
+        visible,
+      });
       return;
     }
 
@@ -175,69 +240,84 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     };
   }, [mediaUrl]);
 
-  const hostStyle: CSSProperties = {
-    display: "inline-block",
-    width: sizePx,
-    height: sizePx,
-    verticalAlign: "text-bottom",
-    lineHeight: 1,
-    position: "relative",
-    flexShrink: 0,
-  };
+  const hostStyle: CSSProperties = textLabel
+    ? {
+        display: "inline-block",
+        height: sizePx,
+        width: "auto",
+        maxWidth: "100%",
+        verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
+        lineHeight: 1,
+        position: "relative",
+        flexShrink: 0,
+        overflow: "visible",
+      }
+    : {
+        display: "inline-block",
+        width: sizePx,
+        height: sizePx,
+        verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
+        lineHeight: 1,
+        position: "relative",
+        flexShrink: 0,
+        overflow: "visible",
+      };
+
+  const mediaReady = Boolean(animationData || mediaUrl);
+  const labelFallback =
+    textLabel && displayFallback && displayFallback !== "🎭" ? displayFallback : null;
+  const showUnicodeFallback = Boolean(!mediaReady && displayFallback);
+  const tgsSize = animationData ? lottieRenderSize(animationData, sizePx) : null;
+  const rasterStyle: CSSProperties = textLabel
+    ? { height: sizePx, width: "auto", display: "block", objectFit: "contain" }
+    : { width: sizePx, height: sizePx, display: "block", objectFit: "contain" };
 
   return (
     <span ref={hostRef} style={hostStyle}>
-      {animationData ? (
+      {animationData && tgsSize ? (
         <TgsCanvasPlayer
           animationData={animationData}
-          widthPx={sizePx}
-          heightPx={sizePx}
+          widthPx={tgsSize.widthPx}
+          heightPx={tgsSize.heightPx}
           lowPriority={lowPriority}
-          priority={priority}
+          priority={priority || lowPriority}
           style={{
             display: "block",
-            width: sizePx,
-            height: sizePx,
+            width: tgsSize.widthPx,
+            height: tgsSize.heightPx,
           }}
         />
       ) : null}
       {mediaUrl && mediaKind === "video" ? (
-        <video
-          src={mediaUrl}
-          autoPlay
-          loop
-          muted
-          playsInline
-          style={{
-            width: sizePx,
-            height: sizePx,
-            display: "block",
-            objectFit: "contain",
-          }}
-        />
+        <video src={mediaUrl} autoPlay loop muted playsInline style={rasterStyle} />
       ) : null}
       {mediaUrl && mediaKind === "image" ? (
-        <img
-          src={mediaUrl}
-          alt={displayFallback}
-          style={{
-            width: sizePx,
-            height: sizePx,
-            display: "block",
-            objectFit: "contain",
-          }}
-        />
+        <img src={mediaUrl} alt={displayFallback} style={rasterStyle} />
       ) : null}
-      {!animationData && !mediaUrl && fetchSettled ? (
-        <Text
+      {showUnicodeFallback && textLabel && labelFallback ? (
+        <span
           style={{
-            fontSize: Math.round(sizePx * 0.85),
-            lineHeight: sizePx,
-            textAlign: "center",
+            fontSize: sizePx,
+            lineHeight: `${sizePx}px`,
+            whiteSpace: "nowrap",
+            display: "inline-block",
+            verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
+          }}
+        >
+          {labelFallback}
+        </span>
+      ) : null}
+      {showUnicodeFallback && !textLabel ? (
+        <span
+          style={{
+            fontSize: Math.round(sizePx * 0.92),
+            lineHeight: `${sizePx}px`,
+            display: "inline-block",
+            verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
           }}
         >
           {displayFallback}
-        </Text>
+        </span>
       ) : null}
     </span>
   );

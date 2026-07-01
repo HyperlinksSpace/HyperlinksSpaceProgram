@@ -14,6 +14,14 @@ export function segmentsContainTelegramEmoji(segments: FormattedTextSegment[]): 
   return segments.some((segment) => segment.kind === "custom_emoji" || segment.kind === "animated_emoji");
 }
 
+/** Custom emoji replacing a word/phrase (e.g. styled "Alipay") — not a single pictograph slot. */
+export function isCustomEmojiTextLabel(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  if (/\p{Extended_Pictographic}/u.test(trimmed)) return false;
+  return trimmed.length > 1;
+}
+
 /** @deprecated Use {@link segmentsContainTelegramEmoji}. */
 export function segmentsContainCustomEmoji(segments: FormattedTextSegment[]): boolean {
   return segmentsContainTelegramEmoji(segments);
@@ -48,6 +56,9 @@ function splitTextIntoAnimatedEmojiSegments(text: string): FormattedTextSegment[
 
 /** Split plain text segments into Telegram animated-emoji segments (client-side fallback). */
 export function enrichSegmentsWithStandardEmojis(segments: FormattedTextSegment[]): FormattedTextSegment[] {
+  if (segments.some((segment) => segment.kind === "animated_emoji")) {
+    return segments;
+  }
   const enriched: FormattedTextSegment[] = [];
   for (const segment of segments) {
     if (segment.kind !== "text" || !segment.text) {
