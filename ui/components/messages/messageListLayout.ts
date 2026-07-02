@@ -13,6 +13,21 @@ export const MESSAGE_LIST_INLINE_EMOJI_SIZE_PX = Math.round(MESSAGE_FONT_SIZE_PX
 /** Unread-count pill horizontal inset inside the 20px-tall badge. */
 export const MESSAGE_UNREAD_BADGE_PADDING_X_PX = 5;
 
+/** Scroll-to-bottom control in the open chat message column. */
+export const MESSAGE_CHAT_SCROLL_TO_BOTTOM_OUTER_PX = 60;
+export const MESSAGE_CHAT_SCROLL_TO_BOTTOM_INNER_PX = 30;
+export const MESSAGE_CHAT_SCROLL_TO_BOTTOM_ICON_BOTTOM_INSET_PX = 7.5;
+export const MESSAGE_CHAT_SCROLL_TO_BOTTOM_BADGE_TOP_PX = 5;
+/** Show when unread count is strictly greater than this value. */
+export const MESSAGE_CHAT_SCROLL_TO_BOTTOM_UNREAD_THRESHOLD = 10;
+
+export function formatMessageUnreadCountLabel(count: number, chatId: number): string {
+  if (!Number.isFinite(count) || count <= 0) return "";
+  if (count === chatId || count > 50_000) return "";
+  if (count > 99) return "99+";
+  return String(count);
+}
+
 /** Vertical rhythm for authenticated home Feed / Messages lists. */
 export const LIST_TOP_INSET_PX = 15;
 export const LIST_ROW_GAP_PX = 15;

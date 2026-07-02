@@ -115,6 +115,10 @@ export function normalizeHistoryMessage(
     sender_user_id: safeSenderUserId,
     sender_chat_id: Number.isFinite(senderChatId) ? senderChatId : null,
     sender_is_channel: Boolean(row.sender_is_channel),
+    sender_author_signature:
+      typeof row.sender_author_signature === "string" && row.sender_author_signature.trim()
+        ? row.sender_author_signature.trim()
+        : null,
     sender_emoji_status_custom_emoji_id:
       typeof row.sender_emoji_status_custom_emoji_id === "string" &&
       row.sender_emoji_status_custom_emoji_id.trim()
@@ -148,6 +152,7 @@ export async function fetchTelegramChatHistoryPage(
   limit: number,
   peerUserId: number | null | undefined,
   beforeMessageId?: number | null,
+  sinceMessageId?: number | null,
 ): Promise<ChatHistoryPageResult> {
   const params = new URLSearchParams({
     chat_id: String(chatId),
@@ -159,6 +164,13 @@ export async function fetchTelegramChatHistoryPage(
     beforeMessageId > 0
   ) {
     params.set("before_message_id", String(beforeMessageId));
+  }
+  if (
+    typeof sinceMessageId === "number" &&
+    Number.isFinite(sinceMessageId) &&
+    sinceMessageId > 0
+  ) {
+    params.set("since_message_id", String(sinceMessageId));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
   const response = await fetch(url, { method: "GET", credentials: "include" });
@@ -242,4 +254,14 @@ export async function loadTelegramChatHistoryFirstPage(
     result = await fetchTelegramChatHistoryPage(chatId, limit, peerUserId);
   }
   return result;
+}
+
+/** Live tail sync — only messages newer than sinceMessageId. */
+export async function fetchTelegramChatHistorySince(
+  chatId: number,
+  sinceMessageId: number,
+  limit: number,
+  peerUserId: number | null | undefined,
+): Promise<ChatHistoryPageResult> {
+  return fetchTelegramChatHistoryPage(chatId, limit, peerUserId, null, sinceMessageId);
 }

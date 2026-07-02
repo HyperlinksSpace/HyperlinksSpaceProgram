@@ -1,12 +1,12 @@
 import { formatAppString, type AppLocale } from "../../../locales/appStrings";
 import {
-  normalizeFormattedTextSegments,
   type FormattedTextSegment,
 } from "../../../shared/formattedTextSegments";
 import { formatMessageChatMemberCountLabel, formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
 import { formatMessageChatRowUsernameLabel } from "./formatTelegramChatRowUsername";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { isGroupLikeChatRow } from "./isGroupLikeChatRow";
+import { resolveMessageDisplaySegments } from "./resolveMessageDisplaySegments";
 import { specialUserDisplayName } from "./specialTelegramUserDisplay";
 
 function isChatActionLive(chat: MessageChatRowData): boolean {
@@ -138,7 +138,7 @@ export function formatMessageChatListPreview(
   locale: AppLocale,
 ): { text: string; textSegments: FormattedTextSegment[] | null } {
   const subtitle = formatMessageChatListSubtitle(chat, locale);
-  const baseSegments = normalizeFormattedTextSegments(chat.subtitle_segments);
+  const baseSegments = resolveMessageDisplaySegments(subtitle, chat.subtitle_segments);
 
   if (isChatActionLive(chat) || !subtitle.trim()) {
     return { text: subtitle, textSegments: baseSegments };

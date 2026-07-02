@@ -1,4 +1,9 @@
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
+import {
+  formattedSegmentsEqual,
+  preferRicherTextSegments,
+  resolveMessageDisplaySegments,
+} from "./resolveMessageDisplaySegments";
 
 export type MessageChatContentKind =
   | "text"
@@ -38,6 +43,8 @@ export type MessageChatHistoryItem = {
   sender_user_id: number | null;
   sender_chat_id?: number | null;
   sender_is_channel?: boolean;
+  /** Channel post signature (admin pen name) when enabled in the channel. */
+  sender_author_signature?: string | null;
   sender_emoji_status_custom_emoji_id?: string | null;
   sender_accent_color_light?: string | null;
   sender_accent_color_dark?: string | null;
@@ -74,11 +81,10 @@ export function resolveHistoryMessageIsOutgoing(params: {
   }
 
   if (rawIsOutgoing === false) return false;
-
-  // Private chat: TDLib `is_outgoing` alone is not enough without a known sender.
-  if (peerUserId != null && senderUserId == null) return false;
-
   if (rawIsOutgoing === true) return true;
+
+  // Private chat: without a sender id we cannot infer direction beyond TDLib flags.
+  if (peerUserId != null && senderUserId == null) return false;
 
   if (peerUserId != null && senderUserId != null && senderUserId !== peerUserId) {
     return true;
@@ -195,6 +201,22 @@ export function applyCumulativeOutgoingReadStatuses(
 
 export function isGroupLikeChatKind(kind: MessageChatKind | null | undefined): boolean {
   return kind === "group" || kind === "supergroup" || kind === "channel";
+}
+
+/** Incoming group/supergroup/channel rows show a sender line (name + emoji status). */
+export function shouldShowMessageSenderHeader(
+  chatKind: MessageChatKind | null | undefined,
+  item: Pick<
+    MessageChatHistoryItem,
+    "is_outgoing" | "sender_name" | "sender_user_id" | "sender_author_signature"
+  >,
+): boolean {
+  if (!isGroupLikeChatKind(chatKind) || item.is_outgoing) return false;
+  if (chatKind === "channel") {
+    if (item.sender_user_id != null) return true;
+    return Boolean(item.sender_author_signature?.trim());
+  }
+  return Boolean(item.sender_name.trim());
 }
 
 /** Private chats use TDLib read-outbox cursors and double-check read receipts. */
@@ -319,11 +341,29 @@ export function enrichHistoryMessageDisplay(item: MessageChatHistoryItem): Messa
     text = "";
   }
 
-  if (
+  const resolvedTextSegments = resolveMessageDisplaySegments(text, item.text_segments);
+  const text_segments = formattedSegmentsEqual(resolvedTextSegments, item.text_segments)
+    ? item.text_segments
+    : resolvedTextSegments;
+  let reply_to = item.reply_to;
+  if (reply_to) {
+    const resolvedReplySegments = resolveMessageDisplaySegments(
+      reply_to.text,
+      reply_to.text_segments,
+    );
+    if (!formattedSegmentsEqual(resolvedReplySegments, reply_to.text_segments)) {
+      reply_to = { ...reply_to, text_segments: resolvedReplySegments };
+    }
+  }
+
+  const mediaUnchanged =
     contentKind === item.content_kind &&
     hasMedia === Boolean(item.has_media) &&
-    text === item.text
-  ) {
+    text === item.text;
+  const segmentsUnchanged =
+    text_segments === item.text_segments && reply_to === item.reply_to;
+
+  if (mediaUnchanged && segmentsUnchanged) {
     return item;
   }
 
@@ -332,6 +372,8 @@ export function enrichHistoryMessageDisplay(item: MessageChatHistoryItem): Messa
     content_kind: contentKind ?? item.content_kind,
     has_media: hasMedia,
     text,
+    text_segments,
+    reply_to,
   };
 }
 
@@ -374,8 +416,8 @@ function mergeIsOutgoing(
   if (ctx?.selfUserId != null && senderId != null && senderId !== ctx.selfUserId) {
     return false;
   }
-  if (incoming.is_outgoing === false) return false;
   if (incoming.is_outgoing) return true;
+  if (incoming.is_outgoing === false && !prev.is_outgoing) return false;
   if (prev.is_outgoing && prev.outgoing_status != null) {
     if (ctx?.peerUserId != null && senderId == null) return false;
     return true;
@@ -415,7 +457,12 @@ export function mergeHistoryMessageRow(
 
   return enrichHistoryMessageDisplay({
     ...mergeTextFields(mergeMediaFields(incomingEnriched, prevEnriched), prevEnriched),
-    text_segments: incomingEnriched.text_segments ?? prevEnriched.text_segments ?? null,
+    text_segments: preferRicherTextSegments(
+      incomingEnriched.text_segments,
+      prevEnriched.text_segments,
+    ),
+    sender_author_signature:
+      incomingEnriched.sender_author_signature ?? prevEnriched.sender_author_signature ?? null,
     sender_emoji_status_custom_emoji_id:
       incomingEnriched.sender_emoji_status_custom_emoji_id ??
       prevEnriched.sender_emoji_status_custom_emoji_id ??

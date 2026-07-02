@@ -10,6 +10,7 @@ import {
   MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
   MESSAGE_FONT_SIZE_PX,
   MESSAGE_LINE_HEIGHT_PX,
+  MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
 } from "./messageListLayout";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { resolveTelegramUserAccentColor } from "./resolveTelegramUserAccentColor";
@@ -92,6 +93,9 @@ export function MessageChatHeader({ chat, colors }: Props) {
             telegramChatId={chat.telegram_chat_id}
             emojiStatusCustomEmojiId={chat.peer_emoji_status_custom_emoji_id ?? null}
             emojiStatusPriority
+            inlineEmojiFetchEnabled
+            inlineEmojiFetchPriority
+            inlineEmojiSizePx={MESSAGE_LIST_INLINE_EMOJI_SIZE_PX}
             textAlign="center"
             numberOfLines={1}
             textStyle={{

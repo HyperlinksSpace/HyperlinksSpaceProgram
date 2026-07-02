@@ -22,27 +22,22 @@ export function canReplyToMessage(_item: MessageChatHistoryItem): boolean {
 function isOwnMessage(
   item: MessageChatHistoryItem,
   selfUserId?: number | null,
+  peerUserId?: number | null,
 ): boolean {
+  if (peerUserId != null && item.sender_user_id === peerUserId) return false;
+  if (selfUserId != null && item.sender_user_id === selfUserId) return true;
   if (item.is_outgoing) return true;
-  if (
-    selfUserId != null &&
-    item.sender_user_id != null &&
-    item.sender_user_id === selfUserId
-  ) {
-    return true;
-  }
   return false;
 }
 
-/** Only own plain-text messages can be edited in Telegram. */
+/** Own messages with editable text (including media captions). */
 export function canEditMessage(
   item: MessageChatHistoryItem,
   selfUserId?: number | null,
+  peerUserId?: number | null,
 ): boolean {
-  if (!isOwnMessage(item, selfUserId)) return false;
+  if (!isOwnMessage(item, selfUserId, peerUserId)) return false;
   if (item.content_kind === "call") return false;
-  if (item.has_media && item.content_kind !== "text" && item.content_kind !== undefined) {
-    return false;
-  }
+  if (item.content_kind === "sticker" || item.content_kind === "animation") return false;
   return item.text.trim().length > 0;
 }

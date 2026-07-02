@@ -3,8 +3,7 @@ name: Electron EXE Release
 
 on:
   workflow_dispatch:
-    # No manual inputs: release tag/build folder id is computed from current UTC time.
-    # Format: build_MMDDYYYY_HHMM (e.g. build_03252026_1929)
+    # No manual inputs: app version is resolved from the latest GitHub release (semver patch bump).
 
 permissions:
   contents: write
@@ -34,14 +33,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Compute release_id from UTC time
+      - name: Resolve next app version from GitHub releases
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node windows/resolve-next-app-version.cjs --write
+
+      - name: Set release metadata
         id: meta
         shell: bash
         run: |
           set -euo pipefail
-          rid="build_$(date -u +%m%d%Y_%H%M)"
+          rid="${{ steps.version.outputs.release_tag }}"
           echo "release_id=$rid" >> "$GITHUB_OUTPUT"
           echo "RELEASE_BUILD_ID=$rid" >> "$GITHUB_ENV"
+          echo "app_version=${{ steps.version.outputs.app_version }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Windows installer
         run: npm run build:win
@@ -59,7 +65,7 @@ jobs:
           mkdir -p "$stage_dir"
           exe="$(ls -1 "$src_dir"/HyperlinksSpaceProgramInstaller_*.exe 2>/dev/null | head -n 1 || true)"
           if [[ -z "$exe" || ! -f "$exe" ]]; then
-            echo "Expected timestamped installer in $src_dir (set RELEASE_BUILD_ID=$rid)."
+            echo "Expected installer in $src_dir (set RELEASE_BUILD_ID=$rid)."
             find releases -maxdepth 6 -type f 2>/dev/null || true
             exit 1
           fi
@@ -140,9 +146,14 @@ jobs:
             echo "Unexpected yml name: $yml_name"; exit 1;
           }
 
-          app_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceProgram_(.+)\.zip$/\1/')"
-          if [[ -z "$app_version" || "$app_version" == "$zip_name" ]]; then
-            app_version="unknown"
+          app_version="${{ steps.meta.outputs.app_version }}"
+          zip_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceProgram_(.+)\.zip$/\1/')"
+          if [[ -z "$app_version" ]]; then
+            app_version="$zip_version"
+          fi
+          if [[ -n "$zip_version" && "$zip_version" != "$zip_name" && "$zip_version" != "$app_version" ]]; then
+            echo "Zip version ($zip_version) does not match resolved app version ($app_version)"
+            exit 1
           fi
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
 
@@ -181,8 +192,8 @@ jobs:
           printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
-            --title "$rid" \
-            --notes "Windows build on GitHub Actions (workflow run ${{ github.run_id }}). Assets: NSIS installer, latest.yml, portable zip (in-app quick update), optional zip-latest.yml."
+            --title "Hyperlinks Space Program ${{ steps.preflight.outputs.app_version }}" \
+            --notes "Windows ${{ steps.preflight.outputs.app_version }} (workflow run ${{ github.run_id }}). Assets: NSIS installer, latest.yml, portable zip (in-app quick update), optional zip-latest.yml."
           release_url="https://github.com/${{ github.repository }}/releases/tag/$rid"
           echo "release_url=$release_url" >> "$GITHUB_OUTPUT"
 

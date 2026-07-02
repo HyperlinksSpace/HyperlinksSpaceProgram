@@ -33,14 +33,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Compute release_id from UTC time
+      - name: Resolve next app version from GitHub releases
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node windows/resolve-next-app-version.cjs --write
+
+      - name: Set release metadata
         id: meta
         shell: bash
         run: |
           set -euo pipefail
-          rid="build_$(date -u +%m%d%Y_%H%M)_forge"
+          rid="${{ steps.version.outputs.release_tag }}_forge"
           echo "release_id=$rid" >> "$GITHUB_OUTPUT"
           echo "RELEASE_BUILD_ID=$rid" >> "$GITHUB_ENV"
+          echo "app_version=${{ steps.version.outputs.app_version }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Forge Windows artifacts
         env:
@@ -143,9 +150,14 @@ jobs:
             echo "Unexpected yml name: $yml_name"; exit 1;
           }
 
-          app_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceProgram_(.+)\.zip$/\1/')"
-          if [[ -z "$app_version" || "$app_version" == "$zip_name" ]]; then
-            app_version="unknown"
+          app_version="${{ steps.meta.outputs.app_version }}"
+          zip_version="$(echo "$zip_name" | sed -E 's/^HyperlinksSpaceProgram_(.+)\.zip$/\1/')"
+          if [[ -z "$app_version" ]]; then
+            app_version="$zip_version"
+          fi
+          if [[ -n "$zip_version" && "$zip_version" != "$zip_name" && "$zip_version" != "$app_version" ]]; then
+            echo "Zip version ($zip_version) does not match resolved app version ($app_version)"
+            exit 1
           fi
           echo "app_version=$app_version" >> "$GITHUB_OUTPUT"
 
@@ -184,7 +196,7 @@ jobs:
           printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
-            --title "$rid" \
+            --title "Hyperlinks Space Program ${{ steps.preflight.outputs.app_version }} (Forge)" \
             --notes "Windows Forge build on GitHub Actions (workflow run ${{ github.run_id }}). Same asset names as electron-builder; tag ends with _forge."
           release_url="https://github.com/${{ github.repository }}/releases/tag/$rid"
           echo "release_url=$release_url" >> "$GITHUB_OUTPUT"

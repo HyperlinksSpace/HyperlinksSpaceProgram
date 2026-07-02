@@ -1,4 +1,4 @@
-import { createElement, useEffect, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, type ReactNode } from "react";
 import { Platform, Text, View, type TextStyle, type ViewStyle } from "react-native";
 import { MessageChatRussianFlagIcon } from "./MessageChatRussianFlagIcon";
 import { MessageChatArtSignIcon } from "./MessageChatArtSignIcon";
@@ -7,6 +7,7 @@ import { MessageChatCrossIcon } from "./MessageChatCrossIcon";
 import { MessageChatSIcon } from "./MessageChatSIcon";
 import { MessageChatStatusTgsBadge } from "./MessageChatStatusTgsBadge";
 import { MessageChatInlineTgsEmoji } from "./MessageChatInlineTgsEmoji";
+import { MessageChatRichText } from "./MessageChatRichText";
 import {
   SPECIAL_USER_BADGE_GAP_PX,
   SPECIAL_USER_BADGE_SIZE_PX,
@@ -14,6 +15,7 @@ import {
   specialUserDisplayName,
   specialUserShowsShineName,
 } from "./specialTelegramUserDisplay";
+import { resolveTitleDisplaySegments } from "./resolveMessageDisplaySegments";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 type Props = {
@@ -23,6 +25,10 @@ type Props = {
   emojiStatusCustomEmojiId?: string | null;
   /** When true, fetch/render Telegram emoji status immediately (open thread). */
   emojiStatusPriority?: boolean;
+  /** Inline title/preview emoji fetches — enabled for visible list rows and open chat. */
+  inlineEmojiFetchEnabled?: boolean;
+  inlineEmojiFetchPriority?: boolean;
+  inlineEmojiSizePx?: number;
   textStyle: TextStyle;
   numberOfLines?: number;
   textAlign?: "left" | "center" | "right";
@@ -65,6 +71,9 @@ export function SpecialTelegramUserName({
   telegramChatId = null,
   emojiStatusCustomEmojiId,
   emojiStatusPriority = true,
+  inlineEmojiFetchEnabled = true,
+  inlineEmojiFetchPriority = false,
+  inlineEmojiSizePx,
   textStyle,
   numberOfLines = 1,
   textAlign = "left",
@@ -78,6 +87,8 @@ export function SpecialTelegramUserName({
   const showBadge = showSpecialBadge || showTelegramEmojiStatus;
   const showShine = specialUserShowsShineName(telegramUserId, name, telegramChatId);
   const shineColor = typeof textStyle.color === "string" ? textStyle.color : undefined;
+  const titleSegments = useMemo(() => resolveTitleDisplaySegments(displayName), [displayName]);
+  const useRichTitle = Boolean(titleSegments?.length);
 
   useEffect(() => {
     telegramEmojiDebug.statusBadgeDecision({
@@ -97,11 +108,34 @@ export function SpecialTelegramUserName({
   ]);
 
   const nameContent =
-    Platform.OS === "web" && showShine
+    Platform.OS === "web" && showShine && !useRichTitle
       ? webShineNameNode(displayName, shineColor)
       : displayName;
 
-  const nameText = (
+  const resolvedEmojiSizePx =
+    inlineEmojiSizePx ??
+    (typeof textStyle.fontSize === "number" ? Math.round(textStyle.fontSize * 1.2) : 18);
+
+  const nameText = useRichTitle ? (
+    <MessageChatRichText
+      text={displayName}
+      segments={titleSegments}
+      numberOfLines={numberOfLines}
+      emojiSizePx={resolvedEmojiSizePx}
+      lowPriorityEmoji={!inlineEmojiFetchPriority}
+      emojiFetchEnabled={inlineEmojiFetchEnabled}
+      emojiFetchPriority={inlineEmojiFetchPriority}
+      style={[
+        textStyle,
+        {
+          textAlign,
+          flexShrink: 1,
+          minWidth: 0,
+        },
+        showBadge ? { flex: 0 } : null,
+      ]}
+    />
+  ) : (
     <Text
       numberOfLines={numberOfLines}
       ellipsizeMode="tail"

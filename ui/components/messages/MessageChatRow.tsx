@@ -28,6 +28,7 @@ import {
   MESSAGE_NAME_TIME_GAP_PX,
   MESSAGE_ROW_HEIGHT_PX,
   MESSAGE_FONT_SIZE_PX,
+  formatMessageUnreadCountLabel,
 } from "./messageListLayout";
 
 export type MessageChatActionKind =
@@ -49,6 +50,8 @@ export type MessageChatRowData = {
   avatar_url: string | null;
   last_message_at: string | null;
   unread_count: number;
+  /** Unread below the viewport — kept while the chat is open for the scroll-to-bottom control. */
+  scroll_below_unread_count?: number;
   peer_user_id?: number | null;
   peer_username?: string | null;
   chat_username?: string | null;
@@ -69,13 +72,6 @@ export type MessageChatRowData = {
 
 function resolveAvatarUrl(item: MessageChatRowData): string | null {
   return resolveTelegramThreadAvatarUrl(item);
-}
-
-function formatUnreadBadge(count: number, chatId: number): string {
-  if (!Number.isFinite(count) || count <= 0) return "";
-  if (count === chatId || count > 50_000) return "";
-  if (count > 99) return "99+";
-  return String(count);
 }
 
 export function MessageChatRow({
@@ -100,7 +96,7 @@ export function MessageChatRow({
   const preview = formatMessageChatListPreview(item, locale);
   const subtitle = preview.text;
   const subtitleSegments = useMemo(() => preview.textSegments, [preview.textSegments]);
-  const trailing = formatUnreadBadge(item.unread_count, item.telegram_chat_id);
+  const trailing = formatMessageUnreadCountLabel(item.unread_count, item.telegram_chat_id);
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
   const iconUrl = resolveAvatarUrl(item);
@@ -203,6 +199,7 @@ export function MessageChatRow({
           colors={colors}
           scheme={colorScheme}
           loadEnabled={avatarFetchEnabled}
+          fetchPriority={isActive ? "high" : "normal"}
           onLoad={() => {
             logPageDisplay("messages_avatar_load_ok", {
               ...chatLogFields({
@@ -240,6 +237,9 @@ export function MessageChatRow({
               telegramChatId={item.telegram_chat_id}
               emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
               emojiStatusPriority={true}
+              inlineEmojiFetchEnabled={rowInView || Boolean(isActive)}
+              inlineEmojiFetchPriority={rowInView || Boolean(isActive)}
+              inlineEmojiSizePx={MESSAGE_LIST_INLINE_EMOJI_SIZE_PX}
               textStyle={{
                 ...textBase,
                 color: colors.primary,

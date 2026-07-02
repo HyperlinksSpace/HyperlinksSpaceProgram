@@ -29,6 +29,7 @@ if (process.platform === "win32" && process.env.HSP_DISABLE_GPU === "1") {
 }
 const path = require("path");
 const { registerOAuthIpc } = require("./oauth-window.cjs");
+const { registerOsScreenshotPassthrough, ensureWebContentsAllowsOsCapture } = require("./os-screenshot.cjs");
 const preloadPath = path.join(__dirname, "preload.cjs");
 let mainWindowRef = null;
 const fs = require("fs");
@@ -1447,12 +1448,17 @@ function setupAutoUpdater() {
         "  Write-FileProbe 'pre-copy src exe' $srcExe",
         "  Write-FileProbe 'pre-copy dst asar' $dstAsar",
         "  Write-FileProbe 'pre-copy dst exe' $dstExe",
-        '  Write-ApplyLog "copy staging -> dest (robocopy; versioned uses /MIR, flat uses non-destructive /E)"',
+        '  Write-ApplyLog "copy staging -> dest (robocopy; versioned uses /MIR, flat purges then /E)"',
         "  $robocopyExe = Join-Path $env:SystemRoot 'System32\\robocopy.exe'",
         "  if ($plan.useVersionedLayout) {",
         "    & $robocopyExe $src $dst /MIR /E /MT:64 /J /R:0 /W:0 /XD versions /NFL /NDL /NJH /NJS",
         "  } else {",
-        "    # Flat install path: do not purge destination. Keep installer-managed files (e.g. Uninstall *.exe).",
+        '    Write-ApplyLog "flat install: purge old payload (keep Uninstall*.exe)"',
+        "    Get-ChildItem -LiteralPath $dst -Force -ErrorAction SilentlyContinue | Where-Object {",
+        "      $_.Name -notlike 'Uninstall*.exe'",
+        "    } | ForEach-Object {",
+        "      Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue",
+        "    }",
         "    & $robocopyExe $src $dst /E /MT:64 /J /R:0 /W:0 /XD versions /NFL /NDL /NJH /NJS",
         "  }",
         "  $mirrorExit = $LASTEXITCODE",
@@ -2302,6 +2308,7 @@ async function createWindow() {
     show: false,
   });
   mainWindowRef = mainWindow;
+  ensureWebContentsAllowsOsCapture(mainWindow.webContents, log);
 
   try {
     mainWindow.webContents.setIgnoreMenuShortcuts(false);
@@ -2406,6 +2413,8 @@ process.on("uncaughtException", (err) => {
     log(`uncaughtException: ${err.message}\n${err.stack}`);
   } catch (_) {}
 });
+
+registerOsScreenshotPassthrough(app, log);
 
 app.whenReady().then(async () => {
   if (process.platform === "win32") {

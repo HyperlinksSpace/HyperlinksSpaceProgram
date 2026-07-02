@@ -34,6 +34,17 @@ function isGatewaySessionWarmingError(error: string | undefined | null): boolean
   );
 }
 
+const GATEWAY_SESSION_RESTORE_POLL_MS = 90_000;
+const GATEWAY_SESSION_RESTORE_RESYNC_MS = 25_000;
+
+/** Avoid forcing QR when TDLib files exist on the gateway but restore is still in flight. */
+async function gatewaySessionRestoringOrRevoke(
+  telegramUsername: string,
+): Promise<"restoring" | "revoke"> {
+  const persistedOnGateway = await gatewayUserHasPersistedSession(telegramUsername);
+  return persistedOnGateway ? "restoring" : "revoke";
+}
+
 function gatewayResyncWarmingResponse(
   request: AnyRequest,
   res: NodeRes | undefined,
@@ -500,17 +511,24 @@ export async function telegramMessagesResyncHandler(
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
 
-  let result = await gatewayResyncChats(userOrRes, { maxWaitMs: 10_000 });
+  let result = await gatewayResyncChats(userOrRes, { maxWaitMs: GATEWAY_SESSION_RESTORE_RESYNC_MS });
 
   if (result.error === "no_session" || result.error === "session_not_ready") {
-    const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: 25_000 });
+    const warm = await gatewayWarmupSession(userOrRes, { maxPollMs: GATEWAY_SESSION_RESTORE_POLL_MS });
     if (warm.ok) {
-      result = await gatewayResyncChats(userOrRes, { maxWaitMs: 10_000 });
+      result = await gatewayResyncChats(userOrRes, { maxWaitMs: GATEWAY_SESSION_RESTORE_RESYNC_MS });
     } else if (
       result.error === "session_not_ready" ||
       warm.error === "warmup_timeout" ||
+      warm.error === "no_session" ||
       isGatewaySessionWarmingError(warm.error)
     ) {
+      if (warm.error === "no_session" || result.error === "no_session") {
+        const action = await gatewaySessionRestoringOrRevoke(userOrRes);
+        if (action === "restoring") {
+          return gatewayResyncWarmingResponse(request, res, result, "session_restoring");
+        }
+      }
       return gatewayResyncWarmingResponse(request, res, result, result.error ?? warm.error ?? "session_not_ready");
     }
   }
@@ -521,6 +539,10 @@ export async function telegramMessagesResyncHandler(
 
   const sessionLost = result.error === "no_session";
   if (sessionLost) {
+    const action = await gatewaySessionRestoringOrRevoke(userOrRes);
+    if (action === "restoring") {
+      return gatewayResyncWarmingResponse(request, res, result, "session_restoring");
+    }
     await revokeMtprotoSession(userOrRes);
     await disconnectTelegramMessages(userOrRes);
     return finishJson(request, res, {
@@ -690,6 +712,7 @@ export async function telegramMessagesHistoryHandler(
   const parsedLimit = limitRaw == null || limitRaw.trim() === "" ? 50 : Number(limitRaw);
   const limit = Number.isFinite(parsedLimit) ? parsedLimit : 50;
   const beforeMessageId = parseOptionalIdParam(url, "before_message_id");
+  const sinceMessageId = parseOptionalIdParam(url, "since_message_id");
   if (chatId == null) {
     logTelegramMessagesApi("messages_history_bad_request", {
       telegramUsername: userOrRes,
@@ -698,13 +721,28 @@ export async function telegramMessagesHistoryHandler(
     });
     return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
   }
+  if (
+    beforeMessageId != null &&
+    sinceMessageId != null &&
+    beforeMessageId > 0 &&
+    sinceMessageId > 0
+  ) {
+    return finishJson(request, res, { ok: false, error: "invalid_params" }, 400);
+  }
 
   const started = Date.now();
-  const result = await gatewayFetchChatMessages(userOrRes, chatId, limit, beforeMessageId);
+  const result = await gatewayFetchChatMessages(
+    userOrRes,
+    chatId,
+    limit,
+    beforeMessageId,
+    sinceMessageId,
+  );
   logTelegramMessagesApi("messages_history_served", {
     telegramUsername: userOrRes,
     chatId,
     beforeMessageId,
+    sinceMessageId,
     count: result.messages.length,
     hasMoreOlder: result.hasMoreOlder,
     nextBeforeMessageId: result.nextBeforeMessageId,

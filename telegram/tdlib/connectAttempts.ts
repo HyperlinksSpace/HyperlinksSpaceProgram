@@ -16,7 +16,7 @@ import {
   syncChatThreads,
   INITIAL_MAIN_CHAT_SYNC_LIMIT,
 } from "./syncChats.js";
-import { fetchChatHistory, sendChatTextMessage, editChatTextMessage } from "./chatHistory.js";
+import { fetchChatHistory, fetchChatHistorySince, markChatInboxRead, sendChatTextMessage, editChatTextMessage } from "./chatHistory.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { getLiveChatList, getLiveChatListRevision } from "./liveChatCache.js";
 
@@ -1171,6 +1171,7 @@ export async function getChatHistoryForUser(
   chatId: number,
   limit = 50,
   beforeMessageId?: number | null,
+  sinceMessageId?: number | null,
 ): Promise<{
   chat_kind: Awaited<ReturnType<typeof fetchChatHistory>>["chat_kind"];
   self_user_id: number | null;
@@ -1195,8 +1196,14 @@ export async function getChatHistoryForUser(
     };
   }
   try {
-    const result = await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
     const liveRow = getLiveChatList(telegramUsername)?.find((row) => row.telegram_chat_id === chatId);
+    const loadSince =
+      typeof sinceMessageId === "number" &&
+      Number.isFinite(sinceMessageId) &&
+      sinceMessageId > 0;
+    const result = loadSince
+      ? await fetchChatHistorySince(record.client, chatId, sinceMessageId!, limit)
+      : await fetchChatHistory(record.client, chatId, limit, beforeMessageId);
     const memberCount =
       typeof liveRow?.member_count === "number" && liveRow.member_count > 0
         ? liveRow.member_count
@@ -1205,8 +1212,8 @@ export async function getChatHistoryForUser(
       chat_kind: liveRow?.chat_kind ?? result.chat_kind,
       self_user_id: result.self_user_id,
       messages: result.messages,
-      has_more_older: result.has_more_older,
-      next_before_message_id: result.next_before_message_id,
+      has_more_older: loadSince ? false : result.has_more_older,
+      next_before_message_id: loadSince ? null : result.next_before_message_id,
       last_read_outbox_message_id: result.last_read_outbox_message_id,
       member_count: memberCount,
       error: null,
@@ -1355,8 +1362,11 @@ export async function focusChatForUser(
 
   try {
     await record.client.invoke({ _: "openChat", chat_id: chatId });
+    await markChatInboxRead(record.client, chatId);
     const chatPreview = await import("./chatPreview.js");
     const chat = (await record.client.invoke({ _: "getChat", chat_id: chatId })) as chatPreview.TdChat;
+    const { patchLiveChatFromTdlib } = await import("./liveChatCache.js");
+    patchLiveChatFromTdlib(telegramUsername, chat, {});
     const peerUserId = chatPreview.peerUserIdFromChat(chat);
     if (peerUserId != null) {
       const { refreshPeerEmojiStatus } = await import("./syncChats.js");

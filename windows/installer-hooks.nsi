@@ -198,6 +198,18 @@ Function HspKillBeforeCopy
   hspKillBeforeCopyNoAttrib:
 FunctionEnd
 
+; Remove old app payload before extracting a new build (keep Uninstall*.exe).
+Function HspPurgeInstallPayload
+  IfFileExists "$INSTDIR" 0 hspPurgeInstallDone
+  !insertmacro HspInstallDetailPrint "[installer] purge old app payload (preserve uninstaller)"
+  Call HspResolvePowerShellExe
+  Call HspSetEnvInstDir
+  nsExec::Exec `"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { $dst = $env:HSP_INSTDIR; if (-not $dst -or -not (Test-Path -LiteralPath $dst)) { exit 0 }; Get-ChildItem -LiteralPath $dst -Force | Where-Object { $_.Name -notlike 'Uninstall*.exe' } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }"`
+  Pop $R4
+  Call HspClearEnvInstDir
+hspPurgeInstallDone:
+FunctionEnd
+
 Function HspFinishPageShow
 !ifndef HSP_INSTALLER_AUTO_FINISH
   SetAutoClose false
@@ -272,6 +284,7 @@ FunctionEnd
   !insertmacro HspInstallDetailPrint "[installer] stop running app processes (tree kill + wait, all exe names)"
   Call HspKillPackagedAppProcesses
   Call HspWaitUntilPackagedProcessesGone
+  Call HspPurgeInstallPayload
   !insertmacro HspInstallStepStatus 2
 !macroend
 !endif

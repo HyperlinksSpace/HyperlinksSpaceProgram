@@ -40,6 +40,7 @@ export type MappedChatHistoryMessage = {
   sender_user_id: number | null;
   sender_chat_id: number | null;
   sender_is_channel: boolean;
+  sender_author_signature?: string | null;
   sender_emoji_status_custom_emoji_id?: string | null;
   sender_accent_color_light?: string | null;
   sender_accent_color_dark?: string | null;
@@ -191,6 +192,31 @@ async function resolveFullMessage(
   }
 }
 
+function readAuthorSignature(message: TdMessage): string | null {
+  const sig = (message as { author_signature?: unknown }).author_signature;
+  return typeof sig === "string" && sig.trim() ? sig.trim() : null;
+}
+
+async function resolveMessageSenderUserId(
+  client: Client,
+  chatId: number,
+  messageId: number,
+): Promise<number | null> {
+  try {
+    const sender = (await client.invoke({
+      _: "getMessageSender",
+      chat_id: chatId,
+      message_id: messageId,
+    })) as { _?: string; user_id?: number };
+    if (sender?._ === "messageSenderUser" && typeof sender.user_id === "number") {
+      return sender.user_id;
+    }
+  } catch {
+    /* optional enrichment for signed channel posts */
+  }
+  return null;
+}
+
 async function resolveReplyPreview(
   client: Client,
   message: TdMessage,
@@ -201,6 +227,9 @@ async function resolveReplyPreview(
   sender_user_id: number | null;
   text: string;
   text_segments: FormattedTextSegment[] | null;
+  sender_emoji_status_custom_emoji_id?: string | null;
+  sender_accent_color_light?: string | null;
+  sender_accent_color_dark?: string | null;
 } | null> {
   const reply = message.reply_to;
   if (reply?._ !== "messageReplyMessage") return null;
@@ -216,7 +245,7 @@ async function resolveReplyPreview(
     const sender = await resolveSenderName(client, replied, { id: chatId } as TdChat, userCache, chatCache);
     const text = bodyText(replied).trim() || previewFromMessage(replied) || "";
     if (!text) return null;
-    const replySegments = messageTextSegments(replied);
+    const replySegments = messageTextSegments(replied, { enrichStandardEmojis: true });
     return {
       sender_name: sender.name,
       sender_user_id: senderUserId(replied),
@@ -459,6 +488,13 @@ export async function mapHistoryMessage(
   const telegramMessageId = Number(resolved.id);
   if (!Number.isFinite(telegramMessageId)) return null;
 
+  const chatKind = chatKindFromTdChat(chat);
+  const authorSignature = chatKind === "channel" ? readAuthorSignature(resolved) : null;
+  let resolvedSenderUserId = senderUserId(resolved);
+  if (chatKind === "channel" && authorSignature && resolvedSenderUserId == null) {
+    resolvedSenderUserId = await resolveMessageSenderUserId(client, chat.id, telegramMessageId);
+  }
+
   const isCall = isCallMessage(resolved);
   const text = bodyText(resolved).trim();
   const hasMedia = hasDisplayableMedia(resolved);
@@ -469,20 +505,28 @@ export async function mapHistoryMessage(
   const replyTo = await resolveReplyPreview(client, resolved, userCache, chatCache);
   const dimensions = mediaDimensions(resolved);
 
-  const textSegments = messageTextSegments(resolved);
+  const textSegments = messageTextSegments(resolved, { enrichStandardEmojis: true });
+  const displaySenderName = authorSignature ?? sender.name;
+  let senderProfile = sender.profile;
+  if (resolvedSenderUserId != null && resolvedSenderUserId !== senderUserId(resolved)) {
+    senderProfile = await resolveTdUserProfile(client, resolvedSenderUserId, userCache);
+  } else if (resolvedSenderUserId != null && senderProfile == null) {
+    senderProfile = await resolveTdUserProfile(client, resolvedSenderUserId, userCache);
+  }
 
   return {
     telegram_message_id: telegramMessageId,
     text,
     ...(textSegments ? { text_segments: textSegments } : {}),
     sent_at: messageSentAtIso(resolved),
-    sender_name: sender.name,
-    sender_user_id: senderUserId(resolved),
+    sender_name: displaySenderName,
+    sender_user_id: resolvedSenderUserId ?? senderUserId(resolved),
     sender_chat_id: senderChatIdValue,
     sender_is_channel: sender.isChannel,
-    sender_emoji_status_custom_emoji_id: sender.profile?.emoji_status_custom_emoji_id ?? null,
-    sender_accent_color_light: sender.profile?.accent_color_light ?? null,
-    sender_accent_color_dark: sender.profile?.accent_color_dark ?? null,
+    ...(authorSignature ? { sender_author_signature: authorSignature } : {}),
+    sender_emoji_status_custom_emoji_id: senderProfile?.emoji_status_custom_emoji_id ?? null,
+    sender_accent_color_light: senderProfile?.accent_color_light ?? null,
+    sender_accent_color_dark: senderProfile?.accent_color_dark ?? null,
     is_outgoing: messageIsOutgoing(resolved, myUserId),
     outgoing_status: resolveOutgoingStatus(resolved, chat, myUserId),
     content_kind: messageContentKind(resolved),

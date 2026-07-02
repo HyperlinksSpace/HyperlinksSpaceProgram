@@ -13,7 +13,7 @@ import {
   syncAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { prefetchChatHistory, prefetchChatHistoryPriority } from "../messageChatHistoryPrefetch";
+import { prefetchChatHistory } from "../messageChatHistoryPrefetch";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
 import { telegramEmojiDebug } from "./messages/telegramEmojiDebug";
 import { homeListShellStyle } from "./messages/messageListLayout";
@@ -285,6 +285,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         status: response.status,
       });
       lastGatewayResyncRef.current = Date.now();
+      if (json.warming) {
+        return true;
+      }
       if (json.needsReconnect || json.connected === false) {
         setGatewayWarming(false);
         await refreshStatus();
@@ -395,10 +398,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         return next;
       });
       syncAuthenticatedHomeSelectedChat(rows);
-      if (!options?.silent) {
-        const openChat = selectedChatRef.current;
-        if (openChat) prefetchChatHistoryPriority(openChat);
-      }
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
           count: rows.length,
@@ -573,7 +572,20 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         peerUserId: item.peer_user_id,
         title: item.title,
       }));
+      setChats((prev) =>
+        prev.map((row) =>
+          row.telegram_chat_id === item.telegram_chat_id
+            ? { ...row, unread_count: 0 }
+            : row,
+        ),
+      );
+      void import("../telegram/warmupTelegramChatSession").then(({ warmupTelegramChatSession }) => {
+        void warmupTelegramChatSession(item.telegram_chat_id);
+      });
       openAuthenticatedHomeChatHistory(item);
+      void import("./messages/messageChatAvatarPrefetch").then(({ prefetchOpenChatListAvatar }) => {
+        prefetchOpenChatListAvatar(item);
+      });
     },
     [chatSelectionEnabled],
   );

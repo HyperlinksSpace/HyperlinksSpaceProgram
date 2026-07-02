@@ -45,3 +45,15 @@ export function emojiStatusCustomIdFromUser(user: unknown): string | null {
   if (!user || typeof user !== "object") return null;
   return parseEmojiStatusCustomId(readUserEmojiStatusField(user as Record<string, unknown>));
 }
+
+function readChatEmojiStatusField(chat: Record<string, unknown>): unknown {
+  if ("emoji_status" in chat) return chat.emoji_status;
+  if ("emojiStatus" in chat) return chat.emojiStatus;
+  return null;
+}
+
+/** Channel / supergroup emoji status shown beside the chat title. */
+export function emojiStatusCustomIdFromChat(chat: unknown): string | null {
+  if (!chat || typeof chat !== "object") return null;
+  return parseEmojiStatusCustomId(readChatEmojiStatusField(chat as Record<string, unknown>));
+}

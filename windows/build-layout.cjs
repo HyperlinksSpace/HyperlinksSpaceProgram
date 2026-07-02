@@ -25,10 +25,16 @@ function makeDefaultBuildName(d = new Date()) {
   );
 }
 
-/** build_03292026_1938 -> 03292026_1938 */
+function isValidBuildName(buildName) {
+  return /^build_\d{8}_\d{4}$/.test(buildName) || /^v?\d+\.\d+\.\d+$/.test(buildName);
+}
+
+/** build_03292026_1938 -> 03292026_1938; v53.0.1400 -> 53.0.1400 */
 function stampFromBuildName(buildName) {
-  if (!/^build_\d{8}_\d{4}$/.test(buildName)) return null;
-  return buildName.slice("build_".length);
+  if (/^build_\d{8}_\d{4}$/.test(buildName)) return buildName.slice("build_".length);
+  const ver = /^v?(\d+\.\d+\.\d+)$/.exec(buildName);
+  if (ver) return ver[1];
+  return null;
 }
 
 /**
@@ -37,8 +43,7 @@ function stampFromBuildName(buildName) {
  */
 function resolveBuildLayout(appDir) {
   const envBuildId = process.env.RELEASE_BUILD_ID?.trim();
-  const buildName =
-    envBuildId && /^build_\d{8}_\d{4}$/.test(envBuildId) ? envBuildId : makeDefaultBuildName();
+  const buildName = envBuildId && isValidBuildName(envBuildId) ? envBuildId : makeDefaultBuildName();
   const buildStamp = process.env.BUILD_STAMP?.trim() || stampFromBuildName(buildName);
   if (!buildStamp) {
     throw new Error(`[build-layout] could not derive BUILD_STAMP for buildName=${buildName}`);
@@ -68,5 +73,6 @@ module.exports = {
   resolveBuildLayout,
   ensureCleanEbOutput,
   makeDefaultBuildName,
+  isValidBuildName,
   stampFromBuildName,
 };

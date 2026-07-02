@@ -18,8 +18,10 @@ import {
   type TdMessage,
 } from "./chatPreview.js";
 import { previewSegmentsFromMessage } from "./formattedTextSegments.js";
+import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
 import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
+import { isPrivateTdChat } from "./chatPreview.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 
 export type LiveChatRow = {
@@ -225,6 +227,9 @@ export function patchLiveChatFromTdlib(
     previewFromMessage(lastMessage) ||
     existing?.subtitle ||
     "";
+  const chatEmojiStatusId = isPrivateTdChat(chat)
+    ? null
+    : emojiStatusCustomIdFromChat(chat);
   const row: Omit<LiveChatRow, "revision"> = {
     telegram_chat_id: chat.id,
     title: chatTitle(chat),
@@ -247,7 +252,7 @@ export function patchLiveChatFromTdlib(
     peer_emoji_status_custom_emoji_id:
       input.peer_emoji_status_custom_emoji_id !== undefined
         ? input.peer_emoji_status_custom_emoji_id
-        : (existing?.peer_emoji_status_custom_emoji_id ?? null),
+        : chatEmojiStatusId ?? existing?.peer_emoji_status_custom_emoji_id ?? null,
     peer_accent_color_light: existing?.peer_accent_color_light ?? null,
     peer_accent_color_dark: existing?.peer_accent_color_dark ?? null,
     presence_kind: existing?.presence_kind ?? null,
@@ -387,6 +392,43 @@ export function patchLiveChatEmojiStatus(
     });
   }
   return null;
+}
+
+export function patchLiveChatChatEmojiStatus(
+  telegramUsername: string,
+  chatId: number,
+  customEmojiId: string | null,
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  const existing = cache.chats.get(chatId);
+  if (!existing) return null;
+  return replaceLiveChatRowQuietly(telegramUsername, {
+    telegram_chat_id: existing.telegram_chat_id,
+    title: existing.title,
+    subtitle: existing.subtitle,
+    ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
+    avatar_url: existing.avatar_url,
+    last_message_at: existing.last_message_at,
+    unread_count: existing.unread_count,
+    peer_user_id: existing.peer_user_id,
+    peer_username: existing.peer_username ?? null,
+    chat_username: existing.chat_username ?? null,
+    chat_kind: existing.chat_kind ?? null,
+    member_count: existing.member_count ?? null,
+    peer_emoji_status_custom_emoji_id: customEmojiId,
+    peer_accent_color_light: existing.peer_accent_color_light ?? null,
+    peer_accent_color_dark: existing.peer_accent_color_dark ?? null,
+    presence_kind: existing.presence_kind,
+    presence_at: existing.presence_at,
+    chat_action: existing.chat_action,
+    chat_action_user_id: existing.chat_action_user_id,
+    chat_action_user_name: existing.chat_action_user_name,
+    chat_action_expires_at: existing.chat_action_expires_at,
+    last_read_outbox_message_id: existing.last_read_outbox_message_id,
+    is_pinned: existing.is_pinned,
+    pin_order: existing.pin_order,
+  });
 }
 
 export function applyLiveMessageUpdate(

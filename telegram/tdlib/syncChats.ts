@@ -13,6 +13,7 @@ import {
   normalizeUnreadCount,
   lastReadOutboxMessageIdFromChat,
   memberCountFromChat,
+  isPrivateTdChat,
   peerUserIdFromChat,
   peerUsernameFromChat,
   presenceFromTdlibStatus,
@@ -31,6 +32,7 @@ import {
   type LiveChatRow,
 } from "./liveChatCache.js";
 import { logGateway } from "./gatewayLog.js";
+import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
 import { chatKindFromTdChat } from "./messageHistoryMap.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
 import {
@@ -523,6 +525,14 @@ async function enrichChatRow(
   return { subtitle: nextSubtitle, avatarUrl: nextAvatar };
 }
 
+function resolveChatEmojiStatusCustomId(
+  chat: TdChat,
+  peerEmojiStatusId: string | null,
+): string | null {
+  if (isPrivateTdChat(chat)) return peerEmojiStatusId;
+  return emojiStatusCustomIdFromChat(chat) ?? peerEmojiStatusId;
+}
+
 async function resolvePeerProfile(
   client: Client,
   chat: TdChat,
@@ -743,7 +753,10 @@ async function buildLiveRowsForChats(
       chat_username: chatUsernameFromChat(chat),
       chat_kind: chatKindFromTdChat(chat),
       member_count: memberCounts[i] ?? null,
-      peer_emoji_status_custom_emoji_id: profile?.emojiStatusCustomEmojiId ?? null,
+      peer_emoji_status_custom_emoji_id: resolveChatEmojiStatusCustomId(
+        chat,
+        profile?.emojiStatusCustomEmojiId ?? null,
+      ),
       peer_accent_color_light: profile?.accentColorLight ?? null,
       peer_accent_color_dark: profile?.accentColorDark ?? null,
       presence_kind: profile?.presence?.kind ?? null,

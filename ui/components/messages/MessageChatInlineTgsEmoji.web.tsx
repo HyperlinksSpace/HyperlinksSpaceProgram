@@ -110,7 +110,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
     if (!visible && !priority && !lowPriority) return;
 
     let cancelled = false;
-    void fetchTelegramEmojiAsset(fetchRef)
+    void fetchTelegramEmojiAsset(fetchRef, { priority: priority ? "high" : "normal" })
       .then(async (asset) => {
         if (cancelled || !asset) return;
         if (
@@ -170,7 +170,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
       return;
     }
 
-    void fetchTelegramEmojiAsset(fetchRef)
+    void fetchTelegramEmojiAsset(fetchRef, { priority: priority ? "high" : "normal" })
       .then(async (asset) => {
         if (cancelled) return;
         if (!asset) {

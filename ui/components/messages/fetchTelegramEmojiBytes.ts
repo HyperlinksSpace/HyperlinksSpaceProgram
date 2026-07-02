@@ -1,6 +1,6 @@
 import { buildApiUrl } from "../../../api/_base";
 import { bytesLookLikeTgs, bytesLookLikeVideo } from "./loadTgsAnimation";
-import { runQueuedNetworkFetch } from "./networkFetchQueue";
+import { runQueuedNetworkFetch, type NetworkFetchPriority } from "./networkFetchQueue";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 
 export type TelegramEmojiFetchRef =
@@ -52,6 +52,7 @@ function resolveMime(mime: string, bytes: Uint8Array): string {
 
 export async function fetchTelegramEmojiAsset(
   ref: TelegramEmojiFetchRef,
+  options?: { priority?: NetworkFetchPriority },
 ): Promise<TelegramEmojiAsset | null> {
   const key = cacheKey(ref);
   if (unavailableCache.has(key)) {
@@ -104,7 +105,7 @@ export async function fetchTelegramEmojiAsset(
       const asset = { bytes, mime };
       bytesCache.set(key, asset);
       return asset;
-    });
+    }, { priority: options?.priority ?? "normal" });
   } catch (err) {
     telegramEmojiDebug.fetchNetworkError(ref, err);
     return null;

@@ -100,5 +100,8 @@ export const MESSAGE_CHAT_HISTORY_PAGE_SIZE = 30;
 /** Background list prefetch — enough for a quick open, not a full thread. */
 export const MESSAGE_CHAT_HISTORY_PREVIEW_SIZE = 7;
 
+/** Live tail poll — only merge newer messages, not a full history page. */
+export const MESSAGE_CHAT_HISTORY_LIVE_TAIL_SIZE = 10;
+
 /** Distance from top (px) that triggers loading the previous page. */
 export const MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX = 120;

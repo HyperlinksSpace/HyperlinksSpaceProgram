@@ -1,6 +1,6 @@
 import http from "http";
 import { URL } from "url";
-import { getGatewayBindHost, getGatewayPort, getGatewaySecret } from "./env.js";
+import { getGatewayBindHost, getGatewayPort, getGatewaySecret, getTdlibDbRoot } from "./env.js";
 import { logGateway } from "./gatewayLog.js";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { serveLiveChatRevisionStream } from "./liveChatStream.js";
@@ -86,10 +86,12 @@ export function startTdlibGatewayServer(): http.Server {
         const pathname = url.pathname;
 
         if (req.method === "GET" && (pathname === "/" || pathname === "/v1/health")) {
-          const persistedSessions = listPersistedSessionUsernames().length;
+          const persistedUsernames = listPersistedSessionUsernames();
+          const persistedSessions = persistedUsernames.length;
           const body = {
             ...gatewayHealth(),
             persistedSessions,
+            tdlibDbRoot: getTdlibDbRoot(),
             hint: "TDLib gateway is running",
           };
           logGateway("health", {
@@ -313,7 +315,21 @@ export function startTdlibGatewayServer(): http.Server {
             beforeMessageIdRaw != null && beforeMessageIdRaw.trim() !== ""
               ? Number(beforeMessageIdRaw)
               : null;
+          const sinceMessageIdRaw = url.searchParams.get("sinceMessageId");
+          const sinceMessageId =
+            sinceMessageIdRaw != null && sinceMessageIdRaw.trim() !== ""
+              ? Number(sinceMessageIdRaw)
+              : null;
           if (!telegramUsername || !Number.isFinite(chatId)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          if (
+            Number.isFinite(beforeMessageId) &&
+            Number.isFinite(sinceMessageId) &&
+            beforeMessageId! > 0 &&
+            sinceMessageId! > 0
+          ) {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
@@ -323,12 +339,14 @@ export function startTdlibGatewayServer(): http.Server {
             chatId,
             limit,
             Number.isFinite(beforeMessageId) ? beforeMessageId : null,
+            Number.isFinite(sinceMessageId) ? sinceMessageId : null,
           );
           logGateway("chat_history_served", {
             telegramUsername,
             chatId,
             userId: liveChatPeerUserIdForLog(telegramUsername, chatId) ?? null,
             beforeMessageId: Number.isFinite(beforeMessageId) ? beforeMessageId : null,
+            sinceMessageId: Number.isFinite(sinceMessageId) ? sinceMessageId : null,
             count: result.messages.length,
             hasMoreOlder: result.has_more_older,
             nextBeforeMessageId: result.next_before_message_id,

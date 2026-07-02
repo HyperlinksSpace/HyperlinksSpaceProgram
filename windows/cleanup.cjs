@@ -7,7 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { RELEASE_BUILD_DEV_DIRNAME } = require("./build-layout.cjs");
+const { RELEASE_BUILD_DEV_DIRNAME, isValidBuildName } = require("./build-layout.cjs");
 const { productSlug } = require("./product-brand.cjs");
 
 const appDir = path.join(__dirname, "..");
@@ -30,8 +30,7 @@ const defaultBuildName =
   "_" +
   pad(now.getHours()) +
   pad(now.getMinutes());
-const buildName =
-  envBuildId && /^build_\d{8}_\d{4}$/.test(envBuildId) ? envBuildId : defaultBuildName;
+const buildName = envBuildId && isValidBuildName(envBuildId) ? envBuildId : defaultBuildName;
 
 // releases/builder/build_MMDDYYYY_HHMM — installer only at root; everything else under dev/
 const buildDir = path.join(releasesDir, "builder", buildName);
@@ -49,7 +48,7 @@ const devArtifacts = [
 function pickInstallerName() {
   const files = fs.readdirSync(artifactsDir);
   const installerRe = new RegExp(
-    `^${productSlug}Installer(?:_\\d{8}_\\d{4})?\\.exe$`,
+    `^${productSlug}Installer(?:_(?:\\d{8}_\\d{4}|\\d+\\.\\d+\\.\\d+))?\\.exe$`,
     "i",
   );
   const candidates = files.filter((f) => installerRe.test(f));

@@ -11,10 +11,9 @@ import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
 import {
   isDisplayableMediaMessage,
-  isGroupLikeChatKind,
   messageShowsOutgoingChecks,
-  resolveMessageOutgoingStatus,
   resolveOutgoingStatusForDisplay,
+  shouldShowMessageSenderHeader,
 } from "./messageChatHistoryTypes";
 import {
   measureBubbleInnerContentWidth,
@@ -184,11 +183,7 @@ export function MessageChatMessageRow({
     item.sender_user_id,
     chat.telegram_chat_id,
   );
-  const showSenderHeader =
-    isGroupLikeChatKind(chatKind) &&
-    chatKind !== "channel" &&
-    !item.is_outgoing &&
-    senderDisplayName.length > 0;
+  const showSenderHeader = shouldShowMessageSenderHeader(chatKind, item);
 
   const extraInnerWidthPx = useMemo(() => {
     let extra = 0;
@@ -360,7 +355,7 @@ export function MessageChatMessageRow({
     bodyText.length > 0;
 
   const canReply = canReplyToMessage(item);
-  const canEdit = canEditMessage(item, selfUserId);
+  const canEdit = canEditMessage(item, selfUserId, chat.peer_user_id);
   const showActionSheet = canReply || canEdit;
 
   const openActionSheet = useCallback(
@@ -390,6 +385,18 @@ export function MessageChatMessageRow({
       lastPointerRef.current = { x: pageX, y: pageY };
     }
   }, []);
+
+  const onBubblePress = useCallback(
+    (event: GestureResponderEvent) => {
+      if (!showActionSheet) return;
+      capturePointer(event);
+      openActionSheet({
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY,
+      });
+    },
+    [capturePointer, openActionSheet, showActionSheet],
+  );
 
   const onContextMenu = useCallback(
     (event: GestureResponderEvent & { preventDefault?: () => void }) => {
@@ -457,19 +464,16 @@ export function MessageChatMessageRow({
           sizePx={MESSAGE_BUBBLE_AVATAR_PX}
           colors={colors}
           scheme={colorScheme}
+          fetchPriority="high"
         />
       </View>
       <View style={{ width: MESSAGE_BUBBLE_AVATAR_GAP_PX }} />
-        <Pressable
+        <View
           ref={bubblePressableRef}
-          onPressIn={capturePointer}
-          onLongPress={showActionSheet ? () => openActionSheet() : undefined}
-          onContextMenu={onContextMenu}
-          style={({ pressed }) => ({
+          style={{
             alignSelf: "flex-start",
             maxWidth: bubbleMaxWidth,
-            opacity: pressed && showActionSheet ? 0.92 : 1,
-          })}
+          }}
         >
           {Platform.OS !== "web" && bubbleMaxWidth > 0 ? (
             <Text
@@ -492,6 +496,14 @@ export function MessageChatMessageRow({
               {measureText}
             </Text>
           ) : null}
+          <Pressable
+            onPress={onBubblePress}
+            onLongPress={showActionSheet ? onBubblePress : undefined}
+            onContextMenu={onContextMenu}
+            style={({ pressed }) => ({
+              opacity: pressed && showActionSheet ? 0.92 : 1,
+            })}
+          >
           <View
             style={[
               {
@@ -541,7 +553,8 @@ export function MessageChatMessageRow({
               selfUserId={selfUserId}
             />
           </View>
-        </Pressable>
+          </Pressable>
+        </View>
       <MessageChatMessageContextMenu
         visible={actionSheetVisible}
         anchor={menuAnchor}

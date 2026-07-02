@@ -1,4 +1,5 @@
 const { BrowserWindow } = require("electron");
+const { ensureWebContentsAllowsOsCapture } = require("./os-screenshot.cjs");
 
 const SESSION_COOKIE = "hs_auth_session";
 
@@ -38,6 +39,7 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
         session: parentWindow.webContents.session,
       },
     });
+    ensureWebContentsAllowsOsCapture(authWindow.webContents, log);
 
     const notifyMain = (detail) => {
       if (parentWindow.isDestroyed()) return;

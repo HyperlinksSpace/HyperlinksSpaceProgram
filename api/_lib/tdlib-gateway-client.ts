@@ -475,6 +475,7 @@ export async function gatewayFetchChatMessages(
   chatId: number,
   limit = 50,
   beforeMessageId?: number | null,
+  sinceMessageId?: number | null,
 ): Promise<{
   messages: Record<string, unknown>[];
   chatKind: string | null;
@@ -498,6 +499,13 @@ export async function gatewayFetchChatMessages(
     beforeMessageId > 0
   ) {
     params.set("beforeMessageId", String(beforeMessageId));
+  }
+  if (
+    typeof sinceMessageId === "number" &&
+    Number.isFinite(sinceMessageId) &&
+    sinceMessageId > 0
+  ) {
+    params.set("sinceMessageId", String(sinceMessageId));
   }
   const url = `${base}/v1/chat/messages?${params.toString()}`;
   try {

@@ -165,7 +165,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     warmupInFlightRef.current = true;
     logTelegramConnect("silent_warmup_start");
     try {
-      const maxAttempts = 4;
+      const maxAttempts = 8;
       for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const response = await fetch(buildApiUrl("/api/telegram-messages-warmup"), {
           method: "POST",
@@ -207,8 +207,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           });
           return;
         }
-        if (json.warming && attempt + 1 < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 3_000));
+        if (
+          (json.warming || json.error === "session_restoring") &&
+          attempt + 1 < maxAttempts
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, json.error === "session_restoring" ? 5_000 : 3_000));
           continue;
         }
         if (json.connected !== false) {

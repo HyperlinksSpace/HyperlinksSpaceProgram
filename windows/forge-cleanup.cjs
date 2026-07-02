@@ -29,8 +29,9 @@ const defaultBuildNameFromClock =
 const envBuildId = process.env.RELEASE_BUILD_ID?.trim();
 // Parent `make-with-stamp.cjs` passes BUILD_STAMP so folder name matches the installer stamp.
 const stampFromEnv = process.env.BUILD_STAMP?.trim();
+const semverForgeRe = /^v?\d+\.\d+\.\d+_forge$/i;
 const buildName =
-  envBuildId && /^build_\d{8}_\d{4}_forge$/.test(envBuildId)
+  envBuildId && (/^build_\d{8}_\d{4}_forge$/.test(envBuildId) || semverForgeRe.test(envBuildId))
     ? envBuildId
     : stampFromEnv
       ? `build_${stampFromEnv}_forge`

@@ -34,6 +34,10 @@ function readStoredChat(): MessageChatRowData | null {
             ? String(row.last_message_at)
             : null,
         unread_count: Number.isFinite(Number(row.unread_count)) ? Number(row.unread_count) : 0,
+        scroll_below_unread_count: (() => {
+          const raw = Number(row.scroll_below_unread_count);
+          return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : undefined;
+        })(),
         peer_user_id: Number.isFinite(Number(row.peer_user_id)) ? Number(row.peer_user_id) : null,
         peer_username:
           typeof row.peer_username === "string" && row.peer_username.trim()
@@ -198,9 +202,19 @@ export function selectAuthenticatedHomeChat(chat: MessageChatRowData | null) {
 export function openAuthenticatedHomeChatHistory(chat: MessageChatRowData) {
   hydrateFromStorageIfNeeded();
   const sameChat = selectedChat?.telegram_chat_id === chat.telegram_chat_id;
-  selectedChat = chat;
+  const openingUnread = Number.isFinite(chat.unread_count)
+    ? Math.max(0, Math.trunc(chat.unread_count))
+    : 0;
+  const openedChat: MessageChatRowData = {
+    ...chat,
+    unread_count: 0,
+    scroll_below_unread_count: sameChat
+      ? selectedChat?.scroll_below_unread_count ?? openingUnread
+      : openingUnread,
+  };
+  selectedChat = openedChat;
   middleColumnFocus = "chat";
-  writeStoredChat(chat);
+  writeStoredChat(openedChat);
   if (!sameChat) {
     historyLoadChatId = chat.telegram_chat_id;
     historyLoadGeneration += 1;
@@ -322,6 +336,25 @@ export function patchAuthenticatedHomeSelectedChatReadOutbox(messageId: number |
   emit();
 }
 
+/** Scroll-to-bottom FAB unread counter while the chat stays open. */
+export function patchAuthenticatedHomeSelectedChatScrollBelowUnread(count: number): void {
+  hydrateFromStorageIfNeeded();
+  if (selectedChat == null) return;
+  const next = Math.max(0, Math.trunc(count));
+  if ((selectedChat.scroll_below_unread_count ?? 0) === next) return;
+  selectedChat = { ...selectedChat, scroll_below_unread_count: next };
+  writeStoredChat(selectedChat);
+  emit();
+}
+
+export function bumpAuthenticatedHomeSelectedChatScrollBelowUnread(delta: number): void {
+  if (!Number.isFinite(delta) || delta <= 0) return;
+  hydrateFromStorageIfNeeded();
+  if (selectedChat == null) return;
+  const prev = selectedChat.scroll_below_unread_count ?? 0;
+  patchAuthenticatedHomeSelectedChatScrollBelowUnread(prev + Math.trunc(delta));
+}
+
 /** Refresh stored selection when poll updates the same chat row. */
 export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRowData[]) {
   hydrateFromStorageIfNeeded();
@@ -350,10 +383,15 @@ export function syncAuthenticatedHomeSelectedChat(chats: readonly MessageChatRow
     fresh.chat_action_user_id !== selectedChat.chat_action_user_id ||
     fresh.chat_action_user_name !== selectedChat.chat_action_user_name ||
     fresh.chat_action_expires_at !== selectedChat.chat_action_expires_at ||
-    fresh.last_read_outbox_message_id !== selectedChat.last_read_outbox_message_id
+    fresh.last_read_outbox_message_id !== selectedChat.last_read_outbox_message_id ||
+    (fresh.scroll_below_unread_count ?? 0) !== (selectedChat.scroll_below_unread_count ?? 0)
   ) {
-    selectedChat = fresh;
-    writeStoredChat(fresh);
+    selectedChat = {
+      ...fresh,
+      unread_count: 0,
+      scroll_below_unread_count: selectedChat.scroll_below_unread_count ?? 0,
+    };
+    writeStoredChat(selectedChat);
     emit();
   }
 }

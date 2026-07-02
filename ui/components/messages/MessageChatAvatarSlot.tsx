@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import type { ThemeColors, ThemeName } from "../../theme";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
+import type { NetworkFetchPriority } from "./networkFetchQueue";
 import { MessageChatAvatarImage } from "./MessageChatAvatarImage";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
   scheme: ThemeName;
   /** When false, skip proxy fetch (e.g. row off-screen). */
   loadEnabled?: boolean;
+  fetchPriority?: NetworkFetchPriority;
   onLoad?: () => void;
   onError?: (error?: unknown) => void;
 };
@@ -24,6 +26,7 @@ export function MessageChatAvatarSlot({
   colors,
   scheme,
   loadEnabled = true,
+  fetchPriority = "normal",
   onLoad,
   onError,
 }: Props) {
@@ -63,6 +66,7 @@ export function MessageChatAvatarSlot({
             uri={iconUrl!}
             sizePx={sizePx}
             loadEnabled={loadEnabled}
+            fetchPriority={fetchPriority}
             onLoad={() => {
               setImageReady(true);
               onLoad?.();

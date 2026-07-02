@@ -1,7 +1,7 @@
 import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
-import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
+import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatChatEmojiStatus, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence } from "./liveChatCache.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, type TdChat, type TdMessage } from "./chatPreview.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
@@ -15,6 +15,7 @@ const LIVE_UPDATE_TYPES = new Set([
   "updateChatReadInbox",
   "updateNewChat",
   "updateChatTitle",
+  "updateChatEmojiStatus",
   "updateChatPhoto",
   "updateChatPosition",
   "updateMessageEdited",
@@ -226,6 +227,18 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     patchLiveChatEmojiStatus(record.telegramUsername, userId, customEmojiId);
     logLiveSync(record, "live_chat_emoji_status_applied", {
       peerUserId: userId,
+      hasCustomEmoji: Boolean(customEmojiId),
+    });
+    return;
+  }
+
+  if (type === "updateChatEmojiStatus") {
+    const chatId = update.chat_id;
+    if (typeof chatId !== "number") return;
+    const customEmojiId = parseEmojiStatusCustomId(update.emoji_status ?? update.emojiStatus);
+    patchLiveChatChatEmojiStatus(record.telegramUsername, chatId, customEmojiId);
+    logLiveSync(record, "live_chat_chat_emoji_status_applied", {
+      chatId,
       hasCustomEmoji: Boolean(customEmojiId),
     });
     return;

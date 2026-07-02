@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
-import { runQueuedNetworkFetch } from "./networkFetchQueue";
+import { runQueuedNetworkFetch, type NetworkFetchPriority } from "./networkFetchQueue";
 
 function needsAuthenticatedFetch(uri: string): boolean {
   return uri.includes("/api/telegram-messages-avatar");
@@ -9,10 +9,61 @@ function needsAuthenticatedFetch(uri: string): boolean {
 
 /** Reuse blob URLs so avatar proxy images do not refetch on every list re-render. */
 const avatarBlobCache = new Map<string, string>();
+const avatarCacheListeners = new Set<() => void>();
+let avatarCacheRevision = 0;
+
+function notifyAvatarCacheListeners(): void {
+  avatarCacheRevision += 1;
+  for (const listener of avatarCacheListeners) {
+    listener();
+  }
+}
+
+function subscribeAvatarCache(listener: () => void): () => void {
+  avatarCacheListeners.add(listener);
+  return () => {
+    avatarCacheListeners.delete(listener);
+  };
+}
+
+function getAvatarCacheRevision(): number {
+  return avatarCacheRevision;
+}
 
 function readCachedDisplayUri(uri: string): string | null {
   if (!needsAuthenticatedFetch(uri)) return uri;
   return avatarBlobCache.get(uri) ?? null;
+}
+
+export function isMessageChatAvatarBlobCached(uri: string): boolean {
+  return readCachedDisplayUri(uri) != null;
+}
+
+async function fetchAvatarBlob(uri: string): Promise<string | null> {
+  if (!needsAuthenticatedFetch(uri)) return uri;
+  const cached = avatarBlobCache.get(uri);
+  if (cached) return cached;
+
+  const response = await fetch(uri, { method: "GET", credentials: "include" });
+  if (!response.ok) throw new Error(`HTTP_${response.status}`);
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  avatarBlobCache.set(uri, objectUrl);
+  notifyAvatarCacheListeners();
+  return objectUrl;
+}
+
+/** Populate the shared avatar blob cache (open-chat prefetch). */
+export function prefetchMessageChatAvatar(
+  uri: string,
+  options?: { priority?: NetworkFetchPriority },
+): void {
+  if (!uri || isMessageChatAvatarBlobCached(uri)) return;
+  void runQueuedNetworkFetch(() => fetchAvatarBlob(uri), {
+    priority: options?.priority ?? "normal",
+  }).catch(() => {
+    /* row onError handles visible failures */
+  });
 }
 
 type Props = {
@@ -21,6 +72,7 @@ type Props = {
   style?: StyleProp<ImageStyle>;
   /** When false, skip proxy fetch until the row scrolls into view. */
   loadEnabled?: boolean;
+  fetchPriority?: NetworkFetchPriority;
   onLoad?: () => void;
   onError?: (error?: unknown) => void;
 };
@@ -31,9 +83,15 @@ export function MessageChatAvatarImage({
   sizePx,
   style,
   loadEnabled = true,
+  fetchPriority = "normal",
   onLoad,
   onError,
 }: Props) {
+  const cacheRevision = useSyncExternalStore(
+    subscribeAvatarCache,
+    getAvatarCacheRevision,
+    getAvatarCacheRevision,
+  );
   const [displayUri, setDisplayUri] = useState<string | null>(() => readCachedDisplayUri(uri));
   const onLoadRef = useRef(onLoad);
   const onErrorRef = useRef(onError);
@@ -44,14 +102,16 @@ export function MessageChatAvatarImage({
   }, [onLoad, onError]);
 
   useEffect(() => {
+    const cached = readCachedDisplayUri(uri);
+    if (cached) {
+      setDisplayUri(cached);
+    }
+  }, [uri, cacheRevision]);
+
+  useEffect(() => {
     if (!loadEnabled) return;
 
-    if (!needsAuthenticatedFetch(uri)) {
-      setDisplayUri(uri);
-      return;
-    }
-
-    const cached = avatarBlobCache.get(uri);
+    const cached = readCachedDisplayUri(uri);
     if (cached) {
       setDisplayUri(cached);
       return;
@@ -61,21 +121,17 @@ export function MessageChatAvatarImage({
 
     void runQueuedNetworkFetch(async () => {
       try {
-        const response = await fetch(uri, { method: "GET", credentials: "include" });
-        if (!response.ok) throw new Error(`HTTP_${response.status}`);
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        avatarBlobCache.set(uri, objectUrl);
-        if (!cancelled) setDisplayUri(objectUrl);
+        const next = await fetchAvatarBlob(uri);
+        if (!cancelled && next) setDisplayUri(next);
       } catch (err) {
         if (!cancelled) onErrorRef.current?.(err);
       }
-    });
+    }, { priority: fetchPriority });
 
     return () => {
       cancelled = true;
     };
-  }, [uri, loadEnabled]);
+  }, [uri, loadEnabled, fetchPriority]);
 
   if (!displayUri) return null;
 

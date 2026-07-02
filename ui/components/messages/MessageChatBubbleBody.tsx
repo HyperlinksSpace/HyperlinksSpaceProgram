@@ -13,7 +13,7 @@ import type {
   MessageChatKind,
   MessageChatReplyPreview,
 } from "./messageChatHistoryTypes";
-import { isDisplayableMediaMessage, isGroupLikeChatKind, messageShowsOutgoingChecks, resolveMessageOutgoingStatus, resolveOutgoingStatusForDisplay } from "./messageChatHistoryTypes";
+import { isDisplayableMediaMessage, messageShowsOutgoingChecks, resolveMessageOutgoingStatus, resolveOutgoingStatusForDisplay, shouldShowMessageSenderHeader } from "./messageChatHistoryTypes";
 import {
   MESSAGE_BUBBLE_BORDER_RADIUS_PX,
   MESSAGE_BUBBLE_FONT_SIZE_PX,
@@ -432,11 +432,7 @@ export function MessageChatBubbleBody({
     item.sender_user_id,
     chatId,
   );
-  const showSenderHeader =
-    isGroupLikeChatKind(chatKind) &&
-    chatKind !== "channel" &&
-    !item.is_outgoing &&
-    senderDisplayName.length > 0;
+  const showSenderHeader = shouldShowMessageSenderHeader(chatKind, item);
   const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
   const contentKind: MessageChatContentKind = item.content_kind ?? "other";
   const isCall = contentKind === "call";

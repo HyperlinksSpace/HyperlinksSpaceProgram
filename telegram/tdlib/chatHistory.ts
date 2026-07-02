@@ -211,6 +211,102 @@ export async function fetchChatHistory(
   };
 }
 
+/** Messages newer than sinceMessageId — for live tail sync without re-fetching the whole page. */
+export async function fetchChatHistorySince(
+  client: Client,
+  chatId: number,
+  sinceMessageId: number,
+  limit = 50,
+): Promise<{
+  chat_kind: ChatKind;
+  self_user_id: number | null;
+  member_count: number | null;
+  messages: MappedChatHistoryMessage[];
+  last_read_outbox_message_id: number | null;
+}> {
+  const sinceId = Math.trunc(sinceMessageId);
+  if (!Number.isFinite(sinceId) || sinceId <= 0) {
+    throw new Error("invalid_since_message_id");
+  }
+
+  try {
+    await client.invoke({ _: "openChat", chat_id: chatId });
+  } catch {
+    /* already open */
+  }
+
+  const pageLimit = Math.min(Math.max(limit, 1), 100);
+  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const chatKind = chatKindFromTdChat(chat);
+  const selfUserId = await resolveMyUserId(client);
+
+  const history = (await client.invoke({
+    _: "getChatHistory",
+    chat_id: chatId,
+    from_message_id: sinceId,
+    offset: -pageLimit,
+    limit: pageLimit,
+    only_local: false,
+  })) as { messages?: TdMessage[] };
+  const raw = (Array.isArray(history.messages) ? history.messages : []).filter((message) => {
+    const telegramMessageId = Number(message.id);
+    return Number.isFinite(telegramMessageId) && telegramMessageId > sinceId;
+  });
+
+  let messages: MappedChatHistoryMessage[] = [];
+  if (raw.length > 0) {
+    let mapped = await mapHistoryBatch(client, raw, chat);
+    mapped = applyReadOutboxToHistoryMessages(mapped, chat);
+    if (chatKind === "private") {
+      mapped = await enrichOutgoingReadStatuses(client, chat, mapped);
+      mapped = applyReadOutboxToHistoryMessages(mapped, chat);
+      mapped = applyCumulativeOutgoingReadStatuses(mapped);
+    }
+    messages = sortHistoryMessages(mapped);
+  }
+
+  const lastReadOutbox = effectiveReadOutboxMessageId(
+    lastReadOutboxMessageIdFromChat(chat),
+    ...messages
+      .filter((row) => row.is_outgoing && row.outgoing_status === "read")
+      .map((row) => row.telegram_message_id),
+  );
+  const memberCount = await memberCountFromChat(client, chat);
+
+  return {
+    chat_kind: chatKind,
+    self_user_id: selfUserId,
+    member_count: memberCount,
+    messages,
+    last_read_outbox_message_id: lastReadOutbox,
+  };
+}
+
+/** Mark inbox messages as read (clears unread badge like Telegram when a chat is opened). */
+export async function markChatInboxRead(client: Client, chatId: number): Promise<void> {
+  try {
+    await client.invoke({ _: "openChat", chat_id: chatId });
+  } catch {
+    /* already open */
+  }
+
+  try {
+    const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+    const lastMessage = chat.last_message as { id?: number } | null | undefined;
+    const lastId = Number(lastMessage?.id);
+    if (Number.isFinite(lastId) && lastId > 0) {
+      await client.invoke({
+        _: "viewMessages",
+        chat_id: chatId,
+        message_ids: [Math.trunc(lastId)],
+        force_read: true,
+      });
+    }
+  } catch {
+    /* best effort */
+  }
+}
+
 const MAX_OUTGOING_TEXT_LENGTH = 4096;
 
 export async function sendChatTextMessage(

@@ -24,6 +24,7 @@ export type TdMessage = {
 export type TdChat = {
   id: number;
   title?: string;
+  emoji_status?: unknown;
   type?: {
     _?: string;
     title?: string;
