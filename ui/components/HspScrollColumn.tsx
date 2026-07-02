@@ -62,6 +62,8 @@ type Props = {
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** Fired when viewport/content heights change (e.g. to toggle scroll vs flex-fill layouts). */
   onMetricsChange?: (metrics: Omit<HspScrollMetrics, "scrollY">) => void;
+  /** Fired on scroll and when content/viewport metrics settle. */
+  onScrollPositionChange?: (metrics: HspScrollMetrics) => void;
   /** Inset (px) of the thumb from the right edge of the scroll shell; default {@link layout.scrollIndicatorRightInsetPx}. */
   scrollbarRightInsetPx?: number;
   /**
@@ -89,6 +91,7 @@ export function HspScrollColumn({
   style,
   contentContainerStyle,
   onMetricsChange,
+  onScrollPositionChange,
   scrollbarRightInsetPx = DEFAULT_SCROLLBAR_RIGHT_INSET,
   containOverscroll = true,
   scrollEnabled = true,
@@ -115,6 +118,13 @@ export function HspScrollColumn({
     return instance?.getScrollableNode?.() ?? null;
   }, []);
 
+  const emitScrollPosition = useCallback(
+    (metrics: HspScrollMetrics) => {
+      onScrollPositionChange?.(metrics);
+    },
+    [onScrollPositionChange],
+  );
+
   const syncNearTopLatch = useCallback(
     (scrollY: number) => {
       if (!onNearTop) {
@@ -138,13 +148,17 @@ export function HspScrollColumn({
     const scrollY = scrollYRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : scrollYRaw;
     if (layoutH <= 0) return;
     syncNearTopLatch(scrollY);
-    setScroll((prev) => ({
-      ...prev,
-      layoutH,
-      scrollY,
-      ...(contentH > 0 ? { contentH } : {}),
-    }));
-  }, [getScrollElement, syncNearTopLatch]);
+    setScroll((prev) => {
+      const next = {
+        ...prev,
+        layoutH,
+        scrollY,
+        ...(contentH > 0 ? { contentH } : {}),
+      };
+      emitScrollPosition(next);
+      return next;
+    });
+  }, [emitScrollPosition, getScrollElement, syncNearTopLatch]);
 
   /** Reset scroll only on first mount — not when `children` change (e.g. split-pane resize reflow). */
   const didMountScrollResetRef = useRef(false);
@@ -273,11 +287,19 @@ export function HspScrollColumn({
     const ch = ne.contentSize?.height ?? 0;
     const yRaw = ne.contentOffset.y;
     const y = yRaw <= SCROLL_INDICATOR_SCROLL_EPS ? 0 : yRaw;
-    setScroll((prev) => ({
-      ...prev,
-      scrollY: y,
-      ...(ch > 0 ? { contentH: ch } : {}),
-    }));
+    setScroll((prev) => {
+      const next = {
+        ...prev,
+        scrollY: y,
+        ...(ch > 0 ? { contentH: ch } : {}),
+      };
+      emitScrollPosition({
+        layoutH: next.layoutH,
+        contentH: next.contentH,
+        scrollY: next.scrollY,
+      });
+      return next;
+    });
     if (onNearTop) {
       if (y <= nearTopThresholdPx) {
         if (!nearTopFiredRef.current) {

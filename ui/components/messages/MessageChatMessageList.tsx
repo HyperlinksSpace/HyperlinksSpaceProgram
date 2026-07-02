@@ -11,6 +11,12 @@ import {
   setCachedChatHistory,
   subscribeChatHistoryCache,
 } from "../../messageChatHistoryCache";
+import {
+  getChatScrollPosition,
+  isChatScrollNearBottom,
+  saveChatScrollPosition,
+  type CachedChatScrollPosition,
+} from "../../messageChatScrollCache";
 import { subscribeOutgoingChatMessages } from "../../messageChatOutgoing";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -19,7 +25,7 @@ import {
   loadTelegramChatHistoryFirstPage,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import { warmupTelegramChatSession } from "../../telegram/warmupTelegramChatSession";
-import { HspScrollColumn, type HspScrollAnchor, type HspScrollColumnHandle } from "../HspScrollColumn";
+import { HspScrollColumn, type HspScrollAnchor, type HspScrollColumnHandle, type HspScrollMetrics } from "../HspScrollColumn";
 import {
   MESSAGE_BUBBLE_ROW_GAP_PX,
   MESSAGE_CHAT_BODY_PADDING_PX,
@@ -146,6 +152,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const loadingOlderRef = useRef(false);
   const nextBeforeMessageIdRef = useRef<number | null>(null);
   const pendingScrollAnchorRef = useRef<HspScrollAnchor | null>(null);
+  const pendingScrollRestoreRef = useRef<CachedChatScrollPosition | null>(null);
+  const pendingPreserveScrollYRef = useRef<number | null>(null);
+  const pinnedScrollYRef = useRef(0);
   const pendingInitialScrollRef = useRef(false);
   const followingBottomRef = useRef(true);
   const prevDisplayLengthRef = useRef(0);
@@ -164,10 +173,32 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
   useEffect(() => {
     lastLiveSignatureRef.current = "";
-    pendingInitialScrollRef.current = true;
-    followingBottomRef.current = true;
     prevDisplayLengthRef.current = 0;
     prevDisplayLastIdRef.current = 0;
+
+    const cachedScroll = getChatScrollPosition(chat.telegram_chat_id);
+    if (cachedScroll) {
+      pendingInitialScrollRef.current = false;
+      pendingScrollRestoreRef.current = cachedScroll;
+      followingBottomRef.current = cachedScroll.followingBottom;
+    } else {
+      pendingInitialScrollRef.current = true;
+      pendingScrollRestoreRef.current = null;
+      followingBottomRef.current = true;
+    }
+
+    return () => {
+      const metrics = scrollControllerRef.current?.getMetrics();
+      if (metrics && metrics.contentH > 0) {
+        saveChatScrollPosition(chat.telegram_chat_id, {
+          scrollY: metrics.scrollY,
+          contentH: metrics.contentH,
+          followingBottom:
+            followingBottomRef.current ||
+            isChatScrollNearBottom(metrics.scrollY, metrics.layoutH, metrics.contentH),
+        });
+      }
+    };
   }, [chat.telegram_chat_id, historyLoad.generation]);
 
   const onColumnLayout = useCallback((event: LayoutChangeEvent) => {
@@ -180,6 +211,92 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       scrollControllerRef.current?.scrollToEnd();
       requestAnimationFrame(() => scrollControllerRef.current?.scrollToEnd());
     });
+  }, []);
+
+  const preserveScrollY = useCallback((scrollY: number) => {
+    let attempts = 0;
+    const maxAttempts = 12;
+
+    const tryPreserve = (): boolean => {
+      const metrics = scrollControllerRef.current?.getMetrics();
+      if (!metrics || metrics.contentH <= 0 || metrics.layoutH <= 0) return false;
+      const maxScroll = Math.max(0, metrics.contentH - metrics.layoutH);
+      const targetY = Math.min(Math.max(0, scrollY), maxScroll);
+      scrollControllerRef.current?.scrollToY(targetY);
+      pinnedScrollYRef.current = targetY;
+      followingBottomRef.current = isChatScrollNearBottom(
+        targetY,
+        metrics.layoutH,
+        metrics.contentH,
+      );
+      return true;
+    };
+
+    const run = () => {
+      if (tryPreserve() || ++attempts >= maxAttempts) return;
+      requestAnimationFrame(run);
+    };
+
+    requestAnimationFrame(() => {
+      run();
+      requestAnimationFrame(run);
+    });
+  }, []);
+
+  const captureScrollYIfScrolledUp = useCallback((): number | null => {
+    const metrics = scrollControllerRef.current?.getMetrics();
+    if (!metrics || metrics.contentH <= 0 || metrics.layoutH <= 0) return null;
+    if (isChatScrollNearBottom(metrics.scrollY, metrics.layoutH, metrics.contentH)) return null;
+    return metrics.scrollY;
+  }, []);
+
+  const restoreChatScrollPosition = useCallback(
+    (state: CachedChatScrollPosition) => {
+      let attempts = 0;
+      const maxAttempts = 12;
+
+      const tryRestore = (): boolean => {
+        const metrics = scrollControllerRef.current?.getMetrics();
+        if (!metrics || metrics.contentH <= 0 || metrics.layoutH <= 0) return false;
+
+        if (state.followingBottom) {
+          scrollToBottom();
+          followingBottomRef.current = true;
+          return true;
+        }
+
+        const maxScroll = Math.max(0, metrics.contentH - metrics.layoutH);
+        const targetY = Math.min(Math.max(0, state.scrollY), maxScroll);
+        scrollControllerRef.current?.scrollToY(targetY);
+        followingBottomRef.current = isChatScrollNearBottom(
+          targetY,
+          metrics.layoutH,
+          metrics.contentH,
+        );
+        return true;
+      };
+
+      const run = () => {
+        if (tryRestore() || ++attempts >= maxAttempts) return;
+        requestAnimationFrame(run);
+      };
+
+      requestAnimationFrame(() => {
+        run();
+        requestAnimationFrame(run);
+      });
+    },
+    [scrollToBottom],
+  );
+
+  const handleScrollPositionChange = useCallback((metrics: HspScrollMetrics) => {
+    if (metrics.contentH <= 0) return;
+    pinnedScrollYRef.current = metrics.scrollY;
+    followingBottomRef.current = isChatScrollNearBottom(
+      metrics.scrollY,
+      metrics.layoutH,
+      metrics.contentH,
+    );
   }, []);
 
   const applyCachedHistoryPage = useCallback(
@@ -237,7 +354,26 @@ export function MessageChatMessageList({ chat, colors }: Props) {
 
   useLayoutEffect(() => {
     if (displayMessages.length === 0) return;
+
+    if (pendingScrollRestoreRef.current) {
+      const state = pendingScrollRestoreRef.current;
+      pendingScrollRestoreRef.current = null;
+      prevDisplayLengthRef.current = displayMessages.length;
+      prevDisplayLastIdRef.current = lastDisplayMessageId;
+      restoreChatScrollPosition(state);
+      return;
+    }
+
     if (pendingScrollAnchorRef.current) return;
+
+    if (pendingPreserveScrollYRef.current != null) {
+      const scrollY = pendingPreserveScrollYRef.current;
+      pendingPreserveScrollYRef.current = null;
+      prevDisplayLengthRef.current = displayMessages.length;
+      prevDisplayLastIdRef.current = lastDisplayMessageId;
+      preserveScrollY(scrollY);
+      return;
+    }
 
     if (pendingInitialScrollRef.current) {
       pendingInitialScrollRef.current = false;
@@ -258,8 +394,23 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       (newerTail || lengthGrew)
     ) {
       scrollToBottom();
+      return;
     }
-  }, [displayMessages.length, lastDisplayMessageId, scrollToBottom]);
+
+    if (
+      (newerTail || lengthGrew) &&
+      !loadingOlderRef.current &&
+      !followingBottomRef.current
+    ) {
+      preserveScrollY(pinnedScrollYRef.current);
+    }
+  }, [
+    displayMessages.length,
+    lastDisplayMessageId,
+    preserveScrollY,
+    restoreChatScrollPosition,
+    scrollToBottom,
+  ]);
 
   useLayoutEffect(() => {
     const anchor = pendingScrollAnchorRef.current;
@@ -461,16 +612,19 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         if (cancelled || result.error) return;
 
         lastLiveSignatureRef.current = signature;
+        const preserveScrollYBeforeMerge = captureScrollYIfScrolledUp();
+        let tailGrew = false;
         setMessages((prev) => {
           const merged = mergeHistoryMessages(prev, result.messages, historyMessageContext);
           const prevMaxId = prev.length > 0 ? prev[prev.length - 1]!.telegram_message_id : 0;
           const mergedMaxId =
             merged.length > 0 ? merged[merged.length - 1]!.telegram_message_id : 0;
-          if (mergedMaxId > prevMaxId) {
-            followingBottomRef.current = true;
-          }
+          tailGrew = mergedMaxId > prevMaxId;
           return merged;
         });
+        if (tailGrew && preserveScrollYBeforeMerge != null) {
+          pendingPreserveScrollYRef.current = preserveScrollYBeforeMerge;
+        }
         if (result.selfUserId != null) {
           setSelfUserId(result.selfUserId);
         }
@@ -518,6 +672,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   }, [
     chat.telegram_chat_id,
     chatLiveSignatureValue,
+    captureScrollYIfScrolledUp,
     historyMessageContext,
     isAuthenticated,
     isTelegramMessagesConnected,
@@ -735,6 +890,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         initialScrollPosition="top"
         nearTopThresholdPx={MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX}
         onNearTop={hasMoreOlder ? handleNearTop : undefined}
+        onScrollPositionChange={handleScrollPositionChange}
         scrollControllerRef={scrollControllerRef}
         contentContainerStyle={{
           padding: MESSAGE_CHAT_BODY_PADDING_PX,
