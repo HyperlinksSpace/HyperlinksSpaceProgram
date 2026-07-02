@@ -12,13 +12,13 @@ export const MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX = 15;
 export const MESSAGE_BUBBLE_PADDING_VERTICAL_PX = 10;
 export const MESSAGE_BUBBLE_FONT_SIZE_PX = 15;
 export const MESSAGE_BUBBLE_LINE_HEIGHT_PX = 25;
-/** Inline emoji sticker height in bubbles — fits inside the line box without clipping. */
-export const MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX = Math.round(MESSAGE_BUBBLE_FONT_SIZE_PX * 1.25);
+/** Inline emoji sticker height in bubbles — Telegram ~20px for 15px body text. */
+export const MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX = Math.round(MESSAGE_BUBBLE_FONT_SIZE_PX * 1.33);
 /** CSS vertical-align for inline Telegram emoji beside body text. */
-export const MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS = "-0.1em";
+export const MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS = "middle";
 /** Horizontal breathing room so stickers do not overlap adjacent glyphs. */
-export const MESSAGE_INLINE_EMOJI_MARGIN_LEFT_PX = 3;
-export const MESSAGE_INLINE_EMOJI_MARGIN_RIGHT_PX = 3;
+export const MESSAGE_INLINE_EMOJI_MARGIN_LEFT_PX = 0;
+export const MESSAGE_INLINE_EMOJI_MARGIN_RIGHT_PX = 0;
 
 export function inlineEmojiHostCss(
   emojiSizePx: number,

@@ -270,10 +270,34 @@ export function MessageChatInlineTgsEmoji(props: Props) {
   const tgsSize = animationData ? lottieRenderSize(animationData, sizePx) : null;
   const rasterStyle: CSSProperties = textLabel
     ? { height: sizePx, width: "auto", display: "block", objectFit: "contain" }
-    : { width: sizePx, height: sizePx, display: "block", objectFit: "contain" };
+    : {
+        width: sizePx,
+        height: sizePx,
+        display: "block",
+        objectFit: "contain",
+        position: "relative",
+        zIndex: 1,
+      };
 
   return (
     <span ref={hostRef} style={hostStyle}>
+      {showUnicodeFallback && !textLabel ? (
+        <span
+          aria-hidden={mediaReady}
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: Math.round(sizePx * 0.88),
+            lineHeight: 1,
+            pointerEvents: "none",
+          }}
+        >
+          {displayFallback}
+        </span>
+      ) : null}
       {animationData && tgsSize ? (
         <TgsCanvasPlayer
           animationData={animationData}
@@ -305,18 +329,6 @@ export function MessageChatInlineTgsEmoji(props: Props) {
           }}
         >
           {labelFallback}
-        </span>
-      ) : null}
-      {showUnicodeFallback && !textLabel ? (
-        <span
-          style={{
-            fontSize: Math.round(sizePx * 0.92),
-            lineHeight: `${sizePx}px`,
-            display: "inline-block",
-            verticalAlign: MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS,
-          }}
-        >
-          {displayFallback}
         </span>
       ) : null}
     </span>

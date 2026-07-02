@@ -134,7 +134,7 @@ function MessageChatBubbleTextContent({
         style={{
           marginTop,
           flexDirection: "row",
-          alignItems: Platform.OS === "web" ? "center" : "baseline",
+          alignItems: "baseline",
           alignSelf: "flex-start",
           flexWrap: "nowrap",
         }}

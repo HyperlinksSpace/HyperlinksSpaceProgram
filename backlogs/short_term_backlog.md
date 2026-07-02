@@ -1,3 +1,4 @@
+Emoji indents
 Msg write in 2 and 1 columns
 Broken layout in the chat, 
 think of chats appearing and loading, overwhelming all the limits

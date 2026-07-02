@@ -166,12 +166,13 @@ function RichTextWebRow({
 
   if (Platform.OS === "web") {
     const singleLine = numberOfLines === 1 || nowrap;
+    const listPreviewTruncate = numberOfLines === 1 && !nowrap;
     const inlineWrapStyle = {
       ...messageChatBubbleTextWebWrapStyle,
       whiteSpace: "pre-wrap",
     } as const;
     const baseTextCss = textStyleToDomCss(resolvedTextStyle, { omitLayout: true });
-    const rowCss: Record<string, string | number> = singleLine
+    const rowCss: Record<string, string | number> = listPreviewTruncate
       ? {
           display: "block",
           overflow: "hidden",
@@ -181,14 +182,23 @@ function RichTextWebRow({
           textAlign: "left",
           ...baseTextCss,
         }
-      : {
-          display: "block",
-          minWidth: 0,
-          maxWidth: "100%",
-          textAlign: "left",
-          ...baseTextCss,
-          ...inlineWrapStyle,
-        };
+      : singleLine
+        ? {
+            display: "block",
+            whiteSpace: "nowrap",
+            overflow: "visible",
+            minWidth: 0,
+            textAlign: "left",
+            ...baseTextCss,
+          }
+        : {
+            display: "block",
+            minWidth: 0,
+            maxWidth: "100%",
+            textAlign: "left",
+            ...baseTextCss,
+            ...inlineWrapStyle,
+          };
 
     const emojiHostCss = (textLabel: boolean) => inlineEmojiHostCss(emojiSizePx, textLabel);
 
@@ -247,11 +257,12 @@ function RichTextWebRow({
     );
   }
 
+  const listPreviewTruncate = numberOfLines === 1 && !nowrap;
   const rowStyle: ViewStyle = {
     flexDirection: "row",
     flexWrap: nowrap || numberOfLines === 1 ? "nowrap" : "wrap",
     alignItems: "flex-end",
-    overflow: numberOfLines === 1 || nowrap ? "hidden" : "visible",
+    overflow: listPreviewTruncate ? "hidden" : "visible",
     ...(nowrap
       ? { flexGrow: 0, flexShrink: 0, alignSelf: "flex-start" as const }
       : {
