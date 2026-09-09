@@ -43,6 +43,7 @@ const TAB_GAP_PX = 8;
 const ICON_SIZE_PX = 14;
 const CLOSE_HIT_PX = 16;
 const ADD_HIT_PX = 30;
+const HISTORY_HIT_PX = 30;
 const TOOLS_HIT_PX = 30;
 const ICONS_GAP_PX = 2;
 /** Match main header right icons (`contentSideInsetPx`). */
@@ -51,9 +52,15 @@ const ADD_RIGHT_INSET_PX = STRIP_PADDING_PX;
 const ADD_GRADIENT_W_PX = 10;
 /** Solid mask begins this many px left of the + icon. */
 const ADD_GAP_BEFORE_ICON_PX = 5;
-/** Tools sits at far right; + sits to its left. */
+/** Tools far right; history left of tools; + left of history. */
 const ADD_SOLID_W_PX =
-  ADD_GAP_BEFORE_ICON_PX + ADD_HIT_PX + ICONS_GAP_PX + TOOLS_HIT_PX + ADD_RIGHT_INSET_PX;
+  ADD_GAP_BEFORE_ICON_PX +
+  ADD_HIT_PX +
+  ICONS_GAP_PX +
+  HISTORY_HIT_PX +
+  ICONS_GAP_PX +
+  TOOLS_HIT_PX +
+  ADD_RIGHT_INSET_PX;
 const RIGHT_OVERLAY_W_PX = ADD_GRADIENT_W_PX + ADD_SOLID_W_PX;
 /** Last tab stops this many px before the gradient’s left edge at max scroll. */
 const LAST_TAB_GRADIENT_INDENT_PX = 15;
@@ -79,6 +86,7 @@ type Props = {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddTab: () => void;
+  onOpenHistory?: () => void;
   onOpenTools?: () => void;
   onRequestRename?: (id: string) => void;
   onRequestDelete?: (id: string) => void;
@@ -175,6 +183,33 @@ function AgentPlusIcon({ color, size = 14 }: { color: string; size?: number }) {
   );
 }
 
+function AgentHistoryIcon({ color, size = 14 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 14 14" fill="none">
+      <Path
+        d="M7 1.75a5.25 5.25 0 1 0 5.05 3.85"
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M7 4.25V7.2l2 1.3"
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M11.5 2.5v2.4H9.1"
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 function AgentToolsIcon({ color, size = 14 }: { color: string; size?: number }) {
   return <MdConstruction color={color} size={size} aria-hidden />;
 }
@@ -197,6 +232,7 @@ export function AiAgentsColumnHeader({
   onSelectTab,
   onCloseTab,
   onAddTab,
+  onOpenHistory,
   onOpenTools,
   onRequestRename,
   onRequestDelete,
@@ -718,6 +754,14 @@ export function AiAgentsColumnHeader({
         </Pressable>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t("ai.agents.history")}
+          onPress={onOpenHistory}
+          style={styles.historyHit}
+        >
+          <AgentHistoryIcon color={colors.primary} />
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t("ai.tools.open")}
           onPress={onOpenTools}
           style={styles.toolsHit}
@@ -868,9 +912,23 @@ const styles = StyleSheet.create({
   },
   addHit: {
     position: "absolute",
-    right: ADD_RIGHT_INSET_PX + TOOLS_HIT_PX + ICONS_GAP_PX,
+    right:
+      ADD_RIGHT_INSET_PX +
+      TOOLS_HIT_PX +
+      ICONS_GAP_PX +
+      HISTORY_HIT_PX +
+      ICONS_GAP_PX,
     top: 0,
     width: ADD_HIT_PX,
+    height: CHOOSE_CURRENCY_SUBHEADER_HEIGHT_PX,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyHit: {
+    position: "absolute",
+    right: ADD_RIGHT_INSET_PX + TOOLS_HIT_PX + ICONS_GAP_PX,
+    top: 0,
+    width: HISTORY_HIT_PX,
     height: CHOOSE_CURRENCY_SUBHEADER_HEIGHT_PX,
     alignItems: "center",
     justifyContent: "center",

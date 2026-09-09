@@ -263,3 +263,33 @@ export async function listRecentProPaymentMemos(limit = 40): Promise<ProPaymentM
   }
   return out;
 }
+
+/** Issued (not yet activated) memos for a user — used to recover Pro after a disconnect. */
+export async function listIssuedProPaymentMemosForUser(opts: {
+  username: string;
+  /** Only memos created within this many days (default 14). */
+  withinDays?: number;
+  limit?: number;
+}): Promise<ProPaymentMemoRow[]> {
+  const username = normalizeUsername(opts.username);
+  if (!username) return [];
+  const withinDays = Math.min(60, Math.max(1, Math.trunc(opts.withinDays ?? 14)));
+  const limit = Math.min(20, Math.max(1, Math.trunc(opts.limit ?? 10)));
+  await ensureProPaymentMemosTable();
+  const sinceIso = new Date(Date.now() - withinDays * 24 * 60 * 60 * 1000).toISOString();
+  const rows = await sql`
+    SELECT memo, username, plan_id, price_usd, months, status, created_at, activated_at
+    FROM pro_payment_memos
+    WHERE username = ${username}
+      AND status = 'issued'
+      AND created_at > ${sinceIso}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+  `;
+  const out: ProPaymentMemoRow[] = [];
+  for (const row of rows) {
+    const mapped = mapRow(row as Record<string, unknown>);
+    if (mapped) out.push(mapped);
+  }
+  return out;
+}

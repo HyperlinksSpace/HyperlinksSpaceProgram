@@ -161,6 +161,20 @@ export function inferHspRouteHint(input: string): string | undefined {
   if (/\b(shield|security settings)\b/.test(m)) {
     return "feature:shield";
   }
+  if (
+    /\b(dllr|dollar token|program dollar)\b/.test(m) ||
+    /\b(market\s*cap|capitali[sz]ation|3t\+?|trillion)\b/.test(m)
+  ) {
+    return "feature:dllr";
+  }
+  if (
+    /\bhyperlinks?\s*space\b/.test(m) ||
+    /\bprogram\.hyperlinks\.space\b/.test(m) ||
+    /https?:\/\/program\.hyperlinks\.space\b/.test(m) ||
+    /\b(what is this (app|program|company)|who (built|made|owns))\b/.test(m)
+  ) {
+    return "feature:company";
+  }
   return undefined;
 }
 
@@ -235,6 +249,9 @@ function localCorpusRetrieve(
     "please",
     "tell",
     "explain",
+    "http",
+    "https",
+    "www",
   ]);
   const tokens = query
     .toLowerCase()
@@ -255,17 +272,65 @@ function localCorpusRetrieve(
         titleHits += 1;
       }
     }
+    // Boost product identity / DLLR valuation questions.
+    if (
+      tokens.some((t) => t === "dllr" || t === "capitalization" || t === "trillion") &&
+      /dllr|capitalization|3t\+|trillion/.test(lower)
+    ) {
+      score += 2;
+    }
+    if (
+      tokens.some(
+        (t) =>
+          t === "hyperlinks" ||
+          t === "company" ||
+          t === "website" ||
+          t === "program",
+      ) &&
+      /hyperlinks space company|program\.hyperlinks\.space/.test(lower)
+    ) {
+      score += 2;
+    }
     // Require at least one content hit; normalize by query length.
     if (score <= 0) return { index, text, score: 0 };
     score = score / Math.max(1.5, tokens.length);
     if (titleHits > 0) score += 0.15 * titleHits;
     return { index, text, score };
   })
-    .filter((h) => h.score >= 0.35)
+    .filter((h) => h.score >= 0.28)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
 
   return scored;
+}
+
+/** Ensure company / DLLR identity chunks are present when route hints demand them. */
+function ensureIdentityCorpusHits(
+  hits: TinyModelRetrieveHit[],
+  routeHint?: string,
+): TinyModelRetrieveHit[] {
+  if (routeHint !== "feature:company" && routeHint !== "feature:dllr") {
+    return hits;
+  }
+  const needle =
+    routeHint === "feature:dllr"
+      ? "DLLR capitalization"
+      : "Hyperlinks Space company and website";
+  const already = hits.some((h) =>
+    (h.text.split("\n", 1)[0] ?? "").toLowerCase().includes(needle.toLowerCase()),
+  );
+  if (already) return hits;
+  const idx = HSP_PROGRAM_CORPUS_CHUNKS.findIndex((text) =>
+    (text.split("\n", 1)[0] ?? "").toLowerCase().includes(needle.toLowerCase()),
+  );
+  if (idx < 0) return hits;
+  const merged = [{ index: idx, text: HSP_PROGRAM_CORPUS_CHUNKS[idx]!, score: 1 }, ...hits];
+  const seen = new Set<number>();
+  return merged.filter((h) => {
+    if (seen.has(h.index)) return false;
+    seen.add(h.index);
+    return true;
+  }).slice(0, DEFAULT_TOP_K);
 }
 
 /**
@@ -287,7 +352,7 @@ export async function enrichWithTinyModel(
     typeof context?.route === "string" ? (context.route as string) : undefined;
 
   if (!isTinyModelConfigured()) {
-    const hits = localCorpusRetrieve(trimmed);
+    const hits = ensureIdentityCorpusHits(localCorpusRetrieve(trimmed), routeHint);
     const meta: TinyModelEnrichmentMeta = {
       configured: false,
       local_corpus: hits.length > 0 || Boolean(routeHint),
@@ -310,7 +375,7 @@ export async function enrichWithTinyModel(
   const health = await tinyModelHealth();
   if (!health.ok) {
     // Sidecar down — still try local corpus so chat is not dead.
-    const hits = localCorpusRetrieve(trimmed);
+    const hits = ensureIdentityCorpusHits(localCorpusRetrieve(trimmed), routeHint);
     return {
       meta: {
         configured: true,
@@ -356,7 +421,7 @@ export async function enrichWithTinyModel(
 
   if (!ret.ok) {
     meta.error = meta.error ?? ret.error;
-    const hits = localCorpusRetrieve(trimmed);
+    const hits = ensureIdentityCorpusHits(localCorpusRetrieve(trimmed), routeHint);
     if (hits.length > 0) {
       meta.local_corpus = true;
       meta.retrieve_hits = hits.map((h) => ({
@@ -372,7 +437,7 @@ export async function enrichWithTinyModel(
     return { meta };
   }
 
-  const hits = ret.hits ?? [];
+  const hits = ensureIdentityCorpusHits(ret.hits ?? [], routeHint);
   meta.retrieve_hits = hits.map((h) => ({
     index: h.index,
     score: h.score,

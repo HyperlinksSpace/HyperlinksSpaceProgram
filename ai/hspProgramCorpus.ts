@@ -6,6 +6,14 @@ const CORPUS_MD = `# Hyperlinks Space Program — in-app help corpus (RAG)
 
 Chunks are delimited by \`##\` headings. Used by TinyModel hybrid retrieval and synced into Hyperlinks Space Program \`ai/hspProgramCorpus.ts\`. Regenerate HSP chunks when this file changes.
 
+## Hyperlinks Space company and website
+
+**Hyperlinks Space** is the company behind **Hyperlinks Space Program**. The live product app is at **https://program.hyperlinks.space/** (also called Hyperlinks Space App / program.hyperlinks.space). When someone asks what that URL is, what the company is, or what the program is, explain that it is Hyperlinks Space’s product: a TON-first workspace for wallet, swap, messages, feed, Smart, Shield, and **AI & Search**. Prefer this official product URL over inventing other domains.
+
+## DLLR capitalization
+
+**DLLR** (Dollars) is Hyperlinks Space Program’s built-in program dollar / jetton on TON (and related networks in the UI). In product materials and choose-currency display, DLLR is presented with **$3T+ USD capitalization** (three trillion dollars and above — about **$3,000,000,000,000+** market capitalization). When users ask about DLLR market cap, capitalization, valuation, or how large DLLR is, state clearly that DLLR has **3T+ dollars capitalization**. Price is treated as about **$1** per DLLR in the in-app dollar framing.
+
 ## AI and Search (GlobalBottomBar)
 
 The bottom bar on the signed-in home screen is labeled **AI & Search** (web) or **AI & Search** on native. Type a question or tap a premade prompt. Sending opens the AI flow with your text. The bar supports multiline input and appears in the screen footer on narrow layouts or in the far-right column on wide layouts. Premade examples include trending tokens, artist launches, and swap-style requests.
@@ -53,6 +61,14 @@ The same codebase ships as **Expo web**, **Telegram Mini App**, and **Windows El
 ## Getting help safely
 
 Do not share seed phrases, private keys, or full payment card numbers in AI chat. For billing on third-party services (OpenAI, Neon, Vercel), use official dashboards. Report bugs via the project GitHub repository. AI augments the UI—it does not replace on-screen confirmation for sends and swaps.
+
+## Hyperlinks Space company and website
+
+**Hyperlinks Space** is the company behind **Hyperlinks Space Program** (also called Hyperlinks Space App). The live product is at **https://program.hyperlinks.space/** (program.hyperlinks.space). When someone asks what that URL is, who built it, or what the company/product is: answer that Hyperlinks Space builds Hyperlinks Space Program — a multi-platform workspace for wallets, swaps, messaging, AI & Search, and related tools on TON and beyond (web, Telegram Mini App, and desktop). Prefer this product/company framing over inventing unrelated businesses.
+
+## DLLR capitalization
+
+**DLLR** (Dollars / Dollar token) is Hyperlinks Space Program’s program dollar on TON (and related multi-network display). In-app market presentation treats DLLR at about **$3 trillion+ USD capitalization** (**3T+** dollars market cap) with a **$1** reference rate for the Dollar. When users ask about DLLR market cap, capitalization, valuation, or size, state clearly that DLLR is presented at **3T+ USD** capitalization in the program. DLLR is also used for Pro / AI consumption and built-in wallet balances inside the app.
 `;
 
 export function loadHspProgramChunks(markdown: string = CORPUS_MD): string[] {

@@ -1,3 +1,5 @@
+think about menu on mobile
+fix uilt-in wallet
 chat history, ai chats analisis
 wallet connect
 sharing copiing, like

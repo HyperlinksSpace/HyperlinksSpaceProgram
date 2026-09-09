@@ -36,6 +36,7 @@ import { useBottomBarLayout } from "../BottomBarLayoutContext";
 import { HspScrollColumn, type HspScrollColumnHandle } from "../HspScrollColumn";
 import { subscribeOpenSupportChat } from "../../support/openSupportChat";
 import { AiAgentChatThread, type AiThreadMessage } from "./AiAgentChatThread";
+import { AiAgentHistoryDialog } from "./AiAgentHistoryDialog";
 import { AiAgentRenameDialog } from "./AiAgentRenameDialog";
 import { AiAgentsColumnHeader, type AiAgentTab } from "./AiAgentsColumnHeader";
 import { AiSearchPromptButton } from "./AiSearchPromptButton";
@@ -195,6 +196,7 @@ export function AiSearchColumnEmptyState() {
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]!.id);
   const [renameTabId, setRenameTabId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const hydratedRef = useRef(false);
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
@@ -508,17 +510,34 @@ export function AiSearchColumnEmptyState() {
 
   const onCloseTab = useCallback(
     (id: string) => {
-      const tab = tabs.find((t) => t.id === id);
-      if (tab?.kind === "support") {
-        removeTabLocally(id);
-        return;
-      }
-      if (tab?.started) {
-        void postAiAgentChatAction({ action: "delete", chatId: id });
-      }
+      // Closing only removes the tab locally; chats remain available in History.
+      // Explicit delete (context menu) still soft-deletes on the server.
       removeTabLocally(id);
     },
-    [removeTabLocally, tabs],
+    [removeTabLocally],
+  );
+
+  const onOpenHistoryChat = useCallback(
+    (chat: { id: string; title: string }) => {
+      setTabs((current) => {
+        if (current.some((tab) => tab.id === chat.id)) return current;
+        const nextTab: AiAgentTab = {
+          id: chat.id,
+          title: chat.title,
+          started: true,
+          messages: [],
+          messagesLoaded: false,
+        };
+        const idleOnly =
+          current.length === 1 &&
+          !current[0]?.started &&
+          current[0]?.kind !== "support";
+        if (idleOnly) return [nextTab];
+        return [...current, nextTab];
+      });
+      setActiveTabId(chat.id);
+    },
+    [],
   );
 
   const onRenameTab = useCallback((id: string, title: string) => {
@@ -824,6 +843,7 @@ export function AiSearchColumnEmptyState() {
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
           onAddTab={onAddTab}
+          onOpenHistory={() => setHistoryOpen(true)}
           onOpenTools={() => setToolsOpen(true)}
           onRequestRename={(id) => setRenameTabId(id)}
           onRequestDelete={onDeleteTab}
@@ -875,6 +895,11 @@ export function AiSearchColumnEmptyState() {
         }}
       />
       <AiToolsDialog visible={toolsOpen} onClose={() => setToolsOpen(false)} />
+      <AiAgentHistoryDialog
+        visible={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onOpenChat={onOpenHistoryChat}
+      />
     </View>
   );
 }

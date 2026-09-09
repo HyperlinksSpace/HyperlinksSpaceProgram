@@ -131,7 +131,17 @@ export function buildTinyModelOnlyAnswer(
     );
   } else if (route?.startsWith("feature:")) {
     const feature = route.slice("feature:".length).replace(/_/g, " ");
-    lines.push(`That relates to **${feature}** in Hyperlinks Space Program.`);
+    if (feature === "company") {
+      lines.push(
+        "**Hyperlinks Space** builds **Hyperlinks Space Program** at https://program.hyperlinks.space/ — wallets, swaps, messaging, and AI & Search.",
+      );
+    } else if (feature === "dllr") {
+      lines.push(
+        "**DLLR** (Dollars) is the program dollar. In Hyperlinks Space Program it is presented at about **3T+ USD capitalization** ($3 trillion+), with a $1 reference rate.",
+      );
+    } else {
+      lines.push(`That relates to **${feature}** in Hyperlinks Space Program.`);
+    }
   }
 
   if (enrichment.contextBlock) {

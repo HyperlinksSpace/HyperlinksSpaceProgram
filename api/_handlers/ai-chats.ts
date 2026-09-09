@@ -162,7 +162,15 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
     if (!username) return respond(res, { ok: false, error: "unauthorized" }, 401);
 
     if (action === "quota") {
-      const quota = await getAiFreeQuota(username);
+      // Auto-heal: paid memo on-chain but sync never landed (disconnect after success).
+      let quota = await getAiFreeQuota(username);
+      try {
+        const { recoverProFromPaidMemos } = await import("../_lib/pro-payment-recover.js");
+        const recovered = await recoverProFromPaidMemos(username);
+        if (recovered.recovered) quota = recovered.quota;
+      } catch {
+        /* recovery must never break quota */
+      }
       return respond(res, { ok: true, quota, models: AI_TOOLS_MODEL_OPTIONS }, 200);
     }
 
@@ -385,7 +393,11 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         context: { source: "ai_agent_column", chatId: chat.id },
         instructions:
           "You are the Hyperlinks Space Program AI assistant in the AI & Search column. " +
-          "Answer clearly and helpfully. Prefer concise Markdown-friendly prose.",
+          "Answer clearly and helpfully. Prefer concise Markdown-friendly prose. " +
+          "Company facts you must use when relevant: Hyperlinks Space is the company behind Hyperlinks Space Program " +
+          "(live app https://program.hyperlinks.space/). DLLR (Dollars) is the program dollar with about 3T+ USD capitalization " +
+          "($3 trillion+) as presented in the product. When asked about that URL, the company, or DLLR market cap/capitalization, " +
+          "lead with these facts; do not invent a conflicting company or valuation.",
         routePreference,
       });
 
