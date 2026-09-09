@@ -66,6 +66,7 @@ export function fixedInfraBase(
     inputs.infra.railwayUsdMonth +
     vercel +
     inputs.infra.gcpUsdMonth +
+    inputs.infra.amneziaVpnUsdMonth +
     inputs.infra.neonUsdMonth +
     inputs.infra.aiUsdMonth +
     inputs.infra.otherInfraUsdMonth
@@ -349,6 +350,7 @@ export function buildFounderModelBundle(
     calibration?: FounderCalibrationResult | null;
     railwayTotalUsdMonth?: number | null;
     gcpUsdMonth?: number | null;
+    amneziaVpnUsdMonth?: number | null;
     tariffsOverride?: {
       monthUsd: number;
       quarterTotalUsd: number;
@@ -390,6 +392,9 @@ export function buildFounderModelBundle(
   }
   if (opts?.gcpUsdMonth != null && opts.gcpUsdMonth >= 0) {
     costs.infra.gcpUsdMonth = opts.gcpUsdMonth;
+  }
+  if (opts?.amneziaVpnUsdMonth != null && opts.amneziaVpnUsdMonth >= 0) {
+    costs.infra.amneziaVpnUsdMonth = opts.amneziaVpnUsdMonth;
   }
 
   const observedHours = screen.avgHoursPerActiveUserPerDay7d;

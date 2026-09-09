@@ -101,10 +101,39 @@ function probeGcp(envUsd: number, gcpLive?: { source: string; usdMonth: number; 
   };
 }
 
+function probeAmneziaVpn(
+  envUsd: number,
+  live?: { source: string; usdMonth: number; detail: string } | null,
+): ProviderCostProbe {
+  if (live?.source === "live") {
+    return {
+      source: "live",
+      label: "Amnezia VPN (GCP VPS)",
+      usdMonthEstimate: live.usdMonth,
+      detail: live.detail,
+    };
+  }
+  if (live?.source === "env" || envUsd > 0) {
+    return {
+      source: "env",
+      label: "Amnezia VPN (GCP VPS)",
+      usdMonthEstimate: live?.usdMonth ?? envUsd,
+      detail: live?.detail || "FOUNDER_COST_AMNEZIA_VPN_USD_MONTH",
+    };
+  }
+  return {
+    source: "unavailable",
+    label: "Amnezia VPN (GCP VPS)",
+    usdMonthEstimate: 0,
+    detail: live?.detail || "Set GCP_SERVICE_ACCOUNT_JSON (Compute Viewer) or FOUNDER_COST_AMNEZIA_VPN_USD_MONTH",
+  };
+}
+
 export async function probeProviderCosts(
   inputs: FounderCostInputs,
   vercelUsage?: VercelUsageBreakdown | null,
   gcpUsage?: { source: string; usdMonth: number; detail: string } | null,
+  amneziaUsage?: { source: string; usdMonth: number; detail: string } | null,
 ): Promise<ProviderCostProbe[]> {
   const [railway, vercelLive] = await Promise.all([
     probeRailway(inputs.infra.railwayUsdMonth),
@@ -137,6 +166,7 @@ export async function probeProviderCosts(
     railway,
     vercelProbe,
     probeGcp(inputs.infra.gcpUsdMonth, gcpUsage ?? undefined),
+    probeAmneziaVpn(inputs.infra.amneziaVpnUsdMonth, amneziaUsage),
     {
       source: "env",
       label: "Neon",

@@ -25,6 +25,8 @@ export type FounderCostInputs = {
     railwayUsdMonth: number;
     vercelUsdMonth: number;
     gcpUsdMonth: number;
+    /** Amnezia self-hosted VPN VPS on GCP Compute (fixed burn while running). */
+    amneziaVpnUsdMonth: number;
     neonUsdMonth: number;
     aiUsdMonth: number;
     otherInfraUsdMonth: number;
@@ -87,6 +89,8 @@ export function resolveFounderCostInputs(): FounderCostInputs {
       railwayUsdMonth: envNum("FOUNDER_COST_RAILWAY_USD_MONTH", 15),
       vercelUsdMonth: envNum("FOUNDER_COST_VERCEL_USD_MONTH", 20),
       gcpUsdMonth: envNum("FOUNDER_COST_GCP_USD_MONTH", 0),
+      // e2-small + 20GB pd-balanced + external IP ≈ list price in europe-west1.
+      amneziaVpnUsdMonth: envNum("FOUNDER_COST_AMNEZIA_VPN_USD_MONTH", 19.08),
       neonUsdMonth: envNum("FOUNDER_COST_NEON_USD_MONTH", 0),
       aiUsdMonth: envNum("FOUNDER_COST_AI_USD_MONTH", 20),
       otherInfraUsdMonth: envNum("FOUNDER_COST_OTHER_INFRA_USD_MONTH", 5),

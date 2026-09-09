@@ -28,6 +28,7 @@ import {
   fetchGcpUsageBreakdown,
   fetchRailwayUsageBreakdown,
 } from "../_lib/founder-provider-costs.js";
+import { fetchAmneziaVpsBreakdown } from "../_lib/founder-amnezia-vps.js";
 import {
   getAiLimitsConfig,
   updateAiLimitsConfig,
@@ -196,13 +197,14 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     /* founder still returns with tablesExist=false */
   }
 
-  const [screenTime, users, vercel, railway, gcp, evidence, today, regression, snapshots, proSales] =
+  const [screenTime, users, vercel, railway, gcp, amnezia, evidence, today, regression, snapshots, proSales] =
     await Promise.all([
       getFounderScreenTimeSnapshot(),
       getFounderUserCounts(),
       fetchVercelUsageBreakdown(14),
       fetchRailwayUsageBreakdown(14),
       fetchGcpUsageBreakdown(14),
+      fetchAmneziaVpsBreakdown(14),
       getScreenEvidence(),
       getTodayScreenRollup(),
       regressOnDemandPerScreenHour(),
@@ -215,10 +217,17 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
   // Railway usage beyond plan ≈ on-demand; plan fee ≈ fixed.
   const railwayOnDemand = railway.usageUsdMonth;
   const railwayFixed = railway.fixedPlanUsdMonth;
-  const gcpUsd = gcp.usdMonth;
+  const amneziaUsd = Math.max(0, amnezia.usdMonth);
+  // Avoid double-counting Amnezia VPS when aggregate GCP billing already includes it.
+  const gcpUsdRaw = Math.max(0, gcp.usdMonth);
+  const gcpUsd =
+    gcp.source === "live" && amneziaUsd > 0
+      ? Math.max(0, round4Local(gcpUsdRaw - amneziaUsd))
+      : gcpUsdRaw;
 
-  const liveOnDemandUsdMonth = vercelOnDemand + railwayOnDemand + Math.max(0, gcpUsd) * 0.5;
-  const liveFixedUsdMonth = vercelFixed + railwayFixed + Math.max(0, gcpUsd) * 0.5;
+  const liveOnDemandUsdMonth = vercelOnDemand + railwayOnDemand + gcpUsd * 0.5;
+  const liveFixedUsdMonth =
+    vercelFixed + railwayFixed + gcpUsd * 0.5 + amneziaUsd;
 
   try {
     await upsertTodayFounderCostSnapshot({
@@ -229,11 +238,11 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         vercelFixedUsd: vercelFixed,
         vercelOnDemandUsd: vercelOnDemand,
         railwayUsd: railway.totalUsdMonth,
-        gcpUsd,
+        gcpUsd: gcpUsd + amneziaUsd,
         onDemandUsd: liveOnDemandUsdMonth,
         fixedUsd: liveFixedUsdMonth,
       },
-      source: `vercel:${vercel.source}|railway:${railway.source}|gcp:${gcp.source}`,
+      source: `vercel:${vercel.source}|railway:${railway.source}|gcp:${gcp.source}|amnezia:${amnezia.source}`,
     });
   } catch {
     /* snapshot optional — calibration still runs from live pulls */
@@ -267,10 +276,22 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     probe,
     calibration,
     railwayTotalUsdMonth: railway.totalUsdMonth,
-    gcpUsdMonth: gcp.usdMonth,
+    gcpUsdMonth: gcpUsd,
+    amneziaVpnUsdMonth: amneziaUsd,
     tariffsOverride,
   });
-  const providers = await probeProviderCosts(model.costs, vercel);
+  const providers = await probeProviderCosts(model.costs, vercel, {
+    source: gcp.source,
+    usdMonth: gcpUsd,
+    detail:
+      gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
+        ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+        : gcp.detail,
+  }, {
+    source: amnezia.source,
+    usdMonth: amneziaUsd,
+    detail: amnezia.detail,
+  });
   const enrichedProviders = providers.map((p) => {
     if (p.label === "Railway") {
       return {
@@ -285,8 +306,28 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
       return {
         source: gcp.source,
         label: "Google Cloud",
-        usdMonthEstimate: gcp.usdMonth,
-        detail: gcp.detail,
+        usdMonthEstimate: gcpUsd,
+        detail:
+          gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
+            ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+            : gcp.detail,
+      };
+    }
+    if (p.label === "Amnezia VPN (GCP VPS)") {
+      return {
+        source: amnezia.source,
+        label: "Amnezia VPN (GCP VPS)",
+        usdMonthEstimate: amneziaUsd,
+        detail: amnezia.detail,
+        raw: {
+          status: amnezia.status,
+          usdPerHour: amnezia.usdPerHour,
+          usdToday: amnezia.usdToday,
+          publicIp: amnezia.publicIp,
+          machineType: amnezia.machineType,
+          zone: amnezia.zone,
+          running: amnezia.running,
+        },
       };
     }
     return p;
@@ -303,7 +344,16 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
       source: vercel.source,
     })),
     railwayByDay: railway.byDay ?? [],
-    gcpByDay: gcp.byDay ?? [],
+    gcpByDay: (gcp.byDay ?? []).map((d) => {
+      // Keep GCP day series exclusive of Amnezia when we subtract at monthly level.
+      const a = amnezia.byDay.find((x) => x.day === d.day);
+      const subtracted =
+        gcp.source === "live" && a && amneziaUsd > 0
+          ? Math.max(0, d.usd - a.usd)
+          : d.usd;
+      return { ...d, usd: subtracted };
+    }),
+    amneziaVpnByDay: amnezia.byDay ?? [],
   });
 
   const aiLimits = await getAiLimitsConfig().catch(() => null);
@@ -323,7 +373,7 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         ),
         aiCogsPer1kTokensUsd: aiCogsPer1k,
         aiRetailPer1kTokensUsd: retailFromCogs(aiCogsPer1k, margin),
-        note: "Users pay DLLR for screen-time (Vercel/Railway/GCP) and AI. Retail = COGS ÷ (1 − margin). Plan price = enabled features + profit margin $.",
+        note: "Users pay DLLR for screen-time (Vercel/Railway/GCP/Amnezia) and AI. Retail = COGS ÷ (1 − margin). Plan price = enabled features + profit margin $.",
       }
     : null;
 
@@ -335,7 +385,15 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     providers: enrichedProviders,
     vercelUsage: vercel,
     railwayUsage: railway,
-    gcpUsage: gcp,
+    gcpUsage: {
+      ...gcp,
+      usdMonth: gcpUsd,
+      detail:
+        gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
+          ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+          : gcp.detail,
+    },
+    amneziaVpsUsage: amnezia,
     dailyUsage,
     model,
     aiLimits,
@@ -354,6 +412,10 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         : "Screen-time tables missing — run npm run db:migrate / redeploy so schema applies.",
     },
   };
+}
+
+function round4Local(n: number): number {
+  return Math.round(n * 10000) / 10000;
 }
 
 async function handler(request: Request, res?: NodeRes): Promise<Response | void> {

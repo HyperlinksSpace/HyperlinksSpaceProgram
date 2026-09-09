@@ -440,14 +440,16 @@ export type DailyUsageRow = {
   sessions: number;
   avgActiveMsPerUser: number;
   avgActiveHoursPerUser: number;
-  /** Real provider spend for the day (Vercel FOCUS + Railway + GCP). */
+  /** Real provider spend for the day (Vercel FOCUS + Railway + GCP + Amnezia VPS). */
   vercelUsd: number | null;
   railwayUsd: number | null;
   gcpUsd: number | null;
+  amneziaVpnUsd: number | null;
   providerTotalUsd: number | null;
   vercelSource: "live" | "unavailable" | null;
   railwaySource: "live" | "env" | "unavailable" | null;
   gcpSource: "live" | "env" | "unavailable" | null;
+  amneziaVpnSource: "live" | "env" | "unavailable" | null;
   /** Legacy estimate kept for calibration comparison only. */
   estimatedOnDemandUsd: number;
   estimatedFixedUsd: number;
@@ -472,11 +474,13 @@ export function buildDailyUsageSeries(input: {
   vercelByDay?: Array<{ day: string; totalUsd: number; source?: "live" | "unavailable" }>;
   railwayByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
   gcpByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
+  amneziaVpnByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
 }): DailyUsageRow[] {
   const snaps = new Map(input.snapshots.map((s) => [s.day, s]));
   const vercel = new Map((input.vercelByDay ?? []).map((r) => [r.day, r]));
   const railway = new Map((input.railwayByDay ?? []).map((r) => [r.day, r]));
   const gcp = new Map((input.gcpByDay ?? []).map((r) => [r.day, r]));
+  const amnezia = new Map((input.amneziaVpnByDay ?? []).map((r) => [r.day, r]));
 
   return input.days.map((d) => {
     const hours = d.activeMs / 3_600_000;
@@ -486,10 +490,12 @@ export function buildDailyUsageSeries(input: {
     const v = vercel.get(d.day);
     const r = railway.get(d.day);
     const g = gcp.get(d.day);
+    const a = amnezia.get(d.day);
     const vercelUsd = v != null ? round4(v.totalUsd) : null;
     const railwayUsd = r != null ? round4(r.usd) : null;
     const gcpUsd = g != null ? round4(g.usd) : null;
-    const parts = [vercelUsd, railwayUsd, gcpUsd].filter(
+    const amneziaVpnUsd = a != null ? round4(a.usd) : null;
+    const parts = [vercelUsd, railwayUsd, gcpUsd, amneziaVpnUsd].filter(
       (x): x is number => x != null && Number.isFinite(x),
     );
     const providerTotalUsd = parts.length > 0 ? round4(parts.reduce((a, b) => a + b, 0)) : null;
@@ -505,10 +511,12 @@ export function buildDailyUsageSeries(input: {
       vercelUsd,
       railwayUsd,
       gcpUsd,
+      amneziaVpnUsd,
       providerTotalUsd,
       vercelSource: v ? (v.source ?? "live") : null,
       railwaySource: r?.source ?? null,
       gcpSource: g?.source ?? null,
+      amneziaVpnSource: a?.source ?? null,
       estimatedOnDemandUsd,
       estimatedFixedUsd,
       estimatedTotalUsd: round4(estimatedOnDemandUsd + estimatedFixedUsd),

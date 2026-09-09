@@ -104,10 +104,12 @@ type FounderPayload = {
     vercelUsd?: number | null;
     railwayUsd?: number | null;
     gcpUsd?: number | null;
+    amneziaVpnUsd?: number | null;
     providerTotalUsd?: number | null;
     vercelSource?: string | null;
     railwaySource?: string | null;
     gcpSource?: string | null;
+    amneziaVpnSource?: string | null;
     estimatedOnDemandUsd: number;
     estimatedFixedUsd: number;
     estimatedTotalUsd: number;
@@ -126,6 +128,19 @@ type FounderPayload = {
     source: string;
     detail: string;
     usdMonth: number;
+  };
+  amneziaVpsUsage?: {
+    source: string;
+    detail: string;
+    usdMonth: number;
+    usdPerHour: number;
+    usdToday: number;
+    status: string | null;
+    machineType: string | null;
+    zone: string | null;
+    instanceName: string;
+    publicIp: string | null;
+    running: boolean;
   };
   users: { totalUsers: number; telegramConnected: number };
   providers: Array<{
@@ -1080,6 +1095,7 @@ export default function FounderScreen() {
       const activeMs = slice.reduce((a, r) => a + r.activeMs, 0);
       const provider = slice.reduce((a, r) => a + (r.providerTotalUsd ?? 0), 0);
       const vercel = slice.reduce((a, r) => a + (r.vercelUsd ?? 0), 0);
+      const amnezia = slice.reduce((a, r) => a + (r.amneziaVpnUsd ?? 0), 0);
       const sessions = slice.reduce((a, r) => a + r.sessions, 0);
       const userSet = new Set<number>();
       // distinctUsers is per-day; use max as lower bound display + sum of hours avg
@@ -1091,7 +1107,7 @@ export default function FounderScreen() {
           : 0;
       const usersPeak = daysWithUsers.reduce((a, r) => Math.max(a, r.distinctUsers), 0);
       void userSet;
-      return { activeMs, provider, vercel, sessions, usersPeak, avgUserHours };
+      return { activeMs, provider, vercel, amnezia, sessions, usersPeak, avgUserHours };
     };
     return {
       d7: sum(rows.slice(-7)),
@@ -1174,7 +1190,7 @@ export default function FounderScreen() {
     );
   }
 
-  const { model, screenTime, users, providers, screenTimeHealth, vercelUsage, dailyUsage, railwayUsage, gcpUsage, aiLimits } =
+  const { model, screenTime, users, providers, screenTimeHealth, vercelUsage, dailyUsage, railwayUsage, gcpUsage, amneziaVpsUsage, aiLimits } =
     data;
   const probe = model.consumptionProbe;
   const calibration = model.calibration;
@@ -2202,6 +2218,11 @@ export default function FounderScreen() {
               colors={colors}
             />
             <Metric label="7d · Vercel" value={money(dailyRollup.d7.vercel)} colors={colors} />
+            <Metric
+              label="7d · Amnezia VPS"
+              value={money(dailyRollup.d7.amnezia)}
+              colors={colors}
+            />
             <Metric label="7d · providers" value={money(dailyRollup.d7.provider)} colors={colors} />
             <Metric
               label="7d · avg ST / user-day"
@@ -2210,10 +2231,49 @@ export default function FounderScreen() {
             />
             <Metric label="30d · providers" value={money(dailyRollup.d30.provider)} colors={colors} />
             <Metric label="30d · Vercel" value={money(dailyRollup.d30.vercel)} colors={colors} />
+            <Metric
+              label="30d · Amnezia VPS"
+              value={money(dailyRollup.d30.amnezia)}
+              colors={colors}
+            />
           </View>
           <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
-            Provider $ is real billed usage by day (Vercel FOCUS; Railway/GCP when tokens/envs are set).
+            Provider $ is real billed usage by day (Vercel FOCUS; Railway/GCP/Amnezia when tokens/envs are set).
             Users = distinct accounts with screen sessions that day.
+          </Text>
+        </Card>
+      ) : null}
+
+      {amneziaVpsUsage ? (
+        <Card title="Amnezia VPN VPS (GCP · live)" colors={colors}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
+            <Metric
+              label="Status"
+              value={amneziaVpsUsage.status ?? amneziaVpsUsage.source}
+              colors={colors}
+              emphasize={amneziaVpsUsage.running}
+            />
+            <Metric
+              label="$ / hour"
+              value={money(amneziaVpsUsage.usdPerHour)}
+              colors={colors}
+              emphasize
+            />
+            <Metric label="Today (UTC)" value={money(amneziaVpsUsage.usdToday)} colors={colors} />
+            <Metric label="~ / month" value={money(amneziaVpsUsage.usdMonth)} colors={colors} />
+            <Metric
+              label="Machine"
+              value={amneziaVpsUsage.machineType ?? "—"}
+              colors={colors}
+            />
+            <Metric label="Zone" value={amneziaVpsUsage.zone ?? "—"} colors={colors} />
+          </View>
+          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 16, fontFamily: font }}>
+            {amneziaVpsUsage.detail}
+            {amneziaVpsUsage.publicIp ? ` · IP ${amneziaVpsUsage.publicIp}` : ""}
+          </Text>
+          <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
+            Included in fixed infra for scale / breakeven. Soft-refreshes with the dashboard (~60s).
           </Text>
         </Card>
       ) : null}
@@ -2392,6 +2452,13 @@ export default function FounderScreen() {
             GCP · {gcpUsage.source}: {money(gcpUsage.usdMonth)}/mo — {gcpUsage.detail}
           </Text>
         ) : null}
+        {amneziaVpsUsage ? (
+          <Text style={{ color: colors.secondary, fontSize: 12, fontFamily: font }}>
+            Amnezia VPS · {amneziaVpsUsage.source}: {money(amneziaVpsUsage.usdMonth)}/mo ·{" "}
+            {money(amneziaVpsUsage.usdPerHour)}/h · today {money(amneziaVpsUsage.usdToday)} —{" "}
+            {amneziaVpsUsage.detail}
+          </Text>
+        ) : null}
       </Card>
 
       <Card title="Screen time health" colors={colors}>
@@ -2429,10 +2496,11 @@ export default function FounderScreen() {
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
               Vercel = FOCUS ChargePeriodStart day totals. Railway/GCP = live API or env until tokens are
-              set. Users = distinct accounts with active screen time that day.
+              set. Amnezia = live Compute Engine status × list price. Users = distinct accounts with active
+              screen time that day.
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View style={{ gap: 6, minWidth: 720 }}>
+              <View style={{ gap: 6, minWidth: 800 }}>
                 <View
                   style={{
                     flexDirection: "row",
@@ -2451,6 +2519,7 @@ export default function FounderScreen() {
                       ["Vercel", 64],
                       ["Railway", 64],
                       ["GCP", 56],
+                      ["Amnezia", 64],
                       ["Total $", 64],
                     ] as const
                   ).map(([label, w]) => (
@@ -2491,6 +2560,9 @@ export default function FounderScreen() {
                       </Text>
                       <Text style={{ width: 56, color: colors.primary, fontSize: 11, fontFamily: font }}>
                         {d.gcpUsd != null ? money(d.gcpUsd) : "—"}
+                      </Text>
+                      <Text style={{ width: 64, color: colors.primary, fontSize: 11, fontFamily: font }}>
+                        {d.amneziaVpnUsd != null ? money(d.amneziaVpnUsd) : "—"}
                       </Text>
                       <Text
                         style={{
