@@ -141,6 +141,7 @@ type FounderPayload = {
     instanceName: string;
     publicIp: string | null;
     running: boolean;
+    createdAt?: string | null;
   };
   users: { totalUsers: number; telegramConnected: number };
   providers: Array<{
@@ -2496,8 +2497,8 @@ export default function FounderScreen() {
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
               Vercel = FOCUS ChargePeriodStart day totals. Railway/GCP = live API or env until tokens are
-              set. Amnezia = live Compute Engine status × list price. Users = distinct accounts with active
-              screen time that day.
+              set. Amnezia = Compute list-price burn only on/after VPS creation (no backfill). Users =
+              distinct accounts with active screen time that day.
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <View style={{ gap: 6, minWidth: 800 }}>

@@ -1,6 +1,7 @@
 /**
  * Live Amnezia self-hosted VPN VPS spend on GCP Compute Engine.
  * Uses instance status + list-price burn (real-time); falls back to env monthly.
+ * Daily series only attributes cost on/after the instance creation time (no backfill).
  */
 import { GoogleAuth } from "google-auth-library";
 import { parseGcpServiceAccountJson } from "./envelope-env.js";
@@ -19,6 +20,7 @@ export type AmneziaVpsBreakdown = {
   publicIp: string | null;
   diskGb: number;
   running: boolean;
+  createdAt: string | null;
   byDay: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
 };
 
@@ -49,13 +51,55 @@ function utcDayKeys(days: number): string[] {
   return out;
 }
 
-function spreadMonthly(
-  usdMonth: number,
+function parseCreatedAt(raw: string | null | undefined): Date | null {
+  if (!raw?.trim()) return null;
+  const t = Date.parse(raw.trim());
+  return Number.isFinite(t) ? new Date(t) : null;
+}
+
+/**
+ * Per-day burn from hourly rate. Days before `createdAt` are $0 — never spread
+ * monthly cost across the whole window (that invented spend before the VPS existed).
+ */
+function buildByDayFromBurn(
+  usdPerHour: number,
   days: number,
   source: "live" | "env" | "unavailable",
+  createdAt: Date | null,
 ): AmneziaVpsBreakdown["byDay"] {
-  const per = usdMonth / Math.max(1, days);
-  return utcDayKeys(days).map((day) => ({ day, usd: round4(per), source }));
+  const now = new Date();
+  const todayKey = now.toISOString().slice(0, 10);
+  const createdMs = createdAt?.getTime() ?? null;
+  const createdDay = createdAt ? createdAt.toISOString().slice(0, 10) : null;
+  const fullDayUsd = round4(usdPerHour * 24);
+
+  return utcDayKeys(days).map((day) => {
+    if (createdDay && day < createdDay) {
+      return { day, usd: 0, source };
+    }
+
+    const dayStart = Date.parse(`${day}T00:00:00.000Z`);
+    const dayEnd = dayStart + 86_400_000;
+    const from =
+      createdMs != null && createdMs > dayStart ? createdMs : dayStart;
+
+    if (day === todayKey) {
+      const hours = Math.max(0, (now.getTime() - from) / 3_600_000);
+      return { day, usd: round4(usdPerHour * hours), source };
+    }
+
+    // No known start date → never invent historical spend (today handled above).
+    if (!createdDay) {
+      return { day, usd: 0, source };
+    }
+
+    if (day === createdDay && createdMs != null) {
+      const hours = Math.max(0, (dayEnd - from) / 3_600_000);
+      return { day, usd: round4(usdPerHour * hours), source };
+    }
+
+    return { day, usd: fullDayUsd, source };
+  });
 }
 
 function machineHourlyUsd(machineType: string, zone: string): number {
@@ -150,6 +194,7 @@ export async function fetchAmneziaVpsBreakdown(
     DEFAULT_PD_BALANCED_USD_GB_MONTH,
   );
   const ipUsdHour = envNum("FOUNDER_AMNEZIA_IP_USD_HOUR", DEFAULT_EXTERNAL_IP_USD_HOUR);
+  const envCreatedAt = parseCreatedAt(process.env.FOUNDER_AMNEZIA_CREATED_AT);
 
   try {
     const inst = await fetchInstance(target.projectId, target.zone, target.instanceName);
@@ -162,6 +207,8 @@ export async function fetchAmneziaVpsBreakdown(
       inst.networkInterfaces?.[0]?.accessConfigs?.find((c) => c.natIP)?.natIP ?? null;
     const bootDisk = inst.disks?.find((d) => d.boot) ?? inst.disks?.[0];
     const diskGb = Math.max(1, Number(bootDisk?.diskSizeGb ?? 20) || 20);
+    const createdAt =
+      parseCreatedAt(inst.creationTimestamp) ?? envCreatedAt;
 
     const cpuHour = machineHourlyUsd(machineType, zone);
     const diskMonth = diskGb * diskUsdGbMonth;
@@ -172,23 +219,17 @@ export async function fetchAmneziaVpsBreakdown(
       diskMonth + (running ? (cpuHour + ipHour) * HOURS_PER_MONTH : 0),
     );
 
-    const now = new Date();
-    const startOfDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const hoursToday = Math.max(0.01, (now.getTime() - startOfDay) / 3_600_000);
-    const usdToday = round4(usdPerHour * hoursToday);
-
-    const byDay = spreadMonthly(usdMonth, days, "live");
-    // Today = partial-day burn so the dashboard moves in real time.
-    const todayKey = now.toISOString().slice(0, 10);
-    for (const row of byDay) {
-      if (row.day === todayKey) row.usd = usdToday;
-    }
+    const byDay = buildByDayFromBurn(usdPerHour, days, "live", createdAt);
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const usdToday = byDay.find((r) => r.day === todayKey)?.usd ?? 0;
 
     return {
       source: "live",
       detail: `GCP Compute · ${target.instanceName} · ${status} · ${machineType} · ${zone}${
         publicIp ? ` · ${publicIp}` : ""
-      } · ~$${usdPerHour.toFixed(4)}/h · ~$${usdMonth.toFixed(2)}/mo list`,
+      } · ~$${usdPerHour.toFixed(4)}/h · ~$${usdMonth.toFixed(2)}/mo list${
+        createdAt ? ` · since ${createdAt.toISOString().slice(0, 10)}` : ""
+      }`,
       usdMonth,
       usdPerHour,
       usdToday,
@@ -200,17 +241,26 @@ export async function fetchAmneziaVpsBreakdown(
       publicIp,
       diskGb,
       running,
+      createdAt: createdAt?.toISOString() ?? null,
       byDay,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "amnezia_vps_probe_failed";
     if (envUsd > 0) {
+      const usdPerHour = round4(envUsd / HOURS_PER_MONTH);
+      const byDay = buildByDayFromBurn(usdPerHour, days, "env", envCreatedAt);
+      const todayKey = new Date().toISOString().slice(0, 10);
+      const usdToday = byDay.find((r) => r.day === todayKey)?.usd ?? 0;
       return {
         source: "env",
-        detail: `${msg.slice(0, 160)} · using FOUNDER_COST_AMNEZIA_VPN_USD_MONTH`,
+        detail: `${msg.slice(0, 160)} · using FOUNDER_COST_AMNEZIA_VPN_USD_MONTH${
+          envCreatedAt
+            ? ` · since ${envCreatedAt.toISOString().slice(0, 10)}`
+            : " · today only (set FOUNDER_AMNEZIA_CREATED_AT for history)"
+        }`,
         usdMonth: envUsd,
-        usdPerHour: round4(envUsd / HOURS_PER_MONTH),
-        usdToday: round4(envUsd / 30),
+        usdPerHour,
+        usdToday,
         status: null,
         machineType: null,
         zone: target.zone,
@@ -219,7 +269,8 @@ export async function fetchAmneziaVpsBreakdown(
         publicIp: null,
         diskGb: 20,
         running: false,
-        byDay: spreadMonthly(envUsd, days, "env"),
+        createdAt: envCreatedAt?.toISOString() ?? null,
+        byDay,
       };
     }
     return {
@@ -236,6 +287,7 @@ export async function fetchAmneziaVpsBreakdown(
       publicIp: null,
       diskGb: 20,
       running: false,
+      createdAt: null,
       byDay: utcDayKeys(days).map((day) => ({ day, usd: 0, source: "unavailable" as const })),
     };
   }
