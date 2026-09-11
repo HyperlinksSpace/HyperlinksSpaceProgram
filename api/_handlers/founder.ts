@@ -201,10 +201,10 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     await Promise.all([
       getFounderScreenTimeSnapshot(),
       getFounderUserCounts(),
-      fetchVercelUsageBreakdown(14),
-      fetchRailwayUsageBreakdown(14),
-      fetchGcpUsageBreakdown(14),
-      fetchAmneziaVpsBreakdown(14),
+      fetchVercelUsageBreakdown(30),
+      fetchRailwayUsageBreakdown(30),
+      fetchGcpUsageBreakdown(30),
+      fetchAmneziaVpsBreakdown(30),
       getScreenEvidence(),
       getTodayScreenRollup(),
       regressOnDemandPerScreenHour(),
@@ -218,11 +218,19 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
   const railwayOnDemand = railway.usageUsdMonth;
   const railwayFixed = railway.fixedPlanUsdMonth;
   const amneziaUsd = Math.max(0, amnezia.usdMonth);
-  // Avoid double-counting Amnezia VPS when aggregate GCP billing already includes it.
+  // Only subtract Amnezia amounts that came from Cloud Billing (already inside GCP export).
+  const amneziaBilledWindow = (amnezia.byDay ?? [])
+    .filter((d) => d.fromBilling)
+    .reduce((a, d) => a + d.usd, 0);
+  const amneziaBilledDays = (amnezia.byDay ?? []).filter((d) => d.fromBilling).length;
+  const amneziaBilledMonth =
+    amneziaBilledDays > 0
+      ? round4Local(amneziaBilledWindow * (30 / amneziaBilledDays))
+      : 0;
   const gcpUsdRaw = Math.max(0, gcp.usdMonth);
   const gcpUsd =
-    gcp.source === "live" && amneziaUsd > 0
-      ? Math.max(0, round4Local(gcpUsdRaw - amneziaUsd))
+    gcp.source === "live" && amneziaBilledMonth > 0
+      ? Math.max(0, round4Local(gcpUsdRaw - amneziaBilledMonth))
       : gcpUsdRaw;
 
   const liveOnDemandUsdMonth = vercelOnDemand + railwayOnDemand + gcpUsd * 0.5;
@@ -284,8 +292,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     source: gcp.source,
     usdMonth: gcpUsd,
     detail:
-      gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
-        ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+      gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
+        ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
         : gcp.detail,
   }, {
     source: amnezia.source,
@@ -308,8 +316,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         label: "Google Cloud",
         usdMonthEstimate: gcpUsd,
         detail:
-          gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
-            ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+          gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
+            ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
             : gcp.detail,
       };
     }
@@ -327,6 +335,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
           machineType: amnezia.machineType,
           zone: amnezia.zone,
           running: amnezia.running,
+          createdAt: amnezia.createdAt,
+          costBasis: amnezia.costBasis,
         },
       };
     }
@@ -345,10 +355,10 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     })),
     railwayByDay: railway.byDay ?? [],
     gcpByDay: (gcp.byDay ?? []).map((d) => {
-      // Keep GCP day series exclusive of Amnezia when we subtract at monthly level.
+      // Subtract only billed Amnezia rows (list-price fill is not in GCP export yet).
       const a = amnezia.byDay.find((x) => x.day === d.day);
       const subtracted =
-        gcp.source === "live" && a && amneziaUsd > 0
+        gcp.source === "live" && a?.fromBilling && a.usd > 0
           ? Math.max(0, d.usd - a.usd)
           : d.usd;
       return { ...d, usd: subtracted };
@@ -389,8 +399,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
       ...gcp,
       usdMonth: gcpUsd,
       detail:
-        gcp.source === "live" && amneziaUsd > 0 && gcpUsdRaw > gcpUsd
-          ? `${gcp.detail} · Amnezia VPS $${amneziaUsd.toFixed(2)} shown separately`
+        gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
+          ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
           : gcp.detail,
     },
     amneziaVpsUsage: amnezia,

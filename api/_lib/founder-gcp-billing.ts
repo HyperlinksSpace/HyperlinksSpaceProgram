@@ -183,22 +183,13 @@ async function queryDailySpend(
     .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day));
 }
 
-/**
- * Query billing export for the last `periodDays` (capped 1–90).
- * Auto-discovers `gcp_billing_export_v1_*` / `gcp_billing_export_resource_v1_*`.
- */
-export async function fetchGcpBillingFromBigQuery(
-  periodDays = 14,
-): Promise<GcpBigQueryResult> {
-  const days = Math.max(1, Math.min(90, Math.round(periodDays)));
-  const loaded = loadCredentials();
-  if ("error" in loaded) {
-    return { ok: false, detail: loaded.error };
-  }
-
-  const { credentials, projectId } = loaded;
-  const bq = makeClient(projectId, credentials);
-
+async function resolveBillingTable(
+  bq: BigQuery,
+  projectId: string,
+): Promise<
+  | { ok: true; table: string }
+  | { ok: false; detail: string; emptyPreferred?: boolean; scannedDatasets?: string[] }
+> {
   let table = process.env.GCP_BIGQUERY_BILLING_TABLE?.trim() || "";
   let emptyPreferred = false;
   let scannedDatasets: string[] = [];
@@ -226,15 +217,157 @@ export async function fetchGcpBillingFromBigQuery(
       return {
         ok: false,
         detail: `Billing export dataset ${projectId}.${dsHint} is empty — Google usually creates gcp_billing_export_v1_* within ~24h after enabling export. Scanned: ${scannedDatasets.join(", ") || dsHint}.`,
+        emptyPreferred,
+        scannedDatasets,
       };
     }
     return {
       ok: false,
       detail:
         "No Cloud Billing → BigQuery export table yet. Enable Standard usage cost export into dataset gcp_billing_export (project hyperlinksspacebot). https://console.cloud.google.com/billing/012A7B-1A56F5-EA0A98/export?project=hyperlinksspacebot",
+      scannedDatasets,
     };
   }
 
+  return { ok: true, table };
+}
+
+async function queryAmneziaDailySpend(
+  bq: BigQuery,
+  tableFq: string,
+  days: number,
+  instanceName: string,
+  useConversionRate: boolean,
+): Promise<GcpBillingDay[]> {
+  const ref = parseTableRef(tableFq);
+  if (!ref) throw new Error(`Invalid GCP_BIGQUERY_BILLING_TABLE: ${tableFq}`);
+
+  const costExpr = useConversionRate
+    ? "IFNULL(cost, 0) * IFNULL(currency_conversion_rate, 1)"
+    : "IFNULL(cost, 0)";
+
+  // Resource export: match instance + same-named disk / global resource paths.
+  // Standard export may lack resource.* — query fails → caller falls back.
+  const sql = `
+    SELECT
+      FORMAT_DATE('%Y-%m-%d', DATE(usage_start_time)) AS day,
+      SUM(${costExpr}) AS usd
+    FROM \`${ref.projectId}.${ref.datasetId}.${ref.tableId}\`
+    WHERE DATE(usage_start_time) >= DATE_SUB(CURRENT_DATE(), INTERVAL @days DAY)
+      AND REGEXP_CONTAINS(
+        CONCAT(
+          IFNULL(resource.name, ''),
+          ' ',
+          IFNULL(resource.global_name, '')
+        ),
+        CONCAT(r'(^|[/])(', @instanceName, r'|instances[/]', @instanceName, r'|disks[/]', @instanceName, r')($|[/])')
+      )
+    GROUP BY day
+    ORDER BY day
+  `;
+
+  const [rows] = await bq.query({
+    query: sql,
+    params: { days, instanceName },
+    location: process.env.GCP_BIGQUERY_LOCATION?.trim() || undefined,
+    jobTimeoutMs: 120_000,
+  });
+
+  return (rows as Array<{ day?: string; usd?: number | string }>)
+    .map((r) => ({
+      day: String(r.day ?? ""),
+      usd: round4(Number(r.usd ?? 0)),
+    }))
+    .filter((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.day));
+}
+
+/**
+ * Actual billed spend for one GCE instance (Amnezia VPS) from Cloud Billing export.
+ * Requires a resource-level export table (resource.name). Returns ok:false if unavailable.
+ */
+export async function fetchAmneziaBillingFromBigQuery(
+  instanceName: string,
+  periodDays = 30,
+): Promise<GcpBigQueryResult> {
+  const days = Math.max(1, Math.min(90, Math.round(periodDays)));
+  const name = instanceName.trim();
+  if (!name) {
+    return { ok: false, detail: "Amnezia instance name empty" };
+  }
+
+  const loaded = loadCredentials();
+  if ("error" in loaded) {
+    return { ok: false, detail: loaded.error };
+  }
+
+  const { credentials, projectId } = loaded;
+  const bq = makeClient(projectId, credentials);
+  const resolved = await resolveBillingTable(bq, projectId);
+  if (!resolved.ok) {
+    return { ok: false, detail: resolved.detail };
+  }
+
+  const { table } = resolved;
+  try {
+    let byDay: GcpBillingDay[];
+    try {
+      byDay = await queryAmneziaDailySpend(bq, table, days, name, true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/currency_conversion_rate|Unrecognized name/i.test(msg)) {
+        byDay = await queryAmneziaDailySpend(bq, table, days, name, false);
+      } else if (/resource\.name|Unrecognized name|Name resource/i.test(msg)) {
+        return {
+          ok: false,
+          detail: `Billing table ${table} has no resource.name — enable Detailed/resource usage cost export to attribute Amnezia VPS spend.`,
+        };
+      } else {
+        throw err;
+      }
+    }
+    const windowSum = byDay.reduce((a, d) => a + d.usd, 0);
+    const usdMonth =
+      byDay.length > 0 ? round4(windowSum * (30 / Math.max(1, byDay.length))) : 0;
+    return {
+      ok: true,
+      table,
+      byDay,
+      usdMonth,
+      detail:
+        byDay.length > 0
+          ? `BigQuery · ${name} · ${table} · ${byDay.length} billed days · $${windowSum.toFixed(4)} window`
+          : `BigQuery · ${name} · ${table} · no billed rows in last ${days}d yet (export lag / $0)`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      detail: `Amnezia BigQuery failed (${table}): ${msg.slice(0, 240)}`,
+    };
+  }
+}
+
+/**
+ * Query billing export for the last `periodDays` (capped 1–90).
+ * Auto-discovers `gcp_billing_export_v1_*` / `gcp_billing_export_resource_v1_*`.
+ */
+export async function fetchGcpBillingFromBigQuery(
+  periodDays = 14,
+): Promise<GcpBigQueryResult> {
+  const days = Math.max(1, Math.min(90, Math.round(periodDays)));
+  const loaded = loadCredentials();
+  if ("error" in loaded) {
+    return { ok: false, detail: loaded.error };
+  }
+
+  const { credentials, projectId } = loaded;
+  const bq = makeClient(projectId, credentials);
+  const resolved = await resolveBillingTable(bq, projectId);
+  if (!resolved.ok) {
+    return { ok: false, detail: resolved.detail };
+  }
+
+  const { table } = resolved;
   try {
     let byDay: GcpBillingDay[];
     try {

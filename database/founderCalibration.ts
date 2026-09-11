@@ -449,7 +449,7 @@ export type DailyUsageRow = {
   vercelSource: "live" | "unavailable" | null;
   railwaySource: "live" | "env" | "unavailable" | null;
   gcpSource: "live" | "env" | "unavailable" | null;
-  amneziaVpnSource: "live" | "env" | "unavailable" | null;
+  amneziaVpnSource: "live" | "unavailable" | null;
   /** Legacy estimate kept for calibration comparison only. */
   estimatedOnDemandUsd: number;
   estimatedFixedUsd: number;
@@ -474,7 +474,7 @@ export function buildDailyUsageSeries(input: {
   vercelByDay?: Array<{ day: string; totalUsd: number; source?: "live" | "unavailable" }>;
   railwayByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
   gcpByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
-  amneziaVpnByDay?: Array<{ day: string; usd: number; source: "live" | "env" | "unavailable" }>;
+  amneziaVpnByDay?: Array<{ day: string; usd: number; source: "live" | "unavailable" }>;
 }): DailyUsageRow[] {
   const snaps = new Map(input.snapshots.map((s) => [s.day, s]));
   const vercel = new Map((input.vercelByDay ?? []).map((r) => [r.day, r]));

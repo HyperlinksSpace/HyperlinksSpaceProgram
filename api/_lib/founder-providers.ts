@@ -102,7 +102,7 @@ function probeGcp(envUsd: number, gcpLive?: { source: string; usdMonth: number; 
 }
 
 function probeAmneziaVpn(
-  envUsd: number,
+  _envUsd: number,
   live?: { source: string; usdMonth: number; detail: string } | null,
 ): ProviderCostProbe {
   if (live?.source === "live") {
@@ -113,19 +113,21 @@ function probeAmneziaVpn(
       detail: live.detail,
     };
   }
-  if (live?.source === "env" || envUsd > 0) {
+  // Model env monthly is documentation-only; dashboard spend must come from GCP APIs.
+  if (live?.detail) {
     return {
-      source: "env",
+      source: "unavailable",
       label: "Amnezia VPN (GCP VPS)",
-      usdMonthEstimate: live?.usdMonth ?? envUsd,
-      detail: live?.detail || "FOUNDER_COST_AMNEZIA_VPN_USD_MONTH",
+      usdMonthEstimate: 0,
+      detail: live.detail,
     };
   }
   return {
     source: "unavailable",
     label: "Amnezia VPN (GCP VPS)",
     usdMonthEstimate: 0,
-    detail: live?.detail || "Set GCP_SERVICE_ACCOUNT_JSON (Compute Viewer) or FOUNDER_COST_AMNEZIA_VPN_USD_MONTH",
+    detail:
+      "Set GCP_SERVICE_ACCOUNT_JSON with Compute Viewer (+ BigQuery on billing export for actual billed days)",
   };
 }
 

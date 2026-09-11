@@ -142,6 +142,7 @@ type FounderPayload = {
     publicIp: string | null;
     running: boolean;
     createdAt?: string | null;
+    costBasis?: string | null;
   };
   users: { totalUsers: number; telegramConnected: number };
   providers: Array<{
@@ -2239,7 +2240,7 @@ export default function FounderScreen() {
             />
           </View>
           <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
-            Provider $ is real billed usage by day (Vercel FOCUS; Railway/GCP/Amnezia when tokens/envs are set).
+            Provider $ is real usage by day (Vercel FOCUS; Railway/GCP APIs; Amnezia from GCP create time + billing).
             Users = distinct accounts with screen sessions that day.
           </Text>
         </Card>
@@ -2255,6 +2256,15 @@ export default function FounderScreen() {
               emphasize={amneziaVpsUsage.running}
             />
             <Metric
+              label="Created (GCP)"
+              value={
+                amneziaVpsUsage.createdAt
+                  ? amneziaVpsUsage.createdAt.slice(0, 10)
+                  : "—"
+              }
+              colors={colors}
+            />
+            <Metric
               label="$ / hour"
               value={money(amneziaVpsUsage.usdPerHour)}
               colors={colors}
@@ -2262,6 +2272,11 @@ export default function FounderScreen() {
             />
             <Metric label="Today (UTC)" value={money(amneziaVpsUsage.usdToday)} colors={colors} />
             <Metric label="~ / month" value={money(amneziaVpsUsage.usdMonth)} colors={colors} />
+            <Metric
+              label="Cost basis"
+              value={amneziaVpsUsage.costBasis ?? amneziaVpsUsage.source}
+              colors={colors}
+            />
             <Metric
               label="Machine"
               value={amneziaVpsUsage.machineType ?? "—"}
@@ -2274,7 +2289,8 @@ export default function FounderScreen() {
             {amneziaVpsUsage.publicIp ? ` · IP ${amneziaVpsUsage.publicIp}` : ""}
           </Text>
           <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
-            Included in fixed infra for scale / breakeven. Soft-refreshes with the dashboard (~60s).
+            Start date from Compute Engine API. Day $ from Billing export when present; list-price
+            only fills export lag. Soft-refreshes with the dashboard (~60s).
           </Text>
         </Card>
       ) : null}
@@ -2497,7 +2513,7 @@ export default function FounderScreen() {
             </Text>
             <Text style={{ color: colors.secondary, fontSize: 11, lineHeight: 15, fontFamily: font }}>
               Vercel = FOCUS ChargePeriodStart day totals. Railway/GCP = live API or env until tokens are
-              set. Amnezia = Compute list-price burn only on/after VPS creation (no backfill). Users =
+              set. Amnezia = GCP creationTimestamp + Billing export (list-price only for export lag). Users =
               distinct accounts with active screen time that day.
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator>
