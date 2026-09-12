@@ -8,6 +8,11 @@ import { enrichWithTinyModel, type TinyModelEnrichmentMeta } from "./tinymodel.j
 import { actionsFromRouteHint } from "./intentActions.js";
 import { toPublicAiErrorCode } from "./publicAiErrors.js";
 import {
+  appendSelectedModelIdentityInstructions,
+  buildModelIdentityAnswer,
+  isModelIdentityQuestion,
+} from "./modelIdentity.js";
+import {
   getTokenBySymbol,
   normalizeSymbol,
   type TokenSearchResult,
@@ -293,12 +298,30 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
     input = formatHistoryForInput(history) + "Current message:\nuser: " + request.input;
   }
 
+  const pref = request.routePreference;
+
+  // Disclose the tools-dialog selection exactly — never let the LLM invent another identity.
+  if (isModelIdentityQuestion(request.input)) {
+    const text = buildModelIdentityAnswer(pref);
+    if (thread) await persistAssistantMessage(thread, text);
+    return {
+      ok: true,
+      provider: "tinymodel",
+      mode,
+      output_text: text,
+      meta: {
+        model: "selection/disclosure",
+        backend: "tinymodel",
+        route_reason: "model_identity_question",
+      },
+    };
+  }
+
   const { input: enrichedInput, tinymodel, enrichment } = await applyTinyModelContext(
     request,
     input,
   );
 
-  const pref = request.routePreference;
   const forceTiny = pref?.modelMode === "tinymodel";
   if (
     forceTiny ||
@@ -327,7 +350,7 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
     input: enrichedInput,
     userId: request.userId,
     context: request.context,
-    instructions: request.instructions,
+    instructions: appendSelectedModelIdentityInstructions(request.instructions, pref),
     tinymodel,
     routePreference: pref,
   });
@@ -469,12 +492,30 @@ export async function transmitStream(
     input = formatHistoryForInput(history) + "Current message:\nuser: " + request.input;
   }
 
+  const pref = request.routePreference;
+
+  if (isModelIdentityQuestion(request.input)) {
+    const text = buildModelIdentityAnswer(pref);
+    await onDelta(text);
+    if (thread) await persistAssistantMessage(thread, text);
+    return {
+      ok: true,
+      provider: "tinymodel",
+      mode,
+      output_text: text,
+      meta: {
+        model: "selection/disclosure",
+        backend: "tinymodel",
+        route_reason: "model_identity_question",
+      },
+    };
+  }
+
   const { input: enrichedInput, tinymodel, enrichment } = await applyTinyModelContext(
     request,
     input,
   );
 
-  const pref = request.routePreference;
   const forceTiny = pref?.modelMode === "tinymodel";
   if (
     forceTiny ||
@@ -506,7 +547,7 @@ export async function transmitStream(
       input: enrichedInput,
       userId: request.userId,
       context: request.context,
-      instructions: request.instructions,
+      instructions: appendSelectedModelIdentityInstructions(request.instructions, pref),
       tinymodel,
       routePreference: pref,
     },

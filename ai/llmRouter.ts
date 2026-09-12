@@ -93,6 +93,17 @@ export function canAnswerWithTinyModel(
   if (selectSmartChatModel(trimmed) === "gpt-5.2") return false;
   if (trimmed.length > 400) return false;
 
+  // Model-identity questions must not be swallowed by TinyModel product RAG.
+  if (
+    /\bwhat(?:'s| is| are)?\s+(?:the\s+)?(?:ai\s+)?(?:model|llm|version)\b/i.test(trimmed) ||
+    /какая\s+(?:у\s+тебя\s+|твоя\s+)?(?:версия|модель)/i.test(trimmed) ||
+    /че\s+ты\s+за\s+модел/i.test(trimmed) ||
+    /что\s+ты\s+за\s+(?:ии|ai|модел)/i.test(trimmed) ||
+    /название\s+своей\s+модел/i.test(trimmed)
+  ) {
+    return false;
+  }
+
   // Local corpus / route-only answers (no TinyModel sidecar) still count when strong.
   if (meta.route && (meta.configured || meta.local_corpus)) return true;
 

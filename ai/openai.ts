@@ -189,7 +189,7 @@ export async function callOpenAiChat(
     };
   }
 
-  // Prefer primary route, then a cheap Gateway mini, then OpenAI direct (already listed).
+  // Prefer primary route, then (unless user fixed a model) a cheap Gateway mini, then OpenAI.
   const seen = new Set<string>();
   const uniqueAttempts: typeof attempts = [];
   for (const a of attempts) {
@@ -198,7 +198,10 @@ export async function callOpenAiChat(
     seen.add(key);
     uniqueAttempts.push(a);
   }
-  if (isVercelGatewayConfigured()) {
+  const userFixedModel =
+    params.routePreference?.modelMode === "model" &&
+    Boolean(params.routePreference?.modelId?.trim());
+  if (!userFixedModel && isVercelGatewayConfigured()) {
     const gw = gatewayClient();
     const cheap = process.env.AI_GATEWAY_MINI_MODEL?.trim() || "openai/gpt-4.1-mini";
     if (gw && !seen.has(`vercel_gateway:${cheap}`)) {
@@ -292,6 +295,9 @@ export async function callOpenAiChatStream(
   const input = `${prefix}${trimmed}`;
 
   const attempts: Array<{ backend: LlmBackend; client: OpenAI; model: string }> = [];
+  const userFixedModel =
+    params.routePreference?.modelMode === "model" &&
+    Boolean(params.routePreference?.modelId?.trim());
   if (isVercelGatewayConfigured()) {
     const gw = gatewayClient();
     if (gw) {
@@ -301,17 +307,26 @@ export async function callOpenAiChatStream(
         model:
           route.backend === "vercel_gateway"
             ? route.model
-            : gatewayModelOrFallback(trimmed),
+            : userFixedModel && route.model.includes("/")
+              ? route.model
+              : gatewayModelOrFallback(trimmed),
       });
     }
   }
   if (isOpenAiConfigured()) {
     const oa = openAiDirectClient();
     if (oa) {
+      const directModel = userFixedModel
+        ? route.model.includes("/")
+          ? route.model.split("/").pop() || route.model
+          : route.model
+        : selectSmartChatModel(trimmed) === "gpt-5.2"
+          ? "gpt-5.2"
+          : "gpt-4.1-mini";
       attempts.push({
         backend: "openai",
         client: oa,
-        model: selectSmartChatModel(trimmed) === "gpt-5.2" ? "gpt-5.2" : "gpt-4.1-mini",
+        model: directModel,
       });
     }
   }
