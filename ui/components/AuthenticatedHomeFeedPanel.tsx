@@ -336,7 +336,7 @@ function FeedFeedRow({
               ellipsizeMode="tail"
               style={{
                 ...textBase,
-                color: isUnread ? colors.primary : colors.secondary,
+                color: colors.primary,
               }}
             >
               {title}
