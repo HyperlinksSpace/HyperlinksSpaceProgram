@@ -1,4 +1,8 @@
-/** Swap.Coffee Tokens API v3 — https://tokens.swap.coffee/api/v3/openapi.yaml */
+/**
+ * App jetton shape for the swap currency picker.
+ * Catalog is mapped from Tokens API v2 (`/api/v2/tokens`); verification is derived
+ * from `trust_score` when the upstream field is absent.
+ */
 
 export type SwapJettonVerification = "BLACKLISTED" | "UNKNOWN" | "COMMUNITY" | "WHITELISTED";
 

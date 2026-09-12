@@ -93,25 +93,16 @@ export async function getTokenBySymbol(symbol: string): Promise<TokenSearchResul
     };
   }
 
-  // Tokens API can be used with or without COFFEE key; send key only when set.
+  // Tokens API v2 (`/api/v2/tokens`). v3 `/api/v3/jettons` currently 400s on every request.
   const url = new URL(
-    "/api/v3/jettons",
+    "/api/v2/tokens",
     COFFEE_TOKENS_BASE_URL.endsWith("/")
       ? COFFEE_TOKENS_BASE_URL
       : `${COFFEE_TOKENS_BASE_URL}/`,
   );
   url.searchParams.set("search", normalized);
-  // API expects multiple verification params, not a single comma-separated value
-  const verificationList = (
-    process.env.TOKENS_VERIFICATION ?? "WHITELISTED,COMMUNITY,UNKNOWN"
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  for (const v of verificationList.length ? verificationList : ["WHITELISTED"]) {
-    url.searchParams.append("verification", v);
-  }
   url.searchParams.set("size", "10");
+  url.searchParams.set("page", "1");
 
   try {
     const headers: Record<string, string> = {};
@@ -149,7 +140,13 @@ export async function getTokenBySymbol(symbol: string): Promise<TokenSearchResul
       };
     }
 
-    if (!Array.isArray(data)) {
+    const items = Array.isArray(data)
+      ? data
+      : data && typeof data === "object" && Array.isArray((data as { items?: unknown }).items)
+        ? ((data as { items: unknown[] }).items)
+        : null;
+
+    if (!items) {
       return {
         ok: false,
         error: "unavailable",
@@ -162,7 +159,7 @@ export async function getTokenBySymbol(symbol: string): Promise<TokenSearchResul
       };
     }
 
-    if (data.length === 0) {
+    if (items.length === 0) {
       return {
         ok: false,
         error: "not_found",
@@ -172,7 +169,7 @@ export async function getTokenBySymbol(symbol: string): Promise<TokenSearchResul
       };
     }
 
-    const exact = data.find(
+    const exact = items.find(
       (item: any) =>
         typeof item?.symbol === "string" &&
         normalizeSymbol(item.symbol) === normalized,
@@ -180,7 +177,7 @@ export async function getTokenBySymbol(symbol: string): Promise<TokenSearchResul
 
     return {
       ok: true,
-      data: exact ?? data[0],
+      data: exact ?? items[0],
       elapsed_ms,
       source: "swap.coffee",
     };
@@ -203,7 +200,7 @@ export async function getJettonByAddress(
     COFFEE_TOKENS_BASE_URL.endsWith("/")
       ? COFFEE_TOKENS_BASE_URL
       : `${COFFEE_TOKENS_BASE_URL}/`;
-  const url = `${base}api/v3/jettons/${encodeURIComponent(address)}`;
+  const url = `${base}api/v2/tokens/address/${encodeURIComponent(address)}`;
 
   const headers: Record<string, string> = {};
   if (COFFEE) headers["X-Api-Key"] = COFFEE;

@@ -2,7 +2,6 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { fetchSwapJettonsPage } from "./fetchSwapJettons";
 import type { SwapJetton } from "./swapJettonsTypes";
 
-const PAGE_SIZE = 100;
 const MAX_PAGES = 100;
 const UI_FLUSH_INTERVAL_MS = 350;
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -98,11 +97,7 @@ function getSnapshot(): CatalogSnapshot {
 }
 
 async function fetchPage(page: number): Promise<{ items: SwapJetton[]; hasMore: boolean }> {
-  const items = await fetchSwapJettonsPage(page);
-  return {
-    items,
-    hasMore: items.length >= PAGE_SIZE,
-  };
+  return fetchSwapJettonsPage(page);
 }
 
 async function runCatalogLoad(fromScroll = false): Promise<void> {
@@ -169,6 +164,10 @@ async function runCatalogLoad(fromScroll = false): Promise<void> {
   } catch (err) {
     if (generation !== loadGeneration) return;
     error = err instanceof Error ? err.message : "Failed to load tokens";
+    // Stop infinite scroll retries on a hard empty-catalog failure (e.g. upstream 400).
+    if (jettons.length === 0) {
+      hasMore = false;
+    }
     logPageDisplay("swap_jettons_catalog_error", {
       fromScroll,
       total: jettons.length,
@@ -220,6 +219,8 @@ export function getSwapJettonsCatalogSnapshot(): CatalogSnapshot {
 export function ensureSwapJettonsCatalogLoading(): void {
   if (isCacheFresh() && !hasMore) return;
   if (loadPromise) return;
+  // Empty + sticky error means upstream failed hard; do not spin reset→retry loops.
+  if (jettons.length === 0 && error && !hasMore) return;
 
   if (jettons.length === 0) {
     resetCatalog();
@@ -234,11 +235,11 @@ export function ensureSwapJettonsCatalogLoading(): void {
 
 /** Called when the virtualized list nears the end — fetch the next page promptly. */
 export function requestSwapJettonsNextPage(): void {
-  if (!hasMore || isLoading) return;
+  if (!hasMore || isLoading || error) return;
 
   if (loadPromise) {
     void loadPromise.then(() => {
-      if (hasMore && !isLoading && !loadPromise) {
+      if (hasMore && !isLoading && !error && !loadPromise) {
         loadPromise = runCatalogLoad(true).finally(() => {
           loadPromise = null;
         });

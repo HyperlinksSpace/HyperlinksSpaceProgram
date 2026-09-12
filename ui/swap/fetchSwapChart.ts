@@ -297,7 +297,8 @@ export async function fetchSwapMarketStats(
   const address = jettonAddress.trim() || TON_JETTON_ADDRESS;
 
   try {
-    const url = `${SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "")}/api/v3/jettons/${encodeURIComponent(address)}`;
+    // Tokens API v3 jetton-by-address is broken (400); v2 address lookup is current.
+    const url = `${SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "")}/api/v2/tokens/address/${encodeURIComponent(address)}`;
     swapChartLog("market_stats_start", { url, jettonAddress: address });
     const response = await swapCoffeeFetch(url);
     swapChartLog("market_stats_response", {
@@ -308,11 +309,15 @@ export async function fetchSwapMarketStats(
     if (!response.ok) return empty;
 
     const data = await response.json();
-    const marketStats =
-      data && typeof data === "object" ? (data as { market_stats?: unknown }).market_stats : null;
-    if (!marketStats || typeof marketStats !== "object") return empty;
+    if (!data || typeof data !== "object") return empty;
 
-    const m = marketStats as Record<string, unknown>;
+    const token = data as Record<string, unknown>;
+    // Prefer nested market_stats when present (legacy v3 shape); else flat v2 fields.
+    const nested =
+      token.market_stats && typeof token.market_stats === "object"
+        ? (token.market_stats as Record<string, unknown>)
+        : null;
+    const m = nested ?? token;
     const num = (k: string) => {
       const v = m[k];
       return typeof v === "number" && Number.isFinite(v) ? v : null;
@@ -327,6 +332,7 @@ export async function fetchSwapMarketStats(
       priceChange1h: num("price_change_1h"),
       priceChange6h: num("price_change_6h"),
       priceChange24h: num("price_change_24h"),
+      // v2 exposes TVL as `tvl` (no separate 24h volume / mcap on this endpoint).
     };
     swapChartLog("market_stats_success", { ...stats, jettonAddress: address });
     return stats;

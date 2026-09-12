@@ -1,17 +1,12 @@
 import { isDesktopAppShell } from "../appShell";
 import { logPageDisplay } from "../pageDisplayLog";
+import { mapSwapCoffeeTokensPageV2 } from "./mapSwapCoffeeTokenV2";
 import { SWAP_COFFEE_TOKENS_API_BASE } from "./swapChartConstants";
 import { swapCoffeeFetch } from "./swapCoffeeFetch";
-import type {
-  SwapAccountJettonsResponse,
-  SwapJetton,
-  SwapJettonVerification,
-} from "./swapJettonsTypes";
+import type { SwapAccountJettonsResponse, SwapJetton } from "./swapJettonsTypes";
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 100;
-
-const DEFAULT_VERIFICATION: SwapJettonVerification[] = ["WHITELISTED", "COMMUNITY", "UNKNOWN"];
 
 function tokensBaseUrl(): string {
   return SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "");
@@ -25,27 +20,24 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-function jettonsPageUrl(
-  page: number,
-  verification: readonly SwapJettonVerification[],
-): string {
+function tokensPageUrl(page: number): string {
   // Always hit tokens.swap.coffee directly. Desktop used to proxy via
   // `/api/swap-coffee-tokens`, but Vercel egress is blocked/slowed by DDoS-Guard
   // (prod: FUNCTION_INVOCATION_TIMEOUT) while the origin returns ACAO: * for app://.
-  const url = new URL(`${tokensBaseUrl()}/api/v3/jettons`);
+  //
+  // Use Tokens API v2 (`/api/v2/tokens`). v3 `/api/v3/jettons` currently 400s on
+  // every request (server-side decimal parse error) and is absent from OpenAPI.
+  const url = new URL(`${tokensBaseUrl()}/api/v2/tokens`);
   url.searchParams.set("page", String(page));
   url.searchParams.set("size", String(PAGE_SIZE));
-  for (const v of verification) {
-    url.searchParams.append("verification", v);
-  }
   return url.toString();
 }
 
-export async function fetchSwapJettonsPage(
-  page: number,
-  verification: readonly SwapJettonVerification[] = DEFAULT_VERIFICATION,
-): Promise<SwapJetton[]> {
-  const url = jettonsPageUrl(page, verification);
+export async function fetchSwapJettonsPage(page: number): Promise<{
+  items: SwapJetton[];
+  hasMore: boolean;
+}> {
+  const url = tokensPageUrl(page);
   const started = Date.now();
   logPageDisplay("swap_jettons_page_fetch", {
     page,
@@ -58,19 +50,19 @@ export async function fetchSwapJettonsPage(
         return "";
       }
     })(),
+    api: "v2/tokens",
   });
   try {
     const res = await swapCoffeeFetch(url);
     const data = await parseJsonResponse<unknown>(res);
-    if (!Array.isArray(data)) {
-      throw new Error("Swap.Coffee jettons: unexpected payload");
-    }
+    const mapped = mapSwapCoffeeTokensPageV2(data);
     logPageDisplay("swap_jettons_page_ok", {
       page,
-      count: data.length,
+      count: mapped.items.length,
+      hasMore: mapped.hasMore,
       elapsedMs: Date.now() - started,
     });
-    return data as SwapJetton[];
+    return mapped;
   } catch (err) {
     logPageDisplay("swap_jettons_page_error", {
       page,
@@ -91,9 +83,9 @@ export async function fetchAllSwapJettons(
 
   while (hasMore && page <= MAX_PAGES) {
     const batch = await fetchSwapJettonsPage(page);
-    if (batch.length === 0) break;
+    if (batch.items.length === 0) break;
 
-    for (const jetton of batch) {
+    for (const jetton of batch.items) {
       const key = jetton.address?.toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -101,7 +93,7 @@ export async function fetchAllSwapJettons(
     }
 
     onPage?.(all.slice(), page);
-    hasMore = batch.length >= PAGE_SIZE;
+    hasMore = batch.hasMore;
     page += 1;
   }
 
