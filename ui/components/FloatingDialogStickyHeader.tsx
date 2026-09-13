@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { Platform, Text, View, type LayoutChangeEvent } from "react-native";
 
 import { useColors } from "../theme";
@@ -44,11 +44,16 @@ export function FloatingDialogStickyHeader({
 }: Props) {
   const colors = useColors();
   const moveDrag = useFloatingDialogDragHandle();
+  const lastReportedHeightRef = useRef(0);
 
   const onBlockLayout = useCallback(
     (e: LayoutChangeEvent) => {
-      const h = e.nativeEvent.layout.height;
-      if (h > 0) onHeightChange?.(h);
+      const h = Math.round(e.nativeEvent.layout.height);
+      if (!(h > 0)) return;
+      // Avoid feedback loops: headerExtendPx → chrome → remeasure → same onLayout.
+      if (lastReportedHeightRef.current === h) return;
+      lastReportedHeightRef.current = h;
+      onHeightChange?.(h);
     },
     [onHeightChange],
   );

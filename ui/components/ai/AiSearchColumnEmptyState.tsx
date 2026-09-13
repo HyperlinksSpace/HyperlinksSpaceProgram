@@ -37,7 +37,8 @@ import {
   debitBuiltinDllrUsd,
   getBuiltinDllrBalanceUsd,
 } from "../../pro/dllrBalanceStore";
-import { isProAccessActive, subscribeProAccess } from "../../pro/proAccessStore";
+import { isProAccessActive } from "../../pro/proAccessStore";
+import { logPageDisplay } from "../../pageDisplayLog";
 import { layout, typographyRect15, useColors } from "../../theme";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "../AuthenticatedHomeSplitLayoutMetricsContext";
 import { useBottomBarLayout } from "../BottomBarLayoutContext";
@@ -211,7 +212,6 @@ export function AiSearchColumnEmptyState() {
   const hydratedRef = useRef(false);
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
-  const proActive = useSyncExternalStore(subscribeProAccess, isProAccessActive, () => false);
 
   useEffect(() => {
     void refreshAiFreeQuotaFromServer();
@@ -655,14 +655,21 @@ export function AiSearchColumnEmptyState() {
 
       revealAbortRef.current?.abort();
 
-      if (proActive) {
-        // Pull server truth first so a founder revoke clears local Pro before we spend.
-        await refreshAiFreeQuotaFromServer();
-        if (!isProAccessActive()) {
-          setDraftText(trimmed);
-          return;
-        }
-        const q = getAiFreeQuotaSnapshot();
+      // Pull server truth so founder revoke / expired Pro clears before we spend.
+      await refreshAiFreeQuotaFromServer();
+      const q = getAiFreeQuotaSnapshot();
+      const hasPro = isProAccessActive() || q.proActive;
+
+      logPageDisplay("ai_send_start", {
+        modelMode: q.modelMode,
+        modelId: q.modelId,
+        billingLane: q.billingLane,
+        proActive: hasPro,
+        chatIdPreview: String(tabId).slice(0, 12),
+        inputChars: trimmed.length,
+      });
+
+      if (hasPro) {
         if (q.limitReached) {
           // Keep the prompt in the composer so the user can resend after enabling on-demand.
           setDraftText(trimmed);
@@ -708,6 +715,24 @@ export function AiSearchColumnEmptyState() {
         input: trimmed,
       });
 
+      logPageDisplay("ai_send_result", {
+        ok: Boolean(res.ok),
+        error: res.error ?? null,
+        model: typeof res.model === "string" ? res.model : null,
+        modelMode: q.modelMode,
+        modelId: q.modelId,
+        billingLane:
+          typeof res.billingLane === "string" ? res.billingLane : q.billingLane,
+        tokensBilled:
+          typeof res.tokensBilled === "number" ? res.tokensBilled : null,
+        route: res.route ?? null,
+        assistantChars:
+          typeof (res.assistantMessage as { content?: unknown } | undefined)?.content ===
+          "string"
+            ? String((res.assistantMessage as { content: string }).content).length
+            : null,
+      });
+
       if (res.quota) {
         applyAiFreeQuotaFromServer(res.quota);
       }
@@ -723,13 +748,7 @@ export function AiSearchColumnEmptyState() {
 
       if (!res.ok) {
         const errCode = String(res.error ?? "");
-        const needsPro =
-          errCode === "free_ai_limit" ||
-          errCode === "ai_capacity" ||
-          errCode === "ai_not_configured";
-        if (needsPro) {
-          setDraftText(trimmed);
-          requestOpenProAccess();
+        const clearTempSending = () => {
           setTabs((current) =>
             current.map((tab) => {
               if (tab.id !== tabId) return tab;
@@ -740,23 +759,28 @@ export function AiSearchColumnEmptyState() {
               };
             }),
           );
+        };
+
+        if (errCode === "free_ai_limit") {
+          await refreshAiFreeQuotaFromServer();
+          const nextQ = getAiFreeQuotaSnapshot();
+          setDraftText(trimmed);
+          clearTempSending();
+          // Capacity / mis-sync: Pro holders manage allowance in Tools, not the upsell sheet.
+          if (nextQ.proActive || isProAccessActive()) {
+            setToolsOpen(true);
+          } else {
+            requestOpenProAccess();
+          }
           return;
         }
         if (errCode === "pro_ai_limit") {
           setDraftText(trimmed);
           setToolsOpen(true);
-          setTabs((current) =>
-            current.map((tab) => {
-              if (tab.id !== tabId) return tab;
-              return {
-                ...tab,
-                sending: false,
-                messages: (tab.messages ?? []).filter((m) => m.id !== tempUserId),
-              };
-            }),
-          );
+          clearTempSending();
           return;
         }
+        // ai_capacity / ai_not_configured / etc. — never open Pro upsell for these.
         const userFacing =
           errCode === "ai_capacity" || errCode === "ai_not_configured"
             ? t("ai.capacity.body")
@@ -840,7 +864,7 @@ export function AiSearchColumnEmptyState() {
         await revealAssistantMessage(serverChatId, assistantId, assistantFull);
       }
     },
-    [activeTabId, proActive, revealAssistantMessage, scrollAiThreadToEnd, setDraftText, t, tabs],
+    [activeTabId, revealAssistantMessage, scrollAiThreadToEnd, setDraftText, t, tabs],
   );
 
   useEffect(() => {

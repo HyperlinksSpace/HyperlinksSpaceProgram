@@ -385,6 +385,15 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         modelMode: gate.quota.modelMode,
         modelId: gate.quota.modelId,
       };
+      console.log("[ai-route] send", {
+        username,
+        chatId: chat.id,
+        modelMode: routePreference.modelMode,
+        modelId: routePreference.modelId,
+        billingLane: gate.quota.billingLane,
+        proActive: gate.quota.proActive,
+        inputChars: input.length,
+      });
       const ai = await transmit({
         mode: "chat",
         input,
@@ -397,11 +406,30 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         routePreference,
       });
 
+      const routeDebug = {
+        modelMode: routePreference.modelMode,
+        modelId: routePreference.modelId,
+        ok: Boolean(ai.ok),
+        provider: ai.provider ?? null,
+        model: typeof ai.meta?.model === "string" ? ai.meta.model : null,
+        backend: typeof ai.meta?.backend === "string" ? ai.meta.backend : null,
+        routeReason:
+          typeof ai.meta?.route_reason === "string" ? ai.meta.route_reason : null,
+        error: ai.ok ? null : toPublicAiErrorCode(ai.error ?? "ai_unavailable"),
+        outputChars: typeof ai.output_text === "string" ? ai.output_text.trim().length : 0,
+      };
+      console.log("[ai-route] result", routeDebug);
+
       if (!ai.ok || !ai.output_text?.trim()) {
         const code = toPublicAiErrorCode(ai.error ?? "ai_unavailable");
         return respond(
           res,
-          { ok: false, error: code, chatId: chat.id },
+          {
+            ok: false,
+            error: code,
+            chatId: chat.id,
+            route: routeDebug,
+          },
           code === "ai_capacity" ? 503 : 500,
         );
       }
@@ -450,6 +478,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           billingLane: consumed?.billedLane ?? gate.quota.billingLane,
           costUsd: consumed?.costUsd ?? 0,
           quota,
+          route: routeDebug,
         },
         200,
       );

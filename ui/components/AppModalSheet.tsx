@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -161,6 +161,10 @@ function AppModalSheetBody({
   const contentSizing = useFloatingDialogContentSizing();
   const useIntrinsicBody = fitContentHeight || contentSizing;
   const [headerExtendPx, setHeaderExtendPx] = useState(0);
+  const setHeaderExtendPxSafe = useCallback((h: number) => {
+    const next = Math.round(h);
+    setHeaderExtendPx((prev) => (prev === next ? prev : next));
+  }, []);
 
   const header = (
     <FloatingDialogStickyHeader
@@ -168,7 +172,7 @@ function AppModalSheetBody({
       title={title}
       onClose={onClose}
       closeLabel={t("common.close")}
-      onHeightChange={setHeaderExtendPx}
+      onHeightChange={setHeaderExtendPxSafe}
     />
   );
 

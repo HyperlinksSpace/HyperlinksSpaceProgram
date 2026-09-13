@@ -67,7 +67,7 @@ const en = {
   "ai.proLimit.noDllr":
     "Monthly Pro allowance used and your DLLR hot balance is empty. Top up DLLR or wait for next month.",
   "ai.capacity.body":
-    "AI is temporarily unavailable on the free plan. Unlock Pro Access for reliable replies.",
+    "AI is temporarily unavailable (provider capacity). Please try again in a moment.",
   "ai.tools.title": "AI tools",
   "ai.tools.subtitle": "Model routing and overall DLLR consumption for AI & Search.",
   "ai.tools.open": "AI tools",
@@ -108,6 +108,8 @@ const en = {
   "settings.antiDdos": "Anti-DDOS limit",
   "settings.antiDdosHint":
     "Free plans include a lifetime overall consumption cap that protects shared capacity from abuse. Upgrade to Pro for a monthly included budget.",
+  "settings.antiDdosHintPro":
+    "Pro keeps an overall anti-abuse consumption meter for your included monthly budget. Detailed DLLR limits for the plan you bought are in AI & Search → Tools.",
   "settings.antiDdosPercent": "{{percent}}%",
   "settings.consumption": "Overall consumption",
   "settings.consumptionHint":
@@ -929,7 +931,7 @@ const ru = {
   "ai.proLimit.noDllr":
     "Месячный лимит Pro исчерпан, а горячий баланс DLLR пуст. Пополните DLLR или дождитесь следующего месяца.",
   "ai.capacity.body":
-    "ИИ временно недоступен на бесплатном плане. Оформите Pro Access для стабильных ответов.",
+    "ИИ временно недоступен (перегрузка провайдера). Попробуйте ещё раз чуть позже.",
   "ai.tools.title": "Инструменты ИИ",
   "ai.tools.subtitle": "Маршрутизация моделей и общий расход DLLR для AI & Search.",
   "ai.tools.open": "Инструменты ИИ",
@@ -970,6 +972,8 @@ const ru = {
   "settings.antiDdos": "Анти-DDOS лимит",
   "settings.antiDdosHint":
     "На бесплатном плане действует пожизненный лимит общего расхода — защита общей ёмкости от злоупотреблений. Pro даёт ежемесячный включённый бюджет.",
+  "settings.antiDdosHintPro":
+    "У Pro остаётся общий анти-абьюз счётчик по включённому месячному бюджету. Точные DLLR-лимиты купленного тарифа — в ИИ и поиск → Инструменты.",
   "settings.antiDdosPercent": "{{percent}}%",
   "settings.consumption": "Общий расход",
   "settings.consumptionHint":
@@ -1788,7 +1792,7 @@ const zh = {
   "ai.freeLimit.cta": "开通 Pro",
   "ai.proLimit.body": "本月 Pro DLLR 额度已用完。请开启按需计费以从内置钱包扣费，或等待下月重置。",
   "ai.proLimit.noDllr": "本月 Pro 额度已用完，且 DLLR 可用余额为空。请充值 DLLR 或等待下月。",
-  "ai.capacity.body": "免费计划下 AI 暂时不可用。开通 Pro Access 可获得稳定回复。",
+  "ai.capacity.body": "AI 暂时不可用（供应商容量不足）。请稍后再试。",
   "ai.tools.title": "AI 工具",
   "ai.tools.subtitle": "为 AI 与搜索设置模型路由与整体 DLLR 消耗。",
   "ai.tools.open": "AI 工具",
@@ -1826,6 +1830,8 @@ const zh = {
   "settings.antiDdos": "Anti-DDOS 限额",
   "settings.antiDdosHint":
     "免费计划包含终身总体消耗上限，用于保护共享容量、防止滥用。升级 Pro 可获得每月包含额度。",
+  "settings.antiDdosHintPro":
+    "Pro 仍保留整体防滥用消耗进度条（按每月包含额度）。你购买的方案 DLLR 明细在「AI 与搜索 → 工具」。",
   "settings.antiDdosPercent": "{{percent}}%",
   "settings.consumption": "整体消耗",
   "settings.consumptionHint":

@@ -25,6 +25,7 @@ import {
   subscribeBuiltinDllrBalance,
 } from "../../pro/dllrBalanceStore";
 import { requestOpenProAccess } from "../../pro/openProAccess";
+import { isProAccessActive, subscribeProAccess } from "../../pro/proAccessStore";
 import { FloatingDialogShell } from "../FloatingDialogShell";
 import { FloatingDialogBody } from "../FloatingDialogBody";
 import { FloatingDialogStickyHeader } from "../FloatingDialogStickyHeader";
@@ -118,9 +119,14 @@ export function AiToolsDialog({ visible, onClose }: Props) {
     getBuiltinDllrHotUsd,
     () => 0,
   );
+  const localProActive = useSyncExternalStore(subscribeProAccess, isProAccessActive, () => false);
   const [saving, setSaving] = useState(false);
   const [models, setModels] = useState(getAiToolsModelOptions);
   const [headerExtendPx, setHeaderExtendPx] = useState(0);
+  const setHeaderExtendPxSafe = useCallback((h: number) => {
+    const next = Math.round(h);
+    setHeaderExtendPx((prev) => (prev === next ? prev : next));
+  }, []);
 
   const defaultSize = useMemo(
     () => resolveFloatingDialogDefaultSize(windowWidth, windowHeight, "modal"),
@@ -135,15 +141,19 @@ export function AiToolsDialog({ visible, onClose }: Props) {
     });
   }, [visible]);
 
+  const showProUsage = quota.proActive || localProActive;
   const rate = quota.onDemandUsdPer1kTokens;
   const dllrUsed =
-    typeof quota.dllrUsed === "number" && Number.isFinite(quota.dllrUsed)
+    typeof quota.dllrUsed === "number" && Number.isFinite(quota.dllrUsed) && quota.proActive
       ? quota.dllrUsed
-      : tokensToDllr(quota.proActive ? quota.proTokensUsedMonth : quota.tokensUsed, rate);
+      : tokensToDllr(showProUsage ? quota.proTokensUsedMonth : quota.tokensUsed, rate);
   const dllrLimit =
-    typeof quota.dllrLimit === "number" && Number.isFinite(quota.dllrLimit) && quota.dllrLimit > 0
+    typeof quota.dllrLimit === "number" &&
+    Number.isFinite(quota.dllrLimit) &&
+    quota.dllrLimit > 0 &&
+    quota.proActive
       ? quota.dllrLimit
-      : tokensToDllr(quota.proActive ? quota.proMonthlyLimit : quota.tokenLimit, rate);
+      : tokensToDllr(showProUsage ? quota.proMonthlyLimit : quota.tokenLimit, rate);
   const ratio = dllrLimit > 0 ? Math.min(1, dllrUsed / dllrLimit) : 0;
   const allowanceExhausted =
     quota.limitReached || (dllrLimit > 0 && dllrUsed + 1e-9 >= dllrLimit);
@@ -184,7 +194,7 @@ export function AiToolsDialog({ visible, onClose }: Props) {
             closeLabel={t("common.close")}
             title={t("ai.tools.title")}
             subtitle={t("ai.tools.subtitle")}
-            onHeightChange={setHeaderExtendPx}
+            onHeightChange={setHeaderExtendPxSafe}
           />
 
           <HspScrollColumn
@@ -210,7 +220,7 @@ export function AiToolsDialog({ visible, onClose }: Props) {
                 textTransform: "uppercase",
               }}
             >
-              {quota.proActive ? t("ai.tools.usagePro") : t("ai.tools.usageFree")}
+              {showProUsage ? t("ai.tools.usagePro") : t("ai.tools.usageFree")}
             </Text>
             <View
               style={{
@@ -238,7 +248,7 @@ export function AiToolsDialog({ visible, onClose }: Props) {
                 fontFamily: font,
               }}
             >
-              {quota.proActive
+              {showProUsage
                 ? tf("ai.tools.usageValues", {
                     used: formatDllrAmount(dllrUsed),
                     limit: formatDllrAmount(dllrLimit),
@@ -246,7 +256,7 @@ export function AiToolsDialog({ visible, onClose }: Props) {
                 : tf("ai.tools.usagePercent", { percent: Math.round(ratio * 100) })}
             </Text>
 
-            {!quota.proActive && allowanceExhausted ? (
+            {!showProUsage && allowanceExhausted ? (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t("ai.tools.buyProCta")}

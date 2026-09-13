@@ -15,7 +15,6 @@ import {
   saveAiToolsPrefs,
   subscribeAiFreeQuota,
 } from "../ai/aiFreeQuotaStore";
-import { formatDllrAmount } from "../ai/aiConsumptionDllr";
 import { requestOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
 
@@ -106,7 +105,8 @@ export function SettingsSheet() {
     quota.dllrLimit > 0 ? Math.min(1, Math.max(0, quota.dllrUsed / quota.dllrLimit)) : 0;
   const allowanceExhausted = quota.limitReached;
   const usedPercent = Math.round(dllrRatio * 100);
-  const showAntiDdos = isAuthenticated && !proActive;
+  // Anti-DDOS overall consumption meter stays for free and Pro (monthly included budget).
+  const showOverallConsumption = isAuthenticated;
 
   return (
     <AppModalSheet
@@ -126,13 +126,13 @@ export function SettingsSheet() {
         </Text>
       ) : null}
 
-      {isAuthenticated ? (
+      {showOverallConsumption ? (
         <>
           <Text
             style={[appModalSheetStyles.section, { color: colors.primary, marginTop: 4 }]}
             accessibilityRole="header"
           >
-            {showAntiDdos ? t("settings.antiDdos") : t("settings.consumption")}
+            {t("settings.antiDdos")}
           </Text>
           <Text
             style={{
@@ -143,7 +143,7 @@ export function SettingsSheet() {
               textAlign: "left",
             }}
           >
-            {showAntiDdos ? t("settings.antiDdosHint") : t("settings.consumptionHint")}
+            {proActive ? t("settings.antiDdosHintPro") : t("settings.antiDdosHint")}
           </Text>
           <View
             style={{
@@ -169,12 +169,7 @@ export function SettingsSheet() {
               { color: colors.primary, textAlign: "left", marginBottom: 8 },
             ]}
           >
-            {showAntiDdos
-              ? tf("settings.antiDdosPercent", { percent: usedPercent })
-              : tf("ai.tools.usageValues", {
-                  used: formatDllrAmount(quota.dllrUsed),
-                  limit: formatDllrAmount(quota.dllrLimit),
-                })}
+            {tf("settings.antiDdosPercent", { percent: usedPercent })}
           </Text>
           {!proActive && allowanceExhausted ? (
             <Pressable
