@@ -54,6 +54,7 @@ import {
   getFounderUserCounts,
 } from "../../database/founderMetrics.js";
 import { getProSalesSnapshot, recordProSale } from "../../database/proSales.js";
+import { computeProExpiresAtIso, laterProExpiresAtIso } from "../../shared/proExpiry.js";
 import {
   calibrateFromEvidence,
   buildDailyUsageSeries,
@@ -628,19 +629,19 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           404,
         );
       }
-      const expires = new Date();
-      expires.setMonth(expires.getMonth() + months);
-      const expiresAt = expires.toISOString();
+      const expiresAt = computeProExpiresAtIso({ months });
       const granted: string[] = [];
       for (const username of usernames) {
-        await syncAiFreeQuotaPro({ username, expiresAt });
+        const quota = await syncAiFreeQuotaPro({ username, expiresAt });
+        const finalExpires =
+          laterProExpiresAtIso(quota.proExpiresAt, expiresAt) ?? expiresAt;
         try {
           await recordProSale({
             username,
             planId,
             priceUsd,
             months,
-            expiresAt,
+            expiresAt: finalExpires,
           });
         } catch {
           /* sales ledger should not block entitlement */
@@ -704,10 +705,9 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       if (!row) {
         return respond(res, { ok: false, error: "memo_not_found", memo }, 404);
       }
-      const expires = new Date();
-      expires.setMonth(expires.getMonth() + row.months);
-      const expiresAt = expires.toISOString();
-      await syncAiFreeQuotaPro({ username: row.username, expiresAt });
+      const computed = computeProExpiresAtIso({ months: row.months });
+      await syncAiFreeQuotaPro({ username: row.username, expiresAt: computed });
+      const expiresAt = computed;
       try {
         await recordProSale({
           username: row.username,
@@ -715,6 +715,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           priceUsd: row.priceUsd,
           months: row.months,
           expiresAt,
+          paymentMemo: memo,
         });
       } catch {
         /* sales ledger should not block entitlement */

@@ -5,6 +5,10 @@ import { transmit, transmitStream } from "../ai/transmitter.js";
 import { normalizeUsername } from "../database/users.js";
 import { getMaxTelegramUpdateIdForThread, insertMessage } from "../database/messages.js";
 import {
+  getAiFreeQuota,
+  routePreferenceFromQuota,
+} from "../database/aiFreeQuota.js";
+import {
   closeOpenTelegramHtml,
   mdToTelegramHtml,
   stripUnpairedMarkdownDelimiters,
@@ -182,6 +186,10 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
   const canStream = isPrivate && typeof chatId === "number";
   /** When streaming we send one message early then edit it; used to detect streaming path. */
   let streamSentMessageId: number | null = null;
+
+  const routePreference = telegram_username
+    ? routePreferenceFromQuota(await getAiFreeQuota(telegram_username))
+    : undefined;
 
   const numericChatId =
     typeof chatId === "number" ? chatId : undefined;
@@ -396,7 +404,15 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
     }, 300);
     try {
       result = await transmitStream(
-        { input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION },
+        {
+          input: text,
+          userId,
+          context,
+          mode,
+          threadContext,
+          instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
+          routePreference,
+        },
         sendOrEdit,
         {
           isCancelled,
@@ -450,6 +466,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
             mode: "chat",
             threadContext: threadContext ? { ...threadContext, skipClaim: true } : undefined,
             instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
+            routePreference,
           },
           sendOrEdit,
           {
@@ -524,7 +541,15 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
       }
     }
   } else {
-    result = await transmit({ input: text, userId, context, mode, threadContext, instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION });
+    result = await transmit({
+      input: text,
+      userId,
+      context,
+      mode,
+      threadContext,
+      instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
+      routePreference,
+    });
     if (result.skipped) return;
     if (isCancelled()) {
       return;
@@ -545,6 +570,7 @@ export async function handleBotAiResponse(ctx: Context): Promise<void> {
         mode: "chat",
         threadContext: threadContext ? { ...threadContext, skipClaim: true } : undefined,
         instructions: TELEGRAM_BOT_LENGTH_INSTRUCTION,
+        routePreference,
       });
       if (result.skipped) return;
     }

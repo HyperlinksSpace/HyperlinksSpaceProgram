@@ -565,11 +565,10 @@ export function HspScrollColumn({
       } else {
         el.style.setProperty("max-height", "100%");
       }
-      // Dialogs: force a real scrollport so ancestor overflow:hidden cannot hide overflow.
-      if (shellDom?.closest("[data-hsp-floating-dialog-body]")) {
-        el.style.setProperty("overflow-y", "auto");
-        el.style.setProperty("overflow-x", "hidden");
-      }
+      // Force a real scrollport so ancestor overflow:hidden (split columns / dialogs)
+      // cannot clip growing content without a scroll range.
+      el.style.setProperty("overflow-y", scrollEnabled ? "auto" : "hidden");
+      el.style.setProperty("overflow-x", "hidden");
     };
 
     const onResize = () => {
@@ -649,6 +648,7 @@ export function HspScrollColumn({
     children,
     scrollbarRightInsetPx,
     scrollIndicatorOverlaySeam,
+    scrollEnabled,
     syncScrollMetricsFromDom,
   ]);
 

@@ -189,8 +189,19 @@ export type LlmRoutePreference = {
   modelId?: string | null;
 };
 
+/** True when the user pinned a specific external (non–Tiny Model) id in AI tools. */
+export function isExplicitExternalModelPreference(
+  preference?: LlmRoutePreference | null,
+): boolean {
+  return (
+    preference?.modelMode === "model" &&
+    Boolean(typeof preference.modelId === "string" && preference.modelId.trim())
+  );
+}
+
 /**
  * Pick backend + model. Prefer TinyModel-only when capable; else Gateway then OpenAI.
+ * Explicit `model` preference never resolves to TinyModel — only the pinned id.
  */
 export function resolveLlmRoute(
   input: string,
@@ -216,8 +227,19 @@ export function resolveLlmRoute(
     };
   }
 
-  if (mode === "model" && forcedId) {
+  if (mode === "model") {
+    if (!forcedId) {
+      return {
+        error: "Selected model id is missing. Pick a model again in AI tools.",
+      };
+    }
     const looksGateway = forcedId.includes("/");
+    const provider = looksGateway
+      ? (forcedId.split("/")[0] || "").toLowerCase()
+      : "openai";
+    const isOpenAiFamily = !looksGateway || provider === "openai";
+
+    // Prefer Gateway for provider/model ids (anthropic/*, google/*, openai/*, …).
     if (looksGateway && isVercelGatewayConfigured()) {
       return {
         backend: "vercel_gateway",
@@ -226,7 +248,9 @@ export function resolveLlmRoute(
         reason: "user_fixed_gateway_model",
       };
     }
-    if (isOpenAiConfigured()) {
+
+    // Direct OpenAI only for bare ids or openai/* — never strip anthropic/google/etc.
+    if (isOpenAiConfigured() && isOpenAiFamily) {
       const direct = looksGateway ? forcedId.split("/").pop() || forcedId : forcedId;
       return {
         backend: "openai",
@@ -235,8 +259,10 @@ export function resolveLlmRoute(
         reason: "user_fixed_openai_model",
       };
     }
-    if (isVercelGatewayConfigured()) {
-      const gw = looksGateway ? forcedId : `openai/${forcedId}`;
+
+    // Bare OpenAI id with Gateway only.
+    if (!looksGateway && isVercelGatewayConfigured()) {
+      const gw = `openai/${forcedId}`;
       return {
         backend: "vercel_gateway",
         tier: gw.includes("mini") ? "mini" : "frontier",
@@ -244,6 +270,7 @@ export function resolveLlmRoute(
         reason: "user_fixed_gateway_fallback",
       };
     }
+
     return {
       error:
         "Selected model needs AI_GATEWAY_API_KEY or OPENAI configured on the server.",

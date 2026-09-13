@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Platform,
   Text,
@@ -189,6 +197,9 @@ export function AiSearchColumnEmptyState() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const scrollRef = useRef<HspScrollColumnHandle>(null);
   const revealAbortRef = useRef<AbortController | null>(null);
+  /** Keep the latest prompt/answer in view when the column is already height-capped. */
+  const pinToBottomRef = useRef(true);
+  const [pinToBottom, setPinToBottom] = useState(true);
   const [columnWidth, setColumnWidth] = useState(0);
   const [headerHeightPx, setHeaderHeightPx] = useState(0);
   const [viewportHeightPx, setViewportHeightPx] = useState(0);
@@ -233,17 +244,36 @@ export function AiSearchColumnEmptyState() {
   }, []);
 
   const scrollAiThreadToEnd = useCallback(() => {
+    pinToBottomRef.current = true;
+    setPinToBottom(true);
     const pin = () => {
       scrollRef.current?.scrollToEnd();
       if (Platform.OS === "web") {
         scrollRef.current?.syncScrollMetricsFromDom();
       }
     };
+    // Immediate attempt + rAF retries — DOM height often lags the React commit.
+    pin();
     requestAnimationFrame(() => {
       pin();
       requestAnimationFrame(pin);
     });
   }, []);
+
+  const lastMessageFingerprint = useMemo(() => {
+    const messages = activeTab?.messages ?? [];
+    const last = messages[messages.length - 1];
+    return `${messages.length}:${last?.id ?? ""}:${last?.content?.length ?? 0}:${last?.streaming ? 1 : 0}:${activeTab?.sending ? 1 : 0}`;
+  }, [activeTab?.messages, activeTab?.sending]);
+
+  // After paint, pin again so a height-capped column still reveals the new undercover + answer.
+  useLayoutEffect(() => {
+    if (!pinToBottomRef.current || showEmptyBody) return;
+    scrollRef.current?.scrollToEnd();
+    if (Platform.OS === "web") {
+      scrollRef.current?.syncScrollMetricsFromDom();
+    }
+  }, [lastMessageFingerprint, showEmptyBody, activeTabId]);
 
   const updateAssistantPartial = useCallback(
     (tabId: string, messageId: string, partial: string, done: boolean) => {
@@ -860,6 +890,14 @@ export function AiSearchColumnEmptyState() {
         indicatorColor={colors.scrollIndicator}
         scrollbarRightInsetPx={0}
         scrollIndicatorExtendTopPx={headerHeightPx}
+        preserveViewportOnResize={!showEmptyBody}
+        stickToBottomOnResize={pinToBottom}
+        onUserScrollIntent={(direction) => {
+          // Wheel-up, drag, or thumb move — stop auto-follow so history reading stays put.
+          if (direction === "down") return;
+          pinToBottomRef.current = false;
+          setPinToBottom(false);
+        }}
       >
         {showEmptyBody ? (
           <AiAgentTabEmptyBody

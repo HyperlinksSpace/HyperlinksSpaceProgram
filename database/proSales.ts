@@ -39,6 +39,7 @@ export type ProSaleRow = {
   months: number;
   expiresAt: string | null;
   createdAt: string;
+  paymentMemo: string | null;
 };
 
 export type ProSalesSnapshot = {
@@ -55,6 +56,25 @@ export type ProSalesSnapshot = {
 
 let tableReady: Promise<void> | null = null;
 
+/**
+ * Drop near-duplicate sale rows (same user/plan/price/months/expiry within 2 minutes),
+ * keeping the earliest id. Cleans recover+client double-records.
+ */
+async function dedupeDuplicateProSales(): Promise<void> {
+  await sql`
+    DELETE FROM pro_sales a
+    USING pro_sales b
+    WHERE a.id > b.id
+      AND a.username = b.username
+      AND a.plan_id = b.plan_id
+      AND a.months = b.months
+      AND ABS(a.price_usd - b.price_usd) < 0.0001
+      AND COALESCE(a.expires_at, 'epoch'::timestamptz)
+        = COALESCE(b.expires_at, 'epoch'::timestamptz)
+      AND ABS(EXTRACT(EPOCH FROM (a.created_at - b.created_at))) < 120
+  `;
+}
+
 export async function ensureProSalesTable(): Promise<void> {
   if (!tableReady) {
     tableReady = (async () => {
@@ -70,6 +90,10 @@ export async function ensureProSalesTable(): Promise<void> {
         )
       `;
       await sql`
+        ALTER TABLE pro_sales
+        ADD COLUMN IF NOT EXISTS payment_memo TEXT
+      `;
+      await sql`
         CREATE INDEX IF NOT EXISTS pro_sales_created_at_idx
         ON pro_sales (created_at DESC)
       `;
@@ -77,6 +101,12 @@ export async function ensureProSalesTable(): Promise<void> {
         CREATE INDEX IF NOT EXISTS pro_sales_username_idx
         ON pro_sales (username)
       `;
+      await sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS pro_sales_payment_memo_uidx
+        ON pro_sales (payment_memo)
+        WHERE payment_memo IS NOT NULL AND length(trim(payment_memo)) > 0
+      `;
+      await dedupeDuplicateProSales();
     })().catch((err) => {
       tableReady = null;
       throw err;
@@ -91,12 +121,33 @@ function normalizePlanId(raw: unknown): ProSalePlanId {
   return "month";
 }
 
+function mapSaleRow(
+  row: Record<string, unknown>,
+  fallback?: { username: string; planId: ProSalePlanId; priceUsd: number; months: number },
+): ProSaleRow {
+  return {
+    id: asNum(row.id),
+    username: String(row.username ?? fallback?.username ?? ""),
+    planId: normalizePlanId(row.plan_id ?? fallback?.planId),
+    priceUsd: asNum(row.price_usd) || fallback?.priceUsd || 0,
+    months: asNum(row.months) || fallback?.months || 1,
+    expiresAt: asIso(row.expires_at),
+    createdAt: asIso(row.created_at) ?? new Date().toISOString(),
+    paymentMemo:
+      typeof row.payment_memo === "string" && row.payment_memo.trim()
+        ? row.payment_memo.trim()
+        : null,
+  };
+}
+
 export async function recordProSale(opts: {
   username: string;
   planId: string;
   priceUsd: number;
   months: number;
   expiresAt: string | null;
+  /** When set, at most one sale row per memo (idempotent activate/recover). */
+  paymentMemo?: string | null;
 }): Promise<ProSaleRow | null> {
   const username = opts.username.trim();
   if (!username) return null;
@@ -106,31 +157,85 @@ export async function recordProSale(opts: {
   const planId = normalizePlanId(opts.planId);
   const expiresAt =
     opts.expiresAt && Date.parse(opts.expiresAt) > Date.now() ? opts.expiresAt : null;
+  const paymentMemo =
+    typeof opts.paymentMemo === "string" && opts.paymentMemo.trim()
+      ? opts.paymentMemo.trim()
+      : null;
 
   await ensureProSalesTable();
-  const rows = await sql`
-    INSERT INTO pro_sales (username, plan_id, price_usd, months, expires_at, created_at)
-    VALUES (
-      ${username},
-      ${planId},
-      ${priceUsd},
-      ${months},
-      ${expiresAt},
-      NOW()
-    )
-    RETURNING id, username, plan_id, price_usd, months, expires_at, created_at
-  `;
-  const row = rows[0] as Record<string, unknown> | undefined;
-  if (!row) return null;
-  return {
-    id: asNum(row.id),
-    username: String(row.username ?? username),
-    planId: normalizePlanId(row.plan_id),
-    priceUsd: asNum(row.price_usd),
-    months: asNum(row.months) || months,
-    expiresAt: asIso(row.expires_at),
-    createdAt: asIso(row.created_at) ?? new Date().toISOString(),
-  };
+
+  if (paymentMemo) {
+    const existing = await sql`
+      SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
+      FROM pro_sales
+      WHERE payment_memo = ${paymentMemo}
+      LIMIT 1
+    `;
+    const hit = existing[0] as Record<string, unknown> | undefined;
+    if (hit) {
+      return mapSaleRow(hit, { username, planId, priceUsd, months });
+    }
+  } else {
+    // DLLR / founder grants without memo: collapse rapid double-inserts.
+    const recent = await sql`
+      SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
+      FROM pro_sales
+      WHERE username = ${username}
+        AND plan_id = ${planId}
+        AND months = ${months}
+        AND ABS(price_usd - ${priceUsd}) < 0.0001
+        AND created_at >= NOW() - INTERVAL '2 minutes'
+      ORDER BY id ASC
+      LIMIT 1
+    `;
+    const hit = recent[0] as Record<string, unknown> | undefined;
+    if (hit) {
+      return mapSaleRow(hit, { username, planId, priceUsd, months });
+    }
+  }
+
+  try {
+    const rows = await sql`
+      INSERT INTO pro_sales (username, plan_id, price_usd, months, expires_at, created_at, payment_memo)
+      VALUES (
+        ${username},
+        ${planId},
+        ${priceUsd},
+        ${months},
+        ${expiresAt},
+        NOW(),
+        ${paymentMemo}
+      )
+      RETURNING id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
+    `;
+    const row = rows[0] as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return mapSaleRow(row, { username, planId, priceUsd, months });
+  } catch (err) {
+    // Unique memo race: return the winner row.
+    if (paymentMemo) {
+      const existing = await sql`
+        SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
+        FROM pro_sales
+        WHERE payment_memo = ${paymentMemo}
+        LIMIT 1
+      `;
+      const hit = existing[0] as Record<string, unknown> | undefined;
+      if (hit) return mapSaleRow(hit, { username, planId, priceUsd, months });
+    }
+    throw err;
+  }
+}
+
+/** One-shot cleanup for founder tools / migrations. */
+export async function clearDuplicateProSales(): Promise<{ deleted: number }> {
+  await ensureProSalesTable();
+  const before = await sql`SELECT COUNT(*)::int AS n FROM pro_sales`;
+  await dedupeDuplicateProSales();
+  const after = await sql`SELECT COUNT(*)::int AS n FROM pro_sales`;
+  const b = asNum((before[0] as Record<string, unknown> | undefined)?.n);
+  const a = asNum((after[0] as Record<string, unknown> | undefined)?.n);
+  return { deleted: Math.max(0, b - a) };
 }
 
 export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
@@ -188,7 +293,7 @@ export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
         ORDER BY 1 ASC
       `,
       sql`
-        SELECT id, username, plan_id, price_usd, months, expires_at, created_at
+        SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
         FROM pro_sales
         ORDER BY created_at DESC
         LIMIT 50
@@ -230,15 +335,9 @@ export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
     });
   }
 
-  const recent: ProSaleRow[] = (recentRows as Array<Record<string, unknown>>).map((row) => ({
-    id: asNum(row.id),
-    username: String(row.username ?? ""),
-    planId: normalizePlanId(row.plan_id),
-    priceUsd: asNum(row.price_usd),
-    months: asNum(row.months) || 1,
-    expiresAt: asIso(row.expires_at),
-    createdAt: asIso(row.created_at) ?? new Date().toISOString(),
-  }));
+  const recent: ProSaleRow[] = (recentRows as Array<Record<string, unknown>>).map((row) =>
+    mapSaleRow(row),
+  );
 
   return {
     tablesExist: true,

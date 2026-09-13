@@ -8,6 +8,7 @@ import {
 } from "../database/wallets.js";
 import { syncAiFreeQuotaPro } from "../database/aiFreeQuota.js";
 import { recordProSale } from "../database/proSales.js";
+import { computeProExpiresAtIso } from "../shared/proExpiry.js";
 
 async function main() {
   const wallet = (process.argv[2] ?? "").trim();
@@ -23,9 +24,7 @@ async function main() {
     console.error("wallet_not_found", wallet);
     process.exit(2);
   }
-  const expires = new Date();
-  expires.setMonth(expires.getMonth() + months);
-  const expiresAt = expires.toISOString();
+  const expiresAt = computeProExpiresAtIso({ months });
   const price = Number.isFinite(priceUsd) && priceUsd >= 0 ? priceUsd : 5;
   for (const username of usernames) {
     await syncAiFreeQuotaPro({ username, expiresAt });
@@ -35,6 +34,7 @@ async function main() {
       priceUsd: price,
       months,
       expiresAt,
+      paymentMemo: memo || null,
     });
     console.log(
       JSON.stringify({

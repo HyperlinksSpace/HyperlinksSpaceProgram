@@ -24,6 +24,7 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import { getAppString } from "../../locales/appStrings";
 import { formatFeedUnreadCountLabel } from "../feed/feedUnreadStore";
+import { useWebHorizontalStripGestures } from "../hooks/useWebHorizontalStripGestures";
 
 const NAV_IDS = ["feed", "messages", "tasks", "items", "coins"] as const;
 
@@ -203,6 +204,8 @@ export function AuthenticatedHomeLeftNavStrip({
   /** RN-web: real horizontal scroll width from DOM when `contentSize` understates `scrollWidth`. */
   const [domHScrollSpanPx, setDomHScrollSpanPx] = useState(0);
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const stripGesturesRef = useRef<View>(null);
+  const suppressNavPressRef = useRef(false);
 
   const lineT = menuStripRuleThickness();
   /** Edge fades; matches `contentSideInsetPx` (15px) in theme. */
@@ -420,6 +423,20 @@ export function AuthenticatedHomeLeftNavStrip({
   );
   const showScrollbar =
     !fits && scrollRange > 0 && scrollViewportW > 0 && scrollTrackWidth > 0;
+  const scrollEnabled = !fits && scrollRange > 0;
+
+  const pickStripScrollEl = useCallback(
+    (root: HTMLElement) => pickWebNavStripScrollEl(root, layoutW),
+    [layoutW],
+  );
+  const { grabbing } = useWebHorizontalStripGestures({
+    rootRef: stripGesturesRef,
+    overflows: scrollEnabled,
+    pickScrollEl: pickStripScrollEl,
+    onScrollX: setScrollX,
+    suppressPressRef: suppressNavPressRef,
+  });
+
   const { thumbSpan: thumbW, thumbOffset: thumbLeft } = scrollIndicatorThumbSpanAndOffset(
     scrollTrackWidth,
     scrollViewportW,
@@ -688,6 +705,7 @@ export function AuthenticatedHomeLeftNavStrip({
 
   return (
     <View
+      ref={stripGesturesRef}
       onLayout={onOuterLayout}
       style={{
         width: "100%",
@@ -700,6 +718,12 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 0,
         position: "relative",
         overflow: "visible",
+        ...(Platform.OS === "web"
+          ? ({
+              cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",
+              touchAction: scrollEnabled ? "pan-x" : "auto",
+            } as object)
+          : null),
       }}
     >
       {/* Full-width scroll + 15px content insets: at scroll 0 / thumb left, row starts 15px in; at max scroll / thumb right, row ends 15px before edge. Edge fades sit on top for motion blur to the real edge. */}
@@ -746,6 +770,7 @@ export function AuthenticatedHomeLeftNavStrip({
                 feedUnreadLabel ? `${label}, ${feedUnreadLabel}` : label
               }
               onPress={() => {
+                if (suppressNavPressRef.current) return;
                 if (isControlled) {
                   onSelectIndex?.(index);
                 } else {

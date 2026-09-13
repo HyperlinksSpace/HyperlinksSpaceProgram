@@ -16,6 +16,10 @@ import {
   type ProCatalogPlan,
   type ProFeatureId,
 } from "../../shared/proCatalog";
+import {
+  computeProExpiresAtIso,
+  laterProExpiresAtIso,
+} from "../../shared/proExpiry";
 import { getProCatalogPlans, isProFeatureEnabled, subscribeProCatalog } from "./proCatalogStore";
 
 export type ProAccessPlanId = "month" | "quarter" | "year";
@@ -311,9 +315,8 @@ export async function activateProAccessAsync(
   hydrate();
   const plans = getProAccessPlans();
   const plan = plans.find((p) => p.id === planId) ?? plans[0]!;
-  const expires = new Date();
-  expires.setMonth(expires.getMonth() + plan.months);
-  const expiresAt = expires.toISOString();
+  const computed = computeProExpiresAtIso({ months: plan.months });
+  const expiresAt = laterProExpiresAtIso(state.expiresAt, computed) ?? computed;
   state = {
     active: true,
     planId: plan.id,

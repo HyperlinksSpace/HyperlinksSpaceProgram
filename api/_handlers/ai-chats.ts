@@ -222,6 +222,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
             priceUsd: Number.isFinite(priceUsd) && priceUsd >= 0 ? priceUsd : 0,
             months: Number.isFinite(months) && months > 0 ? Math.trunc(months) : 1,
             expiresAt,
+            paymentMemo,
           });
         } catch {
           /* sales ledger should not block entitlement sync */

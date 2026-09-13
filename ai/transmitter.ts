@@ -322,12 +322,13 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
     input,
   );
 
+  const pinnedExternal = pref?.modelMode === "model";
   const forceTiny = pref?.modelMode === "tinymodel";
+  // Explicit external model: never answer from Tiny Model — only that provider stands.
   if (
-    forceTiny ||
-    (pref?.modelMode !== "model" &&
-      enrichment &&
-      canAnswerWithTinyModel(request.input, tinymodel))
+    !pinnedExternal &&
+    (forceTiny ||
+      (enrichment && canAnswerWithTinyModel(request.input, tinymodel)))
   ) {
     if (forceTiny && !enrichment) {
       return {
@@ -355,8 +356,9 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
     routePreference: pref,
   });
 
-  if (!result.ok && enrichment) {
+  if (!result.ok && enrichment && !pinnedExternal) {
     // Provider rate-limit / outage: answer from program knowledge when we have any context.
+    // Never degrade when the user pinned a specific external model.
     const degraded = tinyOnlyResponse(request, enrichment);
     if (degraded.ok && degraded.output_text?.trim()) {
       if (thread) await persistAssistantMessage(thread, degraded.output_text);
@@ -516,12 +518,12 @@ export async function transmitStream(
     input,
   );
 
+  const pinnedExternal = pref?.modelMode === "model";
   const forceTiny = pref?.modelMode === "tinymodel";
   if (
-    forceTiny ||
-    (pref?.modelMode !== "model" &&
-      enrichment &&
-      canAnswerWithTinyModel(request.input, tinymodel))
+    !pinnedExternal &&
+    (forceTiny ||
+      (enrichment && canAnswerWithTinyModel(request.input, tinymodel)))
   ) {
     if (forceTiny && !enrichment) {
       return {
@@ -555,7 +557,7 @@ export async function transmitStream(
     opts,
   );
 
-  if (!result.ok && enrichment) {
+  if (!result.ok && enrichment && !pinnedExternal) {
     const degraded = tinyOnlyResponse(request, enrichment);
     if (degraded.ok && degraded.output_text?.trim()) {
       await onDelta(degraded.output_text);

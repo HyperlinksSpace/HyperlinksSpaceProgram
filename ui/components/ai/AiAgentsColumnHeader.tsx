@@ -24,6 +24,7 @@ import {
   snapScrollIndicatorCoordPx,
 } from "../../scrollIndicatorPx";
 import { layout, useColors } from "../../theme";
+import { useWebHorizontalStripGestures } from "../../hooks/useWebHorizontalStripGestures";
 import { ScrollIndicatorDragHandle } from "../ScrollIndicatorDragHandle";
 import { CHOOSE_CURRENCY_SUBHEADER_HEIGHT_PX } from "../swap/ChooseCurrencySubheader";
 import {
@@ -245,6 +246,8 @@ export function AiAgentsColumnHeader({
   const fadeGradientIdLeft = `${addGradientId}-fade-l`;
 
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const stripGesturesRef = useRef<View>(null);
+  const suppressTabPressRef = useRef(false);
   const prevFitsRef = useRef<boolean | null>(null);
   const overflowStickyRef = useRef(false);
   const maxScrollXSeenRef = useRef(0);
@@ -319,6 +322,18 @@ export function AiAgentsColumnHeader({
   const scrollTrackWidth = stripW > 0 ? stripW : Math.max(0, scrollViewportW);
   const showScrollbar = !fits && scrollRange > 0 && scrollTrackWidth > 0;
   const scrollEnabled = !fits && scrollRange > 0;
+
+  const pickStripScrollEl = useCallback(
+    (root: HTMLElement) => pickWebScrollEl(root, layoutW),
+    [layoutW],
+  );
+  const { grabbing } = useWebHorizontalStripGestures({
+    rootRef: stripGesturesRef,
+    overflows: scrollEnabled,
+    pickScrollEl: pickStripScrollEl,
+    onScrollX: setScrollX,
+    suppressPressRef: suppressTabPressRef,
+  });
 
   const scrollOffsetForThumb = Math.max(0, Math.min(scrollX, scrollRange));
   const { thumbSpan: thumbW, thumbOffset: thumbLeft } = scrollIndicatorThumbSpanAndOffset(
@@ -550,7 +565,18 @@ export function AiAgentsColumnHeader({
 
   return (
     <View style={styles.strip} onLayout={onStripLayout}>
-      <View style={styles.rowHost}>
+      <View
+        ref={stripGesturesRef}
+        style={[
+          styles.rowHost,
+          Platform.OS === "web"
+            ? ({
+                cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",
+                touchAction: scrollEnabled ? "pan-x" : "auto",
+              } as object)
+            : null,
+        ]}
+      >
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -599,7 +625,10 @@ export function AiAgentsColumnHeader({
                     accessibilityRole="tab"
                     accessibilityState={{ selected: active }}
                     accessibilityLabel={a11yLabel}
-                    onPress={() => onSelectTab(tab.id)}
+                    onPress={() => {
+                      if (suppressTabPressRef.current) return;
+                      onSelectTab(tab.id);
+                    }}
                     onLongPress={(event) => onTabLongPress(tab.id, event)}
                     delayLongPress={380}
                     {...(Platform.OS === "web"
@@ -666,6 +695,7 @@ export function AiAgentsColumnHeader({
                         accessibilityLabel={t("ai.agents.closeTab")}
                         hitSlop={6}
                         onPress={(event) => {
+                          if (suppressTabPressRef.current) return;
                           event?.stopPropagation?.();
                           onCloseTab(tab.id);
                         }}

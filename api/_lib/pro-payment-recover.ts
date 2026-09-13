@@ -18,6 +18,7 @@ import {
 } from "../../database/proPaymentMemos.js";
 import { recordProSale } from "../../database/proSales.js";
 import { normalizeUsername } from "../../database/users.js";
+import { computeProExpiresAtIso, laterProExpiresAtIso } from "../../shared/proExpiry.js";
 
 const TONAPI_BASE = "https://tonapi.io/v2";
 const USDT_MASTER = "0:b113a994b5024a16719f69139328eb759596c38a25f59028b146fecdc3621dfe";
@@ -179,15 +180,9 @@ export async function recoverProFromPaidMemos(
   }
   if (!matched) return { recovered: false, quota };
 
-  const expires = new Date();
-  expires.setMonth(expires.getMonth() + matched.months);
-  let expiresAt = expires.toISOString();
-  if (
-    quota.proExpiresAt &&
-    Date.parse(quota.proExpiresAt) > Date.parse(expiresAt)
-  ) {
-    expiresAt = quota.proExpiresAt;
-  }
+  const computed = computeProExpiresAtIso({ months: matched.months });
+  const expiresAt =
+    laterProExpiresAtIso(quota.proExpiresAt, computed) ?? computed;
 
   const nextQuota = await syncAiFreeQuotaPro({ username, expiresAt });
   try {
@@ -197,6 +192,7 @@ export async function recoverProFromPaidMemos(
       priceUsd: matched.priceUsd,
       months: matched.months,
       expiresAt,
+      paymentMemo: matched.memo,
     });
   } catch {
     /* sales ledger must not block recovery */

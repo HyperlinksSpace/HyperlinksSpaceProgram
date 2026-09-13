@@ -4,8 +4,8 @@
  * GET /api/swap-coffee-tokens?page=1&size=100
  * GET /api/swap-coffee-tokens?wallet=<ton-address>
  *
- * Catalog listing uses Tokens API v2 (`/api/v2/tokens`). Account balances still
- * use v3 accounts jettons (that path remains healthy).
+ * Catalog listing uses Tokens API v3 hybrid-search (mcap + sort). Account balances
+ * still use v3 accounts jettons.
  */
 
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
@@ -53,15 +53,23 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
   const base = COFFEE_TOKENS_BASE_URL.replace(/\/$/, "");
   const target = wallet
     ? new URL(`${base}/api/v3/accounts/${encodeURIComponent(wallet)}/jettons`)
-    : new URL(`${base}/api/v2/tokens`);
+    : new URL(`${base}/api/v3/hybrid-search`);
 
   if (!wallet) {
     for (const [key, value] of incoming.searchParams.entries()) {
-      if (key === "wallet" || key === "verification") continue;
+      if (key === "wallet") continue;
       target.searchParams.append(key, value);
     }
+    if (!target.searchParams.has("kind")) target.searchParams.set("kind", "DEXES");
+    // TVL page order — raw MCAP pages are fantasy junk; UI re-sorts by market cap.
+    if (!target.searchParams.has("sort")) target.searchParams.set("sort", "TVL");
     if (!target.searchParams.has("page")) target.searchParams.set("page", "1");
     if (!target.searchParams.has("size")) target.searchParams.set("size", "100");
+    if (!incoming.searchParams.has("verification")) {
+      for (const verification of ["WHITELISTED", "COMMUNITY", "UNKNOWN"]) {
+        target.searchParams.append("verification", verification);
+      }
+    }
   }
 
   const headers: Record<string, string> = { Accept: "application/json" };

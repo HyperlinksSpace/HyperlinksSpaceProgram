@@ -1,12 +1,22 @@
 import { isDesktopAppShell } from "../appShell";
 import { logPageDisplay } from "../pageDisplayLog";
-import { mapSwapCoffeeTokensPageV2 } from "./mapSwapCoffeeTokenV2";
+import { mapSwapCoffeeHybridSearchPage } from "./mapSwapCoffeeHybridSearch";
 import { SWAP_COFFEE_TOKENS_API_BASE } from "./swapChartConstants";
 import { swapCoffeeFetch } from "./swapCoffeeFetch";
 import type { SwapAccountJettonsResponse, SwapJetton } from "./swapJettonsTypes";
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 100;
+
+/** Include every non-blacklisted verification so community tokens stay in the catalog. */
+const CATALOG_VERIFICATIONS = ["WHITELISTED", "COMMUNITY", "UNKNOWN"] as const;
+
+/**
+ * Upstream `sort=MCAP` with community/unknown returns fantasy supply×price junk on
+ * early pages (filters wipe the page). Sort by TVL so each page is liquid enough to
+ * map real `mcap` / volume; the choose-currency UI re-sorts by market-cap rank.
+ */
+const CATALOG_SORT = "TVL";
 
 function tokensBaseUrl(): string {
   return SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "");
@@ -25,11 +35,16 @@ function tokensPageUrl(page: number): string {
   // `/api/swap-coffee-tokens`, but Vercel egress is blocked/slowed by DDoS-Guard
   // (prod: FUNCTION_INVOCATION_TIMEOUT) while the origin returns ACAO: * for app://.
   //
-  // Use Tokens API v2 (`/api/v2/tokens`). v3 `/api/v3/jettons` currently 400s on
-  // every request (server-side decimal parse error) and is absent from OpenAPI.
-  const url = new URL(`${tokensBaseUrl()}/api/v2/tokens`);
+  // Catalog uses Tokens API v3 hybrid-search (has `market_stats.mcap` + sort).
+  // v2 `/api/v2/tokens` has no mcap field, so the UI sorted by ticker only.
+  const url = new URL(`${tokensBaseUrl()}/api/v3/hybrid-search`);
+  url.searchParams.set("kind", "DEXES");
+  url.searchParams.set("sort", CATALOG_SORT);
   url.searchParams.set("page", String(page));
   url.searchParams.set("size", String(PAGE_SIZE));
+  for (const verification of CATALOG_VERIFICATIONS) {
+    url.searchParams.append("verification", verification);
+  }
   return url.toString();
 }
 
@@ -50,17 +65,19 @@ export async function fetchSwapJettonsPage(page: number): Promise<{
         return "";
       }
     })(),
-    api: "v2/tokens",
+    api: "v3/hybrid-search",
+    sort: CATALOG_SORT,
   });
   try {
     const res = await swapCoffeeFetch(url);
     const data = await parseJsonResponse<unknown>(res);
-    const mapped = mapSwapCoffeeTokensPageV2(data);
+    const mapped = mapSwapCoffeeHybridSearchPage(data, PAGE_SIZE);
     logPageDisplay("swap_jettons_page_ok", {
       page,
       count: mapped.items.length,
       hasMore: mapped.hasMore,
       elapsedMs: Date.now() - started,
+      sampleMcap: mapped.items[0]?.market_stats?.mcap ?? null,
     });
     return mapped;
   } catch (err) {

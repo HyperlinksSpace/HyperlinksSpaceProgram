@@ -38,6 +38,7 @@ import { refreshProCatalogFromServer, subscribeProCatalog } from "./proCatalogSt
 import { refreshAiFreeQuotaFromServer } from "../ai/aiFreeQuotaStore";
 import { resolveProAccessMaterials } from "./proAccessMaterials";
 import { ProFeatureIcon } from "./ProFeatureIcon";
+import { formatProExpiryDateLabel } from "../../shared/proExpiry";
 import { ProSoonNameplate, PRO_SOON_NAMEPLATE_GAP_PX } from "./ProSoonNameplate";
 import { ProTariffCarousel } from "./ProTariffCarousel";
 import { ProSubscribeButton } from "./ProSubscribeButton";
@@ -114,7 +115,7 @@ export function ProAccessDialog({ visible, onClose }: Props) {
   const selectedPlanLabel = t(planLabelKey(selected.id));
   const switchingPlan = proActive && proState.planId != null && planId !== proState.planId;
   const expiresLabel = proState.expiresAt
-    ? new Date(proState.expiresAt).toLocaleDateString()
+    ? formatProExpiryDateLabel(proState.expiresAt)
     : "";
 
   useEffect(() => {

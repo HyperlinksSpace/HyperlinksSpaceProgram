@@ -1,7 +1,6 @@
 /**
  * App jetton shape for the swap currency picker.
- * Catalog is mapped from Tokens API v2 (`/api/v2/tokens`); verification is derived
- * from `trust_score` when the upstream field is absent.
+ * Catalog is mapped from Tokens API v3 hybrid-search (`/api/v3/hybrid-search`).
  */
 
 export type SwapJettonVerification = "BLACKLISTED" | "UNKNOWN" | "COMMUNITY" | "WHITELISTED";

@@ -3,6 +3,7 @@ import type { HspAiAction } from "./intentActions.js";
 import {
   gatewayAuthKey,
   gatewayBaseUrl,
+  isExplicitExternalModelPreference,
   isOpenAiConfigured,
   isVercelGatewayConfigured,
   resolveLlmRoute,
@@ -156,27 +157,50 @@ export async function callOpenAiChat(
   const prefix = modePrefix(mode);
   const input = `${prefix}${trimmed}`;
 
-  const tryGateway = route.backend === "vercel_gateway" || isVercelGatewayConfigured();
-  const tryOpenAi = isOpenAiConfigured();
+  const userFixedModel = isExplicitExternalModelPreference(params.routePreference);
 
   const attempts: Array<{ backend: LlmBackend; client: OpenAI; model: string }> = [];
-  if (!params.forceOpenAi && tryGateway) {
-    const gw = gatewayClient();
-    if (gw) {
-      attempts.push({
-        backend: "vercel_gateway",
-        client: gw,
-        model: route.backend === "vercel_gateway" ? model : model.includes("/") ? model : `openai/${model}`,
-      });
+
+  // Explicit selection: only the pinned backend + model — no alternate providers/models.
+  if (userFixedModel) {
+    if (route.backend === "vercel_gateway") {
+      const gw = gatewayClient();
+      if (gw) {
+        attempts.push({ backend: "vercel_gateway", client: gw, model });
+      }
+    } else if (route.backend === "openai") {
+      const oa = openAiDirectClient();
+      if (oa) {
+        attempts.push({ backend: "openai", client: oa, model });
+      }
     }
-  }
-  if (tryOpenAi) {
-    const oa = openAiDirectClient();
-    if (oa) {
-      const directModel = model.includes("/")
-        ? model.split("/").pop() || selectSmartChatModel(trimmed)
-        : model;
-      attempts.push({ backend: "openai", client: oa, model: directModel });
+  } else {
+    const tryGateway = route.backend === "vercel_gateway" || isVercelGatewayConfigured();
+    const tryOpenAi = isOpenAiConfigured();
+
+    if (!params.forceOpenAi && tryGateway) {
+      const gw = gatewayClient();
+      if (gw) {
+        attempts.push({
+          backend: "vercel_gateway",
+          client: gw,
+          model:
+            route.backend === "vercel_gateway"
+              ? model
+              : model.includes("/")
+                ? model
+                : `openai/${model}`,
+        });
+      }
+    }
+    if (tryOpenAi) {
+      const oa = openAiDirectClient();
+      if (oa) {
+        const directModel = model.includes("/")
+          ? model.split("/").pop() || selectSmartChatModel(trimmed)
+          : model;
+        attempts.push({ backend: "openai", client: oa, model: directModel });
+      }
     }
   }
 
@@ -185,7 +209,7 @@ export async function callOpenAiChat(
       ok: false,
       provider: "openai",
       mode,
-      error: "ai_not_configured",
+      error: userFixedModel ? "ai_unavailable" : "ai_not_configured",
     };
   }
 
@@ -198,9 +222,6 @@ export async function callOpenAiChat(
     seen.add(key);
     uniqueAttempts.push(a);
   }
-  const userFixedModel =
-    params.routePreference?.modelMode === "model" &&
-    Boolean(params.routePreference?.modelId?.trim());
   if (!userFixedModel && isVercelGatewayConfigured()) {
     const gw = gatewayClient();
     const cheap = process.env.AI_GATEWAY_MINI_MODEL?.trim() || "openai/gpt-4.1-mini";
@@ -295,39 +316,53 @@ export async function callOpenAiChatStream(
   const input = `${prefix}${trimmed}`;
 
   const attempts: Array<{ backend: LlmBackend; client: OpenAI; model: string }> = [];
-  const userFixedModel =
-    params.routePreference?.modelMode === "model" &&
-    Boolean(params.routePreference?.modelId?.trim());
-  if (isVercelGatewayConfigured()) {
-    const gw = gatewayClient();
-    if (gw) {
-      attempts.push({
-        backend: "vercel_gateway",
-        client: gw,
-        model:
-          route.backend === "vercel_gateway"
-            ? route.model
-            : userFixedModel && route.model.includes("/")
+  const userFixedModel = isExplicitExternalModelPreference(params.routePreference);
+
+  if (userFixedModel) {
+    if (route.backend === "vercel_gateway") {
+      const gw = gatewayClient();
+      if (gw) {
+        attempts.push({
+          backend: "vercel_gateway",
+          client: gw,
+          model: route.model,
+        });
+      }
+    } else if (route.backend === "openai") {
+      const oa = openAiDirectClient();
+      if (oa) {
+        attempts.push({
+          backend: "openai",
+          client: oa,
+          model: route.model,
+        });
+      }
+    }
+  } else {
+    if (isVercelGatewayConfigured()) {
+      const gw = gatewayClient();
+      if (gw) {
+        attempts.push({
+          backend: "vercel_gateway",
+          client: gw,
+          model:
+            route.backend === "vercel_gateway"
               ? route.model
               : gatewayModelOrFallback(trimmed),
-      });
+        });
+      }
     }
-  }
-  if (isOpenAiConfigured()) {
-    const oa = openAiDirectClient();
-    if (oa) {
-      const directModel = userFixedModel
-        ? route.model.includes("/")
-          ? route.model.split("/").pop() || route.model
-          : route.model
-        : selectSmartChatModel(trimmed) === "gpt-5.2"
-          ? "gpt-5.2"
-          : "gpt-4.1-mini";
-      attempts.push({
-        backend: "openai",
-        client: oa,
-        model: directModel,
-      });
+    if (isOpenAiConfigured()) {
+      const oa = openAiDirectClient();
+      if (oa) {
+        const directModel =
+          selectSmartChatModel(trimmed) === "gpt-5.2" ? "gpt-5.2" : "gpt-4.1-mini";
+        attempts.push({
+          backend: "openai",
+          client: oa,
+          model: directModel,
+        });
+      }
     }
   }
 
@@ -336,7 +371,7 @@ export async function callOpenAiChatStream(
       ok: false,
       provider: "openai",
       mode,
-      error: "ai_not_configured",
+      error: userFixedModel ? "ai_unavailable" : "ai_not_configured",
     };
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -36,6 +36,7 @@ import {
   type ProAccessPlanId,
 } from "./proAccessStore";
 import { subscribeProCatalog } from "./proCatalogStore";
+import { useWebHorizontalStripGestures } from "../hooks/useWebHorizontalStripGestures";
 
 const CARD_GAP_PX = 10;
 const CARD_MIN_W_PX = 156;
@@ -68,23 +69,6 @@ function pickWebHorizontalScrollEl(root: Element | null): HTMLElement | null {
   return candidates.reduce((a, b) => (a.scrollWidth >= b.scrollWidth ? a : b));
 }
 
-function findParentVerticalScrollEl(from: HTMLElement): HTMLElement | null {
-  let n: HTMLElement | null = from.parentElement;
-  while (n) {
-    const style = typeof window !== "undefined" ? window.getComputedStyle(n) : null;
-    const oy = style?.overflowY ?? "";
-    const canScroll =
-      n.scrollHeight > n.clientHeight + 2 &&
-      (oy === "auto" ||
-        oy === "scroll" ||
-        oy === "overlay" ||
-        n.classList.contains("hsp-scroll-column-overscroll-contain"));
-    if (canScroll) return n;
-    n = n.parentElement;
-  }
-  return null;
-}
-
 type Props = {
   planId: ProAccessPlanId;
   onSelectPlan: (id: ProAccessPlanId) => void;
@@ -94,8 +78,8 @@ type Props = {
 };
 
 /**
- * Full-bleed tariff band: horizontal cards only on horizontal wheel/gesture;
- * vertical wheel is forwarded to the dialog body scroller.
+ * Full-bleed tariff band: mouse wheel and click-drag scroll cards horizontally;
+ * unused vertical wheel at an edge is forwarded to the dialog body scroller.
  */
 export function ProTariffCarousel({
   planId,
@@ -117,7 +101,6 @@ export function ProTariffCarousel({
   const [viewportW, setViewportW] = useState(0);
   const [contentW, setContentW] = useState(0);
   const [scrollX, setScrollX] = useState(0);
-  const [grabbing, setGrabbing] = useState(false);
   /** After a drag-scroll, ignore the synthetic click on tariff cards. */
   const suppressCardPressRef = useRef(false);
 
@@ -130,6 +113,15 @@ export function ProTariffCarousel({
   const contentSpan = Math.max(contentW, estimatedContentW);
   const scrollRange = Math.max(0, contentSpan - viewportW);
   const overflows = scrollRange > SCROLL_EPS;
+
+  const { grabbing } = useWebHorizontalStripGestures({
+    rootRef: bandRef,
+    overflows,
+    pickScrollEl: pickWebHorizontalScrollEl,
+    onScrollX: setScrollX,
+    suppressPressRef: suppressCardPressRef,
+    forwardUnusedWheelToParentVertical: true,
+  });
 
   const { thumbSpan, thumbOffset } = useMemo(
     () =>
@@ -173,155 +165,6 @@ export function ProTariffCarousel({
     },
     [scrollRange],
   );
-
-  /** Axis-lock wheel: horizontal → cards; vertical → parent dialog scroller. */
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
-    const root = bandRef.current as unknown as HTMLElement | null;
-    if (!root) return;
-
-    const onWheel = (e: WheelEvent) => {
-      const absX = Math.abs(e.deltaX);
-      const absY = Math.abs(e.deltaY);
-      if (absX < 0.5 && absY < 0.5) return;
-
-      const horizontalIntent = e.shiftKey || absX > absY + 0.25;
-      const hScroll = pickWebHorizontalScrollEl(root);
-
-      if (horizontalIntent && overflows && hScroll) {
-        const delta = e.shiftKey && absX <= absY ? e.deltaY : absX > 0.5 ? e.deltaX : e.deltaY;
-        const max = Math.max(0, hScroll.scrollWidth - hScroll.clientWidth);
-        const next = Math.max(0, Math.min(max, hScroll.scrollLeft + delta));
-        if (next !== hScroll.scrollLeft) {
-          e.preventDefault();
-          e.stopPropagation();
-          hScroll.scrollLeft = next;
-          setScrollX(Math.round(next));
-        } else {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-        return;
-      }
-
-      // Vertical (or no horizontal overflow): never let the card strip consume it.
-      const parent = findParentVerticalScrollEl(root);
-      if (!parent) return;
-      e.preventDefault();
-      e.stopPropagation();
-      parent.scrollTop += e.deltaY !== 0 ? e.deltaY : e.deltaX;
-    };
-
-    root.addEventListener("wheel", onWheel, { passive: false, capture: true });
-    return () => root.removeEventListener("wheel", onWheel, true);
-  }, [overflows]);
-
-  /** Web: click-drag the tariff strip to scroll (same idea as TradeCollectionCarousel). */
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined" || !overflows) return;
-    const root = bandRef.current as unknown as HTMLElement | null;
-    if (!root) return;
-
-    const ACTIVATE_DX_PX = 8;
-    let tracking = false;
-    let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let startScroll = 0;
-    let pointerId: number | null = null;
-    let host: HTMLElement | null = null;
-
-    const setSelectLock = (locked: boolean) => {
-      const style = document.documentElement.style as CSSStyleDeclaration & {
-        webkitUserSelect?: string;
-      };
-      if (locked) {
-        style.userSelect = "none";
-        style.webkitUserSelect = "none";
-      } else {
-        style.userSelect = "";
-        style.webkitUserSelect = "";
-      }
-    };
-
-    const hScroll = () => pickWebHorizontalScrollEl(root);
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.button != null && e.button !== 0) return;
-      const el = hScroll();
-      if (!el) return;
-      tracking = true;
-      dragging = false;
-      startX = e.clientX;
-      startY = e.clientY;
-      startScroll = el.scrollLeft;
-      pointerId = e.pointerId;
-      host = e.currentTarget as HTMLElement;
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (!tracking) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (!dragging) {
-        if (Math.abs(dx) < ACTIVATE_DX_PX && Math.abs(dy) < ACTIVATE_DX_PX) return;
-        if (Math.abs(dy) >= Math.abs(dx)) {
-          tracking = false;
-          return;
-        }
-        dragging = true;
-        setGrabbing(true);
-        setSelectLock(true);
-        suppressCardPressRef.current = true;
-        try {
-          host?.setPointerCapture?.(pointerId ?? e.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
-      e.preventDefault();
-      const el = hScroll();
-      if (!el) return;
-      const max = Math.max(0, el.scrollWidth - el.clientWidth);
-      const next = Math.max(0, Math.min(max, startScroll - dx));
-      el.scrollLeft = next;
-      setScrollX(Math.round(next));
-    };
-
-    const endDrag = () => {
-      if (!tracking && !dragging) return;
-      tracking = false;
-      if (dragging) {
-        dragging = false;
-        setGrabbing(false);
-        setSelectLock(false);
-        // Keep suppress for the click that follows pointerup.
-        window.setTimeout(() => {
-          suppressCardPressRef.current = false;
-        }, 0);
-      }
-      try {
-        if (host && pointerId != null) host.releasePointerCapture?.(pointerId);
-      } catch {
-        /* ignore */
-      }
-      host = null;
-      pointerId = null;
-    };
-
-    root.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", endDrag);
-    window.addEventListener("pointercancel", endDrag);
-    return () => {
-      root.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", endDrag);
-      window.removeEventListener("pointercancel", endDrag);
-      setSelectLock(false);
-      setGrabbing(false);
-    };
-  }, [overflows]);
 
   const undercoverStyle = useMemo((): ViewStyle => {
     return {
@@ -369,7 +212,7 @@ export function ProTariffCarousel({
           Platform.OS === "web"
             ? ({
                 cursor: grabbing ? "grabbing" : overflows ? "grab" : "default",
-                touchAction: "pan-y",
+                touchAction: overflows ? "pan-x" : "auto",
               } as object)
             : null,
         ]}

@@ -6,6 +6,7 @@
  */
 import dotenv from "dotenv";
 import { neon } from "@neondatabase/serverless";
+import { computeProExpiresAtIso } from "../shared/proExpiry.js";
 
 dotenv.config({ path: ".env" });
 
@@ -76,21 +77,29 @@ async function main() {
     process.exit(2);
   }
 
-  const expires = new Date();
-  expires.setMonth(expires.getMonth() + months);
-  const expiresAt = expires.toISOString();
+  const expiresAt = computeProExpiresAtIso({ months });
+
+  await sql`
+    ALTER TABLE pro_sales
+    ADD COLUMN IF NOT EXISTS payment_memo TEXT
+  `.catch(() => undefined);
 
   for (const username of usernames) {
     await sql`
       INSERT INTO user_ai_free_quota (username, tokens_used, pro_expires_at, updated_at)
       VALUES (${username}, 0, ${expiresAt}, NOW())
       ON CONFLICT (username) DO UPDATE SET
-        pro_expires_at = EXCLUDED.pro_expires_at,
+        pro_expires_at = CASE
+          WHEN user_ai_free_quota.pro_expires_at IS NULL THEN EXCLUDED.pro_expires_at
+          WHEN user_ai_free_quota.pro_expires_at > EXCLUDED.pro_expires_at
+            THEN user_ai_free_quota.pro_expires_at
+          ELSE EXCLUDED.pro_expires_at
+        END,
         updated_at = NOW()
     `;
     await sql`
-      INSERT INTO pro_sales (username, plan_id, price_usd, months, expires_at, created_at)
-      VALUES (${username}, ${"month"}, ${priceUsd}, ${months}, ${expiresAt}, NOW())
+      INSERT INTO pro_sales (username, plan_id, price_usd, months, expires_at, created_at, payment_memo)
+      VALUES (${username}, ${"month"}, ${priceUsd}, ${months}, ${expiresAt}, NOW(), ${memo || null})
     `;
     console.log(
       JSON.stringify({

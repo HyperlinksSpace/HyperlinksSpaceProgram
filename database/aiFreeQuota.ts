@@ -265,12 +265,25 @@ export async function syncAiFreeQuotaPro(opts: {
   const limits = await loadLimits();
   if (!username) return toSnapshot(null, limits);
   await ensureAiFreeQuotaTable();
-  const expiresAt = opts.expiresAt && Date.parse(opts.expiresAt) > Date.now() ? opts.expiresAt : null;
+  // null = revoke; otherwise keep the later of existing vs incoming so recover
+  // and client sync cannot shorten an already-granted period.
+  const expiresAt =
+    opts.expiresAt == null
+      ? null
+      : Date.parse(opts.expiresAt) > Date.now()
+        ? opts.expiresAt
+        : null;
   const rows = await sql`
     INSERT INTO user_ai_free_quota (username, tokens_used, pro_expires_at, updated_at)
     VALUES (${username}, 0, ${expiresAt}, NOW())
     ON CONFLICT (username) DO UPDATE SET
-      pro_expires_at = EXCLUDED.pro_expires_at,
+      pro_expires_at = CASE
+        WHEN EXCLUDED.pro_expires_at IS NULL THEN NULL
+        WHEN user_ai_free_quota.pro_expires_at IS NULL THEN EXCLUDED.pro_expires_at
+        WHEN user_ai_free_quota.pro_expires_at > EXCLUDED.pro_expires_at
+          THEN user_ai_free_quota.pro_expires_at
+        ELSE EXCLUDED.pro_expires_at
+      END,
       updated_at = NOW()
     RETURNING
       tokens_used,

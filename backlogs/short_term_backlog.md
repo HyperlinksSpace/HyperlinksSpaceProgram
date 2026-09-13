@@ -1,3 +1,5 @@
+Gifts
+Bages (admin, rights) in voice chats
 think about menu on mobile
 fix uilt-in wallet
 chat history, ai chats analisis
