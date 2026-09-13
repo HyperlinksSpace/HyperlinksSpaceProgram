@@ -36,6 +36,7 @@ describe("modelIdentity language", () => {
       { input: "what model are you" },
     );
     assert.match(text, /You selected/);
+    assert.match(text, /general-purpose/i);
     assert.doesNotMatch(text, /В AI tools выбрана/);
   });
 });

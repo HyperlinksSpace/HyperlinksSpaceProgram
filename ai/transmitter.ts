@@ -12,6 +12,7 @@ import {
   buildModelIdentityAnswer,
   isModelIdentityQuestion,
 } from "./modelIdentity.js";
+import { shouldInjectProgramContext } from "./chatInstructions.js";
 import {
   getTokenBySymbol,
   normalizeSymbol,
@@ -236,6 +237,10 @@ async function applyTinyModelContext(
   enrichment?: Awaited<ReturnType<typeof enrichWithTinyModel>>;
 }> {
   if ((request.mode ?? "chat") !== "chat") {
+    return { input: inputWithHistory };
+  }
+  // Explicit cloud model: do not prepend program RAG — user wants that model as general-purpose.
+  if (!shouldInjectProgramContext(request.routePreference)) {
     return { input: inputWithHistory };
   }
   const enriched = await enrichWithTinyModel(request.input, request.context);

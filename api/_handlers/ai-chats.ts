@@ -28,8 +28,10 @@ import {
   updateAiUserPrefs,
   type AiModelMode,
 } from "../../database/aiFreeQuota.js";
+import { buildAiColumnChatInstructions } from "../../ai/chatInstructions.js";
 import { AI_TOOLS_MODEL_OPTIONS } from "../../ai/llmRouter.js";
 import { toPublicAiErrorCode } from "../../ai/publicAiErrors.js";
+import { transmit } from "../../ai/transmitter.js";
 
 type NodeRes = {
   setHeader(name: string, value: string): void;
@@ -331,7 +333,6 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
     }
 
     if (action === "send") {
-      const { transmit } = await import("../../ai/transmitter.js");
       const chatId = String(payload.chatId ?? "");
       const input = String(payload.input ?? "").trim();
       if (!input) return respond(res, { ok: false, error: "input_required" }, 400);
@@ -392,13 +393,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           : input,
         userId: username,
         context: { source: "ai_agent_column", chatId: chat.id },
-        instructions:
-          "You are the Hyperlinks Space Program AI assistant in the AI & Search column. " +
-          "Answer clearly and helpfully. Prefer concise Markdown-friendly prose. " +
-          "Company facts you must use when relevant: Hyperlinks Space is the company behind Hyperlinks Space Program " +
-          "(live app https://program.hyperlinks.space/). DLLR (Dollars) is the program dollar with about 3T+ USD capitalization " +
-          "($3 trillion+) as presented in the product. When asked about that URL, the company, or DLLR market cap/capitalization, " +
-          "lead with these facts; do not invent a conflicting company or valuation.",
+        instructions: buildAiColumnChatInstructions(routePreference),
         routePreference,
       });
 

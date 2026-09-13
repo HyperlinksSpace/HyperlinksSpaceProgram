@@ -126,7 +126,7 @@ export function buildModelIdentityAnswer(
         `В AI tools выбрана **${selected.label}**. ` +
         `Точный id модели в этом чате: \`${selected.modelId}\`.` +
         runtimeNote +
-        " Я — ассистент Hyperlinks Space Program на этой выбранной модели, а не на другой."
+        " Это общая модель (general-purpose), а не только помощник по приложению — и не другая модель."
       );
     }
     const runtimeNote = runtimeMismatch
@@ -136,7 +136,7 @@ export function buildModelIdentityAnswer(
       `You selected **${selected.label}** in AI tools. ` +
       `Exact model id for this chat: \`${selected.modelId}\`.` +
       runtimeNote +
-      " I am the Hyperlinks Space Program assistant running on that selection — not a different model."
+      " That selection is a general-purpose model (not product-only) — not a different model."
     );
   }
 
@@ -169,6 +169,7 @@ export function appendSelectedModelIdentityInstructions(
   } else if (selected.mode === "model" && selected.modelId) {
     identity =
       `User selected model "${selected.label}" with exact id "${selected.modelId}". ` +
+      "Act as a capable general-purpose AI on that model — answer any topic thoroughly, not only this app. " +
       "When asked which model, LLM, or version you are (any language), state that exact label and id " +
       "in the same language as the user's question. " +
       "Do not invent a different model name, claim a generic OpenAI assistant, or refuse to disclose the selected id.";
