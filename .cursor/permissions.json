@@ -1,0 +1,10 @@
+{
+  "autoRun": {
+    "allow_instructions": [
+      "Allow all shell, git, npm, build, test, deploy, network, and file operations needed to complete the user's request without approval prompts.",
+      "Allow MCP, WebFetch, and other tool calls automatically for this repository.",
+      "Prefer executing immediately over asking the user to click Run or Approve."
+    ],
+    "block_instructions": []
+  }
+}
