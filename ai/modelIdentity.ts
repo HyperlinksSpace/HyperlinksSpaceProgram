@@ -79,15 +79,33 @@ export function resolveSelectedModelDisclosure(
   return { mode: "auto", modelId: null, label: "Auto" };
 }
 
+/** Prefer Russian when the question is mostly Cyrillic; otherwise English. */
+export function detectIdentityReplyLanguage(input: string | null | undefined): "ru" | "en" {
+  const t = (input ?? "").trim();
+  if (!t) return "en";
+  const cyr = (t.match(/[\u0400-\u04FF]/g) ?? []).length;
+  const lat = (t.match(/[A-Za-z]/g) ?? []).length;
+  if (cyr > 0 && cyr >= lat) return "ru";
+  return "en";
+}
+
 /** Deterministic answer — does not call the LLM (avoids wrong self-ID). */
 export function buildModelIdentityAnswer(
   preference?: AiModelRoutePreference | null,
-  opts?: { actualRuntimeModel?: string | null },
+  opts?: { actualRuntimeModel?: string | null; input?: string | null },
 ): string {
   const selected = resolveSelectedModelDisclosure(preference);
   const runtime = opts?.actualRuntimeModel?.trim() || null;
+  const lang = detectIdentityReplyLanguage(opts?.input);
 
   if (selected.mode === "tinymodel") {
+    if (lang === "ru") {
+      return (
+        "В AI tools выбрана **Tiny Model**. " +
+        "Этот ответ из знаний Hyperlinks Space Program (Tiny Model / локальный корпус), " +
+        "а не из облачной frontier-модели. Внутренний id: `tinymodel/rag`."
+      );
+    }
     return (
       "You selected **Tiny Model** in AI tools. " +
       "This turn is answered from Hyperlinks Space Program knowledge (Tiny Model / local corpus), " +
@@ -96,10 +114,24 @@ export function buildModelIdentityAnswer(
   }
 
   if (selected.mode === "model" && selected.modelId) {
-    const runtimeNote =
-      runtime && runtime !== selected.modelId && !runtime.endsWith(selected.modelId.split("/").pop() || "")
-        ? ` The provider request for this reply used \`${runtime}\` (fallback if the selected route was unavailable).`
+    const runtimeMismatch =
+      runtime &&
+      runtime !== selected.modelId &&
+      !runtime.endsWith(selected.modelId.split("/").pop() || "");
+    if (lang === "ru") {
+      const runtimeNote = runtimeMismatch
+        ? ` Запрос к провайдеру для этого ответа шёл через \`${runtime}\` (запасной вариант, если выбранный маршрут был недоступен).`
         : "";
+      return (
+        `В AI tools выбрана **${selected.label}**. ` +
+        `Точный id модели в этом чате: \`${selected.modelId}\`.` +
+        runtimeNote +
+        " Я — ассистент Hyperlinks Space Program на этой выбранной модели, а не на другой."
+      );
+    }
+    const runtimeNote = runtimeMismatch
+      ? ` The provider request for this reply used \`${runtime}\` (fallback if the selected route was unavailable).`
+      : "";
     return (
       `You selected **${selected.label}** in AI tools. ` +
       `Exact model id for this chat: \`${selected.modelId}\`.` +
@@ -108,6 +140,13 @@ export function buildModelIdentityAnswer(
     );
   }
 
+  if (lang === "ru") {
+    return (
+      "В AI tools стоит **Auto**. Бэкенд на каждое сообщение выбирает достаточно дешёвую модель " +
+      "(Tiny Model для фактов о программе, иначе Gateway / OpenAI). " +
+      "Откройте AI tools и выберите конкретную модель, если нужен фиксированный id каждый раз."
+    );
+  }
   return (
     "AI tools is set to **Auto**. The backend picks the cheapest sufficient model for each message " +
     "(Tiny Model for program facts when possible, otherwise a Gateway / OpenAI chat model). " +
@@ -125,16 +164,18 @@ export function appendSelectedModelIdentityInstructions(
   if (selected.mode === "tinymodel") {
     identity =
       "User selected Tiny Model. If asked which model/version you are, say Tiny Model " +
-      "(Hyperlinks program knowledge / tinymodel/rag). Do not claim to be GPT, Claude, Gemini, or another cloud model.";
+      "(Hyperlinks program knowledge / tinymodel/rag) in the same language as the user's question. " +
+      "Do not claim to be GPT, Claude, Gemini, or another cloud model.";
   } else if (selected.mode === "model" && selected.modelId) {
     identity =
       `User selected model "${selected.label}" with exact id "${selected.modelId}". ` +
-      "When asked which model, LLM, or version you are (any language), state that exact label and id. " +
+      "When asked which model, LLM, or version you are (any language), state that exact label and id " +
+      "in the same language as the user's question. " +
       "Do not invent a different model name, claim a generic OpenAI assistant, or refuse to disclose the selected id.";
   } else {
     identity =
       "User selected Auto routing. When asked which model you are, say Auto is enabled and the backend " +
-      "chooses per message; invite them to pick a fixed model in AI tools for a stable id.";
+      "chooses per message (reply in the same language as the user); invite them to pick a fixed model in AI tools for a stable id.";
   }
   const prefix = (base ?? "").trim();
   return prefix ? `${prefix} ${identity}` : identity;

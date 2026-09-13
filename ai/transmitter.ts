@@ -302,7 +302,7 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
 
   // Disclose the tools-dialog selection exactly — never let the LLM invent another identity.
   if (isModelIdentityQuestion(request.input)) {
-    const text = buildModelIdentityAnswer(pref);
+    const text = buildModelIdentityAnswer(pref, { input: request.input });
     if (thread) await persistAssistantMessage(thread, text);
     return {
       ok: true,
@@ -495,7 +495,7 @@ export async function transmitStream(
   const pref = request.routePreference;
 
   if (isModelIdentityQuestion(request.input)) {
-    const text = buildModelIdentityAnswer(pref);
+    const text = buildModelIdentityAnswer(pref, { input: request.input });
     await onDelta(text);
     if (thread) await persistAssistantMessage(thread, text);
     return {
