@@ -177,12 +177,21 @@ export function AiAgentChatThread({
               </View>
             ) : (
               <View style={{ width: "100%", maxWidth: "100%" }}>
-                <AiMarkdownText
-                  content={m.content}
-                  style={bodyStyle}
-                  mutedColor={colors.secondary}
-                  linkColor={colors.primary}
-                />
+                {/*
+                  While typewriter-revealing, keep plain Text. Re-parsing incomplete
+                  Markdown every frame (headings/lists/fences appearing and vanishing)
+                  has triggered React #185 (max update depth) / blank screen on long replies.
+                */}
+                {m.streaming ? (
+                  <Text style={bodyStyle}>{m.content}</Text>
+                ) : (
+                  <AiMarkdownText
+                    content={m.content}
+                    style={bodyStyle}
+                    mutedColor={colors.secondary}
+                    linkColor={colors.primary}
+                  />
+                )}
                 {showActions && !m.streaming ? (
                 <View
                   style={{

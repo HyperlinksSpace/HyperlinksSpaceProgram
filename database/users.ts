@@ -109,6 +109,58 @@ async function readDisplayNameRow(telegramUsername: string): Promise<string | nu
   return typeof name === "string" && name.trim().length > 0 ? name.trim() : null;
 }
 
+export type UserAuthLoginProfile = {
+  authProvider: "telegram" | "google" | "github" | "apple" | "email" | string;
+  email: string | null;
+  providerUsername: string | null;
+  telegramUsernameActual: string | null;
+};
+
+/** Login method + public identity for Settings / session hydrate. */
+export async function getAuthLoginProfileForUsername(
+  telegramUsername: string,
+): Promise<UserAuthLoginProfile> {
+  const u = normalizeUsername(telegramUsername);
+  const rows = (await sql`
+    SELECT auth_provider, email, provider_username, telegram_username_actual
+    FROM users
+    WHERE telegram_username = ${u}
+    LIMIT 1;
+  `) as Array<{
+    auth_provider?: unknown;
+    email?: unknown;
+    provider_username?: unknown;
+    telegram_username_actual?: unknown;
+  }>;
+  const row = rows[0];
+  const email =
+    typeof row?.email === "string" && row.email.trim() ? row.email.trim().toLowerCase() : null;
+  const providerUsername =
+    typeof row?.provider_username === "string" && row.provider_username.trim()
+      ? row.provider_username.trim()
+      : null;
+  const telegramUsernameActual =
+    typeof row?.telegram_username_actual === "string" && row.telegram_username_actual.trim()
+      ? row.telegram_username_actual.trim().replace(/^@/, "")
+      : null;
+  let authProvider =
+    typeof row?.auth_provider === "string" && row.auth_provider.trim()
+      ? row.auth_provider.trim().toLowerCase()
+      : "";
+  // Legacy / synthetic accounts: email OTP usernames are `email_<hash>`.
+  if (!authProvider) {
+    authProvider = u.startsWith("email_") ? "email" : "telegram";
+  } else if (authProvider === "telegram" && u.startsWith("email_")) {
+    authProvider = "email";
+  }
+  return {
+    authProvider,
+    email,
+    providerUsername,
+    telegramUsernameActual,
+  };
+}
+
 /** Ensures a display name exists; backfills legacy rows that predate the column. */
 export async function getDisplayNameForUsername(telegramUsername: string): Promise<string> {
   const existing = await readDisplayNameRow(telegramUsername);

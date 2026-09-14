@@ -244,11 +244,23 @@ export function HspScrollColumn({
         scrollY: next.scrollY,
       };
       scrollMetricsRef.current = merged;
-      setScroll((prev) => ({
-        layoutH: merged.layoutH > 0 ? merged.layoutH : prev.layoutH,
-        contentH: merged.contentH > 0 ? merged.contentH : prev.contentH,
-        scrollY: merged.scrollY,
-      }));
+      setScroll((prev) => {
+        const nextLayout = merged.layoutH > 0 ? merged.layoutH : prev.layoutH;
+        const nextContent = merged.contentH > 0 ? merged.contentH : prev.contentH;
+        const nextY = merged.scrollY;
+        if (
+          Math.abs(prev.layoutH - nextLayout) < 0.5 &&
+          Math.abs(prev.contentH - nextContent) < 0.5 &&
+          Math.abs(prev.scrollY - nextY) < 0.5
+        ) {
+          return prev;
+        }
+        return {
+          layoutH: nextLayout,
+          contentH: nextContent,
+          scrollY: nextY,
+        };
+      });
     },
     [],
   );
@@ -327,6 +339,13 @@ export function HspScrollColumn({
     syncNearTopLatch(scrollY);
     syncNearBottomLatch(scrollY, layoutH, contentH);
     setScroll((prev) => {
+      if (
+        Math.abs(prev.layoutH - layoutH) < 0.5 &&
+        Math.abs(prev.contentH - contentH) < 0.5 &&
+        Math.abs(prev.scrollY - scrollY) < 0.5
+      ) {
+        return prev;
+      }
       const next = {
         ...prev,
         layoutH,
@@ -663,6 +682,13 @@ export function HspScrollColumn({
         scrollY: y,
         ...(ch > 0 ? { contentH: ch } : {}),
       };
+      if (
+        Math.abs(prev.scrollY - next.scrollY) < 0.5 &&
+        Math.abs(prev.contentH - next.contentH) < 0.5 &&
+        Math.abs(prev.layoutH - next.layoutH) < 0.5
+      ) {
+        return prev;
+      }
       scrollMetricsRef.current = {
         layoutH: next.layoutH,
         contentH: next.contentH,
@@ -708,6 +734,7 @@ export function HspScrollColumn({
   const onLayout = (e: LayoutChangeEvent) => {
     const lh = e.nativeEvent.layout.height;
     setScroll((prev) => {
+      if (Math.abs(prev.layoutH - lh) < 0.5) return prev;
       const next = { ...prev, layoutH: lh };
       scrollMetricsRef.current = next;
       return next;
@@ -735,6 +762,7 @@ export function HspScrollColumn({
 
   const onContentSizeChange = (_w: number, h: number) => {
     setScroll((prev) => {
+      if (Math.abs(prev.contentH - h) < 0.5) return prev;
       const next = { ...prev, contentH: h };
       scrollMetricsRef.current = next;
       return next;

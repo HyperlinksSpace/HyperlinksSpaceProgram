@@ -9,6 +9,10 @@ export type CachedAuthSessionPayload = {
   display_name?: string;
   has_wallet?: boolean;
   wallet_required?: boolean;
+  auth_provider?: string | null;
+  email?: string | null;
+  provider_username?: string | null;
+  telegram_username_actual?: string | null;
   wallet?: {
     id?: string | number;
     wallet_address?: string;

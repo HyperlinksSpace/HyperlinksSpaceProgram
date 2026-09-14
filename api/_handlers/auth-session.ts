@@ -1,6 +1,9 @@
 import { bootstrapAuthenticatedFeedItems } from "../../database/feed.js";
 import { getConnection, isTelegramMessagesConnected } from "../../database/telegramMessages.js";
-import { getDisplayNameForUsername } from "../../database/users.js";
+import {
+  getAuthLoginProfileForUsername,
+  getDisplayNameForUsername,
+} from "../../database/users.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { deleteSession, getSessionByHash, touchSession } from "../../database/telegramAuth.js";
 import {
@@ -210,12 +213,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   // Overlap wallet/profile/connected/feed/connection — do not serialize
   // getConnection behind the first batch (cold session felt "lazy").
   const connectedPromise = isTelegramMessagesConnected(row.telegram_username);
-  const [displayName, wallet, _telegramMessagesConnectedInitial, feed_items] = await Promise.all([
-    getDisplayNameForUsername(row.telegram_username),
-    getDefaultWalletByUsername(row.telegram_username),
-    connectedPromise,
-    feedPromise,
-  ]);
+  const [displayName, wallet, loginProfile, _telegramMessagesConnectedInitial, feed_items] =
+    await Promise.all([
+      getDisplayNameForUsername(row.telegram_username),
+      getDefaultWalletByUsername(row.telegram_username),
+      getAuthLoginProfileForUsername(row.telegram_username),
+      connectedPromise,
+      feedPromise,
+    ]);
   // Re-check after parallel work — eager gateway warmup can revoke the link while
   // connectedPromise was already in flight (session then lied connected=true).
   const telegramMessagesConnected = await isTelegramMessagesConnected(row.telegram_username);
@@ -226,6 +231,12 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   const telegramMessagesFields = {
     telegram_messages_connected: telegramMessagesConnected,
     telegram_messages_connected_at: telegramMessagesConn?.connected_at ?? null,
+  };
+  const authIdentityFields = {
+    auth_provider: loginProfile.authProvider,
+    email: loginProfile.email,
+    provider_username: loginProfile.providerUsername,
+    telegram_username_actual: loginProfile.telegramUsernameActual,
   };
   const body = wallet
     ? {
@@ -244,6 +255,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
           is_default: wallet.is_default,
           source: wallet.source,
         },
+        ...authIdentityFields,
         ...telegramMessagesFields,
         ...feedFields,
       }
@@ -254,6 +266,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         display_name: displayName,
         has_wallet: false,
         wallet_required: true,
+        ...authIdentityFields,
         ...telegramMessagesFields,
         ...feedFields,
       };

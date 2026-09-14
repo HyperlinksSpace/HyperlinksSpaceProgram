@@ -40,6 +40,12 @@ import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
 import { trimWalletAddress, walletAddressHeaderSnippet } from "../wallet/walletAddressFormat";
 import {
+  resolveActiveWalletAddress,
+  useActiveWalletPreference,
+} from "../wallet/activeWalletPreference";
+import { useReconcileActiveWalletPreference } from "../wallet/useReconcileActiveWalletPreference";
+import { useTonConnectSession } from "../ton/TonConnectProvider";
+import {
   HeaderIconCopy,
   HeaderIconEdit,
   HeaderIconEn,
@@ -293,6 +299,9 @@ export function HomeAuthenticatedHeaderRow({
   const colors = useColors();
   const { t, tf, toggleUiLanguage, headerLanguageToggleShows } = useAppStrings();
   const { triggerHaptic } = useTelegram();
+  const ton = useTonConnectSession();
+  const activeWalletPreference = useActiveWalletPreference();
+  useReconcileActiveWalletPreference();
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
@@ -325,7 +334,14 @@ export function HomeAuthenticatedHeaderRow({
     widthForLayout > AH.firstBreakpoint && (layoutIsWide ?? true);
   const headerMenuActiveKey =
     atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;
-  const trimmed = trimWalletAddress(walletAddress);
+  const builtinTrimmed = trimWalletAddress(walletAddress);
+  const activeAddress = resolveActiveWalletAddress({
+    builtinAddress: builtinTrimmed,
+    preference: activeWalletPreference,
+    tonConnected: ton.connected,
+    tonAddress: ton.friendlyAddress || ton.address,
+  });
+  const trimmed = trimWalletAddress(activeAddress);
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
   const walletNameLabel = (() => {
     const name = displayName.trim();
@@ -762,7 +778,7 @@ export function HomeAuthenticatedHeaderRow({
     <SwitchWalletMenu
       visible={switchWalletOpen}
       anchor={switchWalletAnchor}
-      builtinAddress={trimmed}
+      builtinAddress={builtinTrimmed}
       onClose={() => setSwitchWalletOpen(false)}
     />
     </>

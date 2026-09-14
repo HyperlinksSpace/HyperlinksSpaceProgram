@@ -12,9 +12,15 @@ import {
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { WEB_UI_MONO_STACK } from "../../fonts";
 import { useTonConnectSession } from "../../ton/TonConnectProvider";
+import {
+  preferTonConnectPending,
+  preferTonConnectWallet,
+} from "../../wallet/activeWalletPreference";
 import { typographyAeroport15, typographyFixedRow30Label, layout, useColors } from "../../theme";
+import { useWalletUsdBalanceByAddress } from "../../wallet/useWalletUsdBalanceByAddress";
 import { HeaderIconCopy, HeaderIconExit } from "../icons/HeaderActionIcons";
 import { SwapSelectChevron } from "../swap/SwapFormIcons";
+import { WalletChoiceRadio } from "../wallet/WalletChoiceRadio";
 
 const CHIP_HEIGHT_PX = layout.bottomBar.undercoverButtonHeightPx;
 const CHIP_PAD_H_PX = layout.bottomBar.undercoverButtonPaddingHorizontalPx;
@@ -63,6 +69,11 @@ export function GetConnectedWalletChip({ chipStyle }: Props) {
     return list;
   }, [activeAddress, ton.rememberedWallets, ton.walletImageUrl, ton.walletName]);
 
+  const walletUsdLabels = useWalletUsdBalanceByAddress(
+    wallets.map((row) => (row.friendlyAddress || row.address).trim()),
+    { enabled: open && wallets.length > 0 },
+  );
+
   useEffect(() => {
     return () => {
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
@@ -103,6 +114,7 @@ export function GetConnectedWalletChip({ chipStyle }: Props) {
     setBusy(true);
     setOpen(false);
     try {
+      preferTonConnectPending();
       if (ton.connected) {
         await ton.disconnect();
       }
@@ -121,6 +133,7 @@ export function GetConnectedWalletChip({ chipStyle }: Props) {
 
   const onSelectWallet = useCallback(
     async (address: string) => {
+      preferTonConnectWallet(address);
       if (sameAddress(address, activeAddress)) {
         setOpen(false);
         return;
@@ -301,9 +314,17 @@ export function GetConnectedWalletChip({ chipStyle }: Props) {
                       {middleEllipsisAddress(display, 6, 6)}
                     </Text>
                   </View>
-                  {active ? (
-                    <Text style={[typographyAeroport15, { color: colors.primary }]}>✓</Text>
+                  {walletUsdLabels[display.trim().toLowerCase()] ? (
+                    <Text
+                      style={[
+                        typographyAeroport15,
+                        { color: colors.secondary, flexShrink: 0 },
+                      ]}
+                    >
+                      {walletUsdLabels[display.trim().toLowerCase()]}
+                    </Text>
                   ) : null}
+                  <WalletChoiceRadio selected={active} color={colors.primary} />
                 </Pressable>
               );
             })}

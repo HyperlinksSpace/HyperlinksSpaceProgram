@@ -27,6 +27,8 @@ export type VoiceMoreMenuItem = {
   key: string;
   label: string;
   disabled?: boolean;
+  /** When true, show a checkmark trailing the label (filter / choice menus). */
+  selected?: boolean;
   onPress?: () => void;
 };
 
@@ -158,13 +160,33 @@ function VoiceMoreMenuPanel({
               item.onPress?.();
             }}
             disabled={item.disabled}
+            accessibilityState={{ selected: Boolean(item.selected), disabled: Boolean(item.disabled) }}
             style={({ pressed }) => ({
               height: MENU_ITEM_HEIGHT_PX,
-              justifyContent: "center",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
               opacity: item.disabled ? 0.45 : pressed ? 0.7 : 1,
             })}
           >
-            <Text style={textStyle}>{item.label}</Text>
+            <Text style={[textStyle, { flexShrink: 1, minWidth: 0 }]} numberOfLines={1}>
+              {item.label}
+            </Text>
+            {item.selected ? (
+              <Text
+                style={[
+                  textStyle,
+                  {
+                    flexShrink: 0,
+                    textAlign: "right",
+                  },
+                ]}
+                accessibilityLabel="Selected"
+              >
+                ✓
+              </Text>
+            ) : null}
           </Pressable>
         </View>
       ))}

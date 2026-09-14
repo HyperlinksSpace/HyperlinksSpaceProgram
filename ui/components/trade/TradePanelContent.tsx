@@ -53,7 +53,8 @@ const TRADE_PERIOD_OPTIONS: { key: TradePeriodKey; label: string }[] = [
   { key: "all", label: "All" },
 ];
 
-const TRADE_CHAIN_OPTIONS: { key: TradeChainKey; label: string }[] = [
+const TRADE_CHAIN_OPTIONS: { key: TradeChainKey | null; label: string }[] = [
+  { key: null, label: "Any chain" },
   { key: "ton", label: "TON" },
   { key: "eth", label: "ETH" },
 ];
@@ -209,23 +210,25 @@ export function TradePanelContent({ isActive = true }: { isActive?: boolean }) {
     return TRADE_PERIOD_OPTIONS.map((option) => ({
       key: option.key,
       label: option.label,
+      selected: option.key === period,
       onPress: () => {
         setPeriod(option.key);
         closeFilterMenu();
       },
     }));
-  }, [closeFilterMenu]);
+  }, [closeFilterMenu, period]);
 
   const chainMenuItems = useMemo((): VoiceMoreMenuItem[] => {
     return TRADE_CHAIN_OPTIONS.map((option) => ({
-      key: option.key,
+      key: option.key ?? "any",
       label: option.label,
+      selected: option.key === chain,
       onPress: () => {
         setChain(option.key);
         closeFilterMenu();
       },
     }));
-  }, [closeFilterMenu]);
+  }, [chain, closeFilterMenu]);
 
   const onSelectSlide = useCallback((index: number) => {
     setAutoSlidePausedByUser(true);

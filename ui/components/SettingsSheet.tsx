@@ -1,14 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { useSyncExternalStore } from "react";
 
+import { buildApiUrl } from "../../api/_base";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  getLastAuthSessionPayload,
+  rememberAuthSessionPayload,
+  subscribeAuthSessionPayload,
+} from "../../auth/lastAuthSessionCache";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographyRect15, useColors, type ThemeName } from "../theme";
 import { getDeployVersion, getVercelDeploymentId } from "../vercelDeployId";
 import { useTelegram } from "./Telegram";
 import { AppModalSheet, appModalSheetStyles } from "./AppModalSheet";
 import { useSettingsSheet } from "../settings/SettingsContext";
+import { resolveSettingsLoginLine } from "../settings/settingsLoginLine";
 import {
   getAiFreeQuotaSnapshot,
   refreshAiFreeQuotaFromServer,
@@ -95,7 +102,57 @@ export function SettingsSheet() {
   useEffect(() => {
     if (!settingsSheetVisible || !isAuthenticated) return;
     void refreshAiFreeQuotaFromServer();
+    // Refresh identity fields (auth_provider / email) for the login line.
+    void (async () => {
+      try {
+        const response = await fetch(buildApiUrl("/api/auth/session?skip_feed=1"), {
+          method: "GET",
+          credentials: "include",
+        });
+        const json = (await response.json().catch(() => ({}))) as {
+          authenticated?: boolean;
+          telegram_username?: string;
+          display_name?: string;
+          has_wallet?: boolean;
+          wallet_required?: boolean;
+          auth_provider?: string | null;
+          email?: string | null;
+          provider_username?: string | null;
+          telegram_username_actual?: string | null;
+          wallet?: NonNullable<ReturnType<typeof getLastAuthSessionPayload>>["wallet"];
+        };
+        if (!response.ok || !json.authenticated) return;
+        rememberAuthSessionPayload({
+          authenticated: true,
+          telegram_username: json.telegram_username,
+          display_name: json.display_name,
+          has_wallet: json.has_wallet,
+          wallet_required: json.wallet_required,
+          auth_provider: json.auth_provider ?? null,
+          email: json.email ?? null,
+          provider_username: json.provider_username ?? null,
+          telegram_username_actual: json.telegram_username_actual ?? null,
+          wallet: json.wallet ?? null,
+        });
+      } catch {
+        /* keep prior cache */
+      }
+    })();
   }, [settingsSheetVisible, isAuthenticated]);
+
+  const authSession = useSyncExternalStore(
+    subscribeAuthSessionPayload,
+    getLastAuthSessionPayload,
+    () => null,
+  );
+  const loginLine = useMemo(
+    () =>
+      resolveSettingsLoginLine({
+        session: authSession,
+        accountUsername: telegramUsername,
+      }),
+    [authSession, telegramUsername],
+  );
 
   const selectTheme = (choice: ThemeChoice) => {
     setManualTheme(choice === "auto" ? null : choice);
@@ -114,7 +171,7 @@ export function SettingsSheet() {
       onClose={closeSettingsSheet}
       title={t("settings.sheetTitle")}
     >
-      {telegramUsername ? (
+      {loginLine ? (
         <Text
           style={[
             typographyRect15,
@@ -122,7 +179,7 @@ export function SettingsSheet() {
             { color: colors.secondary, textAlign: "left" },
           ]}
         >
-          {tf("home.wallet.loggedInAs", { username: telegramUsername })}
+          {tf(loginLine.key, loginLine.vars)}
         </Text>
       ) : null}
 

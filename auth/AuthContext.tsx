@@ -43,6 +43,10 @@ type SessionJson = {
   display_name?: string;
   has_wallet?: boolean;
   wallet_required?: boolean;
+  auth_provider?: string | null;
+  email?: string | null;
+  provider_username?: string | null;
+  telegram_username_actual?: string | null;
   wallet?: {
     id?: string | number;
     wallet_address?: string;
@@ -75,6 +79,10 @@ function cacheSessionPayload(json: SessionJson, authenticated: boolean): void {
     display_name: json.display_name,
     has_wallet: json.has_wallet,
     wallet_required: json.wallet_required,
+    auth_provider: json.auth_provider ?? null,
+    email: json.email ?? null,
+    provider_username: json.provider_username ?? null,
+    telegram_username_actual: json.telegram_username_actual ?? null,
     wallet: json.wallet ?? null,
   });
 }

@@ -31,6 +31,7 @@ import { requestWalletActivate } from "../../ton/requestWalletActivate";
 import { formatTonConnectErrorMessage } from "../../ton/formatTonConnectErrorMessage";
 import { isTonConnectUserRejection } from "../../ton/isTonConnectUserRejection";
 import { useTonConnectSession } from "../../ton/TonConnectProvider";
+import { preferTonConnectPending } from "../../wallet/activeWalletPreference";
 import { useTelegram } from "../Telegram";
 import { trimWalletAddress } from "../../wallet/walletAddressFormat";
 import { formatConnectedWalletDialogSubtitle } from "../../wallet/formatWalletDialogSubtitle";
@@ -297,6 +298,7 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
   }, [trimmedDeposit]);
 
   const onConnectPress = useCallback(() => {
+    preferTonConnectPending();
     void ton.openConnectModal();
   }, [ton]);
 
@@ -339,6 +341,7 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
     if (topUpPending) return;
 
     if (!ton.connected || !ton.address) {
+      preferTonConnectPending();
       await ton.openConnectModal();
       return;
     }

@@ -229,6 +229,8 @@ export function AiSearchColumnEmptyState() {
   const hydratedRef = useRef(false);
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
   useEffect(() => {
     void refreshAiFreeQuotaFromServer();
@@ -260,9 +262,12 @@ export function AiSearchColumnEmptyState() {
     });
   }, []);
 
-  const scrollAiThreadToEnd = useCallback(() => {
+  const scrollAiThreadToEnd = useCallback((opts?: { reactPinState?: boolean }) => {
     pinToBottomRef.current = true;
-    setPinToBottom(true);
+    // Avoid setState on every typewriter tick — pin flag is enough for stickToBottomOnResize.
+    if (opts?.reactPinState !== false) {
+      setPinToBottom(true);
+    }
     const pin = () => {
       scrollRef.current?.scrollToEnd();
       if (Platform.OS === "web") {
@@ -280,7 +285,10 @@ export function AiSearchColumnEmptyState() {
   const lastMessageFingerprint = useMemo(() => {
     const messages = activeTab?.messages ?? [];
     const last = messages[messages.length - 1];
-    return `${messages.length}:${last?.id ?? ""}:${last?.content?.length ?? 0}:${last?.streaming ? 1 : 0}:${activeTab?.sending ? 1 : 0}`;
+    // While streaming, ignore per-character length so layout effects do not re-fire
+    // on every typewriter frame (that nested scroll sync setState → React #185).
+    const contentKey = last?.streaming ? "stream" : String(last?.content?.length ?? 0);
+    return `${messages.length}:${last?.id ?? ""}:${contentKey}:${last?.streaming ? 1 : 0}:${activeTab?.sending ? 1 : 0}`;
   }, [activeTab?.messages, activeTab?.sending]);
 
   // After paint, pin again so a height-capped column still reveals the new undercover + answer.
@@ -307,7 +315,8 @@ export function AiSearchColumnEmptyState() {
           };
         }),
       );
-      scrollAiThreadToEnd();
+      // DOM-only pin while streaming; react pin state when the reveal finishes.
+      scrollAiThreadToEnd({ reactPinState: done });
     },
     [scrollAiThreadToEnd],
   );
@@ -614,8 +623,8 @@ export function AiSearchColumnEmptyState() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      const tabId = activeTabId;
-      const active = tabs.find((tab) => tab.id === tabId);
+      const tabId = activeTabIdRef.current;
+      const active = tabsRef.current.find((tab) => tab.id === tabId);
       const tempUserId = `local-user-${Date.now()}`;
 
       if (active?.kind === "support" || tabId === SUPPORT_TAB_ID) {
@@ -899,7 +908,7 @@ export function AiSearchColumnEmptyState() {
         await revealAssistantMessage(serverChatId, assistantId, assistantFull);
       }
     },
-    [activeTabId, revealAssistantMessage, scrollAiThreadToEnd, setDraftText, t, tabs],
+    [revealAssistantMessage, scrollAiThreadToEnd, setDraftText, t],
   );
 
   useEffect(() => {
@@ -917,6 +926,13 @@ export function AiSearchColumnEmptyState() {
     }
     return () => setAiSearchPlaceholder(null);
   }, [activeTab?.kind, setAiSearchPlaceholder, t]);
+
+  const onUserScrollIntent = useCallback((direction?: "up" | "down") => {
+    // Wheel-up, drag, or thumb move — stop auto-follow so history reading stays put.
+    if (direction === "down") return;
+    pinToBottomRef.current = false;
+    setPinToBottom(false);
+  }, []);
 
   const renameTarget = tabs.find((tab) => tab.id === renameTabId);
 
@@ -951,12 +967,7 @@ export function AiSearchColumnEmptyState() {
         scrollIndicatorExtendTopPx={headerHeightPx}
         preserveViewportOnResize={!showEmptyBody}
         stickToBottomOnResize={pinToBottom}
-        onUserScrollIntent={(direction) => {
-          // Wheel-up, drag, or thumb move — stop auto-follow so history reading stays put.
-          if (direction === "down") return;
-          pinToBottomRef.current = false;
-          setPinToBottom(false);
-        }}
+        onUserScrollIntent={onUserScrollIntent}
       >
         {showEmptyBody ? (
           <AiAgentTabEmptyBody

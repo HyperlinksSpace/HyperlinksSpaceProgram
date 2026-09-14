@@ -35,9 +35,15 @@ import { HeaderIconCopy } from "../components/icons/HeaderActionIcons";
 import { SmartGradientDivider } from "../components/smart/SmartGradientDivider";
 import { MusicBackChevronIcon } from "../components/music/MusicControlIcons";
 import { SwapSelectChevron } from "../components/swap/SwapFormIcons";
+import { WalletChoiceRadio } from "../components/wallet/WalletChoiceRadio";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
+import {
+  preferTonConnectPending,
+  preferTonConnectWallet,
+} from "../wallet/activeWalletPreference";
 import { buildGetTopUpTransaction } from "../ton/buildGetTopUpTransaction";
 import { SWAP_USDT_TOKEN } from "../swap/swapPairTypes";
+import { useWalletUsdBalanceByAddress } from "../wallet/useWalletUsdBalanceByAddress";
 import {
   creditBuiltinDllrUsd,
   creditProCashbackDllrUsd,
@@ -459,6 +465,14 @@ export function ProPaymentMethodsDialog({
     return list;
   }, [ton.address, ton.friendlyAddress, ton.rememberedWallets, ton.walletImageUrl, ton.walletName]);
 
+  const walletBalanceAddresses = useMemo(
+    () => wallets.map((w) => (w.friendlyAddress || w.address).trim()).filter(Boolean),
+    [wallets],
+  );
+  const walletUsdLabels = useWalletUsdBalanceByAddress(walletBalanceAddresses, {
+    enabled: walletMenuOpen && walletBalanceAddresses.length > 0,
+  });
+
   const activeWalletKey = (ton.friendlyAddress || ton.address || "").trim().toLowerCase();
   const effectiveWalletKey =
     selectedWalletKey &&
@@ -472,6 +486,7 @@ export function ProPaymentMethodsDialog({
   const openWalletPicker = useCallback(async () => {
     setConnectBusy(true);
     try {
+      preferTonConnectPending();
       if (ton.connected) await ton.disconnect();
       await new Promise<void>((resolve) => setTimeout(resolve, 200));
       await ton.openConnectModal();
@@ -484,6 +499,7 @@ export function ProPaymentMethodsDialog({
   const selectRememberedWallet = useCallback(
     async (key: string) => {
       setSelectedWalletKey(key);
+      preferTonConnectWallet(key);
       if (sameAddress(key, ton.friendlyAddress || ton.address)) return;
       await openWalletPicker();
     },
@@ -1421,9 +1437,19 @@ export function ProPaymentMethodsDialog({
                       {middleEllipsis(wallet.friendlyAddress || wallet.address)}
                     </Text>
                   </View>
-                  {selected ? (
-                    <Text style={{ color: colors.primary, fontSize: 13 }}>✓</Text>
+                  {walletUsdLabels[keyNorm] ? (
+                    <Text
+                      style={{
+                        color: colors.secondary,
+                        fontSize: 13,
+                        fontFamily: labelFont,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {walletUsdLabels[keyNorm]}
+                    </Text>
                   ) : null}
+                  <WalletChoiceRadio selected={selected} color={colors.primary} />
                 </Pressable>
               );
             })}

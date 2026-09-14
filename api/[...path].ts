@@ -31,6 +31,7 @@ import walletEnvelopePingHandler from './_handlers/wallet-envelope-ping.js';
 import walletEnvelopeProbeHandler from './_handlers/wallet-envelope-probe.js';
 import walletEnvelopeRoundtripHandler from './_handlers/wallet-envelope-roundtrip.js';
 import walletActivateHandler from './_handlers/wallet-activate.js';
+import walletSendHandler from './_handlers/wallet-send.js';
 import {
   telegramMessagesChatsHandler,
   telegramMessagesChatsLoadMoreHandler,
@@ -122,6 +123,7 @@ const ROUTES: Record<string, ApiHandler> = {
   'wallet-envelope-probe': walletEnvelopeProbeHandler as ApiHandler,
   'wallet-envelope-roundtrip': walletEnvelopeRoundtripHandler as ApiHandler,
   'wallet-activate': walletActivateHandler as ApiHandler,
+  'wallet-send': walletSendHandler as ApiHandler,
   /** Public short paths from vercel.json rewrites (request URL may still show these segments). */
   kmsping: walletEnvelopePingHandler as ApiHandler,
   kmsprobe: walletEnvelopeProbeHandler as ApiHandler,

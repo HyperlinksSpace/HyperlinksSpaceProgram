@@ -1808,7 +1808,7 @@ function HomeAuthenticatedScreenMain() {
             minHeight: 0,
           }}
         >
-          <SendPanelContent />
+          <SendPanelContent walletAddress={effectiveWalletAddress ?? ""} />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
       <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "get"}>

@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
-import { useSendFormState } from "../../send/sendFormStore";
+import { isDllrToken, swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
+import {
+  runSendFormAction,
+  useSendFormState,
+} from "../../send/sendFormStore";
 import {
   bottomBarLabelFitsSlot,
   bottomBarSummarySlotWidthPx,
@@ -13,6 +17,7 @@ import {
 } from "../../theme";
 
 const { textToSendIconGapPx: TEXT_TO_BUTTON_GAP_PX } = layout.bottomBar;
+const NOTICE_TO_BUTTON_GAP_PX = 8;
 const ACTION_BUTTON_TEXT_INSET_PX = layout.bottomBar.undercoverButtonPaddingHorizontalPx;
 
 type Density = "compact" | "bar";
@@ -23,33 +28,102 @@ type Props = {
   address?: string;
 };
 
-/** Send CTA: summary left, Send button right (swap deal style). */
+function parseAmount(raw: string): number | null {
+  const cleaned = raw.trim().replace(/,/g, "").replace(/\s/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+/** Send CTA: summary left, optional Frozen notice, Send button right (swap deal style). */
 export function SendActionRow({ density = "compact", address: addressProp }: Props) {
   const colors = useColors();
   const { t, tf } = useAppStrings();
   const form = useSendFormState();
   const address = (addressProp ?? form.address).trim();
+  const symbol = swapTokenDisplaySymbol(form.token);
+  const amountNum = parseAmount(form.amount);
+  const dllrFrozen = isDllrToken(form.token);
+  const balanceNum = parseAmount(form.balanceText);
+  const insufficient =
+    !form.balancesLoading &&
+    amountNum != null &&
+    balanceNum != null &&
+    amountNum > balanceNum;
+  const hasAddress = Boolean(address);
+  const buttonActive =
+    !dllrFrozen &&
+    !form.sending &&
+    !form.balancesLoading &&
+    hasAddress &&
+    amountNum != null &&
+    !insufficient;
 
   const labelStyle = typographyFixedRow30Label;
   const buttonHeight = layout.bottomBar.undercoverButtonHeightPx;
 
-  const shortSummaryLabel = t("send.action.summary");
+  const shortSummaryLabel = tf("send.action.summary", { symbol });
   const fullSummaryLabel = address
-    ? tf("send.action.summaryWithAddress", { address })
-    : shortSummaryLabel;
+    ? amountNum != null
+      ? tf("send.action.summaryWithAmountAddress", {
+          amount: form.amount.trim(),
+          symbol,
+          address,
+        })
+      : tf("send.action.summaryWithAddress", { symbol, address })
+    : amountNum != null
+      ? tf("send.action.summaryWithAmount", {
+          amount: form.amount.trim(),
+          symbol,
+        })
+      : shortSummaryLabel;
+
+  const noticeFull = dllrFrozen ? t("send.action.dllrFrozen") : null;
+  const noticeShort = dllrFrozen ? t("send.action.dllrFrozenShort") : null;
+  const hasNotice = noticeFull != null;
 
   const [rowWidth, setRowWidth] = useState(0);
   const [buttonWidth, setButtonWidth] = useState(0);
+  const [shortDealWidth, setShortDealWidth] = useState(0);
   const [fullLabelWidth, setFullLabelWidth] = useState(0);
+  const [fullNoticeWidth, setFullNoticeWidth] = useState(0);
+  const [shortNoticeWidth, setShortNoticeWidth] = useState(0);
+
+  const noticeFitReady =
+    hasNotice &&
+    rowWidth > 0 &&
+    buttonWidth > 0 &&
+    shortDealWidth > 0 &&
+    fullNoticeWidth > 0;
+  const canShowFullNotice =
+    !hasNotice ||
+    !noticeFitReady ||
+    shortDealWidth + fullNoticeWidth + NOTICE_TO_BUTTON_GAP_PX + buttonWidth <= rowWidth + 1;
+  const noticeLabel = hasNotice
+    ? canShowFullNotice
+      ? noticeFull
+      : noticeShort
+    : null;
+  const noticeWidth =
+    hasNotice && noticeLabel
+      ? canShowFullNotice
+        ? fullNoticeWidth
+        : shortNoticeWidth > 0
+          ? shortNoticeWidth
+          : fullNoticeWidth
+      : 0;
 
   const labelSlotWidth = useMemo(
     () =>
       bottomBarSummarySlotWidthPx({
         rowWidthPx: rowWidth,
         buttonWidthPx: buttonWidth,
+        middleWidthPx: noticeWidth,
+        middleTrailingGapPx: NOTICE_TO_BUTTON_GAP_PX,
         summaryTrailingGapPx: TEXT_TO_BUTTON_GAP_PX,
       }),
-    [buttonWidth, rowWidth],
+    [buttonWidth, noticeWidth, rowWidth],
   );
   const canShowFullSummaryLabel = bottomBarLabelFitsSlot(fullLabelWidth, labelSlotWidth);
   const summaryLabel = canShowFullSummaryLabel ? fullSummaryLabel : shortSummaryLabel;
@@ -62,13 +136,41 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
     setButtonWidth((current) => (current === width ? current : width));
   }, []);
 
+  const onShortDealMeasureLayout = useCallback((width: number) => {
+    setShortDealWidth((current) => (current === width ? current : width));
+  }, []);
+
   const onFullLabelMeasureLayout = useCallback((width: number) => {
     setFullLabelWidth((current) => (current === width ? current : width));
+  }, []);
+
+  const onFullNoticeMeasureLayout = useCallback((width: number) => {
+    setFullNoticeWidth((current) => (current === width ? current : width));
+  }, []);
+
+  const onShortNoticeMeasureLayout = useCallback((width: number) => {
+    setShortNoticeWidth((current) => (current === width ? current : width));
   }, []);
 
   useEffect(() => {
     setFullLabelWidth(0);
   }, [fullSummaryLabel]);
+
+  useEffect(() => {
+    setShortDealWidth(0);
+  }, [shortSummaryLabel]);
+
+  useEffect(() => {
+    setFullNoticeWidth(0);
+    setShortNoticeWidth(0);
+  }, [noticeFull, noticeShort]);
+
+  const buttonLabelColor = buttonActive ? colors.primary : colors.secondary;
+  const buttonInner = (
+    <Text style={[labelStyle, { color: buttonLabelColor, textAlign: "center" }]} numberOfLines={1}>
+      {form.sending ? t("send.action.pending") : t("send.action.button")}
+    </Text>
+  );
 
   const buttonStyle = [
     styles.actionButton,
@@ -87,6 +189,30 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
       >
         {fullSummaryLabel}
       </Text>
+      <Text
+        style={[labelStyle, styles.fullLabelMeasure, { color: colors.primary, top: 24 }]}
+        onLayout={(event) => onShortDealMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
+      >
+        {shortSummaryLabel}
+      </Text>
+      {noticeFull ? (
+        <>
+          <Text
+            style={[labelStyle, styles.fullLabelMeasure, { color: colors.secondary, top: 48 }]}
+            onLayout={(event) => onFullNoticeMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
+          >
+            {noticeFull}
+          </Text>
+          {noticeShort && noticeShort !== noticeFull ? (
+            <Text
+              style={[labelStyle, styles.fullLabelMeasure, { color: colors.secondary, top: 72 }]}
+              onLayout={(event) => onShortNoticeMeasureLayout(Math.ceil(event.nativeEvent.layout.width))}
+            >
+              {noticeShort}
+            </Text>
+          ) : null}
+        </>
+      ) : null}
       <View
         style={[styles.row, { height: buttonHeight }]}
         onLayout={(event) => onRowLayout(Math.round(event.nativeEvent.layout.width))}
@@ -100,15 +226,40 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
             {summaryLabel}
           </Text>
         </View>
-        <Pressable
-          accessibilityRole="button"
-          style={buttonStyle}
-          onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
-        >
-          <Text style={[labelStyle, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
-            {t("send.action.button")}
-          </Text>
-        </Pressable>
+        {hasNotice && noticeLabel ? (
+          <View style={styles.noticeLabelSlot}>
+            <Text
+              style={[
+                labelStyle,
+                styles.noticeLabel,
+                { color: colors.secondary, marginRight: NOTICE_TO_BUTTON_GAP_PX },
+              ]}
+              numberOfLines={1}
+              accessibilityLabel={noticeFull ?? undefined}
+            >
+              {noticeLabel}
+            </Text>
+          </View>
+        ) : null}
+        {buttonActive ? (
+          <Pressable
+            accessibilityRole="button"
+            style={[buttonStyle, { marginLeft: hasNotice ? 0 : TEXT_TO_BUTTON_GAP_PX }]}
+            onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
+            onPress={() => runSendFormAction()}
+          >
+            {buttonInner}
+          </Pressable>
+        ) : (
+          <View
+            accessibilityRole="button"
+            accessibilityState={{ disabled: true }}
+            style={[buttonStyle, { marginLeft: hasNotice ? 0 : TEXT_TO_BUTTON_GAP_PX }]}
+            onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
+          >
+            {buttonInner}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -123,7 +274,6 @@ const styles = StyleSheet.create({
     width: "100%",
     flexDirection: "row",
     alignItems: "center",
-    gap: TEXT_TO_BUTTON_GAP_PX,
   },
   summaryLabelSlot: {
     flex: 1,
@@ -132,6 +282,12 @@ const styles = StyleSheet.create({
   },
   summaryLabel: {
     minWidth: 0,
+  },
+  noticeLabelSlot: {
+    flexShrink: 0,
+  },
+  noticeLabel: {
+    flexShrink: 0,
   },
   fullLabelMeasure: {
     position: "absolute",

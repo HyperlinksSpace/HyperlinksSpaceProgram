@@ -14,7 +14,18 @@ import { useAppStrings } from "../../../locales/AppStringsContext";
 import { WEB_UI_MONO_STACK } from "../../fonts";
 import { useTonConnectSession } from "../../ton/TonConnectProvider";
 import { typographyAeroport15, useColors } from "../../theme";
+import {
+  isActiveWalletSelection,
+  preferBuiltinWallet,
+  preferTonConnectPending,
+  preferTonConnectWallet,
+  sameWalletAddress,
+  useActiveWalletPreference,
+} from "../../wallet/activeWalletPreference";
+import { useWalletUsdBalanceByAddress } from "../../wallet/useWalletUsdBalanceByAddress";
+import { HyperlinksSpaceLogo } from "../HyperlinksSpaceLogo";
 import { ConnectedWalletNameplate } from "./ConnectedWalletNameplate";
+import { WalletChoiceRadio } from "./WalletChoiceRadio";
 
 const WALLET_ICON_PX = 18;
 const PLUS_ICON_PX = 14;
@@ -23,10 +34,6 @@ function middleEllipsisAddress(address: string, head = 6, tail = 6): string {
   const trimmed = address.trim();
   if (trimmed.length <= head + tail + 3) return trimmed;
   return `${trimmed.slice(0, head)}...${trimmed.slice(-tail)}`;
-}
-
-function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
-  return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
 }
 
 function PlusGlyph({ color, size = PLUS_ICON_PX }: { color: string; size?: number }) {
@@ -67,6 +74,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
   const colors = useColors();
   const { t } = useAppStrings();
   const ton = useTonConnectSession();
+  const preference = useActiveWalletPreference();
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -94,7 +102,8 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
       activeTon &&
       !list.some(
         (row) =>
-          sameAddress(row.address, activeTon) || sameAddress(row.friendlyAddress, activeTon),
+          sameWalletAddress(row.address, activeTon) ||
+          sameWalletAddress(row.friendlyAddress, activeTon),
       )
     ) {
       list.unshift({
@@ -108,16 +117,18 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     for (const row of list) {
       const display = (row.friendlyAddress || row.address).trim();
       if (!display) continue;
-      if (sameAddress(display, builtin) || sameAddress(row.address, builtin)) continue;
+      if (sameWalletAddress(display, builtin) || sameWalletAddress(row.address, builtin)) {
+        continue;
+      }
       const connected =
         Boolean(ton.connected) &&
-        (sameAddress(display, activeTon) || sameAddress(row.address, activeTon));
+        (sameWalletAddress(display, activeTon) || sameWalletAddress(row.address, activeTon));
       rows.push({
         key: `ton:${row.address}`,
         address: row.address,
         displayAddress: display,
-        name: row.name,
-        imageUrl: row.imageUrl,
+        name: row.name ?? null,
+        imageUrl: row.imageUrl ?? null,
         connected,
         builtin: false,
       });
@@ -133,10 +144,16 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     ton.walletName,
   ]);
 
+  const walletUsdLabels = useWalletUsdBalanceByAddress(
+    wallets.map((row) => row.displayAddress),
+    { enabled: visible, builtinAddress: builtin || null },
+  );
+
   const openWalletPicker = useCallback(async () => {
     setBusy(true);
     onClose();
     try {
+      preferTonConnectPending();
       if (ton.connected) {
         await ton.disconnect();
       }
@@ -152,16 +169,44 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
   const onSelectWallet = useCallback(
     async (row: WalletRow) => {
       if (row.builtin) {
+        preferBuiltinWallet();
+        onClose();
+        if (ton.connected) {
+          setBusy(true);
+          try {
+            await ton.disconnect();
+          } finally {
+            setBusy(false);
+          }
+        }
+        return;
+      }
+
+      preferTonConnectWallet(row.displayAddress || row.address);
+      const alreadyConnected =
+        Boolean(ton.connected) &&
+        (sameWalletAddress(row.displayAddress, activeTon) ||
+          sameWalletAddress(row.address, activeTon));
+      if (alreadyConnected) {
         onClose();
         return;
       }
-      if (row.connected) {
-        onClose();
-        return;
+      // Reconnect to the chosen wallet (TonConnect cannot silently switch accounts).
+      setBusy(true);
+      onClose();
+      try {
+        if (ton.connected) {
+          await ton.disconnect();
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 200);
+        });
+        await ton.openConnectModal();
+      } finally {
+        setBusy(false);
       }
-      await openWalletPicker();
     },
-    [onClose, openWalletPicker],
+    [activeTon, onClose, ton],
   );
 
   if (!visible) return null;
@@ -189,74 +234,109 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
           }}
           onPress={(e) => e.stopPropagation?.()}
         >
-          {wallets.map((row) => (
-            <Pressable
-              key={row.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: row.connected || row.builtin }}
-              disabled={busy}
-              onPress={() => void onSelectWallet(row)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-                paddingVertical: 10,
-                paddingHorizontal: 14,
-                backgroundColor: row.connected ? colors.undercover : "transparent",
-              }}
-            >
-              {row.imageUrl ? (
-                <Image
-                  source={{ uri: row.imageUrl }}
-                  style={{ width: WALLET_ICON_PX, height: WALLET_ICON_PX, borderRadius: 4 }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: WALLET_ICON_PX,
-                    height: WALLET_ICON_PX,
-                    borderRadius: 4,
-                    backgroundColor: row.builtin ? colors.undercover : "#0098EA",
-                  }}
-                />
-              )}
-              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    minWidth: 0,
-                  }}
-                >
-                  {row.name ? (
-                    <Text
-                      style={[
-                        typographyAeroport15,
-                        { color: colors.primary, fontWeight: "400", flexShrink: 1, minWidth: 0 },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {row.name}
-                    </Text>
-                  ) : null}
-                  {row.connected ? <ConnectedWalletNameplate /> : null}
+          {wallets.map((row) => {
+            const selected = isActiveWalletSelection({
+              preference,
+              rowBuiltin: row.builtin,
+              rowAddress: row.displayAddress || row.address,
+            });
+            return (
+              <Pressable
+                key={row.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                disabled={busy}
+                onPress={() => void onSelectWallet(row)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  backgroundColor: selected ? colors.undercover : "transparent",
+                }}
+              >
+                {row.builtin ? (
+                  <View
+                    style={{
+                      width: WALLET_ICON_PX,
+                      height: WALLET_ICON_PX,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <HyperlinksSpaceLogo width={WALLET_ICON_PX} height={WALLET_ICON_PX} />
+                  </View>
+                ) : row.imageUrl ? (
+                  <Image
+                    source={{ uri: row.imageUrl }}
+                    style={{ width: WALLET_ICON_PX, height: WALLET_ICON_PX, borderRadius: 4 }}
+                  />
+                ) : (
+                  <View
+                    style={{
+                      width: WALLET_ICON_PX,
+                      height: WALLET_ICON_PX,
+                      borderRadius: 4,
+                      backgroundColor: "#0098EA",
+                    }}
+                  />
+                )}
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
+                    }}
+                  >
+                    {row.name ? (
+                      <Text
+                        style={[
+                          typographyAeroport15,
+                          {
+                            color: colors.primary,
+                            fontWeight: "400",
+                            flexShrink: 1,
+                            minWidth: 0,
+                          },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {row.name}
+                      </Text>
+                    ) : null}
+                    {row.connected ? <ConnectedWalletNameplate /> : null}
+                  </View>
+                  <Text
+                    style={[
+                      typographyAeroport15,
+                      {
+                        color: colors.secondary,
+                        fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {middleEllipsisAddress(row.displayAddress)}
+                  </Text>
                 </View>
-                <Text
-                  style={[
-                    typographyAeroport15,
-                    {
-                      color: colors.secondary,
-                      fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
-                    },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {middleEllipsisAddress(row.displayAddress)}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+                {walletUsdLabels[row.displayAddress.trim().toLowerCase()] ? (
+                  <Text
+                    style={[
+                      typographyAeroport15,
+                      { color: colors.secondary, flexShrink: 0 },
+                    ]}
+                  >
+                    {walletUsdLabels[row.displayAddress.trim().toLowerCase()]}
+                  </Text>
+                ) : null}
+                <WalletChoiceRadio selected={selected} color={colors.primary} />
+              </Pressable>
+            );
+          })}
 
           <View style={{ height: 1, backgroundColor: colors.highlight, marginHorizontal: 10 }} />
 

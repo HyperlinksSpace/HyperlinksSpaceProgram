@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Linking,
   Platform,
   Pressable,
   Switch,
   Text,
   useWindowDimensions,
   View,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { useSyncExternalStore } from "react";
 
@@ -40,6 +43,57 @@ type Props = {
   visible: boolean;
   onClose: () => void;
 };
+
+const HINT_URL_RE = /(https?:\/\/[^\s]+)/gi;
+
+function openHintUrl(url: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  void Linking.openURL(url);
+}
+
+/** Render hint copy with http(s) URLs underlined and opening in a new window/tab. */
+function HintWithLinks({
+  text,
+  style,
+  linkColor,
+}: {
+  text: string;
+  style: StyleProp<TextStyle>;
+  linkColor: string;
+}) {
+  const parts = text.split(HINT_URL_RE);
+  if (parts.length <= 1) {
+    return <Text style={style}>{text}</Text>;
+  }
+  return (
+    <Text style={style}>
+      {parts.map((part, idx) => {
+        if (/^https?:\/\//i.test(part)) {
+          return (
+            <Text
+              key={`link-${idx}`}
+              accessibilityRole="link"
+              onPress={(event) => {
+                event?.stopPropagation?.();
+                openHintUrl(part);
+              }}
+              style={{
+                color: linkColor,
+                textDecorationLine: "underline",
+              }}
+            >
+              {part}
+            </Text>
+          );
+        }
+        return part ? <Text key={`t-${idx}`}>{part}</Text> : null;
+      })}
+    </Text>
+  );
+}
 
 function ModeRow({
   label,
@@ -76,7 +130,9 @@ function ModeRow({
           {label}
         </Text>
         {hint ? (
-          <Text
+          <HintWithLinks
+            text={hint}
+            linkColor={colors.primary}
             style={{
               color: colors.secondary,
               fontSize: 12,
@@ -84,9 +140,7 @@ function ModeRow({
               marginTop: 2,
               fontFamily: font,
             }}
-          >
-            {hint}
-          </Text>
+          />
         ) : null}
       </View>
       <View
