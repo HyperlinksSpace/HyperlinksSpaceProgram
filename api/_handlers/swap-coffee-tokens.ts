@@ -61,15 +61,13 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       target.searchParams.append(key, value);
     }
     if (!target.searchParams.has("kind")) target.searchParams.set("kind", "DEXES");
-    // Prefer PRICE_CHANGE_24H: TVL/MCAP/FDMC sorts currently 400 upstream (Inf parse).
-    // UI re-sorts catalog rows by market cap.
-    if (!target.searchParams.has("sort")) {
-      target.searchParams.set("sort", "PRICE_CHANGE_24H");
-    }
+    // TVL pages stay liquid enough for client market-cap ranking. Upstream sometimes
+    // 400s TVL when UNKNOWN is included — default to WHITELISTED+COMMUNITY here.
+    if (!target.searchParams.has("sort")) target.searchParams.set("sort", "TVL");
     if (!target.searchParams.has("page")) target.searchParams.set("page", "1");
     if (!target.searchParams.has("size")) target.searchParams.set("size", "100");
     if (!incoming.searchParams.has("verification")) {
-      for (const verification of ["WHITELISTED", "COMMUNITY", "UNKNOWN"]) {
+      for (const verification of ["WHITELISTED", "COMMUNITY"]) {
         target.searchParams.append("verification", verification);
       }
     }

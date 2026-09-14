@@ -1,5 +1,5 @@
 import { logPageDisplay } from "../pageDisplayLog";
-import { fetchSwapJettonsPage } from "./fetchSwapJettons";
+import { fetchSwapJettonsPage, resetSwapJettonsCatalogQuery } from "./fetchSwapJettons";
 import type { SwapJetton } from "./swapJettonsTypes";
 
 const MAX_PAGES = 100;
@@ -191,6 +191,7 @@ async function runCatalogLoad(fromScroll = false): Promise<void> {
 
 function resetCatalog(): void {
   loadGeneration += 1;
+  resetSwapJettonsCatalogQuery();
   jettons = [];
   seenAddresses = new Set();
   nextPage = 1;
