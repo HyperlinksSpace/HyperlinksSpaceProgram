@@ -222,7 +222,7 @@ function RichTextWebRow({
   const linkStyle = {
     ...resolvedTextStyle,
     color: linkColor,
-    textDecorationLine: "underline" as const,
+    textDecorationLine: "none" as const,
     ...(Platform.OS === "web"
       ? ({
           cursor: "pointer",
@@ -283,13 +283,13 @@ function RichTextWebRow({
       ? ({
           display: "inline",
           color: linkColor,
-          textDecoration: "underline",
+          textDecoration: "none",
           cursor: "pointer",
         } as const)
       : ({
           ...baseTextCss,
           color: linkColor,
-          textDecoration: "underline",
+          textDecoration: "none",
           cursor: "pointer",
           display: "inline",
           ...inlineWrapStyle,
@@ -626,7 +626,7 @@ export function MessageChatRichText({
 
   const linkStyle = {
     color: linkColor,
-    textDecorationLine: "underline" as const,
+    textDecorationLine: "none" as const,
     ...(Platform.OS === "web"
       ? ({
           cursor: "pointer",

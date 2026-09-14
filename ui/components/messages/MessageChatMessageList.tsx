@@ -131,6 +131,7 @@ import {
   type HistoryMessageContext,
 } from "./messageChatHistoryTypes";
 import { MessageChatMessageRow } from "./MessageChatMessageRow";
+import { MessageChatNavigateProvider } from "./MessageChatNavigateContext";
 import { MessageChatOlderHistoryLoadLine } from "./MessageChatOlderHistoryLoadLine";
 import { MessageUnreadDivider } from "./MessageUnreadDivider";
 import { MessageHistoryLoadSentinel } from "./MessageHistoryLoadSentinel";
@@ -1169,6 +1170,9 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     });
   }, []);
 
+  const [flashMessageId, setFlashMessageId] = useState<number | null>(null);
+  const flashClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /** Pin scroll synchronously when older rows prepend above the viewport. */
   const pinScrollYForPrepend = useCallback(
     (targetY: number, reason: string) => {
@@ -1673,6 +1677,32 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     }
     return messageLayoutsRef.current;
   }, []);
+
+  const scrollToMessage = useCallback(
+    (messageId: number) => {
+      const id = Math.trunc(Number(messageId));
+      if (!Number.isFinite(id) || id <= 0) return;
+      const layoutMap = resolveScrollLayoutMap();
+      const entry = layoutMap.get(id);
+      if (!entry || entry.height <= 0) return;
+      const targetY = Math.max(0, entry.y - 20);
+      applyProgrammaticScrollY(targetY);
+      setFlashMessageId(id);
+      if (flashClearTimerRef.current) clearTimeout(flashClearTimerRef.current);
+      flashClearTimerRef.current = setTimeout(() => {
+        setFlashMessageId((current) => (current === id ? null : current));
+        flashClearTimerRef.current = null;
+      }, 1200);
+    },
+    [applyProgrammaticScrollY, resolveScrollLayoutMap],
+  );
+
+  const navigateApi = useMemo(
+    () => ({
+      scrollToMessage,
+    }),
+    [scrollToMessage],
+  );
 
   const verifyPrependScrollKept = useCallback(
     (domAnchor: HspScrollAnchor | null, expectedScrollY?: number): boolean => {
@@ -7001,6 +7031,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     : 0;
 
   return (
+    <MessageChatNavigateProvider value={navigateApi}>
     <View
       style={{
         flex: 1,
@@ -7103,6 +7134,20 @@ export function MessageChatMessageList({ chat, colors }: Props) {
             key={item.telegram_message_id}
             nativeID={`message-row-${item.telegram_message_id}`}
             onLayout={(event) => handleMessageLayout(item.telegram_message_id, event)}
+            style={
+              flashMessageId === item.telegram_message_id
+                ? {
+                    backgroundColor: "rgba(51, 144, 236, 0.18)",
+                    ...(Platform.OS === "web"
+                      ? ({
+                          transition: "background-color 0.35s ease",
+                        } as object)
+                      : null),
+                  }
+                : Platform.OS === "web"
+                  ? ({ transition: "background-color 0.35s ease" } as object)
+                  : undefined
+            }
           >
             {index > 0 ? <View style={{ height: MESSAGE_BUBBLE_ROW_GAP_PX }} /> : null}
             {showDateDivider ? (
@@ -7196,5 +7241,6 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         </View>
       ) : null}
     </View>
+    </MessageChatNavigateProvider>
   );
 }

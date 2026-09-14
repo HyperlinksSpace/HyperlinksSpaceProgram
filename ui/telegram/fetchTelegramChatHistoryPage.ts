@@ -6,6 +6,7 @@ import type {
   MessageChatContentKind,
   MessageChatHistoryItem,
   MessageChatKind,
+  MessageChatWebPagePreview,
 } from "../components/messages/messageChatHistoryTypes";
 import {
   coalesceOutgoingStatus,
@@ -53,12 +54,51 @@ function parseHistoryAudio(raw: unknown): MessageChatAudioPayload | null {
       : typeof row.coverDataUrl === "string" && row.coverDataUrl.trim()
         ? row.coverDataUrl.trim()
         : null;
+  if (!artist && !title && !(Number.isFinite(duration) && duration > 0)) return null;
   return {
     artist,
     title,
     duration_sec: Number.isFinite(duration) && duration > 0 ? Math.trunc(duration) : 0,
     size_bytes: Number.isFinite(size) && size > 0 ? Math.trunc(size) : 0,
     cover_data_url: cover,
+  };
+}
+
+function parseHistoryWebPage(raw: unknown): MessageChatWebPagePreview | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const row = raw as Record<string, unknown>;
+  const url =
+    (typeof row.url === "string" && row.url.trim()) ||
+    (typeof row.display_url === "string" && row.display_url.trim()) ||
+    (typeof row.displayUrl === "string" && row.displayUrl.trim()) ||
+    "";
+  if (!url) return null;
+  const photo =
+    (typeof row.photo_minithumbnail_data_url === "string" &&
+      row.photo_minithumbnail_data_url.trim()) ||
+    (typeof row.photoMinithumbnailDataUrl === "string" &&
+      row.photoMinithumbnailDataUrl.trim()) ||
+    null;
+  return {
+    url,
+    display_url:
+      typeof row.display_url === "string" && row.display_url.trim()
+        ? row.display_url.trim()
+        : typeof row.displayUrl === "string" && row.displayUrl.trim()
+          ? row.displayUrl.trim()
+          : null,
+    site_name:
+      typeof row.site_name === "string" && row.site_name.trim()
+        ? row.site_name.trim()
+        : typeof row.siteName === "string" && row.siteName.trim()
+          ? row.siteName.trim()
+          : null,
+    title: typeof row.title === "string" && row.title.trim() ? row.title.trim() : null,
+    description:
+      typeof row.description === "string" && row.description.trim()
+        ? row.description.trim()
+        : null,
+    photo_minithumbnail_data_url: photo,
   };
 }
 
@@ -137,6 +177,14 @@ export function normalizeHistoryMessage(
           replyRow.sender_accent_color_dark.trim()
             ? replyRow.sender_accent_color_dark.trim()
             : null,
+        thumbnail_data_url:
+          typeof replyRow.thumbnail_data_url === "string" &&
+          replyRow.thumbnail_data_url.trim()
+            ? replyRow.thumbnail_data_url.trim()
+            : typeof replyRow.thumbnailDataUrl === "string" &&
+                replyRow.thumbnailDataUrl.trim()
+              ? replyRow.thumbnailDataUrl.trim()
+              : null,
       };
     }
   }
@@ -178,6 +226,7 @@ export function normalizeHistoryMessage(
       : null,
     reply_to: replyTo,
     reply_to_message_id: replyToMessageId,
+    web_page: parseHistoryWebPage(row.web_page ?? row.webPage),
     call_success: isCall ? Boolean(row.call_success ?? row.callSuccess) : undefined,
     audio: parseHistoryAudio(row.audio),
     service_notice: (() => {

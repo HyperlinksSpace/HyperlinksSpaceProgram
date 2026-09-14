@@ -91,6 +91,18 @@ export type MessageChatReplyPreview = {
   sender_emoji_status_custom_emoji_id?: string | null;
   sender_accent_color_light?: string | null;
   sender_accent_color_dark?: string | null;
+  /** Small square thumb shown in Telegram reply chrome (e.g. webpage minithumbnail). */
+  thumbnail_data_url?: string | null;
+};
+
+/** Telegram-style rich link preview under bubble text. */
+export type MessageChatWebPagePreview = {
+  url: string;
+  display_url?: string | null;
+  site_name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  photo_minithumbnail_data_url?: string | null;
 };
 
 export function messageChatAudioDisplayLabel(
@@ -152,6 +164,8 @@ export type MessageChatHistoryItem = {
   reply_to?: MessageChatReplyPreview | null;
   /** Id of the message being replied to (even when preview text is unresolved). */
   reply_to_message_id?: number | null;
+  /** Rich link preview from TDLib `web_page` (Telegram-style card under text). */
+  web_page?: MessageChatWebPagePreview | null;
   /** Ended call was answered / had duration (content_kind call). */
   call_success?: boolean | null;
   audio?: MessageChatAudioPayload | null;
@@ -628,6 +642,7 @@ export function mergeHistoryMessageRow(
           : (incomingEnriched.reply_to ?? prevEnriched.reply_to ?? null),
     reply_to_message_id:
       incomingEnriched.reply_to_message_id ?? prevEnriched.reply_to_message_id ?? null,
+    web_page: incomingEnriched.web_page ?? prevEnriched.web_page ?? null,
     audio: incomingEnriched.audio ?? prevEnriched.audio ?? null,
     service_notice:
       incomingEnriched.service_notice ?? prevEnriched.service_notice ?? null,

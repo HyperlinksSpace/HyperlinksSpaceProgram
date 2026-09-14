@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Text, View, type StyleProp, type TextStyle } from "react-native";
+import { Image, Platform, Pressable, Text, View, type StyleProp, type TextStyle } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
@@ -51,7 +51,11 @@ import { MessageChatAudioContent } from "./MessageChatAudioContent";
 import { groupSenderDisplayColor } from "./groupSenderColor";
 import { MessageChatLinkifiedText } from "./MessageChatLinkifiedText";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
+import { useMessageChatNavigate } from "./MessageChatNavigateContext";
+import { MessageChatWebPagePreviewCard } from "./MessageChatWebPagePreview";
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
+
+const REPLY_THUMB_PX = 32;
 
 type Props = {
   chatId: number;
@@ -374,6 +378,7 @@ function replyQuoteAccentBackground(accentColor: string, fallback: string): stri
 
 function MessageChatReplyBlock({
   reply,
+  replyMessageId,
   colors,
   maxWidthPx,
   telegramChatId,
@@ -381,6 +386,7 @@ function MessageChatReplyBlock({
   emojiContentActive = true,
 }: {
   reply: MessageChatReplyPreview;
+  replyMessageId: number | null;
   colors: ThemeColors;
   maxWidthPx: number;
   telegramChatId: number;
@@ -388,6 +394,7 @@ function MessageChatReplyBlock({
   emojiContentActive?: boolean;
 }) {
   const { colorScheme } = useTelegram();
+  const navigate = useMessageChatNavigate();
   const barColor = groupSenderDisplayColor(
     reply.sender_user_id,
     null,
@@ -398,18 +405,15 @@ function MessageChatReplyBlock({
     colors.undercover,
   );
   const replyBackground = replyQuoteAccentBackground(barColor, colors.undercover);
+  const thumb = reply.thumbnail_data_url?.trim() || null;
+  const canJump =
+    replyMessageId != null &&
+    Number.isFinite(replyMessageId) &&
+    replyMessageId > 0 &&
+    Boolean(navigate?.scrollToMessage);
 
-  return (
-    <View
-      style={{
-        maxWidth: maxWidthPx,
-        marginBottom: MESSAGE_BUBBLE_REPLY_MARGIN_BOTTOM_PX,
-        borderRadius: 0,
-        overflow: "hidden",
-        backgroundColor: replyBackground,
-        position: "relative",
-      }}
-    >
+  const content = (
+    <>
       <View
         pointerEvents="none"
         style={{
@@ -423,55 +427,96 @@ function MessageChatReplyBlock({
       />
       <View
         style={{
+          flexDirection: "row",
+          alignItems: "center",
           paddingTop: MESSAGE_BUBBLE_REPLY_PADDING_PX,
           paddingRight: MESSAGE_BUBBLE_REPLY_PADDING_PX,
           paddingBottom: MESSAGE_BUBBLE_REPLY_PADDING_PX,
           paddingLeft: MESSAGE_BUBBLE_REPLY_PADDING_PX + MESSAGE_BUBBLE_REPLY_BAR_WIDTH_PX,
+          gap: 6,
           minWidth: 0,
         }}
       >
-        <SpecialTelegramUserName
-          name={reply.sender_name}
-          telegramUserId={reply.sender_user_id}
-          telegramChatId={telegramChatId}
-          emojiStatusCustomEmojiId={reply.sender_emoji_status_custom_emoji_id ?? null}
-          emojiStatusPriority
-          textStyle={{
-            ...typographyRect15,
-            fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
-            lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-            fontWeight: "500",
-            color: barColor,
-            textAlign: "left",
-            ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
-          }}
-        />
-        <MessageChatLinkifiedText
-          text={reply.text}
-          segments={reply.text_segments}
-          numberOfLines={2}
-          chatId={telegramChatId}
-          peerUserId={peerUserId}
-          senderUserId={reply.sender_user_id}
-          spoilerOverlayColor={colors.undercover}
-          emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
-          emojiFetchEnabled={emojiContentActive}
-          enrichStandardEmojis={emojiContentActive}
-          style={[
-            typographyRect15,
-            {
+        {thumb ? (
+          <Image
+            source={{ uri: thumb }}
+            style={{
+              width: REPLY_THUMB_PX,
+              height: REPLY_THUMB_PX,
+              borderRadius: 0,
+              backgroundColor: colors.highlight,
+            }}
+            resizeMode="cover"
+          />
+        ) : null}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <SpecialTelegramUserName
+            name={reply.sender_name}
+            telegramUserId={reply.sender_user_id}
+            telegramChatId={telegramChatId}
+            emojiStatusCustomEmojiId={reply.sender_emoji_status_custom_emoji_id ?? null}
+            emojiStatusPriority
+            textStyle={{
+              ...typographyRect15,
               fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
               lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
-              fontWeight: "400",
-              color: colors.primary,
+              fontWeight: "500",
+              color: barColor,
               textAlign: "left",
-            },
-            Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
-          ]}
-        />
+              ...(Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null),
+            }}
+          />
+          <MessageChatLinkifiedText
+            text={reply.text}
+            segments={reply.text_segments}
+            numberOfLines={1}
+            chatId={telegramChatId}
+            peerUserId={peerUserId}
+            senderUserId={reply.sender_user_id}
+            spoilerOverlayColor={colors.undercover}
+            emojiSizePx={MESSAGE_BUBBLE_INLINE_EMOJI_SIZE_PX}
+            emojiFetchEnabled={emojiContentActive}
+            enrichStandardEmojis={emojiContentActive}
+            style={[
+              typographyRect15,
+              {
+                fontSize: MESSAGE_BUBBLE_FONT_SIZE_PX,
+                lineHeight: MESSAGE_BUBBLE_LINE_HEIGHT_PX,
+                fontWeight: "400",
+                color: colors.primary,
+                textAlign: "left",
+              },
+              Platform.OS === "web" ? ({ fontFamily: WEB_UI_SANS_STACK } as object) : null,
+            ]}
+          />
+        </View>
       </View>
-    </View>
+    </>
   );
+
+  const wrapperStyle = {
+    maxWidth: maxWidthPx,
+    marginBottom: MESSAGE_BUBBLE_REPLY_MARGIN_BOTTOM_PX,
+    borderRadius: 0,
+    overflow: "hidden" as const,
+    backgroundColor: replyBackground,
+    position: "relative" as const,
+  };
+
+  if (canJump) {
+    return (
+      <Pressable
+        onPress={() => navigate!.scrollToMessage(replyMessageId!)}
+        accessibilityRole="button"
+        accessibilityLabel="Go to original message"
+        style={wrapperStyle}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return <View style={wrapperStyle}>{content}</View>;
 }
 
 export function MessageChatBubbleBody({
@@ -542,6 +587,8 @@ export function MessageChatBubbleBody({
     ? { outgoing: item.is_outgoing, successful: Boolean(item.call_success) }
     : null;
   const replyTo = item.reply_to ?? null;
+  const webPage = item.web_page ?? null;
+  const effectiveMetaPlacement = webPage ? "stacked" : metaPlacement;
   const mediaLayoutMaxWidthPx = Math.max(mediaColumnMaxWidthPx ?? maxWidthPx, maxWidthPx);
   const { widthPx: mediaWidthPx, heightPx: mediaHeightPx } = resolveMessageMediaDimensions(
     mediaLayoutMaxWidthPx,
@@ -621,6 +668,13 @@ export function MessageChatBubbleBody({
       {replyTo ? (
         <MessageChatReplyBlock
           reply={replyTo}
+          replyMessageId={
+            item.reply_to_message_id != null &&
+            Number.isFinite(Number(item.reply_to_message_id)) &&
+            Number(item.reply_to_message_id) > 0
+              ? Math.trunc(Number(item.reply_to_message_id))
+              : null
+          }
           colors={colors}
           maxWidthPx={maxWidthPx}
           telegramChatId={chatId}
@@ -736,7 +790,7 @@ export function MessageChatBubbleBody({
         </View>
       ) : null}
 
-      {bodyText || (timeLabel && !showMedia) ? (
+      {bodyText || (timeLabel && !showMedia) || webPage ? (
         <View
           style={
             showMedia && bodyText
@@ -755,7 +809,15 @@ export function MessageChatBubbleBody({
           <MessageChatBubbleTextContent
             bodyText={bodyText}
             bodyTextSegments={item.text_segments}
-            timeLabel={showMedia && bodyText ? timeLabel : showMedia ? "" : timeLabel}
+            timeLabel={
+              webPage
+                ? ""
+                : showMedia && bodyText
+                  ? timeLabel
+                  : showMedia
+                    ? ""
+                    : timeLabel
+            }
             outgoingStatus={outgoingStatus}
             isOutgoing={showOutgoingChecks}
             colors={colors}
@@ -774,7 +836,7 @@ export function MessageChatBubbleBody({
                       ? 4
                       : 0
             }
-            metaPlacement={metaPlacement}
+            metaPlacement={effectiveMetaPlacement}
             metaReserveWidthPx={metaReserveWidthPx}
             callIndicator={callIndicator}
             emojiContentActive={emojiContentActive}
@@ -783,6 +845,33 @@ export function MessageChatBubbleBody({
             senderUserId={item.sender_user_id}
             spoilerOverlayColor={colors.undercover}
           />
+          {webPage ? (
+            <MessageChatWebPagePreviewCard
+              preview={webPage}
+              colors={colors}
+              maxWidthPx={maxWidthPx}
+              accentColor={senderColor}
+            />
+          ) : null}
+          {webPage && timeLabel && !showMedia ? (
+            <View
+              style={{
+                marginTop: 4,
+                alignSelf: "stretch",
+                flexDirection: "row",
+                justifyContent: "flex-end",
+              }}
+            >
+              <MessageChatBubbleTimeRow
+                timeLabel={timeLabel}
+                colors={colors}
+                outgoingStatus={outgoingStatus}
+                isOutgoing={showOutgoingChecks}
+                alignSelf="flex-end"
+                callIndicator={callIndicator}
+              />
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>

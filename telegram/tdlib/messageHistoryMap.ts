@@ -18,6 +18,7 @@ import { segmentsContainTelegramEmoji } from "../../shared/formattedTextSegments
 import { largestPhotoDimensions } from "./photoParse.js";
 import { resolveTdUserProfile, type TdUserProfileCache } from "./tdUserProfile.js";
 import { parseTdAudioMeta } from "./audioMeta.js";
+import { parseTdWebPagePreview, type MappedWebPagePreview } from "./webPageMeta.js";
 
 export type ChatKind = "private" | "group" | "supergroup" | "channel";
 
@@ -64,9 +65,13 @@ export type MappedChatHistoryMessage = {
     sender_emoji_status_custom_emoji_id?: string | null;
     sender_accent_color_light?: string | null;
     sender_accent_color_dark?: string | null;
+    /** Small square thumb (e.g. linked webpage minithumbnail) — Telegram reply chrome. */
+    thumbnail_data_url?: string | null;
   } | null;
   /** TDLib replied message id — set even when preview text could not be resolved. */
   reply_to_message_id?: number | null;
+  /** Telegram-style rich link preview under message text (`messageText.web_page`). */
+  web_page?: MappedWebPagePreview | null;
   /** Ended call was answered / had duration (messageCall only). */
   call_success?: boolean | null;
   audio?: {
@@ -295,6 +300,10 @@ function messageNeedsFullFetch(message: TdMessage): boolean {
     const textRow = (content as { text?: { text?: string; entities?: unknown[] } }).text;
     const plain = typeof textRow?.text === "string" ? textRow.text.trim() : "";
     if (!plain || isGenericMessagePreviewLabel(plain)) return true;
+    // Link previews live on the full message; list stubs may omit `web_page`.
+    if (!(content as { web_page?: unknown }).web_page && /https?:\/\//i.test(plain)) {
+      return true;
+    }
     const entities = Array.isArray(textRow?.entities) ? textRow.entities : [];
     if (entities.length > 0) {
       const segments = messageTextSegments(message);
@@ -360,6 +369,7 @@ type ReplyPreviewPayload = {
   sender_emoji_status_custom_emoji_id?: string | null;
   sender_accent_color_light?: string | null;
   sender_accent_color_dark?: string | null;
+  thumbnail_data_url?: string | null;
 };
 
 function isMessageReplyToMessage(reply: TdMessage["reply_to"]): boolean {
@@ -452,6 +462,7 @@ async function resolveReplyPreview(
     const sender = await resolveSenderName(client, replied, { id: chatId } as TdChat, userCache, chatCache);
     const text = bodyText(replied).trim() || previewFromMessage(replied) || "";
     if (text) {
+      const repliedWebPage = parseTdWebPagePreview(replied.content);
       return {
         sender_name: sender.name,
         sender_user_id: senderUserId(replied),
@@ -460,6 +471,7 @@ async function resolveReplyPreview(
         sender_emoji_status_custom_emoji_id: sender.profile?.emoji_status_custom_emoji_id ?? null,
         sender_accent_color_light: sender.profile?.accent_color_light ?? null,
         sender_accent_color_dark: sender.profile?.accent_color_dark ?? null,
+        thumbnail_data_url: repliedWebPage?.photo_minithumbnail_data_url ?? null,
       };
     }
   } catch {
@@ -880,6 +892,7 @@ export async function mapHistoryMessage(
   } else if (resolvedSenderUserId != null && senderProfile == null) {
     senderProfile = await resolveTdUserProfile(client, resolvedSenderUserId, userCache);
   }
+  const webPage = isService ? null : parseTdWebPagePreview(resolved.content);
 
   return {
     telegram_message_id: telegramMessageId,
@@ -905,6 +918,7 @@ export async function mapHistoryMessage(
     media_height: dimensions.height,
     reply_to: isService ? null : replyTo,
     reply_to_message_id: isService ? null : replyToMessageId,
+    ...(webPage ? { web_page: webPage } : {}),
     ...(isCall ? { call_success: parseCallSuccess(resolved) } : {}),
     ...(audioMeta
       ? {
