@@ -33,6 +33,34 @@ import { AI_TOOLS_MODEL_OPTIONS } from "../../ai/llmRouter.js";
 import { toPublicAiErrorCode } from "../../ai/publicAiErrors.js";
 import { transmit } from "../../ai/transmitter.js";
 
+const ALLOWED_EXPLICIT_MODEL_IDS = new Set(AI_TOOLS_MODEL_OPTIONS.map((m) => m.id));
+
+function parseRoutePreferencePayload(
+  payload: Record<string, unknown>,
+  fallback: { modelMode: AiModelMode; modelId: string | null },
+): { modelMode: AiModelMode; modelId: string | null } {
+  const modeRaw =
+    typeof payload.modelMode === "string" ? payload.modelMode.trim().toLowerCase() : "";
+  if (modeRaw === "auto" || modeRaw === "tinymodel") {
+    return { modelMode: modeRaw, modelId: null };
+  }
+  if (modeRaw === "model") {
+    const id =
+      typeof payload.modelId === "string" && payload.modelId.trim()
+        ? payload.modelId.trim().slice(0, 120)
+        : null;
+    if (id && ALLOWED_EXPLICIT_MODEL_IDS.has(id)) {
+      return { modelMode: "model", modelId: id };
+    }
+    // Invalid / unknown id — keep DB preference rather than silently falling to Auto.
+    if (fallback.modelMode === "model" && fallback.modelId) {
+      return fallback;
+    }
+    return { modelMode: "auto", modelId: null };
+  }
+  return fallback;
+}
+
 type NodeRes = {
   setHeader(name: string, value: string): void;
   status(code: number): void;
@@ -381,10 +409,25 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         .slice(0, -1)
         .map((m) => `${m.role}: ${m.content}`)
         .join("\n");
-      const routePreference = {
+      const routePreference = parseRoutePreferencePayload(payload, {
         modelMode: gate.quota.modelMode,
         modelId: gate.quota.modelId,
-      };
+      });
+      // Keep DB in sync when the client already applied an optimistic tools selection.
+      if (
+        routePreference.modelMode !== gate.quota.modelMode ||
+        routePreference.modelId !== gate.quota.modelId
+      ) {
+        try {
+          await updateAiUserPrefs({
+            username,
+            modelMode: routePreference.modelMode,
+            modelId: routePreference.modelId,
+          });
+        } catch {
+          /* routing still uses routePreference for this turn */
+        }
+      }
       console.log("[ai-route] send", {
         username,
         chatId: chat.id,
@@ -393,6 +436,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         billingLane: gate.quota.billingLane,
         proActive: gate.quota.proActive,
         inputChars: input.length,
+        fromClient: typeof payload.modelMode === "string",
       });
       const ai = await transmit({
         mode: "chat",

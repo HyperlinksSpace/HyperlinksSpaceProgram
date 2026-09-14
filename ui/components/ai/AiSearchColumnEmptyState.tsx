@@ -655,14 +655,26 @@ export function AiSearchColumnEmptyState() {
 
       revealAbortRef.current?.abort();
 
+      // Capture tools selection before refresh — prefs HTTP can lag and quota
+      // refresh must not make this turn fall back to Auto.
+      const selectedPref = {
+        modelMode: getAiFreeQuotaSnapshot().modelMode,
+        modelId: getAiFreeQuotaSnapshot().modelId,
+      };
+
       // Pull server truth so founder revoke / expired Pro clears before we spend.
       await refreshAiFreeQuotaFromServer();
       const q = getAiFreeQuotaSnapshot();
       const hasPro = isProAccessActive() || q.proActive;
+      const sendModelMode = selectedPref.modelMode;
+      const sendModelId =
+        sendModelMode === "model" && selectedPref.modelId
+          ? selectedPref.modelId
+          : null;
 
       logPageDisplay("ai_send_start", {
-        modelMode: q.modelMode,
-        modelId: q.modelId,
+        modelMode: sendModelMode,
+        modelId: sendModelId,
         billingLane: q.billingLane,
         proActive: hasPro,
         chatIdPreview: String(tabId).slice(0, 12),
@@ -713,14 +725,17 @@ export function AiSearchColumnEmptyState() {
         chatId: tabId,
         clientId: tabId,
         input: trimmed,
+        // Explicit tools selection must drive this turn (server may still lag on prefs).
+        modelMode: sendModelMode,
+        modelId: sendModelId,
       });
 
       logPageDisplay("ai_send_result", {
         ok: Boolean(res.ok),
         error: res.error ?? null,
         model: typeof res.model === "string" ? res.model : null,
-        modelMode: q.modelMode,
-        modelId: q.modelId,
+        modelMode: sendModelMode,
+        modelId: sendModelId,
         billingLane:
           typeof res.billingLane === "string" ? res.billingLane : q.billingLane,
         tokensBilled:

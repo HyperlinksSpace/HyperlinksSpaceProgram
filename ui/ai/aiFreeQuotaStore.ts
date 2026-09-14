@@ -236,11 +236,58 @@ function applyModels(raw: unknown): void {
   if (next.length > 0) modelOptions = next;
 }
 
+/** In-flight prefs writes — quota refresh must not clobber an optimistic model pick. */
+let prefsWriteInFlight = 0;
+
+function applyAiToolsPrefsLocal(opts: {
+  modelMode?: AiModelMode;
+  modelId?: string | null;
+  onDemandEnabled?: boolean;
+}): AiFreeQuota {
+  hydrate();
+  const modelMode =
+    opts.modelMode !== undefined
+      ? opts.modelMode
+      : snapshot.modelMode;
+  const modelId =
+    modelMode === "model"
+      ? opts.modelId !== undefined
+        ? typeof opts.modelId === "string" && opts.modelId.trim()
+          ? opts.modelId.trim()
+          : null
+        : snapshot.modelId
+      : null;
+  snapshot = normalizeQuota({
+    ...snapshot,
+    ...(opts.onDemandEnabled !== undefined
+      ? { onDemandEnabled: opts.onDemandEnabled }
+      : {}),
+    modelMode,
+    modelId,
+  });
+  persist();
+  notify();
+  return snapshot;
+}
+
 export async function refreshAiFreeQuotaFromServer(): Promise<AiFreeQuota> {
+  const localModelMode = getAiFreeQuotaSnapshot().modelMode;
+  const localModelId = getAiFreeQuotaSnapshot().modelId;
   const res = await postAiAgentChatAction({ action: "quota" });
   if (res.ok && res.quota) {
     applyModels(res.models);
-    return applyAiFreeQuotaFromServer(res.quota);
+    const next = applyAiFreeQuotaFromServer(res.quota);
+    // Prefs save can lag behind send/refresh; keep the UI selection the user just tapped.
+    if (
+      prefsWriteInFlight > 0 &&
+      (localModelMode !== next.modelMode || localModelId !== next.modelId)
+    ) {
+      return applyAiToolsPrefsLocal({
+        modelMode: localModelMode,
+        modelId: localModelId,
+      });
+    }
+    return next;
   }
   return getAiFreeQuotaSnapshot();
 }
@@ -303,15 +350,24 @@ export async function saveAiToolsPrefs(opts: {
   modelId?: string | null;
   onDemandEnabled?: boolean;
 }): Promise<AiFreeQuota> {
-  const res = await postAiAgentChatAction({
-    action: "prefs",
-    ...(opts.modelMode !== undefined ? { modelMode: opts.modelMode } : {}),
-    ...(opts.modelId !== undefined ? { modelId: opts.modelId } : {}),
-    ...(opts.onDemandEnabled !== undefined ? { onDemandEnabled: opts.onDemandEnabled } : {}),
-  });
-  if (res.ok && res.quota) {
-    applyModels(res.models);
-    return applyAiFreeQuotaFromServer(res.quota);
+  // Apply immediately so the next send uses this model even if prefs HTTP lags.
+  applyAiToolsPrefsLocal(opts);
+  prefsWriteInFlight += 1;
+  try {
+    const res = await postAiAgentChatAction({
+      action: "prefs",
+      ...(opts.modelMode !== undefined ? { modelMode: opts.modelMode } : {}),
+      ...(opts.modelId !== undefined ? { modelId: opts.modelId } : {}),
+      ...(opts.onDemandEnabled !== undefined
+        ? { onDemandEnabled: opts.onDemandEnabled }
+        : {}),
+    });
+    if (res.ok && res.quota) {
+      applyModels(res.models);
+      return applyAiFreeQuotaFromServer(res.quota);
+    }
+    return getAiFreeQuotaSnapshot();
+  } finally {
+    prefsWriteInFlight = Math.max(0, prefsWriteInFlight - 1);
   }
-  return getAiFreeQuotaSnapshot();
 }
