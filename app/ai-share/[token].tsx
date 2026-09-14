@@ -21,6 +21,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../ui/fonts";
 import { layout, typographyRect15, useColors } from "../../ui/theme";
+import { AiMarkdownText } from "../../ui/components/ai/AiMarkdownText";
 
 const CLAIMED_CHAT_STORAGE_KEY = "hsp_ai_claimed_chat_id";
 const SHARE_RETURN_KEY = "hsp_ai_share_return";
@@ -178,7 +179,12 @@ export default function AiSharePage() {
                   <Text style={bodyStyle}>{m.content}</Text>
                 </View>
               ) : (
-                <Text style={bodyStyle}>{m.content}</Text>
+                <AiMarkdownText
+                  content={m.content}
+                  style={bodyStyle}
+                  mutedColor={colors.secondary}
+                  linkColor={colors.primary}
+                />
               )}
             </View>
           );

@@ -6,6 +6,7 @@ import { postAiAgentChatAction } from "../../../api/aiAgentChatsClient";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { typographyRect15, useColors } from "../../theme";
+import { AiMarkdownText, aiMarkdownToPlainText } from "./AiMarkdownText";
 
 export type AiThreadMessage = {
   id: string;
@@ -113,7 +114,7 @@ export function AiAgentChatThread({
   ];
 
   const onCopy = useCallback(async (text: string) => {
-    await Clipboard.setStringAsync(text);
+    await Clipboard.setStringAsync(aiMarkdownToPlainText(text));
   }, []);
 
   const onShare = useCallback(
@@ -176,7 +177,12 @@ export function AiAgentChatThread({
               </View>
             ) : (
               <View style={{ width: "100%", maxWidth: "100%" }}>
-                <Text style={bodyStyle}>{m.content}</Text>
+                <AiMarkdownText
+                  content={m.content}
+                  style={bodyStyle}
+                  mutedColor={colors.secondary}
+                  linkColor={colors.primary}
+                />
                 {showActions && !m.streaming ? (
                 <View
                   style={{

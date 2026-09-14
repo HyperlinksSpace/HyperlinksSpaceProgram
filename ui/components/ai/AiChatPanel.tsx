@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { applyFirstNavigateAction, postAiChat } from "../../../api/aiClient";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { typographySansSemibold, useColors } from "../../theme";
+import { AiMarkdownText } from "./AiMarkdownText";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -95,7 +96,16 @@ export function AiChatPanel({ initialPrompt, screenRoute }: Props) {
             <Text style={[styles.roleLabel, { color: colors.secondary }]}>
               {msg.role === "user" ? t("ai.you") : t("ai.assistant")}
             </Text>
-            <Text style={[styles.messageText, { color: colors.primary }]}>{msg.text}</Text>
+            {msg.role === "assistant" ? (
+              <AiMarkdownText
+                content={msg.text}
+                style={[styles.messageText, { color: colors.primary }]}
+                mutedColor={colors.secondary}
+                linkColor={colors.primary}
+              />
+            ) : (
+              <Text style={[styles.messageText, { color: colors.primary }]}>{msg.text}</Text>
+            )}
           </View>
         ))}
         {loading ? (
