@@ -130,6 +130,23 @@ function placeSupportTabSecond(tabs: AiAgentTab[], supportTab: AiAgentTab): AiAg
   return [rest[0]!, supportTab, ...rest.slice(1)];
 }
 
+/**
+ * Newest / most recently opened agent tabs lead the strip.
+ * Support with unread stays immediately after the front tab; otherwise Support trails.
+ */
+function bringAgentTabToFront(tabs: AiAgentTab[], tab: AiAgentTab): AiAgentTab[] {
+  const without = tabs.filter((t) => t.id !== tab.id);
+  const support = without.find((t) => t.id === SUPPORT_TAB_ID);
+  const agents = without.filter((t) => t.id !== SUPPORT_TAB_ID);
+  if (support && Math.max(0, Math.floor(support.unreadCount ?? 0)) > 0) {
+    return [tab, support, ...agents];
+  }
+  if (support) {
+    return [tab, ...agents, support];
+  }
+  return [tab, ...agents];
+}
+
 /** Default empty-state body shared by every idle agent tab. */
 function AiAgentTabEmptyBody({
   columnWidth,
@@ -511,7 +528,7 @@ export function AiSearchColumnEmptyState() {
 
   const onAddTab = useCallback(() => {
     const tab = createIdleTab(t("ai.agents.newAgent"));
-    setTabs((current) => [...current, tab]);
+    setTabs((current) => bringAgentTabToFront(current, tab));
     setActiveTabId(tab.id);
   }, [t]);
 
@@ -550,20 +567,23 @@ export function AiSearchColumnEmptyState() {
   const onOpenHistoryChat = useCallback(
     (chat: { id: string; title: string }) => {
       setTabs((current) => {
-        if (current.some((tab) => tab.id === chat.id)) return current;
-        const nextTab: AiAgentTab = {
-          id: chat.id,
-          title: chat.title,
-          started: true,
-          messages: [],
-          messagesLoaded: false,
-        };
+        const existing = current.find((tab) => tab.id === chat.id);
+        const nextTab: AiAgentTab = existing
+          ? existing
+          : {
+              id: chat.id,
+              title: chat.title,
+              started: true,
+              messages: [],
+              messagesLoaded: false,
+            };
         const idleOnly =
           current.length === 1 &&
           !current[0]?.started &&
-          current[0]?.kind !== "support";
+          current[0]?.kind !== "support" &&
+          current[0]?.id !== chat.id;
         if (idleOnly) return [nextTab];
-        return [...current, nextTab];
+        return bringAgentTabToFront(current, nextTab);
       });
       setActiveTabId(chat.id);
     },
