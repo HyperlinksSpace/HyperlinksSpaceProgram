@@ -222,9 +222,9 @@ export function SendPanelContent({ walletAddress }: Props) {
   const [ctaHeightPx, setCtaHeightPx] = useState(0);
   const [options, setOptions] = useState<SendCurrencyOption[]>([]);
   const [selected, setSelected] = useState<SendCurrencyOption>(() => ({
-    token: SWAP_GRAM_TOKEN,
+    token: SWAP_DLLR_TOKEN,
     balanceText: "0",
-    priceUsd: null,
+    priceUsd: 1,
   }));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerHeaderExtendPx, setPickerHeaderExtendPx] = useState(0);
@@ -271,8 +271,8 @@ export function SendPanelContent({ walletAddress }: Props) {
       const holdings = await fetchTonapiAccountHoldings(sourceAddress);
       const next: SendCurrencyOption[] = [];
 
-      // Built-in ledger DLLR (not an on-chain jetton yet) — only when sending from app wallet.
-      if (sourceKind === "builtin" && dllrBalanceUsd > 0) {
+      // Built-in ledger DLLR — default send asset for the app wallet.
+      if (sourceKind === "builtin") {
         next.push({
           token: SWAP_DLLR_TOKEN,
           balanceText: formatDllrBalance(dllrBalanceUsd),
@@ -314,11 +314,16 @@ export function SendPanelContent({ walletAddress }: Props) {
       setSelected((prev) => {
         const match = next.find((row) => sameToken(row.token, prev.token));
         if (match) return match;
+        // Built-in wallet: prefer DLLR as the default send asset.
+        if (sourceKind === "builtin") {
+          const dllr = next.find((row) => isDllrToken(row.token));
+          if (dllr) return dllr;
+        }
         if (next[0]) return next[0];
         return {
-          token: SWAP_GRAM_TOKEN,
+          token: sourceKind === "builtin" ? SWAP_DLLR_TOKEN : SWAP_GRAM_TOKEN,
           balanceText: "0",
-          priceUsd: null,
+          priceUsd: sourceKind === "builtin" ? 1 : null,
         };
       });
     } catch {
@@ -386,7 +391,10 @@ export function SendPanelContent({ walletAddress }: Props) {
   }, [selected.balanceText]);
 
   const onSend = useCallback(async () => {
-    if (form.sending || isDllrToken(selected.token)) return;
+    if (form.sending) return;
+    const sendingDllr = isDllrToken(selected.token);
+    if (sendingDllr && sourceKind !== "builtin") return;
+
     const toAddress = form.address.trim();
     const amount = form.amount.trim();
     if (!toAddress || !amount || enteredAmount == null || enteredAmount <= 0) return;
@@ -419,14 +427,25 @@ export function SendPanelContent({ walletAddress }: Props) {
           toAddress,
           amount,
           decimals: selected.token.decimals,
-          jettonMasterAddress: isNativeTonToken(selected.token)
-            ? null
-            : selected.token.address,
+          dllr: sendingDllr,
+          jettonMasterAddress:
+            sendingDllr || isNativeTonToken(selected.token)
+              ? null
+              : selected.token.address,
           comment: form.comment,
           initDataRaw: initData,
         });
         if (!result.ok) {
-          setSendError(result.error);
+          const err = result.error;
+          setSendError(
+            err === "recipient_not_builtin_wallet"
+              ? t("send.error.recipientNotBuiltin")
+              : err === "insufficient_dllr"
+                ? t("send.error.insufficientDllr")
+                : err === "cannot_send_to_self"
+                  ? t("send.error.cannotSendToSelf")
+                  : err,
+          );
           return;
         }
       }

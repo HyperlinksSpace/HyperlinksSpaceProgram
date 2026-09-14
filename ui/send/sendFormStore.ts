@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import {
+  SWAP_DLLR_TOKEN,
   SWAP_GRAM_TOKEN,
   type SwapPairToken,
 } from "../swap/swapPairTypes";
@@ -23,9 +24,9 @@ let state: SendFormState = {
   address: "",
   comment: "",
   amount: "1",
-  token: SWAP_GRAM_TOKEN,
+  token: SWAP_DLLR_TOKEN,
   balanceText: "0",
-  priceUsd: null,
+  priceUsd: 1,
   sourceKind: "builtin",
   balancesLoading: false,
   sending: false,

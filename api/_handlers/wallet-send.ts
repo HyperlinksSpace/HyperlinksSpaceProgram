@@ -1,13 +1,17 @@
 /**
  * POST /api/wallet-send
- * Transfer native TON or a jetton from the built-in wallet via @ton/ton (server-side
- * mnemonic unwrap + WalletContractV4.sendTransfer).
+ * - DLLR: ledger transfer between built-in wallets (DB debit/credit).
+ * - Native TON / jetton: @ton/ton WalletContractV4.sendTransfer from built-in mnemonic.
  */
 import {
   deleteSession,
   getSessionByHash,
   touchSession,
 } from "../../database/telegramAuth.js";
+import {
+  findUsernameByBuiltinWalletAddress,
+  transferDllrBetweenUsernames,
+} from "../../database/dllrBalances.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { upsertUserFromTma } from "../../database/users.js";
 import { sendBuiltInTransfer } from "../../services/wallet/sendBuiltInTransfer.js";
@@ -19,6 +23,8 @@ import { appLog } from "../../shared/appLog.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const LOG_TAG = "[api/wallet-send]";
+const DLLR_ASSET = "dllr";
+const DLLR_ROW_KEY = "jetton:dllr";
 
 type NodeRes = {
   setHeader(name: string, value: string): void;
@@ -33,6 +39,7 @@ type PostBody = {
   decimals?: unknown;
   jettonMasterAddress?: unknown;
   comment?: unknown;
+  asset?: unknown;
 };
 
 function sendJson(res: NodeRes | undefined, body: object, status: number): Response | void {
@@ -44,6 +51,24 @@ function sendJson(res: NodeRes | undefined, body: object, status: number): Respo
     return;
   }
   return new Response(json, { status, headers: JSON_HEADERS });
+}
+
+function isDllrAsset(postBody: PostBody): boolean {
+  const asset = typeof postBody.asset === "string" ? postBody.asset.trim().toLowerCase() : "";
+  if (asset === DLLR_ASSET || asset === DLLR_ROW_KEY) return true;
+  const jetton =
+    typeof postBody.jettonMasterAddress === "string"
+      ? postBody.jettonMasterAddress.trim().toLowerCase()
+      : "";
+  return jetton === DLLR_ROW_KEY || jetton === DLLR_ASSET;
+}
+
+function parseDllrAmount(raw: string): number | null {
+  const cleaned = raw.trim().replace(/,/g, "").replace(/\s/g, "");
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 1e6) / 1e6;
 }
 
 async function resolveUsername(
@@ -101,6 +126,72 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
 
     const toAddress = typeof postBody.toAddress === "string" ? postBody.toAddress.trim() : "";
     const amount = typeof postBody.amount === "string" ? postBody.amount.trim() : "";
+    const comment = typeof postBody.comment === "string" ? postBody.comment : "";
+
+    if (!toAddress) {
+      return sendJson(res, { ok: false, error: "missing_to_address" }, 400);
+    }
+    if (!amount) {
+      return sendJson(res, { ok: false, error: "missing_amount" }, 400);
+    }
+
+    const wallet = await getDefaultWalletByUsername(username);
+    if (!wallet) {
+      return sendJson(res, { ok: false, error: "no_wallet_row" }, 404);
+    }
+
+    if (isDllrAsset(postBody)) {
+      const amountUsd = parseDllrAmount(amount);
+      if (amountUsd == null) {
+        return sendJson(res, { ok: false, error: "invalid_amount" }, 400);
+      }
+
+      const toUsername = await findUsernameByBuiltinWalletAddress(toAddress);
+      if (!toUsername) {
+        return sendJson(res, { ok: false, error: "recipient_not_builtin_wallet" }, 404);
+      }
+
+      const transfer = await transferDllrBetweenUsernames({
+        fromUsername: username,
+        toUsername,
+        amountUsd,
+      });
+
+      appLog(LOG_TAG, transfer.ok ? "dllr_send_ok" : "dllr_send_failed", {
+        usernamePrefix: `${username.slice(0, 3)}***`,
+        toPrefix: `${toUsername.slice(0, 3)}***`,
+        ok: transfer.ok,
+        error: transfer.ok ? undefined : transfer.error,
+        amountUsd,
+        commentLen: comment.trim().length,
+      });
+
+      if (!transfer.ok) {
+        const status =
+          transfer.error === "insufficient_dllr"
+            ? 409
+            : transfer.error === "cannot_send_to_self"
+              ? 400
+              : 400;
+        return sendJson(res, transfer, status);
+      }
+
+      return sendJson(
+        res,
+        {
+          ok: true,
+          asset: DLLR_ASSET,
+          amountUsd: transfer.amountUsd,
+          fromAddress: wallet.wallet_address,
+          toUsername,
+          dllr_hot_usd: transfer.from.hotUsd,
+          dllr_frozen_usd: transfer.from.frozenUsd,
+          dllr_balance_usd: Math.round((transfer.from.hotUsd + transfer.from.frozenUsd) * 1e6) / 1e6,
+        },
+        200,
+      );
+    }
+
     const decimalsRaw = postBody.decimals;
     const decimals =
       typeof decimalsRaw === "number"
@@ -112,21 +203,9 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       typeof postBody.jettonMasterAddress === "string"
         ? postBody.jettonMasterAddress.trim()
         : "";
-    const comment = typeof postBody.comment === "string" ? postBody.comment : "";
 
-    if (!toAddress) {
-      return sendJson(res, { ok: false, error: "missing_to_address" }, 400);
-    }
-    if (!amount) {
-      return sendJson(res, { ok: false, error: "missing_amount" }, 400);
-    }
     if (!Number.isFinite(decimals) || decimals < 0 || decimals > 18) {
       return sendJson(res, { ok: false, error: "invalid_decimals" }, 400);
-    }
-
-    const wallet = await getDefaultWalletByUsername(username);
-    if (!wallet) {
-      return sendJson(res, { ok: false, error: "no_wallet_row" }, 404);
     }
 
     const mnemonic = await unwrapMnemonicFromWalletRow(wallet);

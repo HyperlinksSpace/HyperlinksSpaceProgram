@@ -44,7 +44,7 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
   const address = (addressProp ?? form.address).trim();
   const symbol = swapTokenDisplaySymbol(form.token);
   const amountNum = parseAmount(form.amount);
-  const dllrFrozen = isDllrToken(form.token);
+  const dllrFrozen = isDllrToken(form.token) && form.sourceKind !== "builtin";
   const balanceNum = parseAmount(form.balanceText);
   const insufficient =
     !form.balancesLoading &&

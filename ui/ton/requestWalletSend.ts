@@ -3,19 +3,32 @@ import {
   bumpWalletBalanceRefresh,
   scheduleWalletBalanceRefreshBurst,
 } from "../wallet/walletBalanceRefresh";
+import { applyServerDllrLedgerFromSession } from "../pro/dllrBalanceStore";
 
 export type WalletSendClientResult =
-  | { ok: true; seqno: number; fromAddress: string }
+  | {
+      ok: true;
+      seqno?: number;
+      fromAddress: string;
+      asset?: "dllr" | "chain";
+      dllrHotUsd?: number;
+      dllrFrozenUsd?: number;
+      dllrBalanceUsd?: number;
+    }
   | { ok: false; error: string };
 
 /**
- * Ask the server to transfer from the built-in wallet (@ton/ton WalletContractV4).
+ * Ask the server to transfer from the built-in wallet:
+ * - DLLR → ledger transfer between HSP built-in wallets
+ * - otherwise → @ton/ton WalletContractV4 on-chain send
  */
 export async function requestWalletSend(opts: {
   toAddress: string;
   amount: string;
   decimals: number;
   jettonMasterAddress?: string | null;
+  /** When true, server moves DLLR ledger balances (no chain tx). */
+  dllr?: boolean;
   comment?: string;
   initDataRaw?: string | null;
 }): Promise<WalletSendClientResult> {
@@ -25,7 +38,9 @@ export async function requestWalletSend(opts: {
     amount: opts.amount.trim(),
     decimals: opts.decimals,
   };
-  if (opts.jettonMasterAddress?.trim()) {
+  if (opts.dllr) {
+    body.asset = "dllr";
+  } else if (opts.jettonMasterAddress?.trim()) {
     body.jettonMasterAddress = opts.jettonMasterAddress.trim();
   }
   if (opts.comment?.trim()) {
@@ -45,16 +60,41 @@ export async function requestWalletSend(opts: {
       ok?: boolean;
       seqno?: number;
       fromAddress?: string;
+      asset?: string;
       error?: string;
+      dllr_hot_usd?: number;
+      dllr_frozen_usd?: number;
+      dllr_balance_usd?: number;
     } | null;
 
-    if (res.ok && data?.ok && typeof data.seqno === "number") {
+    if (res.ok && data?.ok) {
+      const isDllr = data.asset === "dllr";
+      if (
+        isDllr &&
+        typeof data.dllr_hot_usd === "number" &&
+        typeof data.dllr_frozen_usd === "number"
+      ) {
+        applyServerDllrLedgerFromSession({
+          hotUsd: data.dllr_hot_usd,
+          frozenUsd: data.dllr_frozen_usd,
+        });
+      }
+      if (!isDllr && typeof data.seqno !== "number") {
+        return {
+          ok: false,
+          error: typeof data?.error === "string" ? data.error : `http_${res.status}`,
+        };
+      }
       bumpWalletBalanceRefresh();
       scheduleWalletBalanceRefreshBurst([3_000, 12_000, 30_000]);
       return {
         ok: true,
-        seqno: data.seqno,
+        seqno: typeof data.seqno === "number" ? data.seqno : undefined,
         fromAddress: typeof data.fromAddress === "string" ? data.fromAddress : "",
+        asset: isDllr ? "dllr" : "chain",
+        dllrHotUsd: data.dllr_hot_usd,
+        dllrFrozenUsd: data.dllr_frozen_usd,
+        dllrBalanceUsd: data.dllr_balance_usd,
       };
     }
     return {

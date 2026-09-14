@@ -2,8 +2,10 @@
  * Per-user DLLR (Dollars) ledger — hot (spendable) + frozen.
  * Keyed by users.telegram_username (same id as sessions / wallets).
  */
+import { Address } from "@ton/core";
 import { sql } from "./start.js";
 import { normalizeUsername } from "./users.js";
+import { findUsernamesByWalletAddress } from "./wallets.js";
 
 export type DllrLedgerRow = {
   username: string;
@@ -80,4 +82,96 @@ export async function findUsernamesByEmail(email: string): Promise<string[]> {
   return rows
     .map((r) => normalizeUsername(r.telegram_username))
     .filter(Boolean);
+}
+
+/** Find the HSP account that owns a built-in wallet address (EQ/UQ/raw forms). */
+export async function findUsernameByBuiltinWalletAddress(
+  walletAddress: string,
+): Promise<string | null> {
+  const trimmed = walletAddress.trim();
+  if (!trimmed) return null;
+
+  const direct = await findUsernamesByWalletAddress(trimmed);
+  if (direct[0]) return direct[0]!;
+
+  try {
+    const addr = Address.parse(trimmed);
+    const variants = [
+      addr.toString({ urlSafe: true, bounceable: false }),
+      addr.toString({ urlSafe: true, bounceable: true }),
+      addr.toRawString(),
+    ];
+    for (const variant of variants) {
+      if (variant.toLowerCase() === trimmed.toLowerCase()) continue;
+      const found = await findUsernamesByWalletAddress(variant);
+      if (found[0]) return found[0]!;
+    }
+  } catch {
+    /* invalid address */
+  }
+  return null;
+}
+
+export type TransferDllrResult =
+  | {
+      ok: true;
+      from: DllrLedgerRow;
+      to: DllrLedgerRow;
+      amountUsd: number;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Move DLLR between two built-in ledger accounts (hot first, then frozen on debit;
+ * credit always lands in recipient hot).
+ */
+export async function transferDllrBetweenUsernames(input: {
+  fromUsername: string;
+  toUsername: string;
+  amountUsd: number;
+}): Promise<TransferDllrResult> {
+  const fromUser = normalizeUsername(input.fromUsername);
+  const toUser = normalizeUsername(input.toUsername);
+  const amountUsd = parseUsd(input.amountUsd);
+
+  if (!fromUser || !toUser) return { ok: false, error: "username_required" };
+  if (fromUser === toUser) return { ok: false, error: "cannot_send_to_self" };
+  if (!(amountUsd > 0)) return { ok: false, error: "invalid_amount" };
+
+  const fromLedger = (await getDllrLedgerForUsername(fromUser)) ?? {
+    username: fromUser,
+    hotUsd: 0,
+    frozenUsd: 0,
+  };
+  const total = roundUsd(fromLedger.hotUsd + fromLedger.frozenUsd);
+  if (total + 1e-9 < amountUsd) {
+    return { ok: false, error: "insufficient_dllr" };
+  }
+
+  let left = amountUsd;
+  const fromHotDebit = Math.min(fromLedger.hotUsd, left);
+  left = roundUsd(left - fromHotDebit);
+  const fromFrozenDebit = left > 0 ? Math.min(fromLedger.frozenUsd, left) : 0;
+
+  const nextFrom: DllrLedgerRow = {
+    username: fromUser,
+    hotUsd: roundUsd(fromLedger.hotUsd - fromHotDebit),
+    frozenUsd: roundUsd(fromLedger.frozenUsd - fromFrozenDebit),
+  };
+
+  const toLedger = (await getDllrLedgerForUsername(toUser)) ?? {
+    username: toUser,
+    hotUsd: 0,
+    frozenUsd: 0,
+  };
+  const nextTo: DllrLedgerRow = {
+    username: toUser,
+    hotUsd: roundUsd(toLedger.hotUsd + amountUsd),
+    frozenUsd: toLedger.frozenUsd,
+  };
+
+  await setDllrLedgerForUsername(nextFrom);
+  await setDllrLedgerForUsername(nextTo);
+
+  return { ok: true, from: nextFrom, to: nextTo, amountUsd };
 }
