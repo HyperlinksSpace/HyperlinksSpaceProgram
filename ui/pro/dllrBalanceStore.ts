@@ -146,6 +146,34 @@ export function creditProCashbackDllrUsd(
   return creditBuiltinDllrUsd(amountUsd);
 }
 
+/** Replace the in-memory (+ persisted) ledger with absolute hot/frozen values. */
+export function replaceBuiltinDllrLedger(input: {
+  hotUsd: number;
+  frozenUsd: number;
+}): number {
+  hydrate();
+  const hot = Number.isFinite(input.hotUsd) && input.hotUsd >= 0 ? roundUsd(input.hotUsd) : 0;
+  const frozen =
+    Number.isFinite(input.frozenUsd) && input.frozenUsd >= 0 ? roundUsd(input.frozenUsd) : 0;
+  ledger = { hotUsd: hot, frozenUsd: frozen };
+  persist();
+  notify();
+  return getBuiltinDllrBalanceUsd();
+}
+
+/** Apply server session ledger when present (does not wipe local gift when server has no row). */
+export function applyServerDllrLedgerFromSession(input: {
+  hotUsd?: number | null;
+  frozenUsd?: number | null;
+} | null | undefined): void {
+  if (!input) return;
+  const hot = Number(input.hotUsd);
+  const frozen = Number(input.frozenUsd);
+  if (!Number.isFinite(hot) || !Number.isFinite(frozen)) return;
+  if (hot < 0 || frozen < 0) return;
+  replaceBuiltinDllrLedger({ hotUsd: hot, frozenUsd: frozen });
+}
+
 /** Minimum Dollars needed to cover a plan from total balance (0 if already covered). */
 export function remainingDllrForPlanUsd(planPriceUsd: number): number {
   hydrate();

@@ -583,6 +583,15 @@ async function runSchemaMigrations() {
     CREATE INDEX IF NOT EXISTS idx_support_threads_updated
       ON support_threads(updated_at DESC);
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_dllr_balances (
+      telegram_username TEXT PRIMARY KEY,
+      hot_usd           DOUBLE PRECISION NOT NULL DEFAULT 0,
+      frozen_usd        DOUBLE PRECISION NOT NULL DEFAULT 0,
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `;
 }
 
 let schemaInitPromise: Promise<void> | null = null;

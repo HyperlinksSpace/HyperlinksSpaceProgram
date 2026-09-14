@@ -11,6 +11,7 @@ import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
 import { rehydrateAuthenticatedHomeLeftNavFromStorage } from "../ui/authenticatedHomeLeftNavIndex";
 import { clearExplicitSignOut, markExplicitSignOut, readAuthHint, writeAuthHint } from "./authHint";
+import { applyServerDllrLedgerFromSession } from "../ui/pro/dllrBalanceStore";
 
 export type AuthContextValue = {
   isAuthenticated: boolean;
@@ -47,6 +48,9 @@ type SessionJson = {
   email?: string | null;
   provider_username?: string | null;
   telegram_username_actual?: string | null;
+  dllr_hot_usd?: number;
+  dllr_frozen_usd?: number;
+  dllr_balance_usd?: number;
   wallet?: {
     id?: string | number;
     wallet_address?: string;
@@ -85,6 +89,15 @@ function cacheSessionPayload(json: SessionJson, authenticated: boolean): void {
     telegram_username_actual: json.telegram_username_actual ?? null,
     wallet: json.wallet ?? null,
   });
+  if (
+    typeof json.dllr_hot_usd === "number" ||
+    typeof json.dllr_frozen_usd === "number"
+  ) {
+    applyServerDllrLedgerFromSession({
+      hotUsd: typeof json.dllr_hot_usd === "number" ? json.dllr_hot_usd : 0,
+      frozenUsd: typeof json.dllr_frozen_usd === "number" ? json.dllr_frozen_usd : 0,
+    });
+  }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

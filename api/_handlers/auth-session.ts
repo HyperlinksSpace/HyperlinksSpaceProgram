@@ -1,3 +1,4 @@
+import { getDllrLedgerForUsername } from "../../database/dllrBalances.js";
 import { bootstrapAuthenticatedFeedItems } from "../../database/feed.js";
 import { getConnection, isTelegramMessagesConnected } from "../../database/telegramMessages.js";
 import {
@@ -213,13 +214,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   // Overlap wallet/profile/connected/feed/connection — do not serialize
   // getConnection behind the first batch (cold session felt "lazy").
   const connectedPromise = isTelegramMessagesConnected(row.telegram_username);
-  const [displayName, wallet, loginProfile, _telegramMessagesConnectedInitial, feed_items] =
+  const [displayName, wallet, loginProfile, _telegramMessagesConnectedInitial, feed_items, dllrLedger] =
     await Promise.all([
       getDisplayNameForUsername(row.telegram_username),
       getDefaultWalletByUsername(row.telegram_username),
       getAuthLoginProfileForUsername(row.telegram_username),
       connectedPromise,
       feedPromise,
+      getDllrLedgerForUsername(row.telegram_username).catch(() => null),
     ]);
   // Re-check after parallel work — eager gateway warmup can revoke the link while
   // connectedPromise was already in flight (session then lied connected=true).
@@ -238,6 +240,13 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     provider_username: loginProfile.providerUsername,
     telegram_username_actual: loginProfile.telegramUsernameActual,
   };
+  const dllrFields = dllrLedger
+    ? {
+        dllr_hot_usd: dllrLedger.hotUsd,
+        dllr_frozen_usd: dllrLedger.frozenUsd,
+        dllr_balance_usd: Math.round((dllrLedger.hotUsd + dllrLedger.frozenUsd) * 1e6) / 1e6,
+      }
+    : {};
   const body = wallet
     ? {
         ok: true,
@@ -256,6 +265,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
           source: wallet.source,
         },
         ...authIdentityFields,
+        ...dllrFields,
         ...telegramMessagesFields,
         ...feedFields,
       }
@@ -267,6 +277,7 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
         has_wallet: false,
         wallet_required: true,
         ...authIdentityFields,
+        ...dllrFields,
         ...telegramMessagesFields,
         ...feedFields,
       };
