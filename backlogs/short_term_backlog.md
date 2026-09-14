@@ -1,6 +1,8 @@
-
+Через юсдт двойной роут
+VPN, QR, menu customization 
+AI Formatting
 Gifts
-Bages (admin, rights) in voice chats
+Badges (admin, rights) in voice chats
 think about menu on mobile
 fix uilt-in wallet
 chat history, ai chats analisis
