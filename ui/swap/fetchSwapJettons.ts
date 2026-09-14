@@ -12,11 +12,12 @@ const MAX_PAGES = 100;
 const CATALOG_VERIFICATIONS = ["WHITELISTED", "COMMUNITY", "UNKNOWN"] as const;
 
 /**
- * Upstream `sort=MCAP` with community/unknown returns fantasy supply×price junk on
- * early pages (filters wipe the page). Sort by TVL so each page is liquid enough to
- * map real `mcap` / volume; the choose-currency UI re-sorts by market-cap rank.
+ * Upstream `sort=TVL` / `MCAP` / `FDMC` currently 400 on Swap.Coffee
+ * ("Character I is neither a decimal digit…") — likely Inf in their sorter.
+ * `PRICE_CHANGE_24H` still returns full `market_stats.mcap`; the choose-currency
+ * UI re-sorts by market-cap rank.
  */
-const CATALOG_SORT = "TVL";
+const CATALOG_SORT = "PRICE_CHANGE_24H";
 
 function tokensBaseUrl(): string {
   return SWAP_COFFEE_TOKENS_API_BASE.replace(/\/$/, "");

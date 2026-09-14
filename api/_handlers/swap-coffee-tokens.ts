@@ -61,8 +61,11 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       target.searchParams.append(key, value);
     }
     if (!target.searchParams.has("kind")) target.searchParams.set("kind", "DEXES");
-    // TVL page order — raw MCAP pages are fantasy junk; UI re-sorts by market cap.
-    if (!target.searchParams.has("sort")) target.searchParams.set("sort", "TVL");
+    // Prefer PRICE_CHANGE_24H: TVL/MCAP/FDMC sorts currently 400 upstream (Inf parse).
+    // UI re-sorts catalog rows by market cap.
+    if (!target.searchParams.has("sort")) {
+      target.searchParams.set("sort", "PRICE_CHANGE_24H");
+    }
     if (!target.searchParams.has("page")) target.searchParams.set("page", "1");
     if (!target.searchParams.has("size")) target.searchParams.set("size", "100");
     if (!incoming.searchParams.has("verification")) {
