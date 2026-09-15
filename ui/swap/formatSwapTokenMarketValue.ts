@@ -1,4 +1,8 @@
 import type { AppLocale } from "../../locales/appStrings";
+import {
+  formatLocaleAmount,
+  formatLocaleTokenBalance,
+} from "../format/localeAmountFormat";
 
 /**
  * Compact USD for choose-currency market cap / volume.
@@ -57,36 +61,55 @@ export function formatSwapTokenPriceUsd(value: number | null | undefined): strin
 }
 
 /** USD notional for a wallet holding (balance × rate). Matches `$` rate style. */
-export function formatSwapHoldingUsd(value: number | null | undefined): string {
+export function formatSwapHoldingUsd(
+  value: number | null | undefined,
+  locale: AppLocale = "en",
+): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return "—";
-  if (value < 0.01) return "<$0.01";
+  if (value < 0.01) {
+    return `<$${formatLocaleAmount(0.01, locale, { maxFractionDigits: 2, minFractionDigits: 2, trimFractionZeros: false })}`;
+  }
   if (value < 1_000) {
-    return `$${value.toFixed(2).replace(/\.?0+$/, "")}`;
+    return `$${formatLocaleAmount(value, locale, { maxFractionDigits: 2, trimFractionZeros: true })}`;
   }
-  if (value < 1_000_000) return `$${Math.round(value / 1_000)}K`;
+  if (value < 1_000_000) {
+    return `$${formatLocaleAmount(Math.round(value / 1_000), locale, { maxFractionDigits: 0 })}K`;
+  }
   if (value < 1_000_000_000) {
-    return `$${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    return `$${formatLocaleAmount(value / 1_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}M`;
   }
-  return `$${(value / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B`;
+  return `$${formatLocaleAmount(value / 1_000_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}B`;
 }
 
-export function formatSwapJettonBalance(balanceRaw: string, decimals: number): string {
+export function formatSwapJettonBalance(
+  balanceRaw: string,
+  decimals: number,
+  locale: AppLocale = "en",
+): string {
   try {
     const raw = BigInt(balanceRaw);
     if (raw === 0n) return "0";
     const scale = 10n ** BigInt(Math.max(0, decimals));
     const whole = raw / scale;
     const frac = raw % scale;
-    if (frac === 0n) return whole.toString();
+    if (frac === 0n) {
+      return formatLocaleAmount(Number(whole), locale, { maxFractionDigits: 0 });
+    }
 
     const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-    if (!fracStr) return whole.toString();
+    if (!fracStr) {
+      return formatLocaleAmount(Number(whole), locale, { maxFractionDigits: 0 });
+    }
     const combined = `${whole}.${fracStr}`;
     const asNum = Number(combined);
     if (Number.isFinite(asNum)) {
-      if (asNum >= 1_000_000) return `${Math.round(asNum).toLocaleString()}`;
-      if (asNum >= 1) return asNum.toLocaleString(undefined, { maximumFractionDigits: 4 });
-      return asNum.toPrecision(4);
+      if (asNum >= 1_000_000) {
+        return formatLocaleAmount(Math.round(asNum), locale, { maxFractionDigits: 0 });
+      }
+      if (asNum >= 1) {
+        return formatLocaleAmount(asNum, locale, { maxFractionDigits: 4, trimFractionZeros: true });
+      }
+      return formatLocaleTokenBalance(asNum, locale, 7);
     }
     return combined;
   } catch {

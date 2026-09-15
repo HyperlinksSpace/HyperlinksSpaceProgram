@@ -12,6 +12,10 @@ import {
   type LayoutChangeEvent,
 } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import {
+  formatLocaleTokenBalance,
+  parseLocaleAmount,
+} from "../../format/localeAmountFormat";
 import { setGetPanelFormState } from "../../get/getPanelFormStore";
 import { WEB_UI_MONO_STACK } from "../../fonts";
 import { fetchAccountSwapJettons } from "../../swap/fetchSwapJettons";
@@ -98,40 +102,28 @@ type GetCurrencyOption = {
   balanceText: string;
 };
 
-function groupWholeDigits(whole: string): string {
-  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-function formatNativeBalance(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  const fixed = value.toFixed(7).replace(/\.?0+$/, "");
-  const [whole, frac] = fixed.split(".");
-  const wholeGrouped = groupWholeDigits(whole);
-  return frac ? `${wholeGrouped}.${frac}` : wholeGrouped;
-}
-
-function formatRawTokenBalance(balanceRaw: string, decimals: number): string {
+function formatRawTokenBalance(
+  balanceRaw: string,
+  decimals: number,
+  locale: Parameters<typeof formatLocaleTokenBalance>[1],
+): string {
   try {
     const raw = BigInt(balanceRaw);
     if (raw === 0n) return "0";
     const scale = 10n ** BigInt(Math.max(0, decimals));
     const whole = raw / scale;
     const frac = raw % scale;
-    const wholeGrouped = groupWholeDigits(whole.toString());
-    if (frac === 0n) return wholeGrouped;
+    if (frac === 0n) {
+      return formatLocaleTokenBalance(Number(whole), locale, 0);
+    }
     const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-    return fracStr ? `${wholeGrouped}.${fracStr}` : wholeGrouped;
+    if (!fracStr) return formatLocaleTokenBalance(Number(whole), locale, 0);
+    const asNum = Number(`${whole}.${fracStr}`);
+    if (!Number.isFinite(asNum)) return "—";
+    return formatLocaleTokenBalance(asNum, locale, Math.min(7, decimals));
   } catch {
     return "—";
   }
-}
-
-function parseDecimalAmount(raw: string): number | null {
-  const cleaned = raw.trim().replace(/,/g, "").replace(/\s/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
 }
 
 function tokenIconSource(token: SwapPairToken) {
@@ -143,7 +135,7 @@ function tokenIconSource(token: SwapPairToken) {
 /** Get panel — CONNECT (TonConnect) + TRANSFER (copy app deposit address). */
 export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Props) {
   const colors = useColors();
-  const { t, tf } = useAppStrings();
+  const { t, tf, locale } = useAppStrings();
   const { initData } = useTelegram();
   const ton = useTonConnectSession();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -219,7 +211,7 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
     setBalancesLoading(true);
     try {
       const native = await getTonBalance(connectedAddress);
-      const nativeText = formatNativeBalance(native);
+      const nativeText = formatLocaleTokenBalance(native, locale, 7);
       const nativeOption: GetCurrencyOption | null =
         native > 0
           ? {
@@ -238,7 +230,7 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
             if (!jetton?.address) return null;
             const symbol = (jetton.symbol ?? "").trim() || "TOKEN";
             const decimals = typeof jetton.decimals === "number" ? jetton.decimals : 9;
-            const balanceText = formatRawTokenBalance(item.balance, decimals);
+            const balanceText = formatRawTokenBalance(item.balance, decimals, locale);
             if (balanceText === "0" || balanceText === "—") return null;
             const token: SwapPairToken = {
               address: jetton.address,
@@ -269,7 +261,7 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
     } finally {
       setBalancesLoading(false);
     }
-  }, []);
+  }, [locale]);
 
   useEffect(() => {
     if (!ton.connected || !ton.address) {
@@ -326,10 +318,13 @@ export function GetPanelContent({ walletAddress, displayName, showTitleRow }: Pr
         symbol: selectedSymbol,
       });
 
-  const enteredAmount = useMemo(() => parseDecimalAmount(amount), [amount]);
+  const enteredAmount = useMemo(
+    () => parseLocaleAmount(amount, locale),
+    [amount, locale],
+  );
   const availableBalance = useMemo(
-    () => parseDecimalAmount(selected.balanceText),
-    [selected.balanceText],
+    () => parseLocaleAmount(selected.balanceText, locale),
+    [locale, selected.balanceText],
   );
   const insufficientBalance =
     !balancesLoading &&

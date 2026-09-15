@@ -183,27 +183,20 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
       }
 
       preferTonConnectWallet(row.displayAddress || row.address);
+      onClose();
+      // Prefer the chosen remembered wallet without opening the TonConnect picker.
+      // If a different session is live, drop it so UI/balances follow the preference.
       const alreadyConnected =
         Boolean(ton.connected) &&
         (sameWalletAddress(row.displayAddress, activeTon) ||
           sameWalletAddress(row.address, activeTon));
-      if (alreadyConnected) {
-        onClose();
-        return;
-      }
-      // Reconnect to the chosen wallet (TonConnect cannot silently switch accounts).
-      setBusy(true);
-      onClose();
-      try {
-        if (ton.connected) {
+      if (ton.connected && !alreadyConnected) {
+        setBusy(true);
+        try {
           await ton.disconnect();
+        } finally {
+          setBusy(false);
         }
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 200);
-        });
-        await ton.openConnectModal();
-      } finally {
-        setBusy(false);
       }
     },
     [activeTon, onClose, ton],

@@ -10,6 +10,13 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { fetchTonapiAccountHoldings } from "../ton/fetchTonapiAccountHoldings";
 import { requestWalletActivate } from "../ton/requestWalletActivate";
 import { postWalletTopUpFeedNotification } from "../feed/feedNotificationActions";
+import type { AppLocale } from "../../locales/appStrings";
+import {
+  formatLocaleAmount,
+  formatLocaleDllrBalance,
+  formatLocaleTokenBalance,
+  parseLocaleAmount,
+} from "../format/localeAmountFormat";
 import {
   formatSwapHoldingUsd,
   formatSwapJettonBalance,
@@ -46,8 +53,9 @@ function buildHeldRow(
   icon: ChooseCurrencyRow["currency"]["icon"],
   balance: string,
   priceUsd: number | null | undefined,
+  locale: AppLocale,
 ): ChooseCurrencyRow {
-  const balanceNum = Number.parseFloat(balance.replace(/,/g, ""));
+  const balanceNum = parseLocaleAmount(balance, locale) ?? 0;
   const usd =
     Number.isFinite(balanceNum) &&
     balanceNum > 0 &&
@@ -60,7 +68,7 @@ function buildHeldRow(
     rowKey,
     currency: { name, ticker, icon },
     balance,
-    value: formatSwapHoldingUsd(usd),
+    value: formatSwapHoldingUsd(usd, locale),
     rate: formatSwapTokenPriceUsd(priceUsd),
     networks: "TON",
     marketCapUsd: 0,
@@ -70,16 +78,8 @@ function buildHeldRow(
   };
 }
 
-function formatNativeBalanceDisplay(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  const fixed = value.toFixed(7).replace(/\.?0+$/, "");
-  const [whole, frac] = fixed.split(".");
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return frac ? `${grouped}.${frac}` : grouped;
-}
-
-function parseUsdValue(row: ChooseCurrencyRow): number {
-  const balance = Number.parseFloat(row.balance.replace(/,/g, ""));
+function parseUsdValue(row: ChooseCurrencyRow, locale: AppLocale): number {
+  const balance = parseLocaleAmount(row.balance, locale) ?? 0;
   const rate = Number.parseFloat(row.rate.replace(/[^0-9.eE+-]/g, ""));
   if (!Number.isFinite(balance) || balance <= 0 || !Number.isFinite(rate) || rate <= 0) {
     return 0;
@@ -88,16 +88,27 @@ function parseUsdValue(row: ChooseCurrencyRow): number {
 }
 
 /** Header balance line — pinned 1 DLLR plus live holdings. */
-export function formatHeaderWalletBalanceLabel(totalUsd: number): string {
+export function formatHeaderWalletBalanceLabel(
+  totalUsd: number,
+  locale: AppLocale = "en",
+): string {
   if (!Number.isFinite(totalUsd) || totalUsd <= 0) return "0$";
-  if (totalUsd < 0.01) return "<0.01$";
-  if (totalUsd < 1_000) {
-    const rounded = totalUsd >= 10 ? totalUsd.toFixed(0) : totalUsd.toFixed(2).replace(/\.?0+$/, "");
-    return `${rounded}$`;
+  if (totalUsd < 0.01) {
+    return `<${formatLocaleAmount(0.01, locale, { maxFractionDigits: 2, minFractionDigits: 2, trimFractionZeros: false })}$`;
   }
-  if (totalUsd < 1_000_000) return `${Math.round(totalUsd / 1_000)}K$`;
-  if (totalUsd < 1_000_000_000) return `${(totalUsd / 1_000_000).toFixed(1).replace(/\.0$/, "")}M$`;
-  return `${(totalUsd / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}B$`;
+  if (totalUsd < 1_000) {
+    return `${formatLocaleAmount(totalUsd, locale, {
+      maxFractionDigits: totalUsd >= 10 ? 0 : 2,
+      trimFractionZeros: true,
+    })}$`;
+  }
+  if (totalUsd < 1_000_000) {
+    return `${formatLocaleAmount(Math.round(totalUsd / 1_000), locale, { maxFractionDigits: 0 })}K$`;
+  }
+  if (totalUsd < 1_000_000_000) {
+    return `${formatLocaleAmount(totalUsd / 1_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}M$`;
+  }
+  return `${formatLocaleAmount(totalUsd / 1_000_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}B$`;
 }
 
 export type WalletHeldCurrencyRowsState = {
@@ -137,16 +148,12 @@ export function useWalletHeldCurrencyRows(
   );
   const accountCreationDllrRow = useMemo(() => {
     const base = buildChooseCurrencyDllrRow(locale);
-    const bal =
-      dllrBalanceUsd >= 10
-        ? dllrBalanceUsd.toFixed(0)
-        : dllrBalanceUsd.toFixed(2).replace(/\.?0+$/, "");
-    const fmt = (n: number) =>
-      n >= 10 ? n.toFixed(0) : n.toFixed(2).replace(/\.?0+$/, "") || "0";
+    const bal = formatLocaleDllrBalance(dllrBalanceUsd, locale);
+    const fmt = (n: number) => formatLocaleDllrBalance(n, locale);
     return {
       ...base,
       balance: bal || "0",
-      value: formatSwapHoldingUsd(dllrBalanceUsd),
+      value: formatSwapHoldingUsd(dllrBalanceUsd, locale),
       dllrLedger: {
         hot: fmt(dllrHotUsd),
         frozen: fmt(dllrFrozenUsd),
@@ -167,9 +174,9 @@ export function useWalletHeldCurrencyRows(
   }, [accountCreationDllrRow, heldRows]);
 
   const headerBalanceLabel = useMemo(() => {
-    const heldUsd = heldRows.reduce((sum, row) => sum + parseUsdValue(row), 0);
+    const heldUsd = heldRows.reduce((sum, row) => sum + parseUsdValue(row, locale), 0);
     const totalUsd = dllrBalanceUsd + heldUsd;
-    const label = formatHeaderWalletBalanceLabel(totalUsd);
+    const label = formatHeaderWalletBalanceLabel(totalUsd, locale);
     logPageDisplay("wallet_header_total", {
       baselineUsd: dllrBalanceUsd,
       heldUsd,
@@ -178,7 +185,7 @@ export function useWalletHeldCurrencyRows(
       label,
     });
     return label;
-  }, [dllrBalanceUsd, heldRows]);
+  }, [dllrBalanceUsd, heldRows, locale]);
 
   const prevNativeBalanceRef = useRef<number | null>(null);
 
@@ -252,8 +259,9 @@ export function useWalletHeldCurrencyRows(
               SWAP_GRAM_TOKEN.name,
               SWAP_GRAM_TOKEN.symbol,
               swapTonTokenImage,
-              formatNativeBalanceDisplay(holdings.nativeBalance),
+              formatLocaleTokenBalance(holdings.nativeBalance, locale, 7),
               holdings.tonPriceUsd,
+              locale,
             ),
           );
         }
@@ -274,14 +282,15 @@ export function useWalletHeldCurrencyRows(
               name,
               symbol,
               jetton.image ? ({ uri: jetton.image } as const) : null,
-              formatSwapJettonBalance(item.balance, decimals),
+              formatSwapJettonBalance(item.balance, decimals, locale),
               item.priceUsd,
+              locale,
             ),
           );
         }
 
         next.sort((a, b) => {
-          const delta = parseUsdValue(b) - parseUsdValue(a);
+          const delta = parseUsdValue(b, locale) - parseUsdValue(a, locale);
           if (delta !== 0) return delta;
           return a.currency.ticker.localeCompare(b.currency.ticker);
         });
@@ -315,7 +324,7 @@ export function useWalletHeldCurrencyRows(
         document.removeEventListener("visibilitychange", onVisibility);
       }
     };
-  }, [enabled, refreshNonce, walletAddress]);
+  }, [enabled, initDataRaw, locale, refreshNonce, t, tf, walletAddress]);
 
   return { rows, isLoading, error, headerBalanceLabel };
 }

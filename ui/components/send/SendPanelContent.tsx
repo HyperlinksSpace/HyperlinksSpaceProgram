@@ -11,6 +11,12 @@ import {
 } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import {
+  formatLocaleAmount,
+  formatLocaleDllrBalance,
+  formatLocaleTokenBalance,
+  parseLocaleAmount,
+} from "../../format/localeAmountFormat";
+import {
   registerSendFormAction,
   setSendFormAddress,
   setSendFormAmount,
@@ -34,6 +40,10 @@ import {
   useColors,
 } from "../../theme";
 import { SendActionRow } from "./SendActionRow";
+import {
+  SendTransferSuccessDialog,
+  type SendTransferSuccessDetails,
+} from "./SendTransferSuccessDialog";
 import { useTonConnectSession } from "../../ton/TonConnectProvider";
 import { useTelegram } from "../Telegram";
 import { fetchTonapiAccountHoldings } from "../../ton/fetchTonapiAccountHoldings";
@@ -96,46 +106,39 @@ type SendCurrencyOption = {
   priceUsd: number | null;
 };
 
-function groupWholeDigits(whole: string): string {
-  return whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
-function formatNativeBalance(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  const fixed = value.toFixed(7).replace(/\.?0+$/, "");
-  const [whole, frac] = fixed.split(".");
-  const wholeGrouped = groupWholeDigits(whole);
-  return frac ? `${wholeGrouped}.${frac}` : wholeGrouped;
-}
-
-function formatRawTokenBalance(balanceRaw: string, decimals: number): string {
+function formatRawTokenBalance(
+  balanceRaw: string,
+  decimals: number,
+  locale: Parameters<typeof formatLocaleTokenBalance>[1],
+): string {
   try {
     const raw = BigInt(balanceRaw);
     if (raw === 0n) return "0";
     const scale = 10n ** BigInt(Math.max(0, decimals));
     const whole = raw / scale;
     const frac = raw % scale;
-    const wholeGrouped = groupWholeDigits(whole.toString());
-    if (frac === 0n) return wholeGrouped;
+    if (frac === 0n) {
+      return formatLocaleTokenBalance(Number(whole), locale, 0);
+    }
     const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
-    return fracStr ? `${wholeGrouped}.${fracStr}` : wholeGrouped;
+    if (!fracStr) return formatLocaleTokenBalance(Number(whole), locale, 0);
+    const asNum = Number(`${whole}.${fracStr}`);
+    if (!Number.isFinite(asNum)) return "—";
+    return formatLocaleTokenBalance(asNum, locale, Math.min(7, decimals));
   } catch {
     return "—";
   }
 }
 
-function formatDllrBalance(usd: number): string {
-  if (!Number.isFinite(usd) || usd <= 0) return "0";
-  if (usd >= 10) return usd.toFixed(0);
-  return usd.toFixed(2).replace(/\.?0+$/, "") || "0";
-}
-
-function parseDecimalAmount(raw: string): number | null {
-  const cleaned = raw.trim().replace(/,/g, "").replace(/\s/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return n;
+/** Canonical amount string for APIs / chain (`.` decimal, no grouping). */
+function toCanonicalAmount(raw: string, locale: Parameters<typeof parseLocaleAmount>[1]): string | null {
+  const n = parseLocaleAmount(raw, locale);
+  if (n == null || !(n > 0)) return null;
+  // Avoid scientific notation for typical wallet amounts.
+  return n.toLocaleString("en-US", {
+    useGrouping: false,
+    maximumFractionDigits: 18,
+  });
 }
 
 function tokenIconSource(token: SwapPairToken) {
@@ -179,7 +182,7 @@ function SendLabelActionRow({
 /** Send panel body — balance-based currency picker + transfer by active wallet. */
 export function SendPanelContent({ walletAddress }: Props) {
   const colors = useColors();
-  const { t, tf } = useAppStrings();
+  const { t, tf, locale } = useAppStrings();
   const { initData } = useTelegram();
   const ton = useTonConnectSession();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -229,6 +232,7 @@ export function SendPanelContent({ walletAddress }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerHeaderExtendPx, setPickerHeaderExtendPx] = useState(0);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [successDetails, setSuccessDetails] = useState<SendTransferSuccessDetails | null>(null);
 
   const pickerDefaultSize = useMemo(
     () => resolveFloatingDialogDefaultSize(windowWidth, windowHeight, "picker"),
@@ -275,7 +279,7 @@ export function SendPanelContent({ walletAddress }: Props) {
       if (sourceKind === "builtin") {
         next.push({
           token: SWAP_DLLR_TOKEN,
-          balanceText: formatDllrBalance(dllrBalanceUsd),
+          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
           priceUsd: 1,
         });
       }
@@ -283,7 +287,7 @@ export function SendPanelContent({ walletAddress }: Props) {
       if (holdings.nativeBalance > 0) {
         next.push({
           token: SWAP_GRAM_TOKEN,
-          balanceText: formatNativeBalance(holdings.nativeBalance),
+          balanceText: formatLocaleTokenBalance(holdings.nativeBalance, locale, 7),
           priceUsd: holdings.tonPriceUsd,
         });
       }
@@ -294,7 +298,7 @@ export function SendPanelContent({ walletAddress }: Props) {
         const symbol = (jetton.symbol ?? "").trim() || "TOKEN";
         if (symbol.toUpperCase() === "DLLR") continue;
         const decimals = typeof jetton.decimals === "number" ? jetton.decimals : 9;
-        const balanceText = formatRawTokenBalance(item.balance, decimals);
+        const balanceText = formatRawTokenBalance(item.balance, decimals, locale);
         if (balanceText === "0" || balanceText === "—") continue;
         next.push({
           token: {
@@ -331,7 +335,7 @@ export function SendPanelContent({ walletAddress }: Props) {
     } finally {
       setSendFormState({ balancesLoading: false });
     }
-  }, [dllrBalanceUsd, sourceAddress, sourceKind]);
+  }, [dllrBalanceUsd, locale, sourceAddress, sourceKind]);
 
   useEffect(() => {
     void refreshBalances();
@@ -350,10 +354,13 @@ export function SendPanelContent({ walletAddress }: Props) {
   }, [selected, sourceKind]);
 
   const selectedSymbol = swapTokenDisplaySymbol(selected.token);
-  const enteredAmount = useMemo(() => parseDecimalAmount(form.amount), [form.amount]);
+  const enteredAmount = useMemo(
+    () => parseLocaleAmount(form.amount, locale),
+    [form.amount, locale],
+  );
   const availableBalance = useMemo(
-    () => parseDecimalAmount(selected.balanceText),
-    [selected.balanceText],
+    () => parseLocaleAmount(selected.balanceText, locale),
+    [locale, selected.balanceText],
   );
   const insufficientBalance =
     !form.balancesLoading &&
@@ -373,8 +380,11 @@ export function SendPanelContent({ walletAddress }: Props) {
     usdEstimate == null
       ? "—"
       : usdEstimate < 0.01 && usdEstimate > 0
-        ? "<0.01$"
-        : `${usdEstimate >= 10 ? usdEstimate.toFixed(0) : usdEstimate.toFixed(2).replace(/\.?0+$/, "")}$`;
+        ? `<${formatLocaleAmount(0.01, locale, { maxFractionDigits: 2, minFractionDigits: 2, trimFractionZeros: false })}$`
+        : `${formatLocaleAmount(usdEstimate, locale, {
+            maxFractionDigits: usdEstimate >= 10 ? 0 : 2,
+            trimFractionZeros: true,
+          })}$`;
 
   const havingLine = form.balancesLoading
     ? t("send.havingLoading")
@@ -387,8 +397,12 @@ export function SendPanelContent({ walletAddress }: Props) {
     if (!selected.balanceText || selected.balanceText === "0" || selected.balanceText === "—") {
       return;
     }
-    setSendFormAmount(selected.balanceText.replace(/,/g, ""));
-  }, [selected.balanceText]);
+    const n = parseLocaleAmount(selected.balanceText, locale);
+    if (n == null) return;
+    setSendFormAmount(
+      n.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 18 }),
+    );
+  }, [locale, selected.balanceText]);
 
   const onSend = useCallback(async () => {
     if (form.sending) return;
@@ -396,8 +410,8 @@ export function SendPanelContent({ walletAddress }: Props) {
     if (sendingDllr && sourceKind !== "builtin") return;
 
     const toAddress = form.address.trim();
-    const amount = form.amount.trim();
-    if (!toAddress || !amount || enteredAmount == null || enteredAmount <= 0) return;
+    const amountCanonical = toCanonicalAmount(form.amount, locale);
+    if (!toAddress || !amountCanonical || enteredAmount == null || enteredAmount <= 0) return;
     if (insufficientBalance) return;
 
     setSendError(null);
@@ -411,7 +425,7 @@ export function SendPanelContent({ walletAddress }: Props) {
           return;
         }
         const request = await buildSendTransferTransaction({
-          amount,
+          amount: amountCanonical,
           token: selected.token,
           fromWalletAddress: ton.address,
           toAddress,
@@ -425,7 +439,7 @@ export function SendPanelContent({ walletAddress }: Props) {
         }
         const result = await requestWalletSend({
           toAddress,
-          amount,
+          amount: amountCanonical,
           decimals: selected.token.decimals,
           dllr: sendingDllr,
           jettonMasterAddress:
@@ -444,9 +458,30 @@ export function SendPanelContent({ walletAddress }: Props) {
                 ? t("send.error.insufficientDllr")
                 : err === "cannot_send_to_self"
                   ? t("send.error.cannotSendToSelf")
-                  : err,
+                  : err === "invalid_amount" || err === "missing_amount"
+                    ? t("send.error.generic")
+                    : err,
           );
           return;
+        }
+        if (sendingDllr && result.asset === "dllr") {
+          const amountUsd =
+            typeof result.amountUsd === "number" && Number.isFinite(result.amountUsd)
+              ? result.amountUsd
+              : enteredAmount;
+          const recipientBalanceUsd =
+            typeof result.recipientDllrBalanceUsd === "number" &&
+            Number.isFinite(result.recipientDllrBalanceUsd)
+              ? result.recipientDllrBalanceUsd
+              : 0;
+          setSuccessDetails({
+            amountUsd: amountUsd ?? 0,
+            toAddress: result.toAddress || toAddress,
+            recipientBalanceUsd,
+            comment: form.comment.trim() || undefined,
+          });
+          setSendFormAmount("1");
+          setSendFormComment("");
         }
       }
       bumpWalletBalanceRefresh();
@@ -470,6 +505,7 @@ export function SendPanelContent({ walletAddress }: Props) {
     form.sending,
     initData,
     insufficientBalance,
+    locale,
     refreshBalances,
     selected.token,
     sourceKind,
@@ -751,6 +787,11 @@ export function SendPanelContent({ walletAddress }: Props) {
           </FloatingDialogScrollChromeProvider>
         </FloatingDialogShell>
       ) : null}
+      <SendTransferSuccessDialog
+        visible={successDetails != null}
+        details={successDetails}
+        onClose={() => setSuccessDetails(null)}
+      />
     </View>
   );
 }

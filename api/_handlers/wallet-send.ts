@@ -10,6 +10,7 @@ import {
 } from "../../database/telegramAuth.js";
 import {
   findUsernameByBuiltinWalletAddress,
+  tonAddressesEqual,
   transferDllrBetweenUsernames,
 } from "../../database/dllrBalances.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
@@ -125,7 +126,13 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
     }
 
     const toAddress = typeof postBody.toAddress === "string" ? postBody.toAddress.trim() : "";
-    const amount = typeof postBody.amount === "string" ? postBody.amount.trim() : "";
+    const amountRaw = postBody.amount;
+    const amount =
+      typeof amountRaw === "string"
+        ? amountRaw.trim()
+        : typeof amountRaw === "number" && Number.isFinite(amountRaw)
+          ? String(amountRaw)
+          : "";
     const comment = typeof postBody.comment === "string" ? postBody.comment : "";
 
     if (!toAddress) {
@@ -144,6 +151,10 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       const amountUsd = parseDllrAmount(amount);
       if (amountUsd == null) {
         return sendJson(res, { ok: false, error: "invalid_amount" }, 400);
+      }
+
+      if (tonAddressesEqual(wallet.wallet_address, toAddress)) {
+        return sendJson(res, { ok: false, error: "cannot_send_to_self" }, 400);
       }
 
       const toUsername = await findUsernameByBuiltinWalletAddress(toAddress);
@@ -176,6 +187,11 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         return sendJson(res, transfer, status);
       }
 
+      const fromBalance =
+        Math.round((transfer.from.hotUsd + transfer.from.frozenUsd) * 1e6) / 1e6;
+      const recipientBalance =
+        Math.round((transfer.to.hotUsd + transfer.to.frozenUsd) * 1e6) / 1e6;
+
       return sendJson(
         res,
         {
@@ -183,10 +199,15 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           asset: DLLR_ASSET,
           amountUsd: transfer.amountUsd,
           fromAddress: wallet.wallet_address,
+          toAddress,
           toUsername,
+          comment: comment.trim() || undefined,
           dllr_hot_usd: transfer.from.hotUsd,
           dllr_frozen_usd: transfer.from.frozenUsd,
-          dllr_balance_usd: Math.round((transfer.from.hotUsd + transfer.from.frozenUsd) * 1e6) / 1e6,
+          dllr_balance_usd: fromBalance,
+          recipient_dllr_hot_usd: transfer.to.hotUsd,
+          recipient_dllr_frozen_usd: transfer.to.frozenUsd,
+          recipient_dllr_balance_usd: recipientBalance,
         },
         200,
       );

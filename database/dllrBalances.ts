@@ -84,32 +84,56 @@ export async function findUsernamesByEmail(email: string): Promise<string[]> {
     .filter(Boolean);
 }
 
+/** All common TON address string forms for DB lookup. */
+function tonAddressLookupVariants(walletAddress: string): string[] {
+  const trimmed = walletAddress.trim();
+  if (!trimmed) return [];
+  const out: string[] = [trimmed];
+  try {
+    const addr = Address.parse(trimmed);
+    out.push(
+      addr.toString({ urlSafe: true, bounceable: false }),
+      addr.toString({ urlSafe: true, bounceable: true }),
+      addr.toString({ urlSafe: false, bounceable: false }),
+      addr.toString({ urlSafe: false, bounceable: true }),
+      addr.toRawString(),
+    );
+  } catch {
+    /* invalid address — keep raw trim only */
+  }
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const v of out) {
+    const key = v.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(v);
+  }
+  return unique;
+}
+
 /** Find the HSP account that owns a built-in wallet address (EQ/UQ/raw forms). */
 export async function findUsernameByBuiltinWalletAddress(
   walletAddress: string,
 ): Promise<string | null> {
-  const trimmed = walletAddress.trim();
-  if (!trimmed) return null;
-
-  const direct = await findUsernamesByWalletAddress(trimmed);
-  if (direct[0]) return direct[0]!;
-
-  try {
-    const addr = Address.parse(trimmed);
-    const variants = [
-      addr.toString({ urlSafe: true, bounceable: false }),
-      addr.toString({ urlSafe: true, bounceable: true }),
-      addr.toRawString(),
-    ];
-    for (const variant of variants) {
-      if (variant.toLowerCase() === trimmed.toLowerCase()) continue;
-      const found = await findUsernamesByWalletAddress(variant);
-      if (found[0]) return found[0]!;
-    }
-  } catch {
-    /* invalid address */
+  for (const variant of tonAddressLookupVariants(walletAddress)) {
+    const found = await findUsernamesByWalletAddress(variant);
+    if (found[0]) return found[0]!;
   }
   return null;
+}
+
+/** True when two TON address strings refer to the same account. */
+export function tonAddressesEqual(a: string, b: string): boolean {
+  const left = a.trim();
+  const right = b.trim();
+  if (!left || !right) return false;
+  if (left.toLowerCase() === right.toLowerCase()) return true;
+  try {
+    return Address.parse(left).equals(Address.parse(right));
+  } catch {
+    return false;
+  }
 }
 
 export type TransferDllrResult =
@@ -170,8 +194,26 @@ export async function transferDllrBetweenUsernames(input: {
     frozenUsd: toLedger.frozenUsd,
   };
 
-  await setDllrLedgerForUsername(nextFrom);
-  await setDllrLedgerForUsername(nextTo);
+  await sql.transaction([
+    sql`
+      INSERT INTO user_dllr_balances (telegram_username, hot_usd, frozen_usd, updated_at)
+      VALUES (${nextFrom.username}, ${nextFrom.hotUsd}, ${nextFrom.frozenUsd}, NOW())
+      ON CONFLICT (telegram_username) DO UPDATE
+      SET
+        hot_usd = EXCLUDED.hot_usd,
+        frozen_usd = EXCLUDED.frozen_usd,
+        updated_at = NOW()
+    `,
+    sql`
+      INSERT INTO user_dllr_balances (telegram_username, hot_usd, frozen_usd, updated_at)
+      VALUES (${nextTo.username}, ${nextTo.hotUsd}, ${nextTo.frozenUsd}, NOW())
+      ON CONFLICT (telegram_username) DO UPDATE
+      SET
+        hot_usd = EXCLUDED.hot_usd,
+        frozen_usd = EXCLUDED.frozen_usd,
+        updated_at = NOW()
+    `,
+  ]);
 
   return { ok: true, from: nextFrom, to: nextTo, amountUsd };
 }

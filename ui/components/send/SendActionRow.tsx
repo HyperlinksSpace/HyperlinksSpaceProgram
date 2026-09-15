@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { parseLocaleAmount } from "../../format/localeAmountFormat";
 import { isDllrToken, swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
 import {
   runSendFormAction,
@@ -28,24 +29,16 @@ type Props = {
   address?: string;
 };
 
-function parseAmount(raw: string): number | null {
-  const cleaned = raw.trim().replace(/,/g, "").replace(/\s/g, "");
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
-}
-
 /** Send CTA: summary left, optional Frozen notice, Send button right (swap deal style). */
 export function SendActionRow({ density = "compact", address: addressProp }: Props) {
   const colors = useColors();
-  const { t, tf } = useAppStrings();
+  const { t, tf, locale } = useAppStrings();
   const form = useSendFormState();
   const address = (addressProp ?? form.address).trim();
   const symbol = swapTokenDisplaySymbol(form.token);
-  const amountNum = parseAmount(form.amount);
+  const amountNum = parseLocaleAmount(form.amount, locale);
   const dllrFrozen = isDllrToken(form.token) && form.sourceKind !== "builtin";
-  const balanceNum = parseAmount(form.balanceText);
+  const balanceNum = parseLocaleAmount(form.balanceText, locale);
   const insufficient =
     !form.balancesLoading &&
     amountNum != null &&

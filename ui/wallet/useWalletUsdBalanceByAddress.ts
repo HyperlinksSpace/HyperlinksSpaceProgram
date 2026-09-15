@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { fetchTonapiAccountHoldings } from "../ton/fetchTonapiAccountHoldings";
 import {
   getBuiltinDllrBalanceUsd,
@@ -66,6 +67,7 @@ export function useWalletUsdBalanceByAddress(
     builtinAddress?: string | null;
   },
 ): Record<string, string> {
+  const { locale } = useAppStrings();
   const enabled = options?.enabled !== false;
   const builtinKey = sameAddressKey(options?.builtinAddress ?? "");
   const dllrUsd = useSyncExternalStore(
@@ -120,11 +122,11 @@ export function useWalletUsdBalanceByAddress(
     const labels: Record<string, string> = {};
     for (const [key, onChain] of Object.entries(onChainByKey)) {
       const total = onChain + (builtinKey && key === builtinKey ? dllrUsd : 0);
-      labels[key] = formatHeaderWalletBalanceLabel(total);
+      labels[key] = formatHeaderWalletBalanceLabel(total, locale);
     }
     if (builtinKey && labels[builtinKey] == null && dllrUsd > 0) {
-      labels[builtinKey] = formatHeaderWalletBalanceLabel(dllrUsd);
+      labels[builtinKey] = formatHeaderWalletBalanceLabel(dllrUsd, locale);
     }
     return labels;
-  }, [builtinKey, dllrUsd, onChainByKey]);
+  }, [builtinKey, dllrUsd, locale, onChainByKey]);
 }

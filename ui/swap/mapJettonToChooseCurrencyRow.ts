@@ -1,6 +1,7 @@
 import type { AppLocale } from "../../locales/appStrings";
 import type { ChooseCurrencyRow } from "../components/swap/chooseCurrencyTableTypes";
 import { swapTonTokenImage } from "../components/swap/swapFormAssets";
+import { parseLocaleAmount } from "../format/localeAmountFormat";
 import {
   formatSwapHoldingUsd,
   formatSwapJettonBalance,
@@ -90,10 +91,10 @@ export function mapJettonToChooseCurrencyRow(
     : normalizeJettonLabel(jetton.name ?? "") || symbol;
   const balance =
     balanceRaw != null
-      ? formatSwapJettonBalance(balanceRaw, jetton.decimals ?? 9)
+      ? formatSwapJettonBalance(balanceRaw, jetton.decimals ?? 9, locale)
       : "—";
   const priceUsd = stats?.price_usd;
-  const balanceNum = Number.parseFloat(balance.replace(/,/g, ""));
+  const balanceNum = parseLocaleAmount(balance, locale) ?? 0;
   const holdingUsd =
     Number.isFinite(balanceNum) &&
     balanceNum > 0 &&
@@ -111,7 +112,7 @@ export function mapJettonToChooseCurrencyRow(
       icon: jettonIcon(jetton),
     },
     balance,
-    value: formatSwapHoldingUsd(holdingUsd),
+    value: formatSwapHoldingUsd(holdingUsd, locale),
     rate: formatSwapTokenPriceUsd(priceUsd),
     networks: "TON",
     marketCapUsd,

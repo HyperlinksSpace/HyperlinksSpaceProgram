@@ -10,10 +10,17 @@ export type WalletSendClientResult =
       ok: true;
       seqno?: number;
       fromAddress: string;
+      toAddress?: string;
       asset?: "dllr" | "chain";
+      amountUsd?: number;
+      comment?: string;
       dllrHotUsd?: number;
       dllrFrozenUsd?: number;
       dllrBalanceUsd?: number;
+      recipientDllrHotUsd?: number;
+      recipientDllrFrozenUsd?: number;
+      recipientDllrBalanceUsd?: number;
+      toUsername?: string;
     }
   | { ok: false; error: string };
 
@@ -40,6 +47,8 @@ export async function requestWalletSend(opts: {
   };
   if (opts.dllr) {
     body.asset = "dllr";
+    // Backup signal if `asset` is stripped by a proxy — server also treats this as DLLR.
+    body.jettonMasterAddress = "jetton:dllr";
   } else if (opts.jettonMasterAddress?.trim()) {
     body.jettonMasterAddress = opts.jettonMasterAddress.trim();
   }
@@ -60,11 +69,18 @@ export async function requestWalletSend(opts: {
       ok?: boolean;
       seqno?: number;
       fromAddress?: string;
+      toAddress?: string;
+      toUsername?: string;
       asset?: string;
+      amountUsd?: number;
+      comment?: string;
       error?: string;
       dllr_hot_usd?: number;
       dllr_frozen_usd?: number;
       dllr_balance_usd?: number;
+      recipient_dllr_hot_usd?: number;
+      recipient_dllr_frozen_usd?: number;
+      recipient_dllr_balance_usd?: number;
     } | null;
 
     if (res.ok && data?.ok) {
@@ -91,10 +107,17 @@ export async function requestWalletSend(opts: {
         ok: true,
         seqno: typeof data.seqno === "number" ? data.seqno : undefined,
         fromAddress: typeof data.fromAddress === "string" ? data.fromAddress : "",
+        toAddress: typeof data.toAddress === "string" ? data.toAddress : opts.toAddress.trim(),
         asset: isDllr ? "dllr" : "chain",
+        amountUsd: typeof data.amountUsd === "number" ? data.amountUsd : undefined,
+        comment: typeof data.comment === "string" ? data.comment : undefined,
         dllrHotUsd: data.dllr_hot_usd,
         dllrFrozenUsd: data.dllr_frozen_usd,
         dllrBalanceUsd: data.dllr_balance_usd,
+        recipientDllrHotUsd: data.recipient_dllr_hot_usd,
+        recipientDllrFrozenUsd: data.recipient_dllr_frozen_usd,
+        recipientDllrBalanceUsd: data.recipient_dllr_balance_usd,
+        toUsername: typeof data.toUsername === "string" ? data.toUsername : undefined,
       };
     }
     return {

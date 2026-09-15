@@ -123,12 +123,14 @@ export function resolveActiveWalletAddress(opts: {
 }): string {
   const builtin = opts.builtinAddress.trim();
   if (opts.preference.source === "tonconnect") {
+    const preferred = opts.preference.address.trim();
+    // Prefer the explicitly chosen address so picking a remembered TonConnect
+    // wallet does not require reopening the connect modal.
+    if (preferred) return preferred;
     if (opts.tonConnected) {
       const live = (opts.tonAddress ?? "").trim();
       if (live) return live;
     }
-    const preferred = opts.preference.address.trim();
-    if (preferred) return preferred;
   }
   return builtin;
 }
