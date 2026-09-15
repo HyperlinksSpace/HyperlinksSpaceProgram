@@ -458,9 +458,11 @@ export function SendPanelContent({ walletAddress }: Props) {
                 ? t("send.error.insufficientDllr")
                 : err === "cannot_send_to_self"
                   ? t("send.error.cannotSendToSelf")
-                  : err === "invalid_amount" || err === "missing_amount"
-                    ? t("send.error.generic")
-                    : err,
+                  : err === "missing_to_address"
+                    ? t("send.error.missingAddress")
+                    : err === "invalid_amount" || err === "missing_amount"
+                      ? t("send.error.generic")
+                      : err,
           );
           return;
         }

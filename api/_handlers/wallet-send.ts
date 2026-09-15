@@ -20,6 +20,7 @@ import { authByInitData } from "../wallet/_auth.js";
 import { getSessionTokenFromRequest } from "../_lib/session-auth.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
 import { unwrapMnemonicFromWalletRow } from "../_lib/unwrapWalletMnemonic.js";
+import { parseRequestJsonBody } from "../_lib/parse-request-body.js";
 import { appLog } from "../../shared/appLog.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -114,7 +115,8 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
 
   let postBody: PostBody = {};
   try {
-    postBody = (await request.json()) as PostBody;
+    // Vercel Node often pre-parses into req.body; request.json() then yields {}.
+    postBody = await parseRequestJsonBody<PostBody>(request);
   } catch {
     postBody = {};
   }
@@ -125,7 +127,13 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       return sendJson(res, { ok: false, error: "unauthorized" }, 401);
     }
 
-    const toAddress = typeof postBody.toAddress === "string" ? postBody.toAddress.trim() : "";
+    const toAddressRaw =
+      typeof postBody.toAddress === "string"
+        ? postBody.toAddress
+        : typeof (postBody as { to_address?: unknown }).to_address === "string"
+          ? (postBody as { to_address: string }).to_address
+          : "";
+    const toAddress = toAddressRaw.trim();
     const amountRaw = postBody.amount;
     const amount =
       typeof amountRaw === "string"
@@ -136,6 +144,10 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
     const comment = typeof postBody.comment === "string" ? postBody.comment : "";
 
     if (!toAddress) {
+      appLog(LOG_TAG, "missing_to_address", {
+        bodyKeys: Object.keys(postBody as object),
+        hasAsset: typeof postBody.asset === "string",
+      });
       return sendJson(res, { ok: false, error: "missing_to_address" }, 400);
     }
     if (!amount) {
