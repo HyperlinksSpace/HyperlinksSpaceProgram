@@ -2,7 +2,8 @@
 Program mint/redeem desk (or on-chain vault) that always exchanges 1 DLLR ↔ 1 USDT for signed-in users / KYC tiers, funded by a USDT treasury.
 On-chain DLLR/USDT stableswap (public liquidity for aggregators + trust-minimized path).
 Messages, voice call debug (2 screensharings, images lazyloading)
-VPN, QR, menu customization 
+VPN, QR, menu customization
+AI Photos and video
 AI Formatting
 Gifts integration
 Badges (admin, rights) in voice chats
