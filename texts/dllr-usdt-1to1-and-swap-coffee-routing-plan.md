@@ -29,6 +29,7 @@ Research note for making **swaps available in the HSP Swap section** by anchorin
 | Swap **TON → DLLR** | Prefer **TON → USDT → DLLR** |
 | Swap **DLLR ↔ any jetton** | Prefer **DLLR → USDT → jetton** (and reverse) when that path exists |
 | Rate promise | **1 DLLR = 1 USDT** (strict policy), with fees/slippage disclosed separately |
+| Capital constraint | Achieve that **1:1 DLLR↔USDT path with minimum liquidity** — prefer mint/redeem working float over locking deep AMM TVL (see **§6**) |
 
 HSP today already quotes via Swap.Coffee (`buildRoute` / `buildTransactionsV2`) and can execute with the built-in wallet. What is missing for DLLR routes is **real on-chain DLLR liquidity that aggregators can see**, plus a **policy for the 1:1 peg** (a normal AMM pool alone does **not** hard-guarantee 1:1).
 
@@ -231,7 +232,87 @@ Seeding a DeDust **volatile** TON/DLLR or USDT/DLLR CPMM at 1:1 **does not** gua
 
 ---
 
-## 6) Suggested target topology
+## 6) Achieve **1:1 DLLR ↔ USDT with minimum liquidity**
+
+**Product constraint:** we must deliver a **strict 1 DLLR = 1 USDT** swap path while **minimizing capital locked** in pools or idle inventory — not “bootstrap a deep AMM first.”
+
+### 6.1 Why a thin pool cannot do this
+
+| Approach at low TVL | What happens on a real-size trade |
+|---------------------|----------------------------------|
+| Volatile CPMM (x·y=k) | Spot leaves 1:1 immediately; slippage is large |
+| Stableswap / Curve-like | Near-peg only while trade ≪ depth × amplification; thin pool still breaks “strict 1:1” |
+| Dust LP only for listing | Aggregators may see a route, but fills are unusable / high impact |
+
+**Conclusion:** minimum-liquidity **1:1** is an **issuance / settlement** problem, not an AMM-depth problem. Do **not** plan to “guarantee 1:1” by seeding a small public pool.
+
+### 6.2 Preferred min-liquidity design (hybrid / centralized peg leg)
+
+Keep the **DLLR ↔ USDT leg off the AMM** (or only as a tiny optional discovery pool). Enforce 1:1 via **mint/redeem** (or RFQ) against a **working USDT reserve**:
+
+```
+User USDT  ──mint──►  +1 DLLR     (1:1, fee optional)
+User DLLR  ──burn──►  +1 USDT     (1:1, fee optional)
+```
+
+Capital that actually matters:
+
+| Bucket | Purpose | Sizing rule (min) |
+|--------|---------|-------------------|
+| **Redeem reserve (USDT)** | Pay users who burn DLLR | ≥ expected **peak redeem** over settlement window (e.g. daily P95), not “pool TVL” |
+| **Mint capacity (DLLR)** | Issue against incoming USDT | Mint authority / unissued supply; USDT received becomes reserve |
+| **Gas (TON)** | Jetton transfers / vault txs | Small operational float |
+| **Optional dust pool** | Listing / aggregator discovery only | Venue minimum (e.g. DeDust ~$50 guidance) — **not** used for guaranteed fills |
+
+**Multi-hop to TON still works with min DLLR liquidity:** HSP (or Swap.Coffee after a mint) only needs deep **USDT ↔ TON** markets that **already exist**. Flow:
+
+1. User wants **TON → DLLR**: buy USDT on DEX (existing depth) → **mint DLLR 1:1** against that USDT.  
+2. User wants **DLLR → TON**: **redeem DLLR → USDT 1:1** → sell USDT for TON on DEX.  
+3. User wants **DLLR ↔ USDT**: mint/redeem only — **zero pool depth required**.
+
+That is the minimum-liquidity path to a true 1:1 DLLR/USDT swap.
+
+### 6.3 Compare capital efficiency
+
+| Design | Capital to claim strict 1:1 on $N trade | Notes |
+|--------|----------------------------------------|--------|
+| **Mint/redeem** | ~**$N** USDT in redeem float (plus gas) | Same $N can serve many sequential users if flow nets out |
+| **Thin stableswap** | Often **≫ $N** TVL to keep impact near zero | Still not a contractual 1:1 |
+| **Deep stableswap** | Large locked LP | Good for public DeFi; expensive for “min liquidity” goal |
+| **Pure RFQ / broker** | Inventory on both sides | Same idea as mint/redeem; fully custodial |
+
+For HSP’s constraint (**1:1 + min liquidity**), **mint/redeem (or RFQ) first** beats seeding a large DLLR/USDT pool.
+
+### 6.4 Optional: micro on-chain pool without relying on it
+
+If you still want Swap.Coffee to *see* a DLLR/USDT pair:
+
+1. Seed **venue-minimum** liquidity only (listing / optics).  
+2. In HSP Swap UI, **do not** use that pool for the peg leg when `exact 1:1` is required — route DLLR↔USDT through mint/redeem.  
+3. Use Swap.Coffee only for **USDT ↔ TON / jettons**.  
+4. If an external aggregator quotes the dust pool, accept that *external* users may get soft rates; **in-app** policy stays 1:1.
+
+### 6.5 Operational guardrails at min liquidity
+
+1. **Per-tx and daily caps** on mint/redeem until reserves grow.  
+2. **Reserve ratio** `USDT_held / DLLR_circulating ≥ 1` (or policy band); else freeze redeems / show `dllrFrozen`.  
+3. **Netting:** batch or delay non-urgent redemptions if needed; never promise infinite instant redeem beyond reserve.  
+4. **Fee:** optional small bps on mint/redeem to fund gas and float — still quote “1:1 before fee” clearly.  
+5. **Grow liquidity later:** once volume justifies it, add a real stableswap for public/aggregator depth; keep mint/redeem as the **guarantee** backstop.
+
+### 6.6 Phase implication
+
+Under a **minimum-liquidity** mandate, reorder delivery:
+
+1. Real DLLR jetton + mint/redeem 1:1 (min USDT float).  
+2. HSP Swap: DLLR↔USDT via desk; DLLR↔TON = redeem/mint + Swap.Coffee USDT↔TON.  
+3. Only then (optional) seed public DLLR/USDT for decentralized discovery — not as the 1:1 enforcer.
+
+---
+
+## 7) Suggested target topology
+
+Under **minimum liquidity** (§6), the mint/redeem box is mandatory and the stableswap box is optional / later. With more capital, both run together.
 
 ```
                  ┌──────────────────────────────┐
@@ -261,99 +342,104 @@ Other pairs: any jetton with a USDT or TON market becomes reachable as `DLLR →
 
 ---
 
-## 7) Implementation plan (phased)
+## 8) Implementation plan (phased)
 
 ### Phase 0 — Preconditions (blocker)
 
 1. **Mainnet (or testnet) DLLR jetton master** with final decimals (UI currently assumes 9; USDT is 6 — convert carefully).
 2. Replace `SWAP_DLLR_TOKEN.address = "jetton:dllr"` with the real master for routing.
-3. Treasury wallets: USDT inventory + DLLR inventory + gas TON.
-4. Decide marketing language: **soft peg** vs **redeemable 1:1** (legal/compliance review).
+3. Treasury wallets: **minimum USDT redeem float** + DLLR mint capacity + gas TON (see §6 — not a deep LP budget).
+4. Decide marketing language: **soft peg** vs **redeemable 1:1** (legal/compliance review). Prefer redeemable if claiming strict 1:1 at min liquidity.
 
-### Phase 1 — Liquidity that aggregators can route (decentralized base)
+### Phase 1 — Min-liquidity 1:1 peg leg (before deep LP)
 
-1. Create **DLLR/USDT stableswap** on at least one major venue (STON.fi stableswap preferred for amplification; also evaluate DeDust stable / Coffee DEX).
-2. Seed **equal USD notionals** (start testnet small; mainnet e.g. tens–hundreds of thousands USDT + matching DLLR).
-3. Verify Swap.Coffee sees the pool:
+1. Ship **mint/redeem** (or RFQ) so **DLLR ↔ USDT is always 1:1** with only working USDT reserves (§6).
+2. Wire Swap UI: DLLR↔USDT through desk; DLLR↔TON = mint/redeem + Swap.Coffee **USDT↔TON** (existing depth).
+3. Optional: venue-minimum dust DLLR/USDT pool for listing only — **not** used for guaranteed fills.
+4. Skip funding a large public DLLR/USDT or DLLR/TON pool until volume justifies it.
+
+### Phase 2 — Liquidity that aggregators can route (optional scale-up)
+
+1. When ready to leave min-liquidity mode for public DeFi, create **DLLR/USDT stableswap** (STON.fi / DeDust / Coffee) with meaningful equal deposits.
+2. Verify Swap.Coffee sees the pool:
    - `GET /v1/dex/pools?assets=<DLLR>&assets=<USDT>`
    - `POST /v1/route` DLLR→native and native→DLLR with `max_length: 3`; confirm path includes USDT.
-4. Optionally skip a dedicated DLLR/TON volatile pool initially (reduces peg confusion); rely on USDT hub.
+3. Keep mint/redeem as peg backstop when mid drifts or for “Exact 1:1.”
 
-### Phase 2 — HSP Swap section “available”
+### Phase 3 — HSP Swap section polish
 
 1. Wire real execute path (already sketched in `executeSwap` / wallet send) for authenticated users.
 2. Quote UX:
    - Show **program rate** 1 DLLR = 1 USDT.
-   - Show **expected out** from Swap.Coffee (includes TON-leg impact).
+   - Show **expected out** for TON/jetton legs from Swap.Coffee (impact only on those legs).
    - Map `no_route` → clear “No pool” (already partially in `useSwapDealActionState`).
-3. Set `max_length: 3` (or 4) explicitly for DLLR pairs so multi-hop is allowed.
+3. Set `max_length: 3` (or 4) when using aggregator multi-hop for non-peg legs.
 4. Partner API key (`X-Api-Key`) for rate limits if volume grows.
-5. Test matrix: DLLR↔TON, DLLR↔USDT, DLLR↔GRAM/jetton, exact-in and exact-out, slippage abort.
+5. Test matrix: DLLR↔USDT at 1:1 (desk), DLLR↔TON, DLLR↔GRAM/jetton, caps, slippage abort, reserve freeze.
 
-### Phase 3 — Strict 1:1 (hybrid guarantee)
+### Phase 4 — Strict peg ops (hybrid guarantee)
 
-1. Implement **mint/redeem** service (start server-mediated; migrate to on-chain vault later):
-   - Deposit USDT → credit/mint DLLR 1:1.
-   - Burn/lock DLLR → send USDT 1:1.
-2. Peg monitor: compare Swap.Coffee mid DLLR/USDT vs 1.0; if \|mid−1\| &gt; ε, prefer mint/redeem for the DLLR↔USDT leg.
+1. Harden mint/redeem (server → on-chain vault when ready).
+2. Peg monitor vs any public pool mid; circuit breaker → `dllrFrozen` if insolvent.
 3. Public reserve dashboard (circulating DLLR vs USDT held).
-4. Circuit breaker: freeze swaps (`dllrFrozen`) if insolvent or oracle failure.
 
-### Phase 4 — Centralized fallback / RFQ (optional)
+### Phase 5 — Centralized RFQ failover (optional)
 
-1. Internal quote API for guaranteed fills when DEX depth is thin.
+1. Internal quote API when mint/redeem or DEX legs are thin.
 2. Server executes USDT↔TON via Swap.Coffee with HSP inventory.
-3. Keep this as **failover**, not the only path, if decentralization matters.
 
-### Phase 5 — Ops & listing
+### Phase 6 — Ops & listing
 
 1. Submit DLLR metadata to Swap.Coffee / Dexscreener / DEXes.
-2. LP top-ups and arb bot for the stableswap.
-3. Monitoring: route success rate, peg deviation, reserve ratio, failed slippage.
-4. Revisit whether a separate DLLR/TON pool is worth the IL (usually **no** if USDT hub is deep).
+2. Grow stableswap TVL only as volume requires; arb bot if public pool exists.
+3. Monitoring: reserve ratio, redeem latency, route success, peg deviation.
 
 ---
 
-## 8) Decision table
+## 9) Decision table
 
 | You want… | Choose… |
 |-----------|---------|
-| Fastest path to “swaps work” in UI | Phase 1 stableswap + Phase 2 routing (`max_length ≥ 3`) |
-| Honest **strict 1:1** claim | Hybrid mint/redeem (Phase 3) **plus** stableswap |
-| Fully non-custodial only | Stableswap + disclose soft peg; no “guaranteed” wording |
-| Full control / compliance freezes | Centralized RFQ (Phase 4) for DLLR↔USDT leg |
-| TON and other pairs “through USDT” | Do **not** require custom routers — Swap.Coffee multi-hop once DLLR/USDT exists |
+| **1:1 DLLR↔USDT with minimum liquidity** | **Mint/redeem (or RFQ) first** (§6); do **not** rely on a thin AMM |
+| Fastest path to “swaps work” in UI | §6 desk for peg + Swap.Coffee for USDT↔TON |
+| Later public / aggregator depth | Optional stableswap scale-up (Phase 2) **plus** keep mint/redeem |
+| Honest **strict 1:1** claim | Redeemable against USDT reserves (hybrid), not CPMM seed ratio |
+| Fully non-custodial only | Stableswap + disclose soft peg; cannot promise strict 1:1 at low TVL |
+| Full control / compliance freezes | Centralized RFQ for DLLR↔USDT leg |
+| TON and other pairs “through USDT” | Peg via desk or pool → then Swap.Coffee multi-hop on USDT hub |
 
 ---
 
-## 9) Recommended default for HSP
+## 10) Recommended default for HSP
 
-1. **Hybrid:** stableswap DLLR/USDT for decentralized routing **and** mint/redeem for the hard 1:1 product promise.  
-2. **Do not** rely on a volatile DLLR/TON pool for the dollar peg.  
-3. **Use Swap.Coffee as the router** for everything after the USDT hub (`max_length: 3+`).  
-4. **Ship Swap section** only after real DLLR address + verified `DLLR → USDT → TON` route returns non-empty paths.  
-5. Keep centralized RFQ as inventory backstop, not as the sole architecture.
+1. **Min-liquidity mandate:** enforce **1:1 DLLR↔USDT via mint/redeem** (working USDT float), not via a deep pool.  
+2. **Hybrid:** optional dust or later stableswap for discovery; mint/redeem remains the guarantee.  
+3. **Do not** rely on a volatile DLLR/TON pool for the dollar peg.  
+4. **Use Swap.Coffee** for **USDT ↔ TON / jettons** (`max_length: 3+` when DLLR is also on DEX).  
+5. **Ship Swap section** once mint/redeem 1:1 works and USDT↔TON routes succeed — public DLLR/USDT TVL is **not** a blocker for in-app 1:1.  
+6. Keep RFQ as inventory backstop under caps.
 
 ---
 
-## 10) Open questions before building
+## 11) Open questions before building
 
 1. Exact mainnet **DLLR master address** and decimals.  
-2. Initial **USDT reserve** size and who custodians it.  
+2. Initial **minimum USDT redeem float** and who custodians it (see §6 sizing).  
 3. Fee on mint/redeem (0 vs bps) and who pays TON gas.  
 4. Whether DLLR transfer restrictions / freezes must remain DEX-compatible.  
 5. Legal stance: program credit vs “stablecoin.”  
-6. Prefer STON.fi vs DeDust vs Coffee DEX as the **first** DLLR/USDT venue (can seed more than one).
+6. Whether a **dust** public DLLR/USDT pool is required for optics, or in-app desk-only is enough at launch.  
+7. Prefer STON.fi vs DeDust vs Coffee DEX when/if scaling beyond min liquidity.
 
 ---
 
-## 11) Minimal success checklist
+## 12) Minimal success checklist
 
 - [ ] Real DLLR jetton in `SWAP_DLLR_TOKEN`  
-- [ ] DLLR/USDT pool live with measurable TVL  
-- [ ] `buildRoute(DLLR → native)` returns path via USDT  
-- [ ] End-to-end swap in HSP Swap UI succeeds on testnet then mainnet  
-- [ ] Peg policy documented in UI (soft vs redeemable)  
-- [ ] If claiming strict 1:1: mint/redeem live + reserve monitoring  
+- [ ] **DLLR ↔ USDT mint/redeem at 1:1** with documented min reserve (§6)  
+- [ ] In-app swap: DLLR↔TON via redeem/mint + USDT↔TON route  
+- [ ] Caps + freeze when reserves insufficient  
+- [ ] Peg policy documented in UI (redeemable 1:1 at min liquidity)  
+- [ ] Optional later: DLLR/USDT pool + `buildRoute(DLLR → native)` via USDT for public depth  
 
-This is the research baseline for enabling swaps in the Swap section with **USDT as the hub** and a deliberate choice among **decentralized / hybrid / centralized** peg designs.
+This is the research baseline for enabling swaps in the Swap section with **USDT as the hub**, **strict 1:1 at minimum liquidity** via mint/redeem, and a deliberate choice among **decentralized / hybrid / centralized** peg designs.

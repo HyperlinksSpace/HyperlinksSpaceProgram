@@ -2,7 +2,6 @@ import { useSyncExternalStore } from "react";
 
 import {
   SWAP_DLLR_TOKEN,
-  SWAP_GRAM_TOKEN,
   type SwapPairToken,
 } from "../swap/swapPairTypes";
 

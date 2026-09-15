@@ -1,7 +1,10 @@
 Через юсдт двойной роут
+Program mint/redeem desk (or on-chain vault) that always exchanges 1 DLLR ↔ 1 USDT for signed-in users / KYC tiers, funded by a USDT treasury.
+On-chain DLLR/USDT stableswap (public liquidity for aggregators + trust-minimized path).
+Messages, voice call debug (2 screensharings, images lazyloading)
 VPN, QR, menu customization 
 AI Formatting
-Gifts
+Gifts integration
 Badges (admin, rights) in voice chats
 think about menu on mobile
 fix uilt-in wallet
