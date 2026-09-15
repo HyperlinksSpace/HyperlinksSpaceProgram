@@ -208,11 +208,13 @@ export function SendPanelContent({ walletAddress }: Props) {
   const sourceKind =
     activeWalletPreference.source === "builtin"
       ? "builtin"
-      : ton.connected && ton.address
-        ? "tonconnect"
-        : activeWalletPreference.source === "tonconnect"
+      : activeWalletPreference.source === "imported"
+        ? "imported"
+        : ton.connected && ton.address
           ? "tonconnect"
-          : "builtin";
+          : activeWalletPreference.source === "tonconnect"
+            ? "tonconnect"
+            : "builtin";
   const sourceAddress = resolveActiveWalletAddress({
     builtinAddress: builtin,
     preference: activeWalletPreference,
@@ -419,6 +421,10 @@ export function SendPanelContent({ walletAddress }: Props) {
     scheduleWalletBalanceRefreshBurst();
 
     try {
+      if (sourceKind === "imported") {
+        setSendError(t("send.error.importedSendSoon"));
+        return;
+      }
       if (sourceKind === "tonconnect") {
         if (!ton.connected || !ton.address) {
           await ton.openConnectModal();

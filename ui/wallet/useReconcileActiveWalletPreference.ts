@@ -19,7 +19,7 @@ export function useReconcileActiveWalletPreference(): void {
   const disconnectingRef = useRef(false);
 
   useEffect(() => {
-    if (preference.source !== "builtin") return;
+    if (preference.source !== "builtin" && preference.source !== "imported") return;
     if (!ton.connected || disconnectingRef.current) return;
     disconnectingRef.current = true;
     void ton
@@ -35,8 +35,8 @@ export function useReconcileActiveWalletPreference(): void {
     const live = (ton.friendlyAddress || ton.address || "").trim();
     if (!live) return;
     const pref = getActiveWalletPreference();
-    // User explicitly chose built-in — disconnect effect owns this; don't flip preference.
-    if (pref.source === "builtin") return;
+    // User explicitly chose built-in / imported — disconnect effect owns this.
+    if (pref.source === "builtin" || pref.source === "imported") return;
     if (pref.source === "tonconnect" && sameWalletAddress(pref.address, live)) return;
     preferTonConnectWallet(live);
   }, [ton.address, ton.connected, ton.friendlyAddress]);

@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   Modal,
   Platform,
@@ -18,17 +18,24 @@ import { typographyAeroport15, useColors } from "../../theme";
 import {
   isActiveWalletSelection,
   preferBuiltinWallet,
+  preferImportedWallet,
   preferTonConnectPending,
   preferTonConnectWallet,
   sameWalletAddress,
   useActiveWalletPreference,
 } from "../../wallet/activeWalletPreference";
+import {
+  readImportedWallets,
+  subscribeImportedWallets,
+} from "../../wallet/importedWalletsStore";
 import { useWalletUsdBalanceByAddress } from "../../wallet/useWalletUsdBalanceByAddress";
 import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
 import { clampAnchoredMenuPosition } from "../floatingDialogGeometry";
 import { HyperlinksSpaceLogo } from "../HyperlinksSpaceLogo";
 import { useTelegram } from "../Telegram";
+import { AddWalletMethodDialog } from "./AddWalletMethodDialog";
 import { ConnectedWalletNameplate } from "./ConnectedWalletNameplate";
+import { ImportWalletMnemonicDialog } from "./ImportWalletMnemonicDialog";
 import { WalletChoiceRadio } from "./WalletChoiceRadio";
 
 const WALLET_ICON_PX = 18;
@@ -63,6 +70,7 @@ type WalletRow = {
   imageUrl: string | null;
   connected: boolean;
   builtin: boolean;
+  imported: boolean;
 };
 
 type Props = {
@@ -73,15 +81,22 @@ type Props = {
   onClose: () => void;
 };
 
-/** Popover: available wallets (built-in + TonConnect) with CONNECTED plates + add. */
+/** Popover: available wallets (built-in + TonConnect + imported) with CONNECTED plates + add. */
 export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: Props) {
   const colors = useColors();
   const { t } = useAppStrings();
   const ton = useTonConnectSession();
   const preference = useActiveWalletPreference();
+  const importedWallets = useSyncExternalStore(
+    subscribeImportedWallets,
+    readImportedWallets,
+    readImportedWallets,
+  );
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const [busy, setBusy] = useState(false);
+  const [addMethodOpen, setAddMethodOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
@@ -110,6 +125,24 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
         imageUrl: null,
         connected: false,
         builtin: true,
+        imported: false,
+      });
+    }
+    for (const row of importedWallets) {
+      const display = (row.friendlyAddress || row.address).trim();
+      if (!display) continue;
+      if (sameWalletAddress(display, builtin) || sameWalletAddress(row.address, builtin)) {
+        continue;
+      }
+      rows.push({
+        key: row.id,
+        address: row.address,
+        displayAddress: display,
+        name: row.name?.trim() || t("home.header.importedWallet"),
+        imageUrl: null,
+        connected: false,
+        builtin: false,
+        imported: true,
       });
     }
     const list = [...ton.rememberedWallets];
@@ -135,6 +168,14 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
       if (sameWalletAddress(display, builtin) || sameWalletAddress(row.address, builtin)) {
         continue;
       }
+      if (
+        importedWallets.some(
+          (imp) =>
+            sameWalletAddress(imp.address, display) || sameWalletAddress(imp.address, row.address),
+        )
+      ) {
+        continue;
+      }
       const connected =
         Boolean(ton.connected) &&
         (sameWalletAddress(display, activeTon) || sameWalletAddress(row.address, activeTon));
@@ -146,12 +187,14 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
         imageUrl: row.imageUrl ?? null,
         connected,
         builtin: false,
+        imported: false,
       });
     }
     return rows;
   }, [
     activeTon,
     builtin,
+    importedWallets,
     t,
     ton.connected,
     ton.rememberedWallets,
@@ -164,7 +207,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     { enabled: visible, builtinAddress: builtin || null },
   );
 
-  const openWalletPicker = useCallback(async () => {
+  const openTonConnectPicker = useCallback(async () => {
     setBusy(true);
     onClose();
     try {
@@ -197,6 +240,20 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
         return;
       }
 
+      if (row.imported) {
+        preferImportedWallet(row.displayAddress || row.address);
+        onClose();
+        if (ton.connected) {
+          setBusy(true);
+          try {
+            await ton.disconnect();
+          } finally {
+            setBusy(false);
+          }
+        }
+        return;
+      }
+
       preferTonConnectWallet(row.displayAddress || row.address);
       onClose();
       // Prefer the chosen remembered wallet without opening the TonConnect picker.
@@ -217,7 +274,14 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     [activeTon, onClose, ton],
   );
 
-  if (!visible) return null;
+  const onImported = useCallback(
+    (address: string) => {
+      preferImportedWallet(address);
+      setImportOpen(false);
+      onClose();
+    },
+    [onClose],
+  );
 
   const menuWidth = 280;
   const preferred = clampAnchoredMenuPosition({
@@ -233,158 +297,198 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
   const menuLeft = preferred.left;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1 }} onPress={onClose}>
-        <Pressable
-          style={{
-            position: "absolute",
-            top: menuTop,
-            left: menuLeft,
-            minWidth: 260,
-            maxWidth: 340,
-            backgroundColor: colors.background,
-            borderWidth: 1,
-            borderColor: colors.highlight,
-            borderRadius: 0,
-            paddingVertical: 6,
-          }}
-          onPress={(e) => e.stopPropagation?.()}
-        >
-          {wallets.map((row) => {
-            const selected = isActiveWalletSelection({
-              preference,
-              rowBuiltin: row.builtin,
-              rowAddress: row.displayAddress || row.address,
-            });
-            return (
-              <Pressable
-                key={row.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                disabled={busy}
-                onPress={() => void onSelectWallet(row)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 10,
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  backgroundColor: selected ? colors.undercover : "transparent",
-                }}
-              >
-                {row.builtin ? (
-                  <View
-                    style={{
-                      width: WALLET_ICON_PX,
-                      height: WALLET_ICON_PX,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <HyperlinksSpaceLogo width={WALLET_ICON_PX} height={WALLET_ICON_PX} />
-                  </View>
-                ) : row.imageUrl ? (
-                  <Image
-                    source={{ uri: row.imageUrl }}
-                    style={{ width: WALLET_ICON_PX, height: WALLET_ICON_PX, borderRadius: 4 }}
-                  />
-                ) : (
-                  <View
-                    style={{
-                      width: WALLET_ICON_PX,
-                      height: WALLET_ICON_PX,
-                      borderRadius: 4,
-                      backgroundColor: "#0098EA",
-                    }}
-                  />
-                )}
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <View
+    <>
+      {visible ? (
+        <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+          <Pressable style={{ flex: 1 }} onPress={onClose}>
+            <Pressable
+              style={{
+                position: "absolute",
+                top: menuTop,
+                left: menuLeft,
+                minWidth: 260,
+                maxWidth: 340,
+                backgroundColor: colors.background,
+                borderWidth: 1,
+                borderColor: colors.highlight,
+                borderRadius: 0,
+                paddingVertical: 6,
+                overflow: "hidden",
+              }}
+              onPress={(e) => e.stopPropagation?.()}
+            >
+              {wallets.map((row) => {
+                const selected = isActiveWalletSelection({
+                  preference,
+                  rowBuiltin: row.builtin,
+                  rowImported: row.imported,
+                  rowAddress: row.displayAddress || row.address,
+                });
+                return (
+                  <Pressable
+                    key={row.key}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    disabled={busy}
+                    onPress={() => void onSelectWallet(row)}
                     style={{
                       flexDirection: "row",
                       alignItems: "center",
-                      gap: 6,
-                      minWidth: 0,
+                      gap: 10,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      backgroundColor: selected ? colors.undercover : "transparent",
                     }}
                   >
-                    {row.name ? (
+                    {row.builtin ? (
+                      <View
+                        style={{
+                          width: WALLET_ICON_PX,
+                          height: WALLET_ICON_PX,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <HyperlinksSpaceLogo width={WALLET_ICON_PX} height={WALLET_ICON_PX} />
+                      </View>
+                    ) : row.imported ? (
+                      <View
+                        style={{
+                          width: WALLET_ICON_PX,
+                          height: WALLET_ICON_PX,
+                          borderRadius: 4,
+                          borderWidth: 1,
+                          borderColor: colors.highlight,
+                          backgroundColor: colors.undercover,
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : row.imageUrl ? (
+                      <Image
+                        source={{ uri: row.imageUrl }}
+                        style={{ width: WALLET_ICON_PX, height: WALLET_ICON_PX, borderRadius: 4 }}
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: WALLET_ICON_PX,
+                          height: WALLET_ICON_PX,
+                          borderRadius: 4,
+                          backgroundColor: "#0098EA",
+                        }}
+                      />
+                    )}
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          minWidth: 0,
+                        }}
+                      >
+                        {row.name ? (
+                          <Text
+                            style={[
+                              typographyAeroport15,
+                              {
+                                color: colors.primary,
+                                fontWeight: "400",
+                                flexShrink: 1,
+                                minWidth: 0,
+                              },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {row.name}
+                          </Text>
+                        ) : null}
+                        {row.connected ? <ConnectedWalletNameplate /> : null}
+                      </View>
                       <Text
                         style={[
                           typographyAeroport15,
                           {
-                            color: colors.primary,
-                            fontWeight: "400",
-                            flexShrink: 1,
-                            minWidth: 0,
+                            color: colors.secondary,
+                            fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
                           },
                         ]}
                         numberOfLines={1}
                       >
-                        {row.name}
+                        {middleEllipsisAddress(row.displayAddress)}
+                      </Text>
+                    </View>
+                    {walletUsdLabels[row.displayAddress.trim().toLowerCase()] ? (
+                      <Text
+                        style={[
+                          typographyAeroport15,
+                          { color: colors.secondary, flexShrink: 0 },
+                        ]}
+                      >
+                        {walletUsdLabels[row.displayAddress.trim().toLowerCase()]}
                       </Text>
                     ) : null}
-                    {row.connected ? <ConnectedWalletNameplate /> : null}
-                  </View>
-                  <Text
-                    style={[
-                      typographyAeroport15,
-                      {
-                        color: colors.secondary,
-                        fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {middleEllipsisAddress(row.displayAddress)}
-                  </Text>
+                    <WalletChoiceRadio selected={selected} color={colors.primary} />
+                  </Pressable>
+                );
+              })}
+
+              <View style={{ height: 1, backgroundColor: colors.highlight, alignSelf: "stretch" }} />
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("home.header.addWallet")}
+                disabled={busy}
+                onPress={() => {
+                  onClose();
+                  setAddMethodOpen(true);
+                }}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                }}
+              >
+                <View
+                  style={{
+                    width: WALLET_ICON_PX,
+                    height: WALLET_ICON_PX,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <PlusGlyph color={colors.primary} />
                 </View>
-                {walletUsdLabels[row.displayAddress.trim().toLowerCase()] ? (
-                  <Text
-                    style={[
-                      typographyAeroport15,
-                      { color: colors.secondary, flexShrink: 0 },
-                    ]}
-                  >
-                    {walletUsdLabels[row.displayAddress.trim().toLowerCase()]}
-                  </Text>
-                ) : null}
-                <WalletChoiceRadio selected={selected} color={colors.primary} />
+                <Text style={[typographyAeroport15, { color: colors.primary, fontWeight: "400" }]}>
+                  {t("home.header.addWallet")}
+                </Text>
               </Pressable>
-            );
-          })}
-
-          <View style={{ height: 1, backgroundColor: colors.highlight, marginHorizontal: 10 }} />
-
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("home.header.addWallet")}
-            disabled={busy}
-            onPress={() => void openWalletPicker()}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 10,
-              paddingVertical: 12,
-              paddingHorizontal: 14,
-            }}
-          >
-            <View
-              style={{
-                width: WALLET_ICON_PX,
-                height: WALLET_ICON_PX,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <PlusGlyph color={colors.primary} />
-            </View>
-            <Text style={[typographyAeroport15, { color: colors.primary, fontWeight: "400" }]}>
-              {t("home.header.addWallet")}
-            </Text>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </Modal>
+      ) : null}
+
+      <AddWalletMethodDialog
+        visible={addMethodOpen}
+        onClose={() => setAddMethodOpen(false)}
+        onChooseTonConnect={() => {
+          setAddMethodOpen(false);
+          void openTonConnectPicker();
+        }}
+        onChooseRecoveryPhrase={() => {
+          setAddMethodOpen(false);
+          setImportOpen(true);
+        }}
+      />
+
+      <ImportWalletMnemonicDialog
+        visible={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={onImported}
+      />
+    </>
   );
 }

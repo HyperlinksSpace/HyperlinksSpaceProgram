@@ -11,6 +11,10 @@ export type ActiveWalletPreference =
       source: "tonconnect";
       /** Chosen / last connected address; empty while the connect modal is pending. */
       address: string;
+    }
+  | {
+      source: "imported";
+      address: string;
     };
 
 const STORAGE_KEY = "hsp.activeWalletPreference.v1";
@@ -43,6 +47,11 @@ function hydrate(): void {
     if (parsed.source === "tonconnect") {
       const address = typeof parsed.address === "string" ? parsed.address.trim() : "";
       state = { source: "tonconnect", address };
+      return;
+    }
+    if (parsed.source === "imported") {
+      const address = typeof parsed.address === "string" ? parsed.address.trim() : "";
+      if (address) state = { source: "imported", address };
     }
   } catch {
     /* ignore */
@@ -106,6 +115,18 @@ export function preferTonConnectPending(): void {
   emit();
 }
 
+export function preferImportedWallet(address: string): void {
+  hydrate();
+  const trimmed = address.trim();
+  if (!trimmed) return;
+  if (state.source === "imported" && sameWalletAddress(state.address, trimmed)) {
+    return;
+  }
+  state = { source: "imported", address: trimmed };
+  persist();
+  emit();
+}
+
 export function useActiveWalletPreference(): ActiveWalletPreference {
   return useSyncExternalStore(
     subscribeActiveWalletPreference,
@@ -122,6 +143,11 @@ export function resolveActiveWalletAddress(opts: {
   tonAddress: string | null | undefined;
 }): string {
   const builtin = opts.builtinAddress.trim();
+  if (opts.preference.source === "imported") {
+    const preferred = opts.preference.address.trim();
+    if (preferred) return preferred;
+    return builtin;
+  }
   if (opts.preference.source === "tonconnect") {
     const preferred = opts.preference.address.trim();
     // Prefer the explicitly chosen address so picking a remembered TonConnect
@@ -138,10 +164,17 @@ export function resolveActiveWalletAddress(opts: {
 export function isActiveWalletSelection(opts: {
   preference: ActiveWalletPreference;
   rowBuiltin: boolean;
+  rowImported?: boolean;
   rowAddress: string;
 }): boolean {
   if (opts.rowBuiltin) {
     return opts.preference.source === "builtin";
+  }
+  if (opts.rowImported) {
+    if (opts.preference.source !== "imported") return false;
+    const preferred = opts.preference.address.trim();
+    if (!preferred) return false;
+    return sameWalletAddress(preferred, opts.rowAddress);
   }
   if (opts.preference.source !== "tonconnect") return false;
   const preferred = opts.preference.address.trim();
