@@ -1,4 +1,8 @@
 import { Platform } from "react-native";
+import {
+  resolveFloatingDialogViewportInsets,
+  type FloatingDialogViewportInsets,
+} from "./floatingDialogChrome";
 
 export type FloatingDialogEdge = "n" | "s" | "e" | "w";
 export type FloatingDialogResizeHandle =
@@ -59,15 +63,24 @@ export function clampFloatingDialogSize(
   };
 }
 
-/** Largest size that still fits the viewport with side insets. */
+/** Largest size that still fits the viewport with side / safe-area insets. */
 export function floatingDialogViewportMax(
   windowWidth: number,
   windowHeight: number,
-  insetPx = 15,
+  insetPxOrInsets: number | FloatingDialogViewportInsets = 15,
 ): FloatingDialogSize {
+  const insets: FloatingDialogViewportInsets =
+    typeof insetPxOrInsets === "number"
+      ? {
+          left: insetPxOrInsets,
+          right: insetPxOrInsets,
+          top: insetPxOrInsets,
+          bottom: insetPxOrInsets,
+        }
+      : insetPxOrInsets;
   return {
-    width: Math.max(280, Math.floor(windowWidth - 2 * insetPx)),
-    height: Math.max(220, Math.floor(windowHeight - 2 * insetPx)),
+    width: Math.max(280, Math.floor(windowWidth - insets.left - insets.right)),
+    height: Math.max(220, Math.floor(windowHeight - insets.top - insets.bottom)),
   };
 }
 
@@ -81,8 +94,12 @@ export function resolveFloatingDialogDefaultSize(
   windowWidth: number,
   windowHeight: number,
   kind: FloatingDialogSizeKind,
+  viewportInsets?: FloatingDialogViewportInsets,
 ): FloatingDialogSize {
-  const max = floatingDialogViewportMax(windowWidth, windowHeight);
+  const insets =
+    viewportInsets ??
+    resolveFloatingDialogViewportInsets({ windowWidth });
+  const max = floatingDialogViewportMax(windowWidth, windowHeight, insets);
   const prefer = (width: number, height: number) =>
     clampFloatingDialogSize({ width, height }, { width: 280, height: 220 }, max);
 
@@ -124,13 +141,16 @@ export function resolveFloatingDialogDefaultSize(
   }
 }
 
-/** Keep at least `minVisible` px of the sheet on-screen (center-anchored + offset). */
+/**
+ * Keep the sheet inside the safe viewport rect (center-anchored + offset).
+ * When `insets` is omitted, falls back to keeping `minVisible` px on-screen.
+ */
 export function clampFloatingDialogOffset(
   offset: FloatingDialogOffset,
   size: FloatingDialogSize,
   winW: number,
   winH: number,
-  minVisible = 48,
+  minVisibleOrInsets: number | FloatingDialogViewportInsets = 48,
 ): FloatingDialogOffset {
   const centerX = winW / 2;
   const centerY = winH / 2;
@@ -138,11 +158,82 @@ export function clampFloatingDialogOffset(
   let y = Math.round(offset.y);
   const left = centerX - size.width / 2 + x;
   const top = centerY - size.height / 2 + y;
-  if (left + size.width < minVisible) x += minVisible - (left + size.width);
-  if (left > winW - minVisible) x -= left - (winW - minVisible);
-  if (top + size.height < minVisible) y += minVisible - (top + size.height);
-  if (top > winH - minVisible) y -= top - (winH - minVisible);
+
+  if (typeof minVisibleOrInsets === "number") {
+    const minVisible = minVisibleOrInsets;
+    if (left + size.width < minVisible) x += minVisible - (left + size.width);
+    if (left > winW - minVisible) x -= left - (winW - minVisible);
+    if (top + size.height < minVisible) y += minVisible - (top + size.height);
+    if (top > winH - minVisible) y -= top - (winH - minVisible);
+    return { x: Math.round(x), y: Math.round(y) };
+  }
+
+  const insets = minVisibleOrInsets;
+  const minLeft = insets.left;
+  const maxLeft = winW - insets.right - size.width;
+  const minTop = insets.top;
+  const maxTop = winH - insets.bottom - size.height;
+
+  if (Number.isFinite(minLeft) && Number.isFinite(maxLeft)) {
+    if (maxLeft >= minLeft) {
+      const clampedLeft = Math.min(maxLeft, Math.max(minLeft, left));
+      x += clampedLeft - left;
+    } else {
+      // Sheet wider than safe band — center in the band.
+      const bandCenter = (insets.left + winW - insets.right) / 2;
+      x += bandCenter - size.width / 2 - left;
+    }
+  }
+  if (Number.isFinite(minTop) && Number.isFinite(maxTop)) {
+    if (maxTop >= minTop) {
+      const clampedTop = Math.min(maxTop, Math.max(minTop, top));
+      y += clampedTop - top;
+    } else {
+      const bandCenter = (insets.top + winH - insets.bottom) / 2;
+      y += bandCenter - size.height / 2 - top;
+    }
+  }
   return { x: Math.round(x), y: Math.round(y) };
+}
+
+/** Bias initial offset so the sheet centers in the safe band (not the raw window). */
+export function floatingDialogSafeCenterOffset(
+  insets: FloatingDialogViewportInsets,
+): FloatingDialogOffset {
+  return {
+    x: Math.round((insets.left - insets.right) / 2),
+    y: Math.round((insets.top - insets.bottom) / 2),
+  };
+}
+
+/** Keep an anchored popover/menu inside the safe viewport rect. */
+export function clampAnchoredMenuPosition(args: {
+  left: number;
+  top: number;
+  menuWidth: number;
+  menuHeight: number;
+  windowWidth: number;
+  windowHeight: number;
+  insets: FloatingDialogViewportInsets;
+}): { left: number; top: number } {
+  const { menuWidth, menuHeight, windowWidth, windowHeight, insets } = args;
+  const minLeft = insets.left;
+  const maxLeft = windowWidth - insets.right - menuWidth;
+  const minTop = insets.top;
+  const maxTop = windowHeight - insets.bottom - menuHeight;
+  let left = args.left;
+  let top = args.top;
+  if (maxLeft >= minLeft) {
+    left = Math.min(maxLeft, Math.max(minLeft, left));
+  } else {
+    left = Math.round((insets.left + windowWidth - insets.right - menuWidth) / 2);
+  }
+  if (maxTop >= minTop) {
+    top = Math.min(maxTop, Math.max(minTop, top));
+  } else {
+    top = Math.round((insets.top + windowHeight - insets.bottom - menuHeight) / 2);
+  }
+  return { left: Math.round(left), top: Math.round(top) };
 }
 
 /**

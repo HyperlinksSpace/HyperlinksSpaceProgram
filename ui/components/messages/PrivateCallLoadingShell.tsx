@@ -1,8 +1,10 @@
-import { Modal, Platform, Text, View } from "react-native";
+import { useMemo } from "react";
+import { Modal, Platform, Text, useWindowDimensions, View } from "react-native";
 import { useColors } from "../../theme";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useTelegram } from "../Telegram";
 import { FloatingDialogCloseButton } from "../FloatingDialogCloseButton";
+import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
@@ -16,11 +18,21 @@ type Props = {
 /** Instant overlay while the private-call host chunk loads. */
 export function PrivateCallLoadingShell({ chat, onClose }: Props) {
   const colors = useColors();
-  const { colorScheme } = useTelegram();
+  const { width: windowWidth } = useWindowDimensions();
+  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const { t } = useAppStrings();
   const title = (chat.title ?? "").trim() || t("messages.privateCall.active");
   const avatarUrl = resolveTelegramThreadAvatarUrl(chat);
   const initials = extractChatAvatarInitials(title);
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
 
   return (
     <Modal
@@ -35,13 +47,19 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
           backgroundColor: colors.background,
           alignItems: "center",
           justifyContent: "center",
-          paddingHorizontal: 24,
+          paddingHorizontal: viewportInsets.left,
+          paddingTop: viewportInsets.top,
+          paddingBottom: viewportInsets.bottom,
         }}
       >
         <FloatingDialogCloseButton
           label={t("common.close")}
           onPress={onClose}
-          style={{ position: "absolute", top: 16, right: 16 }}
+          style={{
+            position: "absolute",
+            top: viewportInsets.top,
+            right: viewportInsets.right,
+          }}
         />
         <MessageChatAvatarSlot
           iconUrl={avatarUrl}
@@ -56,7 +74,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
             marginTop: 20,
             fontSize: 22,
             fontWeight: "600",
-            color: colors.text,
+            color: colors.primary,
             textAlign: "center",
           }}
         >
@@ -66,7 +84,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
           style={{
             marginTop: 8,
             fontSize: 16,
-            color: colors.textSecondary,
+            color: colors.secondary,
             textAlign: "center",
           }}
         >

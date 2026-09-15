@@ -228,6 +228,8 @@ export type TelegramContextValue = {
   telegramUsername: string | null;
   /** App profile label from `users.display_name` (random on first registration). */
   displayName: string | null;
+  /** Update local profile label after a successful rename (server already saved). */
+  setDisplayName: (name: string | null) => void;
   hasWallet: boolean | null;
   walletRequired: boolean;
   wallet: TelegramWalletRow | null;
@@ -306,6 +308,7 @@ const defaultContext: TelegramContextValue = {
   status: "idle",
   telegramUsername: null,
   displayName: null,
+  setDisplayName: () => {},
   hasWallet: null,
   walletRequired: false,
   wallet: null,
@@ -1067,6 +1070,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     status,
     telegramUsername,
     displayName,
+    setDisplayName,
     hasWallet,
     walletRequired,
     wallet,

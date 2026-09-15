@@ -45,6 +45,9 @@ import {
 } from "../wallet/activeWalletPreference";
 import { useReconcileActiveWalletPreference } from "../wallet/useReconcileActiveWalletPreference";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
+import { HeaderAddressCopiedDialog } from "./header/HeaderAddressCopiedDialog";
+import { HeaderRenameDisplayNameDialog } from "./header/HeaderRenameDisplayNameDialog";
+import { HeaderWalletMnemonicDialog } from "./header/HeaderWalletMnemonicDialog";
 import {
   HeaderIconCopy,
   HeaderIconEdit,
@@ -54,6 +57,7 @@ import {
   HeaderIconRu,
   HeaderIconZh,
 } from "./icons/HeaderActionIcons";
+import { getLastAuthSessionPayload, rememberAuthSessionPayload } from "../../auth/lastAuthSessionCache";
 
 const AH = layout.authenticatedHome;
 const HEADER_CONTROL_ROW_PX = layout.bottomBar.undercoverButtonHeightPx;
@@ -298,7 +302,7 @@ export function HomeAuthenticatedHeaderRow({
   const { signOut } = useAuth();
   const colors = useColors();
   const { t, tf, toggleUiLanguage, headerLanguageToggleShows } = useAppStrings();
-  const { triggerHaptic } = useTelegram();
+  const { triggerHaptic, setDisplayName } = useTelegram();
   const ton = useTonConnectSession();
   const activeWalletPreference = useActiveWalletPreference();
   useReconcileActiveWalletPreference();
@@ -308,6 +312,9 @@ export function HomeAuthenticatedHeaderRow({
   const [proDialogOpen, setProDialogOpen] = useState(false);
   const [switchWalletOpen, setSwitchWalletOpen] = useState(false);
   const [switchWalletAnchor, setSwitchWalletAnchor] = useState<LayoutRectangle | null>(null);
+  const [copiedDialogOpen, setCopiedDialogOpen] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [mnemonicDialogOpen, setMnemonicDialogOpen] = useState(false);
   const switchWalletRef = useRef<View>(null);
   const proSubscribed = useSyncExternalStore(
     subscribeProAccess,
@@ -357,8 +364,30 @@ export function HomeAuthenticatedHeaderRow({
   const copyFullWalletAddress = useCallback(async () => {
     if (!trimmed) return;
     await Clipboard.setStringAsync(trimmed);
+    setCopiedDialogOpen(true);
   }, [trimmed]);
 
+  const onDisplayNameSaved = useCallback(
+    (name: string) => {
+      setDisplayName(name);
+      const prev = getLastAuthSessionPayload();
+      if (prev) {
+        rememberAuthSessionPayload({
+          authenticated: prev.authenticated,
+          telegram_username: prev.telegram_username,
+          display_name: name,
+          has_wallet: prev.has_wallet,
+          wallet_required: prev.wallet_required,
+          auth_provider: prev.auth_provider,
+          email: prev.email,
+          provider_username: prev.provider_username,
+          telegram_username_actual: prev.telegram_username_actual,
+          wallet: prev.wallet,
+        });
+      }
+    },
+    [setDisplayName],
+  );
   const balanceButton = (
     <View
       style={{
@@ -568,11 +597,13 @@ export function HomeAuthenticatedHeaderRow({
                 void copyFullWalletAddress();
                 return;
               }
-              if (id === "key") {
-                router.push("/key" as any);
+              if (id === "edit") {
+                setRenameDialogOpen(true);
                 return;
               }
-              /* Wired when flows land */
+              if (id === "key") {
+                setMnemonicDialogOpen(true);
+              }
             }}
           >
             {(color) => <Icon color={color} size={AH.headerIconDisplaySize} />}
@@ -780,6 +811,20 @@ export function HomeAuthenticatedHeaderRow({
       anchor={switchWalletAnchor}
       builtinAddress={builtinTrimmed}
       onClose={() => setSwitchWalletOpen(false)}
+    />
+    <HeaderAddressCopiedDialog
+      visible={copiedDialogOpen}
+      onClose={() => setCopiedDialogOpen(false)}
+    />
+    <HeaderRenameDisplayNameDialog
+      visible={renameDialogOpen}
+      initialName={displayName.trim() === t("common.emDash") ? "" : displayName}
+      onClose={() => setRenameDialogOpen(false)}
+      onSaved={onDisplayNameSaved}
+    />
+    <HeaderWalletMnemonicDialog
+      visible={mnemonicDialogOpen}
+      onClose={() => setMnemonicDialogOpen(false)}
     />
     </>
   );

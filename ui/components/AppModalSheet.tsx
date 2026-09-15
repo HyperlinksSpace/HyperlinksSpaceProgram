@@ -35,8 +35,8 @@ export const appModalSheetStyles = StyleSheet.create({
     width: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: layout.contentSideInsetPx,
-    paddingVertical: layout.contentSideInsetPx,
+    paddingHorizontal: Math.max(16, layout.contentSideInsetPx),
+    paddingVertical: Math.max(16, layout.contentSideInsetPx),
   },
   backdropFill: {
     ...StyleSheet.absoluteFillObject,

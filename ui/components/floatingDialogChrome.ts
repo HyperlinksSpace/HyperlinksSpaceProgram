@@ -1,8 +1,58 @@
 import { Platform, type TextStyle } from "react-native";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
-import { typographySansSemibold } from "../theme";
+import { layout, typographySansSemibold } from "../theme";
 
 export const DIALOG_PAD_X_PX = 20;
+
+/** Minimum gap between sheet edge and viewport on phones (side gutters). */
+export const DIALOG_VIEWPORT_SIDE_INSET_MIN_PX = 16;
+
+/**
+ * Extra space below Telegram’s header / close control so sheet chrome does not collide.
+ * Applied when TMA reports a non-zero top safe/content inset.
+ */
+export const DIALOG_TMA_TOP_CLEARANCE_PX = 8;
+
+export type FloatingDialogViewportInsets = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+/**
+ * Viewport margins for floating dialogs.
+ * - Sides: at least {@link DIALOG_VIEWPORT_SIDE_INSET_MIN_PX} (wider than zero on mobile).
+ * - Top: clears TMA safeArea + contentSafeArea so sheets stay below Telegram chrome.
+ */
+export function resolveFloatingDialogViewportInsets(opts?: {
+  windowWidth?: number;
+  safeAreaInsetTop?: number;
+  contentSafeAreaInsetTop?: number;
+  safeAreaInsetBottom?: number;
+}): FloatingDialogViewportInsets {
+  const base = layout.contentSideInsetPx;
+  const side = Math.max(DIALOG_VIEWPORT_SIDE_INSET_MIN_PX, base);
+  const winW =
+    typeof opts?.windowWidth === "number" && opts.windowWidth > 0
+      ? opts.windowWidth
+      : 400;
+  // Slightly roomier gutters on very narrow phones.
+  const sideInset = winW < 380 ? Math.max(side, 18) : side;
+
+  const safeTop = Math.max(0, opts?.safeAreaInsetTop ?? 0);
+  const contentTop = Math.max(0, opts?.contentSafeAreaInsetTop ?? 0);
+  const tmaTop = safeTop + contentTop;
+  const top =
+    tmaTop > 0
+      ? Math.max(sideInset, Math.ceil(tmaTop + DIALOG_TMA_TOP_CLEARANCE_PX))
+      : sideInset;
+
+  const safeBottom = Math.max(0, opts?.safeAreaInsetBottom ?? 0);
+  const bottom = Math.max(sideInset, safeBottom > 0 ? safeBottom + 4 : sideInset);
+
+  return { left: sideInset, right: sideInset, top, bottom };
+}
 
 const dialogSansRegular: TextStyle = Platform.select({
   web: { fontFamily: WEB_UI_SANS_STACK },

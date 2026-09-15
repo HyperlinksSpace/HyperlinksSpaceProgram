@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Modal,
   Platform,
@@ -6,11 +6,14 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { layout, typographyRect15, useColors } from "../../theme";
+import { typographyRect15, useColors } from "../../theme";
+import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
+import { useTelegram } from "../Telegram";
 
 type Props = {
   visible: boolean;
@@ -22,7 +25,18 @@ type Props = {
 export function AiAgentRenameDialog({ visible, initialTitle, onClose, onSave }: Props) {
   const colors = useColors();
   const { t } = useAppStrings();
+  const { width: windowWidth } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const [value, setValue] = useState(initialTitle);
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
 
   useEffect(() => {
     if (visible) setValue(initialTitle);
@@ -37,7 +51,16 @@ export function AiAgentRenameDialog({ visible, initialTitle, onClose, onSave }: 
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      <View
+        style={[
+          styles.overlay,
+          {
+            paddingHorizontal: viewportInsets.left,
+            paddingTop: viewportInsets.top,
+            paddingBottom: viewportInsets.bottom,
+          },
+        ]}
+      >
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View
           style={[
@@ -92,7 +115,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: layout.contentSideInsetPx,
     backgroundColor: "rgba(0,0,0,0.35)",
   },
   sheet: {

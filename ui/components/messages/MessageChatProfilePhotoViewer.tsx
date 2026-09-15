@@ -98,10 +98,14 @@ export function MessageChatProfilePhotoViewer({
   addedAt = null,
 }: MessageChatProfilePhotoViewerProps) {
   const colors = useColors();
-  const { colorScheme } = useTelegram();
+  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const { t, locale } = useAppStrings();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  const topClearance = Math.max(
+    CHROME_PAD_PX,
+    Math.ceil(safeAreaInsetTop + contentSafeAreaInsetTop + 8),
+  );
 
   const resolvedAddedAt = addedAt ?? profilePhoto?.added_at ?? null;
   const addedLabel = useMemo(
@@ -111,7 +115,11 @@ export function MessageChatProfilePhotoViewer({
   const initials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const photoSizePx = Math.max(
     160,
-    Math.min(Math.floor(windowWidth * 0.72), Math.floor(windowHeight * 0.72), 640),
+    Math.min(
+      Math.floor(windowWidth * 0.72),
+      Math.floor((windowHeight - topClearance - CHROME_PAD_PX * 2) * 0.72),
+      640,
+    ),
   );
   const metaLine = [t("messages.profile.photoTitle"), title.trim() || null, addedLabel]
     .filter(Boolean)

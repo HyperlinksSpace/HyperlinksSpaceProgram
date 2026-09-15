@@ -176,6 +176,30 @@ export async function getDisplayNameForUsername(telegramUsername: string): Promi
   return (await readDisplayNameRow(telegramUsername)) ?? generated;
 }
 
+const DISPLAY_NAME_MAX_LEN = 64;
+
+/** Set the public profile label shown in the header (users.display_name). */
+export async function updateDisplayNameForUsername(
+  telegramUsername: string,
+  displayName: string,
+): Promise<string> {
+  const u = normalizeUsername(telegramUsername);
+  if (!u) throw new Error("username_required");
+  const next = displayName.trim().replace(/\s+/g, " ");
+  if (!next) throw new Error("display_name_required");
+  if (next.length > DISPLAY_NAME_MAX_LEN) throw new Error("display_name_too_long");
+
+  const rows = (await sql`
+    UPDATE users
+    SET display_name = ${next}, updated_at = NOW()
+    WHERE telegram_username = ${u}
+    RETURNING display_name;
+  `) as UserUpsertRow[];
+  const saved = rows[0]?.display_name;
+  if (typeof saved === "string" && saved.trim()) return saved.trim();
+  throw new Error("user_not_found");
+}
+
 async function upsertUserProfile(opts: UserAuthProfileInput): Promise<{ displayName: string } | null> {
   const telegramUsername = optionalText(opts.telegramUsername);
   if (!telegramUsername) return null;

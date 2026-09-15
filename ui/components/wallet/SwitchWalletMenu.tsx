@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   Text,
+  useWindowDimensions,
   View,
   type LayoutRectangle,
 } from "react-native";
@@ -23,7 +24,10 @@ import {
   useActiveWalletPreference,
 } from "../../wallet/activeWalletPreference";
 import { useWalletUsdBalanceByAddress } from "../../wallet/useWalletUsdBalanceByAddress";
+import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
+import { clampAnchoredMenuPosition } from "../floatingDialogGeometry";
 import { HyperlinksSpaceLogo } from "../HyperlinksSpaceLogo";
+import { useTelegram } from "../Telegram";
 import { ConnectedWalletNameplate } from "./ConnectedWalletNameplate";
 import { WalletChoiceRadio } from "./WalletChoiceRadio";
 
@@ -75,7 +79,18 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
   const { t } = useAppStrings();
   const ton = useTonConnectSession();
   const preference = useActiveWalletPreference();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const [busy, setBusy] = useState(false);
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
 
   useEffect(() => {
     if (visible) ton.refreshRememberedWallets();
@@ -204,10 +219,18 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
 
   if (!visible) return null;
 
-  const menuTop = anchor ? anchor.y + anchor.height + 8 : 64;
-  const menuLeft = anchor
-    ? Math.max(8, Math.min(anchor.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 280))
-    : 16;
+  const menuWidth = 280;
+  const preferred = clampAnchoredMenuPosition({
+    left: anchor ? anchor.x : viewportInsets.left,
+    top: anchor ? anchor.y + anchor.height + 8 : viewportInsets.top + 48,
+    menuWidth,
+    menuHeight: 320,
+    windowWidth,
+    windowHeight,
+    insets: viewportInsets,
+  });
+  const menuTop = preferred.top;
+  const menuLeft = preferred.left;
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>

@@ -26,6 +26,12 @@ import { useTelegram } from "../Telegram";
 import { appModalSheetStyles } from "../AppModalSheet";
 import { FloatingDialogCloseButton } from "../FloatingDialogCloseButton";
 import { applyIndependentEdgeResize, notifyFloatingDialogGeometryChanged } from "../floatingDialogGeometry";
+import {
+  clampFloatingDialogOffset,
+  floatingDialogSafeCenterOffset,
+  floatingDialogViewportMax,
+} from "../floatingDialogGeometry";
+import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
 import { logPageDisplay } from "../../pageDisplayLog";
 import type { TelegramChatVoiceParticipant } from "../../telegram/fetchTelegramChatVoiceParticipants";
 import {
@@ -445,19 +451,9 @@ function clampSheetOffset(
   size: SheetSize,
   winW: number,
   winH: number,
+  insets: ReturnType<typeof resolveFloatingDialogViewportInsets>,
 ): SheetOffset {
-  const minVisible = 48;
-  const centerX = winW / 2;
-  const centerY = winH / 2;
-  let x = Math.round(offset.x);
-  let y = Math.round(offset.y);
-  const left = centerX - size.width / 2 + x;
-  const top = centerY - size.height / 2 + y;
-  if (left + size.width < minVisible) x += minVisible - (left + size.width);
-  if (left > winW - minVisible) x -= left - (winW - minVisible);
-  if (top + size.height < minVisible) y += minVisible - (top + size.height);
-  if (top > winH - minVisible) y -= top - (winH - minVisible);
-  return { x: Math.round(x), y: Math.round(y) };
+  return clampFloatingDialogOffset(offset, size, winW, winH, insets);
 }
 
 function edgesForHandle(handle: ResizeHandle): Edge[] {
@@ -1083,6 +1079,20 @@ export function MessageChatVoicePopover({
     ],
   );
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
+  const safeCenterOffset = useMemo(
+    () => floatingDialogSafeCenterOffset(viewportInsets),
+    [viewportInsets],
+  );
   const isLightTheme = colors.primary === "#000000";
   const iconColor = colors.primary;
   const [micReconnectFlashOn, setMicReconnectFlashOn] = useState(false);
@@ -1367,14 +1377,9 @@ export function MessageChatVoicePopover({
     };
   }, [visible, requestClose]);
 
-  const maxWidth = Math.max(
-    MIN_SHEET_WIDTH_PX,
-    windowWidth - 2 * layout.contentSideInsetPx,
-  );
-  const maxHeight = Math.max(
-    MIN_SHEET_HEIGHT_PX,
-    windowHeight - 2 * layout.contentSideInsetPx,
-  );
+  const viewportMax = floatingDialogViewportMax(windowWidth, windowHeight, viewportInsets);
+  const maxWidth = Math.max(MIN_SHEET_WIDTH_PX, viewportMax.width);
+  const maxHeight = Math.max(MIN_SHEET_HEIGHT_PX, viewportMax.height);
 
   const clampSize = useCallback(
     (size: SheetSize): SheetSize => ({
@@ -1392,7 +1397,7 @@ export function MessageChatVoicePopover({
   );
   const [sheetOffset, setSheetOffset] = useState<SheetOffset>(() => {
     const stored = readStoredOffset();
-    return stored ?? { x: 0, y: 0 };
+    return stored ?? safeCenterOffset;
   });
   const [hoveredHandle, setHoveredHandle] = useState<ResizeHandle | null>(null);
   const [draggingHandle, setDraggingHandle] = useState<ResizeHandle | null>(null);
@@ -1427,17 +1432,25 @@ export function MessageChatVoicePopover({
     const storedOffset = readStoredOffset();
     if (storedOffset) {
       setSheetOffset(
-        clampSheetOffset(storedOffset, sheetSizeRef.current, windowWidth, windowHeight),
+        clampSheetOffset(
+          storedOffset,
+          sheetSizeRef.current,
+          windowWidth,
+          windowHeight,
+          viewportInsets,
+        ),
       );
+    } else {
+      setSheetOffset(safeCenterOffset);
     }
-  }, [clampSize, windowHeight, windowWidth]);
+  }, [clampSize, safeCenterOffset, viewportInsets, windowHeight, windowWidth]);
 
   useEffect(() => {
     setSheetSize((prev) => clampSize(prev));
     setSheetOffset((prev) =>
-      clampSheetOffset(prev, sheetSizeRef.current, windowWidth, windowHeight),
+      clampSheetOffset(prev, sheetSizeRef.current, windowWidth, windowHeight, viewportInsets),
     );
-  }, [clampSize, windowHeight, windowWidth]);
+  }, [clampSize, viewportInsets, windowHeight, windowWidth]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
@@ -1503,8 +1516,9 @@ export function MessageChatVoicePopover({
             y: move.startOffsetY + (e.clientY - move.startY),
           },
           sheetSizeRef.current,
-          window.innerWidth,
-          window.innerHeight,
+          windowWidth,
+          windowHeight,
+          viewportInsets,
         );
         setSheetOffset(next);
         return;
@@ -1522,8 +1536,9 @@ export function MessageChatVoicePopover({
       const offset = clampSheetOffset(
         applied.offset,
         applied.size,
-        window.innerWidth,
-        window.innerHeight,
+        windowWidth,
+        windowHeight,
+        viewportInsets,
       );
       setSheetSize(applied.size);
       setSheetOffset(offset);
@@ -1540,7 +1555,7 @@ export function MessageChatVoicePopover({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [clampSize, endDrag, endMoveDrag]);
+  }, [clampSize, endDrag, endMoveDrag, viewportInsets, windowHeight, windowWidth]);
 
   const beginDrag = useCallback(
     (

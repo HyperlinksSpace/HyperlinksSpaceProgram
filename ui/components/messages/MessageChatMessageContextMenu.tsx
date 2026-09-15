@@ -14,6 +14,9 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { typographyRect15, type ThemeColors } from "../../theme";
+import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
+import { clampAnchoredMenuPosition } from "../floatingDialogGeometry";
+import { useTelegram } from "../Telegram";
 
 export type MessageContextMenuAnchor = {
   x: number;
@@ -24,7 +27,6 @@ const MENU_PADDING_PX = 15;
 const MENU_ITEM_HEIGHT_PX = 15;
 const MENU_ITEM_GAP_PX = 20;
 const MENU_MIN_WIDTH_PX = 120;
-const MENU_VIEWPORT_MARGIN_PX = 8;
 
 type Props = {
   visible: boolean;
@@ -53,19 +55,17 @@ function clampMenuPosition(
   menuHeight: number,
   windowWidth: number,
   windowHeight: number,
+  insets: ReturnType<typeof resolveFloatingDialogViewportInsets>,
 ): { left: number; top: number } {
-  let left = anchor.x;
-  let top = anchor.y;
-  if (left + menuWidth > windowWidth - MENU_VIEWPORT_MARGIN_PX) {
-    left = Math.max(MENU_VIEWPORT_MARGIN_PX, windowWidth - menuWidth - MENU_VIEWPORT_MARGIN_PX);
-  }
-  if (top + menuHeight > windowHeight - MENU_VIEWPORT_MARGIN_PX) {
-    top = Math.max(MENU_VIEWPORT_MARGIN_PX, windowHeight - menuHeight - MENU_VIEWPORT_MARGIN_PX);
-  }
-  return {
-    left: Math.max(MENU_VIEWPORT_MARGIN_PX, left),
-    top: Math.max(MENU_VIEWPORT_MARGIN_PX, top),
-  };
+  return clampAnchoredMenuPosition({
+    left: anchor.x,
+    top: anchor.y,
+    menuWidth,
+    menuHeight,
+    windowWidth,
+    windowHeight,
+    insets,
+  });
 }
 
 function ContextMenuDivider({ color }: { color: string }) {
@@ -205,12 +205,29 @@ function MessageChatMessageContextMenuNative({
   onDelete,
 }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
   const [menuWidth, setMenuWidth] = useState(MENU_MIN_WIDTH_PX);
   const menuHeight = menuHeightPx(canEdit, canDelete);
   const position =
     anchor != null
-      ? clampMenuPosition(anchor, menuWidth, menuHeight, windowWidth, windowHeight)
-      : { left: MENU_VIEWPORT_MARGIN_PX, top: MENU_VIEWPORT_MARGIN_PX };
+      ? clampMenuPosition(
+          anchor,
+          menuWidth,
+          menuHeight,
+          windowWidth,
+          windowHeight,
+          viewportInsets,
+        )
+      : { left: viewportInsets.left, top: viewportInsets.top };
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -254,6 +271,16 @@ function MessageChatMessageContextMenuWeb({
   onDelete,
 }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+  );
   const [menuWidth, setMenuWidth] = useState(MENU_MIN_WIDTH_PX);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const menuHeight = menuHeightPx(canEdit, canDelete);
@@ -277,7 +304,14 @@ function MessageChatMessageContextMenuWeb({
 
   if (!visible || !anchor || !portalTarget) return null;
 
-  const position = clampMenuPosition(anchor, menuWidth, menuHeight, windowWidth, windowHeight);
+  const position = clampMenuPosition(
+    anchor,
+    menuWidth,
+    menuHeight,
+    windowWidth,
+    windowHeight,
+    viewportInsets,
+  );
 
   return createPortal(
     <View

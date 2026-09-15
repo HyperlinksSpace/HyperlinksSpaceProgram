@@ -18,6 +18,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { layout, useColors } from "../theme";
+import { resolveFloatingDialogViewportInsets } from "./floatingDialogChrome";
 import {
   applyIndependentEdgeResize,
   clampFloatingDialogOffset,
@@ -25,6 +26,8 @@ import {
   cursorForFloatingDialogHandle,
   edgesForFloatingDialogHandle,
   FLOATING_DIALOG_HANDLES,
+  floatingDialogSafeCenterOffset,
+  floatingDialogViewportMax,
   notifyFloatingDialogGeometryChanged,
   readFloatingDialogStoredOffset,
   readFloatingDialogStoredSize,
@@ -42,6 +45,7 @@ import {
   registerFloatingSurface,
   unregisterFloatingSurface,
 } from "./floatingSurfaceStack";
+import { useTelegram } from "./Telegram";
 
 const AH = layout.authenticatedHome;
 const HIT = AH.splitPaneDividerHitWidthPx;
@@ -316,6 +320,7 @@ export function FloatingDialogShell({
 }: FloatingDialogShellProps) {
   const colors = useColors();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
   const surfaceIdRef = useRef(allocateFloatingSurfaceId(testId));
   const [stackZ, setStackZ] = useState(() =>
     registerFloatingSurface(surfaceIdRef.current, zIndex),
@@ -334,17 +339,38 @@ export function FloatingDialogShell({
     if (visible) raiseToFront();
   }, [raiseToFront, visible]);
 
-  const maxSize = useMemo(
-    (): FloatingDialogSize => ({
-      width: Math.max(minSize.width, windowWidth - 2 * layout.contentSideInsetPx),
-      height: Math.max(minSize.height, windowHeight - 2 * layout.contentSideInsetPx),
-    }),
-    [minSize.height, minSize.width, windowHeight, windowWidth],
+  const viewportInsets = useMemo(
+    () =>
+      resolveFloatingDialogViewportInsets({
+        windowWidth,
+        safeAreaInsetTop,
+        contentSafeAreaInsetTop,
+      }),
+    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );
+
+  const safeCenterOffset = useMemo(
+    () => floatingDialogSafeCenterOffset(viewportInsets),
+    [viewportInsets],
+  );
+
+  const maxSize = useMemo((): FloatingDialogSize => {
+    const max = floatingDialogViewportMax(windowWidth, windowHeight, viewportInsets);
+    return {
+      width: Math.max(minSize.width, max.width),
+      height: Math.max(minSize.height, max.height),
+    };
+  }, [minSize.height, minSize.width, viewportInsets, windowHeight, windowWidth]);
 
   const clampSize = useCallback(
     (size: FloatingDialogSize) => clampFloatingDialogSize(size, minSize, maxSize),
     [maxSize, minSize],
+  );
+
+  const clampOffset = useCallback(
+    (offset: FloatingDialogOffset, size: FloatingDialogSize) =>
+      clampFloatingDialogOffset(offset, size, windowWidth, windowHeight, viewportInsets),
+    [viewportInsets, windowHeight, windowWidth],
   );
 
   const [sheetSize, setSheetSize] = useState<FloatingDialogSize>(() => {
@@ -357,7 +383,7 @@ export function FloatingDialogShell({
     const storedSize =
       sizeStorageKey && visible ? readFloatingDialogStoredSize(sizeStorageKey) : null;
     const size = clampSize(storedSize ?? defaultSize);
-    return clampFloatingDialogOffset(storedOffset ?? { x: 0, y: 0 }, size, windowWidth, windowHeight);
+    return clampOffset(storedOffset ?? safeCenterOffset, size);
   });
   const [contentSizing, setContentSizing] = useState(() => {
     if (!visible) return false;
@@ -425,25 +451,20 @@ export function FloatingDialogShell({
     if (offsetStorageKey) {
       const storedOffset = readFloatingDialogStoredOffset(offsetStorageKey);
       setSheetOffset(
-        clampFloatingDialogOffset(
-          storedOffset ?? { x: 0, y: 0 },
-          sheetSizeRef.current,
-          windowWidth,
-          windowHeight,
-        ),
+        clampOffset(storedOffset ?? safeCenterOffset, sheetSizeRef.current),
       );
     } else {
-      setSheetOffset({ x: 0, y: 0 });
+      setSheetOffset(safeCenterOffset);
     }
   }, [
+    clampOffset,
     clampSize,
     defaultSize,
     fitContentHeight,
     offsetStorageKey,
+    safeCenterOffset,
     sizeStorageKey,
     visible,
-    windowHeight,
-    windowWidth,
   ]);
 
   // Remeasure after async content settles (profile fields, etc.).
@@ -455,10 +476,8 @@ export function FloatingDialogShell({
 
   useEffect(() => {
     setSheetSize((prev) => clampSize(prev));
-    setSheetOffset((prev) =>
-      clampFloatingDialogOffset(prev, sheetSizeRef.current, windowWidth, windowHeight),
-    );
-  }, [clampSize, windowHeight, windowWidth]);
+    setSheetOffset((prev) => clampOffset(prev, sheetSizeRef.current));
+  }, [clampOffset, clampSize]);
 
   // Transform moves do not fire ResizeObserver — tell fixed scroll thumbs to remeasure
   // after the translate is committed to the DOM (layout effect = before paint).
@@ -522,14 +541,12 @@ export function FloatingDialogShell({
       }
       const move = moveDragRef.current;
       if (move) {
-        const next = clampFloatingDialogOffset(
+        const next = clampOffset(
           {
             x: move.startOffsetX + (e.clientX - move.startX),
             y: move.startOffsetY + (e.clientY - move.startY),
           },
           sheetSizeRef.current,
-          windowWidth,
-          windowHeight,
         );
         setSheetOffset(next);
         return;
@@ -544,12 +561,7 @@ export function FloatingDialogShell({
         dy: e.clientY - drag.startY,
         clampSize,
       });
-      const offset = clampFloatingDialogOffset(
-        applied.offset,
-        applied.size,
-        windowWidth,
-        windowHeight,
-      );
+      const offset = clampOffset(applied.offset, applied.size);
       setSheetSize(applied.size);
       setSheetOffset(offset);
     };
@@ -566,7 +578,7 @@ export function FloatingDialogShell({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [clampSize, endDrag, endMoveDrag, visible, windowHeight, windowWidth]);
+  }, [clampOffset, clampSize, endDrag, endMoveDrag, visible]);
 
   useEffect(() => {
     if (!visible || !onRequestClose || Platform.OS !== "web" || typeof window === "undefined") {
