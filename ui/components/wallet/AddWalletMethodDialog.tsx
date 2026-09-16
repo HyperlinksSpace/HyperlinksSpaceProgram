@@ -44,8 +44,7 @@ export function AddWalletMethodDialog({
       visible
       onClose={onClose}
       title={t("home.header.addWalletTitle")}
-      fitContentHeight
-      sizeStorageKey="hsp.addWalletMethod.size.v1"
+      sizeStorageKey="hsp.addWalletMethod.size.v2"
       offsetStorageKey="hsp.addWalletMethod.offset.v1"
     >
       <View style={{ gap: 16 }}>
