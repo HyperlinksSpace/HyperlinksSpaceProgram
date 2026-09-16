@@ -49,8 +49,10 @@ import { useTelegram } from "../Telegram";
 import { fetchTonapiAccountHoldings } from "../../ton/fetchTonapiAccountHoldings";
 import { buildSendTransferTransaction } from "../../ton/buildSendTransferTransaction";
 import { requestWalletSend } from "../../ton/requestWalletSend";
+import { sendMnemonicTransfer } from "../../ton/sendMnemonicTransfer";
 import { formatTonConnectErrorMessage } from "../../ton/formatTonConnectErrorMessage";
 import { isTonConnectUserRejection } from "../../ton/isTonConnectUserRejection";
+import { readImportedWalletMnemonic } from "../../wallet/importedWalletsStore";
 import {
   bumpWalletBalanceRefresh,
   scheduleWalletBalanceRefreshBurst,
@@ -433,10 +435,37 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
 
     try {
       if (sourceKind === "imported") {
-        setSendError(t("send.error.importedSendSoon"));
-        return;
-      }
-      if (sourceKind === "tonconnect") {
+        if (!sourceAddress) {
+          setSendError(t("send.error.noImportedWallet"));
+          return;
+        }
+        const mnemonic = await readImportedWalletMnemonic(sourceAddress);
+        if (!mnemonic?.length) {
+          setSendError(t("send.error.importedMnemonicMissing"));
+          return;
+        }
+        const result = await sendMnemonicTransfer({
+          mnemonic,
+          toAddress,
+          amount: amountCanonical,
+          decimals: selected.token.decimals,
+          jettonMasterAddress: isNativeTonToken(selected.token)
+            ? null
+            : selected.token.address,
+          comment: form.comment,
+          expectedFromAddress: sourceAddress,
+        });
+        if (!result.ok) {
+          setSendError(
+            result.error === "invalid_to_address" || result.error === "missing_to_address"
+              ? t("send.error.missingAddress")
+              : result.error === "address_mismatch"
+                ? t("send.error.importedAddressMismatch")
+                : t("send.error.generic"),
+          );
+          return;
+        }
+      } else if (sourceKind === "tonconnect") {
         if (!ton.connected || !ton.address) {
           await ton.openConnectModal();
           return;
@@ -527,6 +556,7 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     locale,
     refreshBalances,
     selected.token,
+    sourceAddress,
     sourceKind,
     t,
     ton,
@@ -543,9 +573,13 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     if (sourceKind === "tonconnect") {
       return formatConnectedWalletDialogSubtitle(ton.walletName, ton.address, t, tf);
     }
+    if (sourceKind === "imported") {
+      const snippet = walletAddressHeaderSnippet(sourceAddress);
+      return tf("send.chooseCurrencyImportedSubtitle", { snippet: snippet || "—" });
+    }
     const snippet = walletAddressHeaderSnippet(builtin);
     return tf("send.chooseCurrencyBuiltinSubtitle", { snippet: snippet || "—" });
-  }, [builtin, sourceKind, t, tf, ton.address, ton.walletName]);
+  }, [builtin, sourceAddress, sourceKind, t, tf, ton.address, ton.walletName]);
 
   const inputStyle = [
     typographyAeroport15,

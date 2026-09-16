@@ -5,7 +5,7 @@ import {
   type SwapPairToken,
 } from "../swap/swapPairTypes";
 
-export type SendSourceKind = "builtin" | "tonconnect";
+export type SendSourceKind = "builtin" | "tonconnect" | "imported";
 
 export type SendFormState = {
   address: string;
