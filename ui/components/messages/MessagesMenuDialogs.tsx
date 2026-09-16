@@ -13,7 +13,7 @@ import { useAppStrings } from "../../../locales/AppStringsContext";
 import type { AppLocale, AppStringKey } from "../../../locales/appStrings";
 import { openAuthenticatedHomeChatHistory } from "../../authenticatedHomeSelectedChat";
 import { useProfileSheet } from "../../profile/ProfileContext";
-import { typographyFixedRow30Label, useColors } from "../../theme";
+import { typographyFixedRow30Label, typographySansSemibold, useColors } from "../../theme";
 import {
   addTelegramContact,
   createTelegramChannel,
