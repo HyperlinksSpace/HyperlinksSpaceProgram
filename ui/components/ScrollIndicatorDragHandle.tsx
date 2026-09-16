@@ -55,8 +55,13 @@ function setDocumentDragSelectLock(locked: boolean) {
 }
 
 /**
- * Draggable overlay for 1px scroll thumbs. Expands the hit target ±3px on the cross axis
- * (left/right for vertical scroll, up/down for horizontal scroll).
+ * Unified scroll-indicator interaction: drag the thumb or press the track to jump.
+ *
+ * Use this for every custom HSP scroll thumb (vertical via {@link HspVerticalScrollIndicator},
+ * or horizontal overlays in nav / tariff / AI strips). Parents must use
+ * `pointerEvents="box-none"` so this handle can receive hits; never wrap it in `"none"`.
+ *
+ * Expands the hit target ±3px on the cross axis (left/right for vertical, up/down for horizontal).
  */
 export function ScrollIndicatorDragHandle({
   axis,
@@ -107,6 +112,17 @@ export function ScrollIndicatorDragHandle({
     [measureTrackOrigin],
   );
 
+  const applyThumbPosition = useCallback((thumbPos: number) => {
+    onScrollToRef.current(
+      scrollOffsetFromThumbPosition(
+        thumbPos,
+        trackSpanRef.current,
+        thumbSpanRef.current,
+        scrollRangeRef.current,
+      ),
+    );
+  }, []);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -118,25 +134,28 @@ export function ScrollIndicatorDragHandle({
           setDocumentDragSelectLock(true);
           measureTrackOrigin();
           const page = axis === "vertical" ? evt.nativeEvent.pageY : evt.nativeEvent.pageX;
-          grabAlongTrackRef.current = page - trackOriginRef.current - thumbOffsetRef.current;
+          const alongTrack = page - trackOriginRef.current;
+          const thumbStart = thumbOffsetRef.current;
+          const thumbEnd = thumbStart + thumbSpanRef.current;
+          // Press on the empty track: jump so the thumb centers under the pointer, then drag.
+          if (alongTrack < thumbStart || alongTrack > thumbEnd) {
+            const jumped = alongTrack - thumbSpanRef.current / 2;
+            applyThumbPosition(jumped);
+            grabAlongTrackRef.current = thumbSpanRef.current / 2;
+            return;
+          }
+          grabAlongTrackRef.current = alongTrack - thumbOffsetRef.current;
         },
         onPanResponderMove: (evt) => {
           if (Platform.OS === "web") clearBrowserTextSelection();
           const page = axis === "vertical" ? evt.nativeEvent.pageY : evt.nativeEvent.pageX;
           const thumbPos = page - trackOriginRef.current - grabAlongTrackRef.current;
-          onScrollToRef.current(
-            scrollOffsetFromThumbPosition(
-              thumbPos,
-              trackSpanRef.current,
-              thumbSpanRef.current,
-              scrollRangeRef.current,
-            ),
-          );
+          applyThumbPosition(thumbPos);
         },
         onPanResponderRelease: () => endDragSelectLock(),
         onPanResponderTerminate: () => endDragSelectLock(),
       }),
-    [axis, measureTrackOrigin, endDragSelectLock],
+    [axis, measureTrackOrigin, endDragSelectLock, applyThumbPosition],
   );
 
   if (scrollRange <= 0 || thumbSpan <= 0 || trackSpan <= 0) {
@@ -154,22 +173,23 @@ export function ScrollIndicatorDragHandle({
         } as unknown as ViewStyle)
       : null;
 
+  // Full-track hit area so press-to-jump works; thumb visual sits inside at thumbOffset.
   const handleStyle: ViewStyle =
     axis === "vertical"
       ? {
           position: "absolute",
           right: -inset,
-          top: thumbOffset - inset,
+          top: 0,
           width: crossAxisVisualSpan + inset * 2,
-          height: thumbSpan + inset * 2,
+          height: trackSpan,
           zIndex: SCROLL_INDICATOR_DRAG_Z_INDEX,
           ...webDragStyle,
         }
       : {
           position: "absolute",
-          left: thumbOffset,
+          left: 0,
           top: -inset,
-          width: thumbSpan,
+          width: trackSpan,
           height: crossAxisVisualSpan + inset * 2,
           zIndex: SCROLL_INDICATOR_DRAG_Z_INDEX,
           ...webDragStyle,
@@ -180,14 +200,14 @@ export function ScrollIndicatorDragHandle({
       ? {
           position: "absolute",
           right: inset,
-          top: inset,
+          top: thumbOffset,
           width: crossAxisVisualSpan,
           height: thumbSpan,
           overflow: "visible",
         }
       : {
           position: "absolute",
-          left: 0,
+          left: thumbOffset,
           top: inset,
           width: thumbSpan,
           height: crossAxisVisualSpan,
@@ -202,7 +222,14 @@ export function ScrollIndicatorDragHandle({
   return (
     <>
       <View ref={trackRef} pointerEvents="none" style={trackProbeStyle} onLayout={onTrackLayout} />
-      <View {...panResponder.panHandlers} style={handleStyle} collapsable={false}>
+      <View
+        {...panResponder.panHandlers}
+        pointerEvents="auto"
+        style={handleStyle}
+        collapsable={false}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Scroll"
+      >
         <View pointerEvents="none" style={visualWrapStyle}>
           {children}
         </View>

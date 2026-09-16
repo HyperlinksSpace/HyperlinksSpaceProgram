@@ -91,7 +91,10 @@ function findFloatingDialogSheet(from: HTMLElement | null): HTMLElement | null {
 }
 
 /**
- * Vertical 1px scroll thumb.
+ * Vertical 1px scroll thumb — standard HSP vertical indicator.
+ *
+ * Always wraps {@link ScrollIndicatorDragHandle} (drag thumb + press track to jump).
+ * Mount wrappers use `pointerEvents="box-none"` so the handle can receive hits.
  *
  * When {@link scrollbarRightInsetPx} is `0` on web, the rail is portaled above the split-pane
  * seam overlay so it can sit on the divider (music-bar style) without being covered by it.
@@ -425,11 +428,12 @@ export function HspVerticalScrollIndicator({
     </ScrollIndicatorDragHandle>
   );
 
+  // box-none: track paints don't steal hits; ScrollIndicatorDragHandle (pointerEvents=auto) receives drag.
   if (overlaySeam && typeof document !== "undefined" && activeBox) {
     const portalLeft = scrollIndicatorPortalLeftPx(activeBox.rightPx, shellDom);
     const portal: ReactNode = (
       <View
-        pointerEvents="none"
+        pointerEvents="box-none"
         style={{
           position: "fixed" as unknown as "absolute",
           top: activeBox.topPx,
@@ -476,7 +480,7 @@ export function HspVerticalScrollIndicator({
       const portalLeft = snapScrollIndicatorCoordPx(box.rightPx - DIALOG_THUMB_CROSS_AXIS_PX);
       const portal: ReactNode = (
         <View
-          pointerEvents="none"
+          pointerEvents="box-none"
           {...({
             dataSet: { hspDialogScrollIndicator: "1", geometryEpoch: String(geometryEpoch) },
           } as object)}
@@ -499,7 +503,7 @@ export function HspVerticalScrollIndicator({
 
   return (
     <View
-      pointerEvents="none"
+      pointerEvents="box-none"
       style={[
         {
           position: "absolute",

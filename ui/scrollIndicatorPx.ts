@@ -1,6 +1,14 @@
 import { PixelRatio, Platform } from "react-native";
 
 /**
+ * HSP custom scroll-indicator geometry helpers.
+ *
+ * Interaction standard: every visible custom thumb must go through
+ * `ScrollIndicatorDragHandle` (directly or via `HspVerticalScrollIndicator`) so users can
+ * drag the thumb and press the track to jump. Do not render a visual-only thumb.
+ */
+
+/**
  * Snap layout coords to the device pixel grid so a 1px-wide overlay doesn’t sit on half-pixels and blur.
  */
 export function snapScrollIndicatorCoordPx(n: number): number {
