@@ -141,3 +141,80 @@ export function useWalletUsdBalanceByAddress(
     return labels;
   }, [builtinKey, dllrUsd, locale, onChainByKey]);
 }
+
+/**
+ * Header chip total: sum of on-chain USD across every known wallet, plus DLLR once.
+ * (Per-wallet picker rows still add DLLR only on the built-in address.)
+ */
+export function useAllWalletsHeaderBalanceLabel(
+  addresses: readonly string[],
+  options?: { enabled?: boolean },
+): string {
+  const { locale } = useAppStrings();
+  const enabled = options?.enabled !== false;
+  const dllrUsd = useSyncExternalStore(
+    subscribeBuiltinDllrBalance,
+    getBuiltinDllrBalanceUsd,
+    () => 0,
+  );
+  const refreshNonce = useSyncExternalStore(
+    subscribeWalletBalanceRefresh,
+    getWalletBalanceRefreshNonce,
+    () => 0,
+  );
+
+  const addressEntries = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const raw of addresses) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const key = sameAddressKey(trimmed);
+      if (!map.has(key)) map.set(key, trimmed);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [addresses]);
+
+  const addressKey = useMemo(
+    () => addressEntries.map(([key]) => key).join("|"),
+    [addressEntries],
+  );
+  const [onChainByKey, setOnChainByKey] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!enabled || addressEntries.length === 0) {
+      setOnChainByKey({});
+      return;
+    }
+    let cancelled = false;
+
+    const load = async () => {
+      const entries = await Promise.all(
+        addressEntries.map(async ([key, friendly]) => {
+          try {
+            const usd = await estimateOnChainWalletUsd(friendly);
+            return [key, usd] as const;
+          } catch {
+            return [key, 0] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, number> = {};
+      for (const [key, usd] of entries) next[key] = usd;
+      setOnChainByKey(next);
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [addressEntries, addressKey, enabled, refreshNonce]);
+
+  return useMemo(() => {
+    let onChainTotal = 0;
+    for (const usd of Object.values(onChainByKey)) {
+      if (Number.isFinite(usd) && usd > 0) onChainTotal += usd;
+    }
+    return formatHeaderWalletBalanceLabel(onChainTotal + dllrUsd, locale);
+  }, [dllrUsd, locale, onChainByKey]);
+}

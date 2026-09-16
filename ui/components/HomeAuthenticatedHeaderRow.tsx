@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { usePathname, useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, Platform, type LayoutRectangle } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
@@ -44,6 +44,11 @@ import {
   useActiveWalletPreference,
 } from "../wallet/activeWalletPreference";
 import { useReconcileActiveWalletPreference } from "../wallet/useReconcileActiveWalletPreference";
+import {
+  readImportedWallets,
+  subscribeImportedWallets,
+} from "../wallet/importedWalletsStore";
+import { useAllWalletsHeaderBalanceLabel } from "../wallet/useWalletUsdBalanceByAddress";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { HeaderAddressCopiedDialog } from "./header/HeaderAddressCopiedDialog";
 import { HeaderRenameDisplayNameDialog } from "./header/HeaderRenameDisplayNameDialog";
@@ -267,13 +272,16 @@ function AuthenticatedHomeMenuItems({
 type HeaderMenuKey = (typeof WIDE_MENU_ITEM_KEYS)[number]["key"];
 
 type Props = {
-  /** Raw wallet address; clipboard receives trimmed original casing. */
+  /** Built-in wallet address (clipboard / switch-menu builtin row). */
   walletAddress: string;
   /** Profile label from `users.display_name`. */
   displayName: string;
-  /** Live built-in wallet total for the header balance line. */
+  /**
+   * Fallback header balance while known wallets are still loading.
+   * Live total is the sum of all known wallets (+ DLLR once).
+   */
   headerBalanceLabel?: string;
-  /** Opens the built-in wallet currencies dialog. */
+  /** Opens the chosen-wallet currencies dialog. */
   onBalancePress?: () => void;
   /** Wallet currencies dialog is open — inverts chip colors on the wallet control. */
   walletCurrenciesOpen?: boolean;
@@ -306,6 +314,11 @@ export function HomeAuthenticatedHeaderRow({
   const ton = useTonConnectSession();
   const activeWalletPreference = useActiveWalletPreference();
   useReconcileActiveWalletPreference();
+  const importedWallets = useSyncExternalStore(
+    subscribeImportedWallets,
+    readImportedWallets,
+    readImportedWallets,
+  );
   const { width: windowWidth } = useWindowDimensions();
   /** Measured shell width — matches the header column, not always the browser window (`useWindowDimensions` can stay wide on web). */
   const [measuredWidth, setMeasuredWidth] = useState<number | null>(null);
@@ -325,6 +338,10 @@ export function HomeAuthenticatedHeaderRow({
   useEffect(() => {
     return subscribeOpenProAccess(() => setProDialogOpen(true));
   }, []);
+
+  useEffect(() => {
+    ton.refreshRememberedWallets();
+  }, [ton]);
 
   const openSwitchWalletMenu = useCallback(() => {
     switchWalletRef.current?.measureInWindow((x, y, width, height) => {
@@ -349,6 +366,35 @@ export function HomeAuthenticatedHeaderRow({
     tonAddress: ton.friendlyAddress || ton.address,
   });
   const trimmed = trimWalletAddress(activeAddress);
+
+  const knownWalletAddresses = useMemo(() => {
+    const out: string[] = [];
+    const push = (value: string | null | undefined) => {
+      const next = (value ?? "").trim();
+      if (next) out.push(next);
+    };
+    push(builtinTrimmed);
+    for (const row of importedWallets) {
+      push(row.friendlyAddress || row.address);
+    }
+    for (const row of ton.rememberedWallets) {
+      push(row.friendlyAddress || row.address);
+    }
+    push(ton.friendlyAddress || ton.address);
+    return out;
+  }, [
+    builtinTrimmed,
+    importedWallets,
+    ton.address,
+    ton.friendlyAddress,
+    ton.rememberedWallets,
+  ]);
+
+  const allWalletsBalanceLabel = useAllWalletsHeaderBalanceLabel(knownWalletAddresses, {
+    enabled: knownWalletAddresses.length > 0,
+  });
+  const balanceLabel =
+    knownWalletAddresses.length > 0 ? allWalletsBalanceLabel : headerBalanceLabel;
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
   const walletNameLabel = (() => {
     const name = displayName.trim();
@@ -436,7 +482,7 @@ export function HomeAuthenticatedHeaderRow({
             },
           ]}
         >
-          {headerBalanceLabel}
+          {balanceLabel}
         </Text>
       </View>
     </View>

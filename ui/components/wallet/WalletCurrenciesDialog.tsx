@@ -24,7 +24,7 @@ type Props = {
   title?: string;
 };
 
-/** Floating dialog listing currencies held on the built-in wallet (non-zero balances only). */
+/** Floating dialog listing currencies held on the currently chosen wallet (DLLR kept with CROSS). */
 export function WalletCurrenciesDialog({
   visible,
   onClose,

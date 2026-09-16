@@ -20,14 +20,17 @@ import { GetColumnFooter } from "../components/get/GetColumnFooter";
 import { TradeColumnFooter } from "../components/trade/TradeColumnFooter";
 import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeaderRow";
 import { WalletCurrenciesDialog } from "../components/wallet/WalletCurrenciesDialog";
-import { useWalletHeldCurrencyRows } from "../wallet/useWalletHeldCurrencyRows";
+import {
+  resolveActiveWalletAddress,
+  useActiveWalletPreference,
+} from "../wallet/activeWalletPreference";
+import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import {
   getFeedUnreadCount,
   subscribeFeedUnreadCount,
 } from "../feed/feedUnreadStore";
-import { getInitDataString } from "../components/telegramWebApp";
 import { AuthenticatedHomeMessagesPanel } from "../components/AuthenticatedHomeMessagesPanel";
 import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { MessageChatOlderHistoryLoadLine } from "../components/messages/MessageChatOlderHistoryLoadLine";
@@ -790,7 +793,16 @@ function HomeAuthenticatedScreenMain() {
   /** True only when we can actually show a wallet string (avoids "has_wallet" with no row / stale flags). */
   const hasDisplayAddress = Boolean(effectiveWalletAddress);
   const effectiveHasWallet = hasWallet || hasDisplayAddress;
-  const { headerBalanceLabel } = useWalletHeldCurrencyRows(effectiveWalletAddress, hasDisplayAddress, getInitDataString());
+  const tonConnect = useTonConnectSession();
+  const activeWalletPreference = useActiveWalletPreference();
+  const chosenWalletAddress = resolveActiveWalletAddress({
+    builtinAddress: (effectiveWalletAddress ?? "").trim(),
+    preference: activeWalletPreference,
+    tonConnected: tonConnect.connected,
+    tonAddress: tonConnect.friendlyAddress || tonConnect.address,
+  });
+  const currenciesDialogAddress =
+    chosenWalletAddress.trim() || (effectiveWalletAddress ?? "").trim();
   const headerDisplayName = displayName?.trim() || t("common.emDash");
   const onHeaderBalancePress = useCallback(() => {
     setWalletCurrenciesOpen((open) => {
@@ -1371,7 +1383,6 @@ function HomeAuthenticatedScreenMain() {
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
-          headerBalanceLabel={headerBalanceLabel}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
         />
@@ -1433,7 +1444,6 @@ function HomeAuthenticatedScreenMain() {
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
-          headerBalanceLabel={headerBalanceLabel}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
         />
@@ -1491,7 +1501,6 @@ function HomeAuthenticatedScreenMain() {
         <HomeAuthenticatedHeaderRow
           walletAddress={effectiveWalletAddress ?? ""}
           displayName={headerDisplayName}
-          headerBalanceLabel={headerBalanceLabel}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
         />
@@ -1664,7 +1673,6 @@ function HomeAuthenticatedScreenMain() {
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
       displayName={headerDisplayName}
-      headerBalanceLabel={headerBalanceLabel}
       onBalancePress={onHeaderBalancePress}
       walletCurrenciesOpen={walletCurrenciesOpen}
       layoutIsWide={isWideHome}
@@ -1900,7 +1908,7 @@ function HomeAuthenticatedScreenMain() {
           key={walletCurrenciesSession}
           visible
           onClose={() => setWalletCurrenciesOpen(false)}
-          walletAddress={effectiveWalletAddress ?? ""}
+          walletAddress={currenciesDialogAddress}
           displayName={headerDisplayName}
         />
       ) : null}
