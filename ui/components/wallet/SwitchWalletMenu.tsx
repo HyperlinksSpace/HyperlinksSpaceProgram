@@ -134,7 +134,9 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
 
   useEffect(() => {
     if (visible) ton.refreshRememberedWallets();
-  }, [ton, visible]);
+    // Only when the menu opens — not on every `ton` identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional visible-only
+  }, [visible]);
 
   const activeTon = ton.friendlyAddress || ton.address;
   const builtin = builtinAddress.trim();

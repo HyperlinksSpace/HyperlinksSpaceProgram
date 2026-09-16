@@ -127,7 +127,9 @@ export function useWalletUsdBalanceByAddress(
     return () => {
       cancelled = true;
     };
-  }, [addressEntries, addressKey, enabled, refreshNonce]);
+    // addressKey is the stable identity of addressEntries
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addressEntries derived from addressKey
+  }, [addressKey, enabled, refreshNonce]);
 
   return useMemo(() => {
     const labels: Record<string, string> = {};
@@ -208,7 +210,9 @@ export function useAllWalletsHeaderBalanceLabel(
     return () => {
       cancelled = true;
     };
-  }, [addressEntries, addressKey, enabled, refreshNonce]);
+    // addressKey is the stable identity of addressEntries
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- addressEntries derived from addressKey
+  }, [addressKey, enabled, refreshNonce]);
 
   return useMemo(() => {
     let onChainTotal = 0;

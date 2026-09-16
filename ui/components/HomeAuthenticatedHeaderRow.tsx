@@ -341,7 +341,10 @@ export function HomeAuthenticatedHeaderRow({
 
   useEffect(() => {
     ton.refreshRememberedWallets();
-  }, [ton]);
+    // Mount-only: `ton` identity changes whenever rememberedWallets updates,
+    // so depending on `[ton]` caused an infinite refresh → TonAPI storm.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount-only
+  }, []);
 
   const openSwitchWalletMenu = useCallback(() => {
     switchWalletRef.current?.measureInWindow((x, y, width, height) => {

@@ -53,6 +53,25 @@ type TonapiRatesResponse = {
 
 type ApiHoldingsResponse = TonapiAccountHoldings & { ok?: boolean; error?: string };
 
+const HOLDINGS_CACHE_TTL_MS = 30_000;
+const holdingsInFlight = new Map<string, Promise<TonapiAccountHoldings>>();
+const holdingsCache = new Map<string, { at: number; value: TonapiAccountHoldings }>();
+
+function holdingsCacheKey(address: string): string {
+  return address.trim().toLowerCase();
+}
+
+function emptyHoldings(address: string): TonapiAccountHoldings {
+  return {
+    address,
+    status: null,
+    nativeBalance: 0,
+    nativeBalanceNano: "0",
+    tonPriceUsd: null,
+    jettons: [],
+  };
+}
+
 function readUsdPrice(prices: Record<string, number> | undefined): number | null {
   if (!prices) return null;
   const usd = prices.USD ?? prices.usd;
@@ -132,44 +151,64 @@ async function fetchTonapiAccountHoldingsDirect(
 
 /**
  * Native GRAM + jetton balances via our `/api/ton-account-holdings` proxy (server TonAPI key),
- * with a direct TonAPI fallback for local/dev without the proxy.
+ * with a direct TonAPI fallback only when the proxy is unreachable (not on 429/502).
+ * In-flight requests and a short TTL cache dedupe parallel callers (header + menu).
  */
 export async function fetchTonapiAccountHoldings(
   walletAddress: string,
 ): Promise<TonapiAccountHoldings> {
   const trimmed = walletAddress.trim();
-  if (!trimmed) {
-    return {
-      address: "",
-      status: null,
-      nativeBalance: 0,
-      nativeBalanceNano: "0",
-      tonPriceUsd: null,
-      jettons: [],
-    };
+  if (!trimmed) return emptyHoldings("");
+
+  const key = holdingsCacheKey(trimmed);
+  const cached = holdingsCache.get(key);
+  if (cached && Date.now() - cached.at < HOLDINGS_CACHE_TTL_MS) {
+    return cached.value;
   }
 
-  try {
-    const url = buildApiUrl(
-      `/api/ton-account-holdings?address=${encodeURIComponent(trimmed)}`,
-    );
-    const res = await fetch(url, { credentials: "include" });
-    if (res.ok) {
-      const data = (await res.json()) as ApiHoldingsResponse;
-      if (data && typeof data.nativeBalance === "number") {
-        return {
-          address: data.address ?? trimmed,
-          status: data.status ?? null,
-          nativeBalance: data.nativeBalance,
-          nativeBalanceNano: data.nativeBalanceNano ?? "0",
-          tonPriceUsd: data.tonPriceUsd ?? null,
-          jettons: Array.isArray(data.jettons) ? data.jettons : [],
-        };
+  const existing = holdingsInFlight.get(key);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<TonapiAccountHoldings> => {
+    try {
+      const url = buildApiUrl(
+        `/api/ton-account-holdings?address=${encodeURIComponent(trimmed)}`,
+      );
+      const res = await fetch(url, { credentials: "include" });
+      if (res.ok) {
+        const data = (await res.json()) as ApiHoldingsResponse;
+        if (data && typeof data.nativeBalance === "number") {
+          const value: TonapiAccountHoldings = {
+            address: data.address ?? trimmed,
+            status: data.status ?? null,
+            nativeBalance: data.nativeBalance,
+            nativeBalanceNano: data.nativeBalanceNano ?? "0",
+            tonPriceUsd: data.tonPriceUsd ?? null,
+            jettons: Array.isArray(data.jettons) ? data.jettons : [],
+          };
+          holdingsCache.set(key, { at: Date.now(), value });
+          return value;
+        }
       }
+      // Proxy reachable but failed (429/502/etc.): do NOT hammer public TonAPI.
+      if (res.status !== 404) {
+        return cached?.value ?? emptyHoldings(trimmed);
+      }
+    } catch {
+      /* network / CORS — try direct TonAPI once */
     }
-  } catch {
-    /* fall through to direct TonAPI */
-  }
 
-  return fetchTonapiAccountHoldingsDirect(trimmed);
+    try {
+      const value = await fetchTonapiAccountHoldingsDirect(trimmed);
+      holdingsCache.set(key, { at: Date.now(), value });
+      return value;
+    } catch {
+      return cached?.value ?? emptyHoldings(trimmed);
+    }
+  })().finally(() => {
+    holdingsInFlight.delete(key);
+  });
+
+  holdingsInFlight.set(key, promise);
+  return promise;
 }

@@ -148,7 +148,23 @@ function WebTonConnectSessionBridge({ children }: { children: ReactNode }) {
   );
 
   const refreshRememberedWallets = useCallback(() => {
-    setRememberedWallets(readRememberedTonWallets());
+    const next = readRememberedTonWallets();
+    setRememberedWallets((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every(
+          (row, i) =>
+            row.address === next[i]?.address &&
+            (row.friendlyAddress ?? null) === (next[i]?.friendlyAddress ?? null) &&
+            (row.name ?? null) === (next[i]?.name ?? null) &&
+            (row.imageUrl ?? null) === (next[i]?.imageUrl ?? null) &&
+            row.lastConnectedAt === next[i]?.lastConnectedAt,
+        )
+      ) {
+        return prev;
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
