@@ -80,26 +80,37 @@ export function useWalletUsdBalanceByAddress(
     getWalletBalanceRefreshNonce,
     () => 0,
   );
+
+  /** Preserve checksum casing for TonAPI; lowercase is only a map key. */
+  const addressEntries = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const raw of addresses) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const key = sameAddressKey(trimmed);
+      if (!map.has(key)) map.set(key, trimmed);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [addresses]);
+
   const addressKey = useMemo(
-    () =>
-      [...new Set(addresses.map(sameAddressKey).filter(Boolean))].sort().join("|"),
-    [addresses],
+    () => addressEntries.map(([key]) => key).join("|"),
+    [addressEntries],
   );
   const [onChainByKey, setOnChainByKey] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (!enabled || !addressKey) {
+    if (!enabled || addressEntries.length === 0) {
       setOnChainByKey({});
       return;
     }
     let cancelled = false;
-    const keys = addressKey.split("|").filter(Boolean);
 
     const load = async () => {
       const entries = await Promise.all(
-        keys.map(async (key) => {
+        addressEntries.map(async ([key, friendly]) => {
           try {
-            const usd = await estimateOnChainWalletUsd(key);
+            const usd = await estimateOnChainWalletUsd(friendly);
             return [key, usd] as const;
           } catch {
             return [key, 0] as const;
@@ -116,7 +127,7 @@ export function useWalletUsdBalanceByAddress(
     return () => {
       cancelled = true;
     };
-  }, [addressKey, enabled, refreshNonce]);
+  }, [addressEntries, addressKey, enabled, refreshNonce]);
 
   return useMemo(() => {
     const labels: Record<string, string> = {};
