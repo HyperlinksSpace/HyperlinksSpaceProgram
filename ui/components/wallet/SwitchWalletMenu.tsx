@@ -211,6 +211,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     setBusy(true);
     onClose();
     try {
+      // Mark adopt-on-success without clearing the currently selected wallet.
       preferTonConnectPending();
       if (ton.connected) {
         await ton.disconnect();

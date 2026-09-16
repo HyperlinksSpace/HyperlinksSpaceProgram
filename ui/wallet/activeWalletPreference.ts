@@ -21,6 +21,8 @@ const STORAGE_KEY = "hsp.activeWalletPreference.v1";
 
 let state: ActiveWalletPreference = { source: "builtin" };
 let hydrated = false;
+/** When true, next successful TonConnect session is adopted without clearing current selection first. */
+let adoptNextTonConnectSession = false;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -46,7 +48,8 @@ function hydrate(): void {
     }
     if (parsed.source === "tonconnect") {
       const address = typeof parsed.address === "string" ? parsed.address.trim() : "";
-      state = { source: "tonconnect", address };
+      // Empty pending preference left the switch-wallet menu with no radio selected.
+      state = address ? { source: "tonconnect", address } : { source: "builtin" };
       return;
     }
     if (parsed.source === "imported") {
@@ -89,6 +92,7 @@ export function subscribeActiveWalletPreference(listener: () => void): () => voi
 
 export function preferBuiltinWallet(): void {
   hydrate();
+  adoptNextTonConnectSession = false;
   if (state.source === "builtin") return;
   state = { source: "builtin" };
   persist();
@@ -98,6 +102,7 @@ export function preferBuiltinWallet(): void {
 export function preferTonConnectWallet(address: string): void {
   hydrate();
   const trimmed = address.trim();
+  adoptNextTonConnectSession = false;
   if (state.source === "tonconnect" && sameWalletAddress(state.address, trimmed)) {
     return;
   }
@@ -106,19 +111,33 @@ export function preferTonConnectWallet(address: string): void {
   emit();
 }
 
-/** Mark TonConnect as intended before the connect modal resolves an address. */
+/**
+ * Called before opening the TonConnect modal.
+ * Keeps the current wallet selected until connect resolves; marks that the
+ * next live session should be adopted (so cancel does not leave “none chosen”).
+ */
 export function preferTonConnectPending(): void {
   hydrate();
-  if (state.source === "tonconnect") return;
-  state = { source: "tonconnect", address: "" };
-  persist();
-  emit();
+  adoptNextTonConnectSession = true;
+}
+
+/** True while a TonConnect picker was opened and we should adopt on success. */
+export function isTonConnectAdoptPending(): boolean {
+  return adoptNextTonConnectSession;
+}
+
+/** Consume the adopt-next flag (returns previous value). */
+export function takeTonConnectAdoptPending(): boolean {
+  const pending = adoptNextTonConnectSession;
+  adoptNextTonConnectSession = false;
+  return pending;
 }
 
 export function preferImportedWallet(address: string): void {
   hydrate();
   const trimmed = address.trim();
   if (!trimmed) return;
+  adoptNextTonConnectSession = false;
   if (state.source === "imported" && sameWalletAddress(state.address, trimmed)) {
     return;
   }

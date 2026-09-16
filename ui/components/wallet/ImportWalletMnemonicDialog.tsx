@@ -292,6 +292,42 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
           </View>
         </View>
 
+        <View style={{ gap: 6 }}>
+          <Text
+            style={{
+              color: colors.secondary,
+              fontSize: 12,
+              lineHeight: 16,
+              fontFamily: labelFont,
+            }}
+          >
+            {t("home.header.importMnemonicPasteHint")}
+          </Text>
+          <TextInput
+            value={pasteDraft}
+            onChangeText={applyPaste}
+            placeholder={t("home.header.importMnemonicPastePlaceholder")}
+            placeholderTextColor={colors.secondary}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={{
+              minHeight: 64,
+              borderWidth: 1,
+              borderColor: colors.highlight,
+              backgroundColor: colors.undercover,
+              color: colors.primary,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              fontSize: 13,
+              lineHeight: 18,
+              fontFamily: monoFont,
+              textAlignVertical: "top",
+            }}
+          />
+        </View>
+
         <View style={{ gap: 8 }}>
           <Text
             style={{
@@ -334,42 +370,6 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
           </View>
         </View>
 
-        <View style={{ gap: 6 }}>
-          <Text
-            style={{
-              color: colors.secondary,
-              fontSize: 12,
-              lineHeight: 16,
-              fontFamily: labelFont,
-            }}
-          >
-            {t("home.header.importMnemonicPasteHint")}
-          </Text>
-          <TextInput
-            value={pasteDraft}
-            onChangeText={applyPaste}
-            placeholder={t("home.header.importMnemonicPastePlaceholder")}
-            placeholderTextColor={colors.secondary}
-            multiline
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            style={{
-              minHeight: 64,
-              borderWidth: 1,
-              borderColor: colors.highlight,
-              backgroundColor: colors.undercover,
-              color: colors.primary,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-              fontSize: 13,
-              lineHeight: 18,
-              fontFamily: monoFont,
-              textAlignVertical: "top",
-            }}
-          />
-        </View>
-
         <View
           style={{
             flexDirection: "row",
@@ -395,14 +395,20 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
               }}
             >
               <Text
+                numberOfLines={1}
                 style={{
                   color: colors.secondary,
                   fontSize: 11,
+                  lineHeight: 14,
                   fontFamily: monoFont,
-                  minWidth: 18,
+                  minWidth: 22,
+                  flexShrink: 0,
+                  ...(Platform.OS === "web"
+                    ? ({ whiteSpace: "nowrap" } as object)
+                    : null),
                 }}
               >
-                {index + 1}.
+                {`${index + 1}.`}
               </Text>
               <TextInput
                 ref={(node) => {
