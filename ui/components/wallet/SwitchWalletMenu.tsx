@@ -60,6 +60,31 @@ function PlusGlyph({ color, size = PLUS_ICON_PX }: { color: string; size?: numbe
   );
 }
 
+/** Recovery-phrase / imported wallet mark (distinct from built-in logo & TonConnect). */
+function ImportedWalletGlyph({
+  color,
+  size = WALLET_ICON_PX,
+}: {
+  color: string;
+  size?: number;
+}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 18 18" fill="none">
+      <Path
+        d="M5 2.75h8c.69 0 1.25.56 1.25 1.25v10c0 .69-.56 1.25-1.25 1.25H5c-.69 0-1.25-.56-1.25-1.25v-10c0-.69.56-1.25 1.25-1.25z"
+        stroke={color}
+        strokeWidth={1.4}
+      />
+      <Path
+        d="M6.5 6.25h5M6.5 9h5M6.5 11.75h3.25"
+        stroke={color}
+        strokeWidth={1.4}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 export type SwitchWalletMenuAnchor = LayoutRectangle;
 
 type WalletRow = {
@@ -358,13 +383,13 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
                         style={{
                           width: WALLET_ICON_PX,
                           height: WALLET_ICON_PX,
-                          borderRadius: 4,
-                          borderWidth: 1,
-                          borderColor: colors.highlight,
-                          backgroundColor: colors.undercover,
+                          alignItems: "center",
+                          justifyContent: "center",
                           flexShrink: 0,
                         }}
-                      />
+                      >
+                        <ImportedWalletGlyph color={colors.primary} />
+                      </View>
                     ) : row.imageUrl ? (
                       <Image
                         source={{ uri: row.imageUrl }}
