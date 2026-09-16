@@ -521,6 +521,7 @@ export type ChatListSyncStatus = {
   inProgress: boolean;
   cachedCount: number;
   positionedComplete?: boolean;
+  stableTopReady?: boolean;
   tier3Available?: boolean;
   tier3InProgress?: boolean;
 };

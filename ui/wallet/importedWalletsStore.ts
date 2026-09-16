@@ -1,9 +1,21 @@
 /**
  * Client-only imported wallets (recovery-phrase). Multi-network ready; TON first.
  * Mnemonics stay on-device — never sent to the API.
+ *
+ * Storage:
+ * - Device AES key → OS secure store on iOS/Android when available; else localStorage
+ * - Wallet list metadata → localStorage
+ * - Per-wallet mnemonic ciphertext → secure store when available; else alongside list
  */
 
 import { createSeedCipher } from "../../services/wallet/tonWallet";
+import {
+  deleteLocalSecret,
+  readLocalJsonSync,
+  readLocalSecret,
+  writeLocalJsonSync,
+  writeLocalSecret,
+} from "./localSecretStorage";
 
 /** Extensible network id — UI can add more without reshaping storage. */
 export type ImportedWalletNetworkId = "ton";
@@ -15,22 +27,20 @@ export type ImportedWalletRecord = {
   friendlyAddress?: string | null;
   name?: string | null;
   wordCount: 12 | 24;
-  /** AES-GCM blob from createSeedCipher — never log. */
+  /** AES-GCM blob from createSeedCipher — never log / never upload. */
   mnemonicCipher: string;
   addedAt: number;
 };
 
 const LIST_KEY = "hsp.importedWallets.v1";
 const DEVICE_KEY = "hsp.importedWallets.deviceKey.v1";
+const MNEMONIC_SECRET_PREFIX = "hsp.importedWallets.mnemonic.";
 const MAX_WALLETS = 12;
 
 type ListListener = () => void;
 const listeners = new Set<ListListener>();
 let cached: ImportedWalletRecord[] | null = null;
-
-function canUseStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
+let deviceKeyCache: string | null = null;
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -61,18 +71,18 @@ function base64ToBytes(b64: string): Uint8Array {
   return new Uint8Array(Buffer.from(b64, "base64"));
 }
 
-function getOrCreateDeviceKey(): string {
-  if (!canUseStorage()) return "hsp-ephemeral-device-key";
-  try {
-    const existing = window.localStorage.getItem(DEVICE_KEY);
-    if (existing && existing.trim()) return existing.trim();
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    const next = bytesToBase64(bytes);
-    window.localStorage.setItem(DEVICE_KEY, next);
-    return next;
-  } catch {
-    return "hsp-ephemeral-device-key";
+async function getOrCreateDeviceKey(): Promise<string> {
+  if (deviceKeyCache) return deviceKeyCache;
+  const existing = await readLocalSecret(DEVICE_KEY);
+  if (existing && existing.trim()) {
+    deviceKeyCache = existing.trim();
+    return deviceKeyCache;
   }
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const next = bytesToBase64(bytes);
+  await writeLocalSecret(DEVICE_KEY, next);
+  deviceKeyCache = next;
+  return next;
 }
 
 async function decryptMnemonic(cipher: string, masterKey: string): Promise<string[] | null> {
@@ -100,11 +110,13 @@ async function decryptMnemonic(cipher: string, masterKey: string): Promise<strin
   }
 }
 
-function readRaw(): ImportedWalletRecord[] {
-  if (!canUseStorage()) return [];
+function mnemonicSecretKey(id: string): string {
+  return `${MNEMONIC_SECRET_PREFIX}${id}`;
+}
+
+function parseList(raw: string | null): ImportedWalletRecord[] {
+  if (!raw) return [];
   try {
-    const raw = window.localStorage.getItem(LIST_KEY);
-    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed
@@ -115,7 +127,7 @@ function readRaw(): ImportedWalletRecord[] {
           typeof r.id === "string" &&
           typeof r.address === "string" &&
           r.address.trim().length > 0 &&
-          (r.network === "ton") &&
+          r.network === "ton" &&
           (r.wordCount === 12 || r.wordCount === 24) &&
           typeof r.mnemonicCipher === "string"
         );
@@ -138,13 +150,12 @@ function readRaw(): ImportedWalletRecord[] {
   }
 }
 
+function readRaw(): ImportedWalletRecord[] {
+  return parseList(readLocalJsonSync(LIST_KEY));
+}
+
 function writeRaw(rows: ImportedWalletRecord[]): void {
-  if (!canUseStorage()) return;
-  try {
-    window.localStorage.setItem(LIST_KEY, JSON.stringify(rows.slice(0, MAX_WALLETS)));
-  } catch {
-    // ignore quota / private mode
-  }
+  writeLocalJsonSync(LIST_KEY, JSON.stringify(rows.slice(0, MAX_WALLETS)));
   cached = rows.slice(0, MAX_WALLETS);
   emit();
 }
@@ -173,7 +184,7 @@ export async function importWalletFromMnemonic(opts: {
   if (!address || (words.length !== 12 && words.length !== 24)) {
     throw new Error("invalid_import");
   }
-  const masterKey = getOrCreateDeviceKey();
+  const masterKey = await getOrCreateDeviceKey();
   const mnemonicCipher = await createSeedCipher(masterKey, words.join(" "));
   const prev = readImportedWallets().filter(
     (row) =>
@@ -192,6 +203,8 @@ export async function importWalletFromMnemonic(opts: {
     mnemonicCipher,
     addedAt: Date.now(),
   };
+  // Prefer OS secure store for the ciphertext; list still keeps a copy for web fallback.
+  await writeLocalSecret(mnemonicSecretKey(record.id), mnemonicCipher);
   writeRaw([record, ...prev]);
   return record;
 }
@@ -204,14 +217,22 @@ export async function readImportedWalletMnemonic(
     (r) => r.id.toLowerCase() === key || normalizeAddressKey(r.address) === key,
   );
   if (!row) return null;
-  return decryptMnemonic(row.mnemonicCipher, getOrCreateDeviceKey());
+  const fromSecure = await readLocalSecret(mnemonicSecretKey(row.id));
+  const cipher = (fromSecure && fromSecure.trim()) || row.mnemonicCipher;
+  return decryptMnemonic(cipher, await getOrCreateDeviceKey());
 }
 
 export function removeImportedWallet(idOrAddress: string): ImportedWalletRecord[] {
   const key = idOrAddress.trim().toLowerCase();
+  const removed = readImportedWallets().filter(
+    (r) => r.id.toLowerCase() === key || normalizeAddressKey(r.address) === key,
+  );
   const next = readImportedWallets().filter(
     (r) => r.id.toLowerCase() !== key && normalizeAddressKey(r.address) !== key,
   );
+  for (const row of removed) {
+    void deleteLocalSecret(mnemonicSecretKey(row.id));
+  }
   writeRaw(next);
   return next;
 }

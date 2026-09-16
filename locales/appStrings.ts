@@ -816,8 +816,11 @@ const en = {
   "home.header.addWalletTonConnectHint": "Link an app wallet such as Tonkeeper in one tap.",
   "home.header.addWalletRecoveryPhrase": "Import recovery phrase",
   "home.header.addWalletRecoveryPhraseHint": "Paste or type your 12- or 24-word secret phrase.",
+  "home.header.addWalletRecoveryPhraseLocalOnly":
+    "With this method, your recovery phrase is encrypted and stored only on this device — never on our servers.",
   "home.header.addWalletTonOnlyNote": "TON only for now — more networks can plug into this flow later.",
   "home.header.importedWallet": "Imported wallet",
+  "home.header.connectedWallet": "Connected wallet",
   "home.header.importMnemonicTitle": "Import recovery phrase",
   "home.header.importMnemonicSubtitle":
     "Enter your TON secret phrase. Words stay on this device and are never uploaded.",
@@ -1763,8 +1766,11 @@ const ru = {
   "home.header.addWalletTonConnectHint": "Свяжите кошелёк вроде Tonkeeper одним нажатием.",
   "home.header.addWalletRecoveryPhrase": "Импорт фразы восстановления",
   "home.header.addWalletRecoveryPhraseHint": "Вставьте или введите секретную фразу из 12 или 24 слов.",
+  "home.header.addWalletRecoveryPhraseLocalOnly":
+    "При этом способе фраза восстановления шифруется и хранится только на этом устройстве — не на наших серверах.",
   "home.header.addWalletTonOnlyNote": "Пока только TON — другие сети можно добавить в этот сценарий позже.",
   "home.header.importedWallet": "Импортированный кошелёк",
+  "home.header.connectedWallet": "Подключённый кошелёк",
   "home.header.importMnemonicTitle": "Импорт фразы восстановления",
   "home.header.importMnemonicSubtitle":
     "Введите секретную фразу TON. Слова остаются на этом устройстве и никуда не отправляются.",
@@ -2660,8 +2666,11 @@ const zh = {
   "home.header.addWalletTonConnectHint": "一键关联 Tonkeeper 等钱包应用。",
   "home.header.addWalletRecoveryPhrase": "导入恢复短语",
   "home.header.addWalletRecoveryPhraseHint": "粘贴或输入您的 12 或 24 个助记词。",
+  "home.header.addWalletRecoveryPhraseLocalOnly":
+    "此方式下，恢复短语仅加密保存在本设备上，不会上传到我们的服务器。",
   "home.header.addWalletTonOnlyNote": "目前仅支持 TON — 之后可在此流程中接入更多网络。",
   "home.header.importedWallet": "已导入钱包",
+  "home.header.connectedWallet": "已连接钱包",
   "home.header.importMnemonicTitle": "导入恢复短语",
   "home.header.importMnemonicSubtitle": "输入您的 TON 助记词。词语仅保存在本设备，不会上传。",
   "home.header.importMnemonicLengthLabel": "短语长度",

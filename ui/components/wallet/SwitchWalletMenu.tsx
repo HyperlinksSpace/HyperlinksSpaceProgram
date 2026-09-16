@@ -35,6 +35,7 @@ import { HyperlinksSpaceLogo } from "../HyperlinksSpaceLogo";
 import { useTelegram } from "../Telegram";
 import { AddWalletMethodDialog } from "./AddWalletMethodDialog";
 import { ConnectedWalletNameplate } from "./ConnectedWalletNameplate";
+import { SafeWalletNameplate } from "./SafeWalletNameplate";
 import { ImportWalletMnemonicDialog } from "./ImportWalletMnemonicDialog";
 import { WalletChoiceRadio } from "./WalletChoiceRadio";
 
@@ -432,6 +433,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
                             {row.name}
                           </Text>
                         ) : null}
+                        {row.imported ? <SafeWalletNameplate /> : null}
                         {row.connected ? <ConnectedWalletNameplate /> : null}
                       </View>
                       <Text

@@ -124,7 +124,12 @@ export function useWalletHeldCurrencyRows(
   enabled = true,
   /** Telegram initData for authenticated calls (e.g. wallet activation). */
   initDataRaw?: string | null,
+  options?: {
+    /** Built-in DLLR ledger only belongs on the app wallet — not imported / TonConnect. */
+    includeDllrLedger?: boolean;
+  },
 ): WalletHeldCurrencyRowsState {
+  const includeDllrLedger = options?.includeDllrLedger !== false;
   const { locale, t, tf } = useAppStrings();
   const refreshNonce = useSyncExternalStore(
     subscribeWalletBalanceRefresh,
@@ -170,22 +175,24 @@ export function useWalletHeldCurrencyRows(
         row.rowKey !== accountCreationDllrRow.rowKey &&
         row.currency.ticker.trim().toUpperCase() !== DLLR_SYMBOL,
     );
+    if (!includeDllrLedger) return withoutDllr;
     return [accountCreationDllrRow, ...withoutDllr];
-  }, [accountCreationDllrRow, heldRows]);
+  }, [accountCreationDllrRow, heldRows, includeDllrLedger]);
 
   const headerBalanceLabel = useMemo(() => {
     const heldUsd = heldRows.reduce((sum, row) => sum + parseUsdValue(row, locale), 0);
-    const totalUsd = dllrBalanceUsd + heldUsd;
+    const totalUsd = (includeDllrLedger ? dllrBalanceUsd : 0) + heldUsd;
     const label = formatHeaderWalletBalanceLabel(totalUsd, locale);
     logPageDisplay("wallet_header_total", {
-      baselineUsd: dllrBalanceUsd,
+      baselineUsd: includeDllrLedger ? dllrBalanceUsd : 0,
       heldUsd,
       totalUsd,
       heldRowCount: heldRows.length,
       label,
+      includeDllrLedger,
     });
     return label;
-  }, [dllrBalanceUsd, heldRows, locale]);
+  }, [dllrBalanceUsd, heldRows, includeDllrLedger, locale]);
 
   const prevNativeBalanceRef = useRef<number | null>(null);
 

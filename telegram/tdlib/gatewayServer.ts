@@ -642,19 +642,28 @@ export function startTdlibGatewayServer(): http.Server {
             });
             return;
           }
+          const chatListSync = buildChatListSyncStatus(telegramUsername);
+          // Do not serve live-arrival partial lists before the first ordered TDLib seed.
+          const serveChats =
+            chatListSync.stableTopReady || chatListSync.positionedComplete
+              ? (chats ?? [])
+              : [];
           const currentRevision = getLiveChatListRevision(telegramUsername);
-          const missingPreviewCount = (chats ?? []).filter(
+          const missingPreviewCount = serveChats.filter(
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
           ).length;
-          const missingAvatarCount = (chats ?? []).filter((row) => !row.avatar_url).length;
-          const first = chats?.[0];
+          const missingAvatarCount = serveChats.filter((row) => !row.avatar_url).length;
+          const first = serveChats[0];
           logGateway("chats_list_served", {
             telegramUsername,
-            count: chats?.length ?? 0,
+            count: serveChats.length,
             revision: currentRevision,
             missingPreviewCount,
             missingAvatarCount,
             woken: needsWake,
+            stableTopReady: chatListSync.stableTopReady,
+            positionedComplete: chatListSync.positionedComplete,
+            cachedCount: chatListSync.cachedCount,
             firstId: first?.telegram_chat_id ?? null,
             firstUserId: safeTelegramUserIdForLog(first?.peer_user_id) ?? null,
             firstTitle: first?.title?.trim() || null,
@@ -663,9 +672,11 @@ export function startTdlibGatewayServer(): http.Server {
             ok: true,
             source: "live",
             revision: currentRevision,
-            chats: chats ?? [],
-            chatListSync: buildChatListSyncStatus(telegramUsername),
-            warming: needsWake && (chats?.length ?? 0) === 0,
+            chats: serveChats,
+            chatListSync,
+            warming:
+              (needsWake && serveChats.length === 0) ||
+              (!chatListSync.stableTopReady && !chatListSync.positionedComplete),
           });
           return;
         }

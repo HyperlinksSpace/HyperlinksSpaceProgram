@@ -26,6 +26,7 @@ import {
   scheduleTier3ChatSync,
   isBackgroundChatSyncInProgress,
   isTier3ChatSyncInProgress,
+  STABLE_TOP_CHAT_PAGE_LIMIT,
 } from "./syncChats.js";
 import { fetchChatHistory, fetchChatHistoryAroundMessage, fetchChatHistoryAroundUnread, fetchChatHistorySince, sendChatTextMessage, sendChatPhotoMessage, editChatTextMessage, deleteChatMessages, viewChatInboxMessagesUpTo } from "./chatHistory.js";
 import { readUserAvatarAnimationBytes } from "./chatPhoto.js";
@@ -400,6 +401,23 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   });
 
   try {
+    // Seed an ordered top-of-list page first so the UI never paints live-arrival order.
+    record.chatCount = await syncChatThreads(client, record.telegramUsername, {
+      maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
+      includeArchive: true,
+      includeSupplementarySearch: false,
+      skipMemberCounts: true,
+      replaceCache: true,
+    });
+    logConnectEvent(record, "connect_initial_top_page_done", {
+      chatCount: record.chatCount ?? 0,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "sync_top_page_failed";
+    logConnectEvent(record, "connect_sync_top_page_warning", { message });
+  }
+
+  try {
     record.chatCount = await syncChatThreads(client, record.telegramUsername, {
       maxMainChats: null,
       includeArchive: true,
@@ -411,7 +429,7 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_sync_warning", { message });
-    record.chatCount = 0;
+    if (!record.chatCount) record.chatCount = 0;
   }
 
   scheduleBackgroundChatSync(client, record.telegramUsername);
@@ -1643,6 +1661,22 @@ export async function resyncUserChats(
       const backfillCount = await refreshLiveChats(record.client, telegramUsername, options.chatIds);
       logConnectEvent(record, "connect_backfill_ok", { backfillCount });
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
+    }
+
+    // Ordered top page first — same as connect — so clients paint Desktop order.
+    try {
+      const topCount = await syncChatThreads(record.client, telegramUsername, {
+        maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
+        includeArchive: true,
+        includeSupplementarySearch: false,
+        skipMemberCounts: true,
+        replaceCache: true,
+      });
+      record.chatCount = topCount;
+      logConnectEvent(record, "connect_resync_top_page_ok", { chatCount: topCount });
+    } catch (topErr) {
+      const message = topErr instanceof Error ? topErr.message : "resync_top_page_failed";
+      logConnectEvent(record, "connect_resync_top_page_warning", { message });
     }
 
     const count = await syncChatThreads(record.client, telegramUsername, {

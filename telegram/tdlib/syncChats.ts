@@ -50,6 +50,7 @@ import {
   resetChatListSyncMeta,
   resetTier3ListCursor,
   setPositionedComplete,
+  setStableTopReady,
   setTier3Available,
   getTier3ListCursor,
   isPositionedComplete,
@@ -81,6 +82,8 @@ const MEMBER_COUNT_SYNC_CONCURRENCY = 6;
 
 /** First paint: positioned main-list chats after all pins. */
 export const INITIAL_POSITIONED_SYNC_LIMIT = 2000;
+/** First ordered page seeded before full sync so the UI paints top-of-list, not live-arrival order. */
+export const STABLE_TOP_CHAT_PAGE_LIMIT = 50;
 /** @deprecated Use INITIAL_POSITIONED_SYNC_LIMIT — kept for client constant parity. */
 export const INITIAL_MAIN_CHAT_SYNC_LIMIT = INITIAL_POSITIONED_SYNC_LIMIT;
 /** Each deferred page after the initial snapshot. */
@@ -1076,6 +1079,10 @@ export async function syncChatThreads(
     }
   }
   setPositionedComplete(telegramUsername, positionedComplete);
+  // Ordered TDLib snapshot is ready — clients may paint (even if more pages remain).
+  if (liveRows.length > 0 || positionedComplete) {
+    setStableTopReady(telegramUsername, true);
+  }
   // Full main/archive/folder sync: allow one supplementary (tier-3) pass, then
   // syncUnpositionedChatBatch clears the flag when exhausted.
   if (positionedComplete) {

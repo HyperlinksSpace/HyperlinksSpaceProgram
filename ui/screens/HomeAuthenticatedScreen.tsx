@@ -804,6 +804,18 @@ function HomeAuthenticatedScreenMain() {
   const currenciesDialogAddress =
     chosenWalletAddress.trim() || (effectiveWalletAddress ?? "").trim();
   const headerDisplayName = displayName?.trim() || t("common.emDash");
+  const currenciesDialogKind =
+    activeWalletPreference.source === "imported"
+      ? ("imported" as const)
+      : activeWalletPreference.source === "tonconnect"
+        ? ("tonconnect" as const)
+        : ("builtin" as const);
+  const currenciesDialogDisplayName =
+    currenciesDialogKind === "imported"
+      ? t("home.header.importedWallet")
+      : currenciesDialogKind === "tonconnect"
+        ? tonConnect.walletName?.trim() || t("home.header.connectedWallet")
+        : headerDisplayName;
   const onHeaderBalancePress = useCallback(() => {
     setWalletCurrenciesOpen((open) => {
       if (!open) {
@@ -1909,7 +1921,8 @@ function HomeAuthenticatedScreenMain() {
           visible
           onClose={() => setWalletCurrenciesOpen(false)}
           walletAddress={currenciesDialogAddress}
-          displayName={headerDisplayName}
+          displayName={currenciesDialogDisplayName}
+          walletKind={currenciesDialogKind}
         />
       ) : null}
     </>

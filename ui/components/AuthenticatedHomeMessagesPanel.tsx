@@ -1148,17 +1148,15 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           const changed = chatsChanged(prev, next);
           queueMicrotask(() => syncAuthenticatedHomeSelectedChat(next));
           if (rows.length > 0) {
-            // Text-first: show titles/previews immediately; avatars fill in later.
-            if (!initialChatListRevealedRef.current) {
+            // Only reveal after an ordered TDLib top page — not mid-arrival live upserts.
+            const syncReady =
+              json.chatListSync?.stableTopReady === true ||
+              (json.chatListSync?.positionedComplete === true &&
+                json.chatListSync?.inProgress !== true);
+            if (syncReady && !initialChatListRevealedRef.current) {
               setInitialChatListRevealed(true);
               setGatewayWarming(false);
-            }
-            const syncReady =
-              json.chatListSync?.positionedComplete === true &&
-              json.chatListSync?.inProgress !== true;
-            if (syncReady) {
-              setGatewayWarming(false);
-            } else if (initialChatListRevealedRef.current) {
+            } else if (syncReady) {
               setGatewayWarming(false);
             }
             setEmptyListConfirmed(false);
@@ -1467,8 +1465,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   useEffect(() => {
     if (initialChatListRevealed) return;
     if (
-      chatListSync?.positionedComplete === true &&
-      chatListSync.inProgress !== true
+      chatListSync?.stableTopReady === true ||
+      (chatListSync?.positionedComplete === true && chatListSync.inProgress !== true)
     ) {
       setInitialChatListRevealed(true);
       setGatewayWarming(false);
@@ -1477,6 +1475,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected || initialChatListRevealed) return;
+    // Safety valve only — prefer stableTopReady from the gateway.
     const id = setTimeout(() => {
       if (chatsCountRef.current > 0) {
         setInitialChatListRevealed(true);
@@ -1485,7 +1484,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           count: chatsCountRef.current,
         });
       }
-    }, 1_500);
+    }, 20_000);
     return () => clearTimeout(id);
   }, [authReady, initialChatListRevealed, isTelegramMessagesConnected]);
 
@@ -1503,34 +1502,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setInitialChatListRevealed(false);
     }
     void (async () => {
-      // Paint the first chat list ASAP — do not await gateway resync first.
+      // Wait for gateway resync so the first paint is the ordered top page, not
+      // a partial live-arrival batch.
+      await triggerGatewayResync("initial_mount");
+      if (isVoiceDialogUiOpen()) {
+        deferredSilentChatLoadRef.current = true;
+        return;
+      }
       await loadChats({ silent: true, forceFull: true });
-      void (async () => {
-        await triggerGatewayResync("initial_mount");
-        if (isVoiceDialogUiOpen()) {
-          deferredSilentChatLoadRef.current = true;
-          return;
-        }
-        // Skip a second full download only when the first paint already matches
-        // gateway cache size (or cache is unknown and we already have rows).
-        const sync = getChatListSyncStatus();
-        const count = chatsCountRef.current;
-        const cached =
-          typeof sync?.cachedCount === "number" && sync.cachedCount > 0
-            ? sync.cachedCount
-            : null;
-        const incomplete =
-          count === 0 ||
-          (cached != null && cached > count) ||
-          sync?.inProgress === true ||
-          sync?.tier3InProgress === true;
-        if (!incomplete) {
-          setInitialChatListRevealed(true);
-          setGatewayWarming(false);
-          return;
-        }
-        await loadChats({ silent: true, forceFull: true });
-      })();
+      const sync = getChatListSyncStatus();
+      if (
+        sync?.stableTopReady === true ||
+        (sync?.positionedComplete === true && sync.inProgress !== true)
+      ) {
+        setInitialChatListRevealed(true);
+        setGatewayWarming(false);
+      }
     })();
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
@@ -2636,8 +2623,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }
 
   const showChatListSpinner =
-    chats.length === 0 &&
-    (loading || gatewayWarming || listBootstrapPending || !emptyListConfirmed);
+    (isTelegramMessagesConnected && !initialChatListRevealed) ||
+    (chats.length === 0 &&
+      (loading || gatewayWarming || listBootstrapPending || !emptyListConfirmed));
 
   if (showChatListSpinner) {
     return (

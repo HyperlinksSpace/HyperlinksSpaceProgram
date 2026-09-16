@@ -257,6 +257,16 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
         >
           {t("home.header.importMnemonicSubtitle")}
         </Text>
+        <Text
+          style={{
+            color: colors.secondary,
+            fontSize: 12,
+            lineHeight: 17,
+            fontFamily: labelFont,
+          }}
+        >
+          {t("home.header.addWalletRecoveryPhraseLocalOnly")}
+        </Text>
 
         <View style={{ gap: 8 }}>
           <Text

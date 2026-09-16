@@ -4,12 +4,15 @@ export type ChatListSyncStatusPayload = {
   inProgress: boolean;
   cachedCount: number;
   positionedComplete: boolean;
+  /** True after the first TDLib-ordered seed (top of main list), not live-arrival upserts. */
+  stableTopReady: boolean;
   tier3Available: boolean;
   tier3InProgress: boolean;
 };
 
 type UserSyncMeta = {
   positionedComplete: boolean;
+  stableTopReady: boolean;
   tier3Available: boolean;
 };
 
@@ -49,7 +52,7 @@ export function getTier3ListCursor(telegramUsername: string): Tier3ListCursor {
 function metaFor(telegramUsername: string): UserSyncMeta {
   let meta = syncMeta.get(telegramUsername);
   if (!meta) {
-    meta = { positionedComplete: false, tier3Available: false };
+    meta = { positionedComplete: false, stableTopReady: false, tier3Available: false };
     syncMeta.set(telegramUsername, meta);
   }
   return meta;
@@ -59,8 +62,11 @@ export function resetChatListSyncMeta(
   telegramUsername: string,
   patch?: Partial<UserSyncMeta>,
 ): void {
+  const prev = syncMeta.get(telegramUsername);
   const next: UserSyncMeta = {
     positionedComplete: patch?.positionedComplete ?? false,
+    // Keep a prior ordered top across full-sync resets unless explicitly cleared.
+    stableTopReady: patch?.stableTopReady ?? prev?.stableTopReady ?? false,
     tier3Available: patch?.tier3Available ?? false,
   };
   syncMeta.set(telegramUsername, next);
@@ -71,6 +77,14 @@ export function resetChatListSyncMeta(
 
 export function setPositionedComplete(telegramUsername: string, complete: boolean): void {
   metaFor(telegramUsername).positionedComplete = complete;
+}
+
+export function setStableTopReady(telegramUsername: string, ready: boolean): void {
+  metaFor(telegramUsername).stableTopReady = ready;
+}
+
+export function isStableTopReady(telegramUsername: string): boolean {
+  return metaFor(telegramUsername).stableTopReady;
 }
 
 export function setTier3Available(telegramUsername: string, available: boolean): void {
@@ -121,6 +135,7 @@ export function buildChatListSyncStatus(telegramUsername: string): ChatListSyncS
     inProgress: positionedInProgress || tier3InProgress,
     cachedCount: getLiveChatList(telegramUsername)?.length ?? 0,
     positionedComplete: meta.positionedComplete,
+    stableTopReady: meta.stableTopReady,
     tier3Available: meta.tier3Available,
     tier3InProgress,
   };

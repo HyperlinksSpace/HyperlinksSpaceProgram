@@ -156,6 +156,17 @@ export function AddWalletMethodDialog({
             >
               {t("home.header.addWalletRecoveryPhraseHint")}
             </Text>
+            <Text
+              style={{
+                color: colors.secondary,
+                fontSize: 12,
+                lineHeight: 17,
+                fontFamily: labelFont,
+                marginTop: 4,
+              }}
+            >
+              {t("home.header.addWalletRecoveryPhraseLocalOnly")}
+            </Text>
           </Pressable>
         </View>
 

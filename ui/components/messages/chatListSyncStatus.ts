@@ -2,6 +2,8 @@ export type ChatListSyncStatus = {
   inProgress: boolean;
   cachedCount: number;
   positionedComplete?: boolean;
+  /** First TDLib-ordered top page seeded (not live-arrival upserts). */
+  stableTopReady?: boolean;
   tier3Available?: boolean;
   tier3InProgress?: boolean;
 };

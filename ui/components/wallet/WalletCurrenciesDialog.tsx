@@ -16,20 +16,25 @@ import { ChooseCurrencyTable } from "../swap/ChooseCurrencyTable";
 
 const WALLET_HELD_COLUMNS = ["currency", "balance", "value", "rate"] as const;
 
+export type WalletCurrenciesDialogKind = "builtin" | "imported" | "tonconnect";
+
 type Props = {
   visible: boolean;
   onClose: () => void;
   walletAddress: string;
   displayName: string;
+  /** Which wallet is open — controls title and whether DLLR ledger is shown. */
+  walletKind?: WalletCurrenciesDialogKind;
   title?: string;
 };
 
-/** Floating dialog listing currencies held on the currently chosen wallet (DLLR kept with CROSS). */
+/** Floating dialog listing currencies held on the currently chosen wallet. */
 export function WalletCurrenciesDialog({
   visible,
   onClose,
   walletAddress,
   displayName,
+  walletKind = "builtin",
   title: titleProp,
 }: Props) {
   const { t, tf } = useAppStrings();
@@ -40,8 +45,20 @@ export function WalletCurrenciesDialog({
   );
   const dialogInsets = resolveFloatingDialogInsets(windowHeight);
   const trimmedWallet = walletAddress.trim() || null;
-  const { rows, isLoading, error } = useWalletHeldCurrencyRows(trimmedWallet, visible, getInitDataString());
-  const title = titleProp ?? t("home.header.walletCurrenciesTitle");
+  const includeDllrLedger = walletKind === "builtin";
+  const { rows, isLoading, error } = useWalletHeldCurrencyRows(
+    trimmedWallet,
+    visible,
+    getInitDataString(),
+    { includeDllrLedger },
+  );
+  const title =
+    titleProp ??
+    (walletKind === "imported"
+      ? t("home.header.importedWallet")
+      : walletKind === "tonconnect"
+        ? t("home.header.connectedWallet")
+        : t("home.header.walletCurrenciesTitle"));
   const subtitle = formatWalletDialogSubtitle(displayName, walletAddress, t, tf);
 
   const onWalletAction = useCallback(
