@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Platform,
   Pressable,
@@ -98,6 +98,8 @@ const action15 = [typographyAeroport15, { fontWeight: "400" as const }];
 type Props = {
   /** Built-in app wallet address (used when TonConnect is not the active source). */
   walletAddress: string;
+  /** When true (or omitted), panel is visible — used to reset currency to DLLR on open. */
+  isActive?: boolean;
 };
 
 type SendCurrencyOption = {
@@ -180,7 +182,7 @@ function SendLabelActionRow({
 }
 
 /** Send panel body — balance-based currency picker + transfer by active wallet. */
-export function SendPanelContent({ walletAddress }: Props) {
+export function SendPanelContent({ walletAddress, isActive = true }: Props) {
   const colors = useColors();
   const { t, tf, locale } = useAppStrings();
   const { initData } = useTelegram();
@@ -203,6 +205,7 @@ export function SendPanelContent({ walletAddress }: Props) {
     getBuiltinDllrBalanceUsd,
     getBuiltinDllrBalanceUsd,
   );
+  const wasActiveRef = useRef(isActive);
 
   const builtin = walletAddress.trim();
   const sourceKind =
@@ -277,14 +280,12 @@ export function SendPanelContent({ walletAddress }: Props) {
       const holdings = await fetchTonapiAccountHoldings(sourceAddress);
       const next: SendCurrencyOption[] = [];
 
-      // Built-in ledger DLLR — default send asset for the app wallet.
-      if (sourceKind === "builtin") {
-        next.push({
-          token: SWAP_DLLR_TOKEN,
-          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-          priceUsd: 1,
-        });
-      }
+      // Ledger DLLR is always first — default send currency on open for every wallet.
+      next.push({
+        token: SWAP_DLLR_TOKEN,
+        balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+        priceUsd: 1,
+      });
 
       if (holdings.nativeBalance > 0) {
         next.push({
@@ -320,16 +321,13 @@ export function SendPanelContent({ walletAddress }: Props) {
       setSelected((prev) => {
         const match = next.find((row) => sameToken(row.token, prev.token));
         if (match) return match;
-        // Built-in wallet: prefer DLLR as the default send asset.
-        if (sourceKind === "builtin") {
-          const dllr = next.find((row) => isDllrToken(row.token));
-          if (dllr) return dllr;
-        }
+        const dllr = next.find((row) => isDllrToken(row.token));
+        if (dllr) return dllr;
         if (next[0]) return next[0];
         return {
-          token: sourceKind === "builtin" ? SWAP_DLLR_TOKEN : SWAP_GRAM_TOKEN,
-          balanceText: "0",
-          priceUsd: sourceKind === "builtin" ? 1 : null,
+          token: SWAP_DLLR_TOKEN,
+          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+          priceUsd: 1,
         };
       });
     } catch {
@@ -337,7 +335,7 @@ export function SendPanelContent({ walletAddress }: Props) {
     } finally {
       setSendFormState({ balancesLoading: false });
     }
-  }, [dllrBalanceUsd, locale, sourceAddress, sourceKind]);
+  }, [dllrBalanceUsd, locale, sourceAddress]);
 
   useEffect(() => {
     void refreshBalances();
@@ -345,6 +343,19 @@ export function SendPanelContent({ walletAddress }: Props) {
     const id = setInterval(() => void refreshBalances(), 30_000);
     return () => clearInterval(id);
   }, [refreshBalances, sourceAddress]);
+
+  // Persisted home slot keeps this mounted — reset to DLLR whenever Send is opened again.
+  useEffect(() => {
+    const justOpened = isActive && !wasActiveRef.current;
+    wasActiveRef.current = isActive;
+    if (!justOpened) return;
+    setSelected({
+      token: SWAP_DLLR_TOKEN,
+      balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+      priceUsd: 1,
+    });
+    void refreshBalances();
+  }, [dllrBalanceUsd, isActive, locale, refreshBalances]);
 
   useEffect(() => {
     setSendFormState({
