@@ -26,11 +26,14 @@ import {
 } from "../../wallet/activeWalletPreference";
 import {
   readImportedWallets,
+  removeImportedWallet,
   subscribeImportedWallets,
 } from "../../wallet/importedWalletsStore";
+import { removeRememberedTonWallet } from "../../ton/rememberedTonWallets";
 import { useWalletUsdBalanceByAddress } from "../../wallet/useWalletUsdBalanceByAddress";
 import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
 import { clampAnchoredMenuPosition } from "../floatingDialogGeometry";
+import { HeaderIconExit } from "../icons/HeaderActionIcons";
 import { HyperlinksSpaceLogo } from "../HyperlinksSpaceLogo";
 import { useTelegram } from "../Telegram";
 import { AddWalletMethodDialog } from "./AddWalletMethodDialog";
@@ -312,6 +315,40 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     [onClose],
   );
 
+  const onDisconnectWallet = useCallback(
+    async (row: WalletRow) => {
+      if (row.builtin) return;
+      setBusy(true);
+      try {
+        const wasSelected = isActiveWalletSelection({
+          preference,
+          rowBuiltin: row.builtin,
+          rowImported: row.imported,
+          rowAddress: row.displayAddress || row.address,
+        });
+        if (row.imported) {
+          removeImportedWallet(row.key);
+        } else {
+          removeRememberedTonWallet(row.displayAddress || row.address);
+          const liveMatch =
+            ton.connected &&
+            (sameWalletAddress(row.displayAddress, ton.friendlyAddress || ton.address) ||
+              sameWalletAddress(row.address, ton.friendlyAddress || ton.address));
+          if (liveMatch) {
+            await ton.disconnect();
+          }
+        }
+        if (wasSelected) {
+          preferBuiltinWallet();
+        }
+        ton.refreshRememberedWallets();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [preference, ton],
+  );
+
   const menuWidth = 280;
   const preferred = clampAnchoredMenuPosition({
     left: anchor ? anchor.x : viewportInsets.left,
@@ -458,6 +495,27 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
                       >
                         {walletUsdLabels[row.displayAddress.trim().toLowerCase()]}
                       </Text>
+                    ) : null}
+                    {!row.builtin ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={t("home.header.iconExit")}
+                        disabled={busy}
+                        hitSlop={8}
+                        onPress={(e) => {
+                          e.stopPropagation?.();
+                          void onDisconnectWallet(row);
+                        }}
+                        style={{
+                          width: 28,
+                          height: 28,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <HeaderIconExit color={colors.secondary} size={WALLET_ICON_PX} />
+                      </Pressable>
                     ) : null}
                     <WalletChoiceRadio selected={selected} color={colors.primary} />
                   </Pressable>

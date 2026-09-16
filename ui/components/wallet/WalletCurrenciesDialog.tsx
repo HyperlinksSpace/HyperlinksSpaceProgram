@@ -23,7 +23,7 @@ type Props = {
   onClose: () => void;
   walletAddress: string;
   displayName: string;
-  /** Which wallet is open — controls title and whether DLLR ledger is shown. */
+  /** Which wallet is open — controls dialog title. */
   walletKind?: WalletCurrenciesDialogKind;
   title?: string;
 };
@@ -45,12 +45,11 @@ export function WalletCurrenciesDialog({
   );
   const dialogInsets = resolveFloatingDialogInsets(windowHeight);
   const trimmedWallet = walletAddress.trim() || null;
-  const includeDllrLedger = walletKind === "builtin";
   const { rows, isLoading, error } = useWalletHeldCurrencyRows(
     trimmedWallet,
     visible,
     getInitDataString(),
-    { includeDllrLedger },
+    { includeDllrLedger: true },
   );
   const title =
     titleProp ??
