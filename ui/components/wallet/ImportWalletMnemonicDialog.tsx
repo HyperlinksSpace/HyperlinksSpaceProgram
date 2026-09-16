@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +27,7 @@ import {
   type TonMnemonicWordCount,
 } from "../../wallet/tonMnemonicImport";
 import { AppModalSheet } from "../AppModalSheet";
+import { HeaderIconCopy } from "../icons/HeaderActionIcons";
 
 type Props = {
   visible: boolean;
@@ -53,6 +55,7 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
+  const [previewCopied, setPreviewCopied] = useState(false);
   const inputRefs = useRef<(TextInputType | null)[]>([]);
 
   const labelFont = Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR;
@@ -67,6 +70,7 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
     setBusy(false);
     setError(null);
     setPreviewAddress(null);
+    setPreviewCopied(false);
   }, [visible]);
 
   const setWordCountSafe = useCallback((next: TonMnemonicWordCount) => {
@@ -76,6 +80,7 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
       return copy;
     });
     setPreviewAddress(null);
+    setPreviewCopied(false);
     setError(null);
   }, []);
 
@@ -111,19 +116,16 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
     };
   }, [allFilled, filledWords, visible]);
 
-  const applyPaste = useCallback(
-    (raw: string) => {
-      setPasteDraft(raw);
-      const parsed = normalizeMnemonicInput(raw);
-      if (parsed.length === 12 || parsed.length === 24) {
-        setWordCount(parsed.length);
-        setWords(Array.from({ length: parsed.length }, (_, i) => parsed[i] ?? ""));
-        setActiveIndex(Math.min(parsed.length - 1, parsed.length));
-        setError(null);
-      }
-    },
-    [],
-  );
+  const applyPaste = useCallback((raw: string) => {
+    setPasteDraft(raw);
+    const parsed = normalizeMnemonicInput(raw);
+    if (parsed.length === 12 || parsed.length === 24) {
+      setWordCount(parsed.length);
+      setWords(Array.from({ length: parsed.length }, (_, i) => parsed[i] ?? ""));
+      setActiveIndex(Math.min(parsed.length - 1, parsed.length));
+      setError(null);
+    }
+  }, []);
 
   const onChangeWord = useCallback(
     (index: number, value: string) => {
@@ -161,6 +163,13 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
     },
     [activeIndex, wordCount],
   );
+
+  const onCopyPreview = useCallback(async () => {
+    if (!previewAddress) return;
+    await Clipboard.setStringAsync(previewAddress);
+    setPreviewCopied(true);
+    setTimeout(() => setPreviewCopied(false), 1400);
+  }, [previewAddress]);
 
   const submit = useCallback(async () => {
     setBusy(true);
@@ -370,6 +379,17 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
           </View>
         </View>
 
+        <Text
+          style={{
+            color: colors.secondary,
+            fontSize: 12,
+            lineHeight: 16,
+            fontFamily: labelFont,
+          }}
+        >
+          {t("home.header.importMnemonicWordsHint")}
+        </Text>
+
         <View
           style={{
             flexDirection: "row",
@@ -468,15 +488,61 @@ export function ImportWalletMnemonicDialog({ visible, onClose, onImported }: Pro
               borderColor: colors.highlight,
               paddingHorizontal: 12,
               paddingVertical: 10,
-              gap: 4,
+              gap: 6,
             }}
           >
             <Text style={{ color: colors.secondary, fontSize: 12, fontFamily: labelFont }}>
               {t("home.header.importMnemonicPreview")}
             </Text>
-            <Text style={{ color: colors.primary, fontSize: 13, fontFamily: monoFont }}>
-              {middleEllipsis(previewAddress, 8, 8)}
-            </Text>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <Text
+                style={{
+                  flex: 1,
+                  color: colors.primary,
+                  fontSize: 13,
+                  fontFamily: monoFont,
+                }}
+                selectable
+              >
+                {middleEllipsis(previewAddress, 8, 8)}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  previewCopied
+                    ? t("home.header.mnemonicCopied")
+                    : t("home.header.importMnemonicCopyAddress")
+                }
+                hitSlop={8}
+                onPress={() => void onCopyPreview()}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <HeaderIconCopy
+                  color={previewCopied ? colors.primary : colors.secondary}
+                  size={16}
+                />
+                <Text
+                  style={[
+                    typographyRect15,
+                    {
+                      color: previewCopied ? colors.primary : colors.secondary,
+                      fontSize: 12,
+                    },
+                  ]}
+                >
+                  {previewCopied
+                    ? t("home.header.mnemonicCopied")
+                    : t("home.header.importMnemonicCopyAddress")}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
       </View>
