@@ -48,6 +48,7 @@ import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from ".
 import { MessageChatListContextMenu } from "./messages/MessageChatListContextMenu";
 import { useMessagesChatListSearch, markChatListSearchRowPressPending } from "../messages/MessagesChatListSearchContext";
 import { ChatListBottomSentinel } from "./messages/ChatListBottomSentinel";
+import { useChatListViewport } from "../hooks/useChatListViewport";
 import {
   getChatListSyncStatus,
   setChatListSyncStatus,
@@ -2081,12 +2082,28 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     t,
   ]);
 
+  // Progressive top→bottom reveal: paint the first slice immediately, then grow in
+  // timed batches so a full 400+ chat payload does not mount in one paint.
+  const {
+    viewportCount: chatListRevealCount,
+    expandViewport: expandChatListReveal,
+    canExpandViewport: canExpandChatListReveal,
+  } = useChatListViewport(listSearchActive ? 0 : sortedChats.length, {
+    autoReveal: !listSearchActive,
+  });
+
+  const revealedDisplayListItems = useMemo(() => {
+    if (listSearchActive) return displayListItems;
+    if (chatListRevealCount >= displayListItems.length) return displayListItems;
+    return displayListItems.slice(0, Math.max(0, chatListRevealCount));
+  }, [chatListRevealCount, displayListItems, listSearchActive]);
+
   const displayChats = useMemo(
     () =>
-      displayListItems
+      revealedDisplayListItems
         .filter((item): item is Extract<ChatListDisplayItem, { kind: "chat" }> => item.kind === "chat")
         .map((item) => item.row),
-    [displayListItems],
+    [revealedDisplayListItems],
   );
 
   const cachedChatCount = chatListSync?.cachedCount ?? chats.length;
@@ -2107,14 +2124,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListEffectiveLayoutH =
     chatListScrollMetrics.layoutH > 0 ? chatListScrollMetrics.layoutH : 480;
   const chatListVirtualTotalCount = listSearchActive
-    ? displayListItems.length
+    ? revealedDisplayListItems.length
     : displayChats.length;
   const chatListVirtualWindow = useMemo(() => {
     if (listSearchActive) {
       return {
         enabled: false,
         startIndex: 0,
-        endIndex: Math.max(0, displayListItems.length - 1),
+        endIndex: Math.max(0, revealedDisplayListItems.length - 1),
         topSpacerPx: 0,
         bottomSpacerPx: 0,
       };
@@ -2139,7 +2156,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     chatListVirtualTotalCount,
     chatListEffectiveLayoutH,
     chatListScrollMetrics.scrollY,
-    displayListItems.length,
+    revealedDisplayListItems.length,
     listSearchActive,
   ]);
   chatListVirtualWindowRef.current = chatListVirtualWindow;
@@ -2150,6 +2167,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     endIndex: 0,
     scrollY: 0,
     totalCount: 0,
+    revealCount: 0,
   });
   useEffect(() => {
     const prev = chatListVirtualLogRef.current;
@@ -2158,7 +2176,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       prev.startIndex !== chatListVirtualWindow.startIndex ||
       prev.endIndex !== chatListVirtualWindow.endIndex ||
       Math.abs(prev.scrollY - chatListScrollMetrics.scrollY) > chatListRowStride ||
-      prev.totalCount !== chatListVirtualTotalCount;
+      prev.totalCount !== chatListVirtualTotalCount ||
+      prev.revealCount !== chatListRevealCount;
     if (!changed) return;
     chatListVirtualLogRef.current = {
       enabled: chatListVirtualWindow.enabled,
@@ -2166,6 +2185,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       endIndex: chatListVirtualWindow.endIndex,
       scrollY: chatListScrollMetrics.scrollY,
       totalCount: chatListVirtualTotalCount,
+      revealCount: chatListRevealCount,
     };
     logPageDisplay("messages_chat_list_virtual_window", {
       enabled: chatListVirtualWindow.enabled,
@@ -2175,12 +2195,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       bottomSpacerPx: chatListVirtualWindow.bottomSpacerPx,
       scrollY: chatListScrollMetrics.scrollY,
       layoutH: chatListEffectiveLayoutH,
-      totalCount: chatListVirtualTotalCount,
+      totalCount: listSearchActive ? revealedDisplayListItems.length : sortedChats.length,
       loadedCount: displayChats.length,
+      revealCount: chatListRevealCount,
       rowStridePx: chatListRowStride,
     });
   }, [
     chatListEffectiveLayoutH,
+    chatListRevealCount,
     chatListRowStride,
     chatListScrollMetrics.scrollY,
     chatListVirtualTotalCount,
@@ -2190,6 +2212,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     chatListVirtualWindow.startIndex,
     chatListVirtualWindow.topSpacerPx,
     displayChats.length,
+    listSearchActive,
+    revealedDisplayListItems.length,
+    sortedChats.length,
   ]);
 
   const positionedComplete = chatListSync?.positionedComplete === true;
@@ -2211,11 +2236,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       (chatListAtBottomRef.current && mayHaveMoreOnServer));
 
   const visibleListItems = chatListVirtualWindow.enabled
-    ? displayListItems.slice(
-        Math.min(chatListVirtualWindow.startIndex, displayListItems.length),
-        Math.min(displayListItems.length, chatListVirtualWindow.endIndex + 1),
+    ? revealedDisplayListItems.slice(
+        Math.min(chatListVirtualWindow.startIndex, revealedDisplayListItems.length),
+        Math.min(revealedDisplayListItems.length, chatListVirtualWindow.endIndex + 1),
       )
-    : displayListItems;
+    : revealedDisplayListItems;
   const visibleChatStartIndex = chatListVirtualWindow.enabled
     ? chatListVirtualWindow.startIndex
     : 0;
@@ -2324,6 +2349,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   const handleChatListNearBottom = useCallback(() => {
     chatListAtBottomRef.current = true;
+    if (canExpandChatListReveal) {
+      expandChatListReveal();
+    }
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
     void loadChatsRef.current({
@@ -2337,7 +2365,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
   }, [
     cachedChatCount,
+    canExpandChatListReveal,
     chats.length,
+    expandChatListReveal,
     needsPositionedPage,
     needsTier3Page,
     requestLoadMoreChats,
@@ -2380,7 +2410,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         // column-reverse: first item is nearest the search field (visual bottom).
         const isVisualBottomEdge = listSearchActive
           ? absoluteIndex === 0
-          : absoluteIndex === displayListItems.length - 1 && !showBottomLoader;
+          : absoluteIndex === revealedDisplayListItems.length - 1 && !showBottomLoader;
         if (item.kind === "sectionHeader") {
           const sectionOpen = collapsedSearchSections[item.sectionId] !== true;
           // 1px between closed section dividers; slightly more when open.
@@ -2585,7 +2615,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       ) : null}
       {!listSearchActive ? (
         <ChatListBottomSentinel
-          enabled={sortedChats.length > 0}
+          enabled={sortedChats.length > 0 && !listSearchActive}
           onNearBottom={handleChatListNearBottom}
         />
       ) : null}
