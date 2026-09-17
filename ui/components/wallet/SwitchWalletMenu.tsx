@@ -24,6 +24,7 @@ import {
   sameWalletAddress,
   useActiveWalletPreference,
 } from "../../wallet/activeWalletPreference";
+import { walletAddressMiddleEllipsis } from "../../wallet/walletAddressFormat";
 import {
   readImportedWallets,
   removeImportedWallet,
@@ -44,12 +45,6 @@ import { WalletChoiceRadio } from "./WalletChoiceRadio";
 
 const WALLET_ICON_PX = 18;
 const PLUS_ICON_PX = 14;
-
-function middleEllipsisAddress(address: string, head = 6, tail = 6): string {
-  const trimmed = address.trim();
-  if (trimmed.length <= head + tail + 3) return trimmed;
-  return `${trimmed.slice(0, head)}...${trimmed.slice(-tail)}`;
-}
 
 function PlusGlyph({ color, size = PLUS_ICON_PX }: { color: string; size?: number }) {
   return (
@@ -165,11 +160,16 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
       if (sameWalletAddress(display, builtin) || sameWalletAddress(row.address, builtin)) {
         continue;
       }
+      const defaultImportedName = t("home.header.importedWallet");
+      const customName = row.name?.trim() || null;
       rows.push({
         key: row.id,
-        address: row.address,
+        // Prefer friendly for TonAPI holdings / preference storage.
+        address: display,
         displayAddress: display,
-        name: row.name?.trim() || t("home.header.importedWallet"),
+        // Omit the generic “Imported wallet” label — address is the identity (like no custom name).
+        name:
+          customName && customName !== defaultImportedName ? customName : null,
         imageUrl: null,
         connected: false,
         builtin: false,
@@ -446,15 +446,15 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
                       />
                     )}
                     <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 6,
-                          minWidth: 0,
-                        }}
-                      >
-                        {row.name ? (
+                      {row.name ? (
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 6,
+                            minWidth: 0,
+                          }}
+                        >
                           <Text
                             style={[
                               typographyAeroport15,
@@ -469,22 +469,35 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
                           >
                             {row.name}
                           </Text>
-                        ) : null}
-                        {row.imported ? <SafeWalletNameplate /> : null}
-                        {row.connected ? <ConnectedWalletNameplate /> : null}
-                      </View>
-                      <Text
-                        style={[
-                          typographyAeroport15,
-                          {
-                            color: colors.secondary,
-                            fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
-                          },
-                        ]}
-                        numberOfLines={1}
+                          {row.imported ? <SafeWalletNameplate /> : null}
+                          {row.connected ? <ConnectedWalletNameplate /> : null}
+                        </View>
+                      ) : null}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 6,
+                          minWidth: 0,
+                        }}
                       >
-                        {middleEllipsisAddress(row.displayAddress)}
-                      </Text>
+                        <Text
+                          style={[
+                            typographyAeroport15,
+                            {
+                              color: row.name ? colors.secondary : colors.primary,
+                              fontFamily: Platform.OS === "web" ? WEB_UI_MONO_STACK : undefined,
+                              flexShrink: 1,
+                              minWidth: 0,
+                            },
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {walletAddressMiddleEllipsis(row.displayAddress)}
+                        </Text>
+                        {!row.name && row.imported ? <SafeWalletNameplate /> : null}
+                        {!row.name && row.connected ? <ConnectedWalletNameplate /> : null}
+                      </View>
                     </View>
                     {walletUsdLabels[row.displayAddress.trim().toLowerCase()] ? (
                       <Text

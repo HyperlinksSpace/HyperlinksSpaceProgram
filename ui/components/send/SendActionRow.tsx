@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { parseLocaleAmount } from "../../format/localeAmountFormat";
-import { isDllrToken, swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
+import { swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
 import {
   runSendFormAction,
   useSendFormState,
@@ -37,7 +37,8 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
   const address = (addressProp ?? form.address).trim();
   const symbol = swapTokenDisplaySymbol(form.token);
   const amountNum = parseLocaleAmount(form.amount, locale);
-  const dllrFrozen = isDllrToken(form.token) && form.sourceKind !== "builtin";
+  // DLLR is cross-wallet (ledger); never freeze the CTA just because another wallet is selected.
+  const dllrFrozen = false;
   const balanceNum = parseLocaleAmount(form.balanceText, locale);
   const insufficient =
     !form.balancesLoading &&

@@ -9,6 +9,7 @@ watchPatterns = [
   ".dockerignore",
   "deploy/railway/**",
   "telegram/tdlib/**",
+  "shared/**",
   "scripts/run-tdlib-gateway.ts",
   "scripts/load-env.ts",
   "database/telegramMessages.ts",

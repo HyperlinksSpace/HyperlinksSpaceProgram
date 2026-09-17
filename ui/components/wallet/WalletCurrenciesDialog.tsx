@@ -49,8 +49,8 @@ export function WalletCurrenciesDialog({
     trimmedWallet,
     visible,
     getInitDataString(),
-    // Ledger DLLR is only spendable / owned on the built-in app wallet.
-    { includeDllrLedger: walletKind === "builtin" },
+    // DLLR is a cross-wallet ledger currency — always pin first on every wallet.
+    { includeDllrLedger: true },
   );
   const title =
     titleProp ??
@@ -59,7 +59,10 @@ export function WalletCurrenciesDialog({
       : walletKind === "tonconnect"
         ? t("home.header.connectedWallet")
         : t("home.header.walletCurrenciesTitle"));
-  const subtitle = formatWalletDialogSubtitle(displayName, walletAddress, t, tf);
+  // Don't repeat the title / generic kind label in the subtitle (e.g. imported with no custom name).
+  const subtitle = formatWalletDialogSubtitle(displayName, walletAddress, t, tf, {
+    omitNames: [title],
+  });
 
   const onWalletAction = useCallback(
     (action: "send" | "swap" | "get", _row: ChooseCurrencyRow) => {

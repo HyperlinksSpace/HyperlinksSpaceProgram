@@ -125,7 +125,10 @@ export function useWalletHeldCurrencyRows(
   /** Telegram initData for authenticated calls (e.g. wallet activation). */
   initDataRaw?: string | null,
   options?: {
-    /** Built-in DLLR ledger only belongs on the app wallet — not imported / TonConnect. */
+    /**
+     * Pin the cross-wallet DLLR ledger row first (default true).
+     * DLLR is account-level, not tied to the on-chain wallet kind.
+     */
     includeDllrLedger?: boolean;
   },
 ): WalletHeldCurrencyRowsState {

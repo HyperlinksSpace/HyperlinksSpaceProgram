@@ -36,7 +36,7 @@ export type AmneziaVpsBreakdown = {
   }>;
 };
 
-/** europe-west1 list prices (USD) — override via FOUNDER_AMNEZIA_*_USD_* envs. */
+/** europe-central2 (Warsaw) list prices (USD) — override via FOUNDER_AMNEZIA_*_USD_* envs. */
 const DEFAULT_E2_SMALL_USD_HOUR = 0.0184;
 const DEFAULT_PD_BALANCED_USD_GB_MONTH = 0.1;
 const DEFAULT_EXTERNAL_IP_USD_HOUR = 0.005;
@@ -83,7 +83,7 @@ function machineHourlyUsd(machineType: string, zone: string): number {
   const mt = machineType.split("/").pop() ?? machineType;
   const override = envNum("FOUNDER_AMNEZIA_MACHINE_USD_HOUR", NaN);
   if (Number.isFinite(override) && override > 0) return override;
-  if (mt === "e2-small" && /europe-west1/.test(zone)) return DEFAULT_E2_SMALL_USD_HOUR;
+  if (mt === "e2-small" && /europe-central2|europe-west1/.test(zone)) return DEFAULT_E2_SMALL_USD_HOUR;
   if (mt === "e2-micro") return 0.0084;
   if (mt === "e2-medium") return 0.0336;
   if (mt === "e2-small") return DEFAULT_E2_SMALL_USD_HOUR;
@@ -102,7 +102,7 @@ function resolveTarget(): { projectId: string; zone: string; instanceName: strin
       process.env.GCP_BILLING_PROJECT_ID?.trim() ||
       saProject ||
       "hyperlinksspacebot",
-    zone: process.env.FOUNDER_AMNEZIA_GCP_ZONE?.trim() || "europe-west1-b",
+    zone: process.env.FOUNDER_AMNEZIA_GCP_ZONE?.trim() || "europe-central2-a",
     instanceName: process.env.FOUNDER_AMNEZIA_GCP_INSTANCE?.trim() || "amnezia-vpn",
   };
 }

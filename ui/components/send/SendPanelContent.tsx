@@ -281,17 +281,13 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
 
       const holdings = await fetchTonapiAccountHoldings(sourceAddress);
       const next: SendCurrencyOption[] = [];
-      const allowDllrLedger = sourceKind === "builtin";
 
-      // Built-in only: ledger DLLR is spendable via /api/wallet-send.
-      // Imported / TonConnect must not show the app ledger as a transferable balance.
-      if (allowDllrLedger) {
-        next.push({
-          token: SWAP_DLLR_TOKEN,
-          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-          priceUsd: 1,
-        });
-      }
+      // Cross-wallet ledger DLLR — always first, regardless of chosen wallet.
+      next.push({
+        token: SWAP_DLLR_TOKEN,
+        balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+        priceUsd: 1,
+      });
 
       if (holdings.nativeBalance > 0) {
         next.push({
@@ -327,17 +323,13 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
       setSelected((prev) => {
         const match = next.find((row) => sameToken(row.token, prev.token));
         if (match) return match;
-        if (allowDllrLedger) {
-          const dllr = next.find((row) => isDllrToken(row.token));
-          if (dllr) return dllr;
-        }
+        const dllr = next.find((row) => isDllrToken(row.token));
+        if (dllr) return dllr;
         if (next[0]) return next[0];
         return {
-          token: allowDllrLedger ? SWAP_DLLR_TOKEN : SWAP_GRAM_TOKEN,
-          balanceText: allowDllrLedger
-            ? formatLocaleDllrBalance(dllrBalanceUsd, locale)
-            : "0",
-          priceUsd: allowDllrLedger ? 1 : null,
+          token: SWAP_DLLR_TOKEN,
+          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+          priceUsd: 1,
         };
       });
     } catch {
@@ -345,7 +337,7 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     } finally {
       setSendFormState({ balancesLoading: false });
     }
-  }, [dllrBalanceUsd, locale, sourceAddress, sourceKind]);
+  }, [dllrBalanceUsd, locale, sourceAddress]);
 
   useEffect(() => {
     void refreshBalances();
@@ -359,15 +351,13 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     const justOpened = isActive && !wasActiveRef.current;
     wasActiveRef.current = isActive;
     if (!justOpened) return;
-    if (sourceKind === "builtin") {
-      setSelected({
-        token: SWAP_DLLR_TOKEN,
-        balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-        priceUsd: 1,
-      });
-    }
+    setSelected({
+      token: SWAP_DLLR_TOKEN,
+      balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+      priceUsd: 1,
+    });
     void refreshBalances();
-  }, [dllrBalanceUsd, isActive, locale, refreshBalances, sourceKind]);
+  }, [dllrBalanceUsd, isActive, locale, refreshBalances]);
 
   useEffect(() => {
     setSendFormState({
@@ -432,7 +422,6 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
   const onSend = useCallback(async () => {
     if (form.sending) return;
     const sendingDllr = isDllrToken(selected.token);
-    if (sendingDllr && sourceKind !== "builtin") return;
 
     const toAddress = form.address.trim();
     const amountCanonical = toCanonicalAmount(form.amount, locale);
@@ -444,7 +433,54 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     scheduleWalletBalanceRefreshBurst();
 
     try {
-      if (sourceKind === "imported") {
+      // DLLR is always the account ledger (cross-wallet), never chain-from the chosen wallet.
+      if (sendingDllr) {
+        const result = await requestWalletSend({
+          toAddress,
+          amount: amountCanonical,
+          decimals: selected.token.decimals,
+          dllr: true,
+          jettonMasterAddress: null,
+          comment: form.comment,
+          initDataRaw: initData,
+        });
+        if (!result.ok) {
+          const err = result.error;
+          setSendError(
+            err === "recipient_not_builtin_wallet"
+              ? t("send.error.recipientNotBuiltin")
+              : err === "insufficient_dllr"
+                ? t("send.error.insufficientDllr")
+                : err === "cannot_send_to_self"
+                  ? t("send.error.cannotSendToSelf")
+                  : err === "missing_to_address"
+                    ? t("send.error.missingAddress")
+                    : err === "invalid_amount" || err === "missing_amount"
+                      ? t("send.error.generic")
+                      : err,
+          );
+          return;
+        }
+        if (result.asset === "dllr") {
+          const amountUsd =
+            typeof result.amountUsd === "number" && Number.isFinite(result.amountUsd)
+              ? result.amountUsd
+              : enteredAmount;
+          const recipientBalanceUsd =
+            typeof result.recipientDllrBalanceUsd === "number" &&
+            Number.isFinite(result.recipientDllrBalanceUsd)
+              ? result.recipientDllrBalanceUsd
+              : 0;
+          setSuccessDetails({
+            amountUsd: amountUsd ?? 0,
+            toAddress: result.toAddress || toAddress,
+            recipientBalanceUsd,
+            comment: form.comment.trim() || undefined,
+          });
+          setSendFormAmount("1");
+          setSendFormComment("");
+        }
+      } else if (sourceKind === "imported") {
         if (!sourceAddress) {
           setSendError(t("send.error.noImportedWallet"));
           return;
@@ -497,11 +533,10 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
           toAddress,
           amount: amountCanonical,
           decimals: selected.token.decimals,
-          dllr: sendingDllr,
-          jettonMasterAddress:
-            sendingDllr || isNativeTonToken(selected.token)
-              ? null
-              : selected.token.address,
+          dllr: false,
+          jettonMasterAddress: isNativeTonToken(selected.token)
+            ? null
+            : selected.token.address,
           comment: form.comment,
           initDataRaw: initData,
         });
@@ -521,25 +556,6 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
                       : err,
           );
           return;
-        }
-        if (sendingDllr && result.asset === "dllr") {
-          const amountUsd =
-            typeof result.amountUsd === "number" && Number.isFinite(result.amountUsd)
-              ? result.amountUsd
-              : enteredAmount;
-          const recipientBalanceUsd =
-            typeof result.recipientDllrBalanceUsd === "number" &&
-            Number.isFinite(result.recipientDllrBalanceUsd)
-              ? result.recipientDllrBalanceUsd
-              : 0;
-          setSuccessDetails({
-            amountUsd: amountUsd ?? 0,
-            toAddress: result.toAddress || toAddress,
-            recipientBalanceUsd,
-            comment: form.comment.trim() || undefined,
-          });
-          setSendFormAmount("1");
-          setSendFormComment("");
         }
       }
       bumpWalletBalanceRefresh();

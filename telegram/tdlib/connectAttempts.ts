@@ -15,6 +15,7 @@ import {
 } from "./clientIdle.js";
 import { logGateway } from "./gatewayLog.js";
 import { classifyTdlibSendError } from "../../shared/telegramSendError.js";
+import { isPlausibleE164Phone, normalizePhoneNumber } from "../../shared/normalizePhoneNumber.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import {
   persistMtprotoConnection,
@@ -248,14 +249,6 @@ function startConnectWatchdog(record: AttemptRecord): void {
       failAttempt(record, "telegram_network_unreachable");
     }
   }, CONNECT_WATCHDOG_MS);
-}
-
-function normalizePhoneNumber(raw: string): string {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  const digits = trimmed.replace(/[^\d+]/g, "");
-  if (digits.startsWith("+")) return digits;
-  return `+${digits.replace(/^\+/, "")}`;
 }
 
 async function requestQrCode(record: AttemptRecord): Promise<void> {
@@ -743,13 +736,21 @@ export async function submitConnectPhoneNumber(
   }
 
   const normalized = normalizePhoneNumber(phoneNumber);
-  if (!normalized || normalized.length < 8) {
+  if (!isPlausibleE164Phone(normalized)) {
     record.error = "invalid_phone_number";
+    logConnectEvent(record, "connect_phone_invalid", {
+      phoneMasked: maskPhoneNumber(normalized || phoneNumber),
+    });
     return snapshot(record);
   }
 
   record.error = null;
   const useCurrentPhone = Boolean(options?.isCurrentPhoneNumber);
+  logConnectEvent(record, "connect_phone_normalized", {
+    phoneMasked: maskPhoneNumber(normalized),
+    rawMasked: maskPhoneNumber(phoneNumber),
+    isCurrentPhone: useCurrentPhone,
+  });
   const invokePhone = async (): Promise<void> => {
     await record.client!.invoke({
       _: "setAuthenticationPhoneNumber",

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -22,8 +23,13 @@ import { HomeAuthenticatedHeaderRow } from "../components/HomeAuthenticatedHeade
 import { WalletCurrenciesDialog } from "../components/wallet/WalletCurrenciesDialog";
 import {
   resolveActiveWalletAddress,
+  sameWalletAddress,
   useActiveWalletPreference,
 } from "../wallet/activeWalletPreference";
+import {
+  readImportedWallets,
+  subscribeImportedWallets,
+} from "../wallet/importedWalletsStore";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
@@ -795,6 +801,11 @@ function HomeAuthenticatedScreenMain() {
   const effectiveHasWallet = hasWallet || hasDisplayAddress;
   const tonConnect = useTonConnectSession();
   const activeWalletPreference = useActiveWalletPreference();
+  const importedWallets = useSyncExternalStore(
+    subscribeImportedWallets,
+    readImportedWallets,
+    readImportedWallets,
+  );
   const chosenWalletAddress = resolveActiveWalletAddress({
     builtinAddress: (effectiveWalletAddress ?? "").trim(),
     preference: activeWalletPreference,
@@ -810,11 +821,26 @@ function HomeAuthenticatedScreenMain() {
       : activeWalletPreference.source === "tonconnect"
         ? ("tonconnect" as const)
         : ("builtin" as const);
+  const importedCustomName = useMemo(() => {
+    if (currenciesDialogKind !== "imported") return "";
+    const defaultName = t("home.header.importedWallet");
+    const row = importedWallets.find(
+      (w) =>
+        sameWalletAddress(w.address, currenciesDialogAddress) ||
+        sameWalletAddress(w.friendlyAddress, currenciesDialogAddress),
+    );
+    const name = row?.name?.trim() || "";
+    return name && name !== defaultName ? name : "";
+  }, [currenciesDialogAddress, currenciesDialogKind, importedWallets, t]);
   const currenciesDialogDisplayName =
     currenciesDialogKind === "imported"
-      ? t("home.header.importedWallet")
+      ? importedCustomName
       : currenciesDialogKind === "tonconnect"
-        ? tonConnect.walletName?.trim() || t("home.header.connectedWallet")
+        ? (() => {
+            const name = tonConnect.walletName?.trim() || "";
+            const fallback = t("home.header.connectedWallet");
+            return name && name !== fallback ? name : "";
+          })()
         : headerDisplayName;
   const onHeaderBalancePress = useCallback(() => {
     setWalletCurrenciesOpen((open) => {
@@ -1920,7 +1946,7 @@ function HomeAuthenticatedScreenMain() {
       ) : null}
       {walletCurrenciesOpen ? (
         <WalletCurrenciesDialog
-          key={walletCurrenciesSession}
+          key={`${walletCurrenciesSession}:${currenciesDialogKind}:${currenciesDialogAddress}`}
           visible
           onClose={() => setWalletCurrenciesOpen(false)}
           walletAddress={currenciesDialogAddress}

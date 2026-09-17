@@ -7,6 +7,7 @@ import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
 import { logTelegramConnect } from "../telegram/telegramConnectDebug";
+import { isPlausibleE164Phone, normalizePhoneNumber } from "../../shared/normalizePhoneNumber";
 import { isActuallyInTelegram } from "./telegramWebApp";
 import { AppModalSheet, appModalSheetStyles } from "./AppModalSheet";
 import { WelcomeAuthFormField } from "./WelcomeAuthFormField";
@@ -164,13 +165,14 @@ export function TelegramConnectSheet() {
   }, [password, submitMtprotoPassword]);
 
   const onSubmitPhone = useCallback(() => {
-    const trimmed = phoneNumber.trim();
-    if (!trimmed || trimmed.replace(/[^\d+]/g, "").length < 8) {
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!isPlausibleE164Phone(normalized)) {
       setPhoneInvalid(true);
       return;
     }
+    setPhoneNumber(normalized);
     setPhoneInvalid(false);
-    void submitMtprotoPhone(trimmed);
+    void submitMtprotoPhone(normalized);
   }, [phoneNumber, submitMtprotoPhone]);
 
   const onResendCode = useCallback(() => {
@@ -359,9 +361,19 @@ export function TelegramConnectSheet() {
               disabled={connectPending}
             >
               <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
-                {t("messages.connectSheetCodeResend")}
+                {connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" &&
+                /Sms/i.test(connectCodeDelivery?.nextType ?? "")
+                  ? t("messages.connectSheetCodeResendSms")
+                  : t("messages.connectSheetCodeResend")}
               </Text>
             </Pressable>
+          ) : null}
+          {showCode &&
+          connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" &&
+          !connectCodeDelivery?.nextType ? (
+            <Text style={[appModalSheetStyles.bodySupporting, { color: colors.secondary, marginTop: 10 }]}>
+              {t("messages.connectSheetCodeTelegramOnlyHint")}
+            </Text>
           ) : null}
         </View>
       ) : null}

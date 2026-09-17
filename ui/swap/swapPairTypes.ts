@@ -106,8 +106,7 @@ export function swapChartTokenForPair(
 
 /** UI ticker — native zero-address asset is always Gram, never "TON". */
 export function swapTokenDisplaySymbol(token: SwapPairToken): string {
-  // Ledger dollars: show $ in send / swap UI instead of the internal ticker DLLR.
-  if (isDllrToken(token)) return "$";
+  if (isDllrToken(token)) return "DLLR";
   if (isNativeTonToken(token)) return "GRAM";
   const symbol = token.symbol.trim().toUpperCase();
   if (symbol === "TON") return "GRAM";

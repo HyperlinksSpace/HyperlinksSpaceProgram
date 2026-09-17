@@ -227,9 +227,10 @@ export const layout = {
     headerPressableHitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
     /** Full-bleed divider stroke height (px) under the wide header row. */
     headerDividerHeight: 1,
-    /** Character count taken from the end of the wallet string for the snippet (after `walletAddressSnippetPrefix`). */
-    walletAddressSnippetTailLength: 5,
-    /** Prefix before the visible wallet tail on the authenticated home header. */
+    /** Character counts for middle-ellipsis address chips (matches switch-wallet list). */
+    walletAddressSnippetHeadLength: 6,
+    walletAddressSnippetTailLength: 6,
+    /** @deprecated Prefer middle-ellipsis; kept for older call sites. */
     walletAddressSnippetPrefix: "..",
     /** Placeholder when the wallet address is empty (authenticated home header snippet). */
     walletAddressSnippetPlaceholder: "…",

@@ -89,7 +89,7 @@ export function resolveFounderCostInputs(): FounderCostInputs {
       railwayUsdMonth: envNum("FOUNDER_COST_RAILWAY_USD_MONTH", 15),
       vercelUsdMonth: envNum("FOUNDER_COST_VERCEL_USD_MONTH", 20),
       gcpUsdMonth: envNum("FOUNDER_COST_GCP_USD_MONTH", 0),
-      // e2-small + 20GB pd-balanced + external IP ≈ list price in europe-west1.
+      // e2-small + 20GB pd-balanced + external IP ≈ list price in europe-central2.
       amneziaVpnUsdMonth: envNum("FOUNDER_COST_AMNEZIA_VPN_USD_MONTH", 19.08),
       neonUsdMonth: envNum("FOUNDER_COST_NEON_USD_MONTH", 0),
       aiUsdMonth: envNum("FOUNDER_COST_AI_USD_MONTH", 20),

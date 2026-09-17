@@ -6,11 +6,23 @@ export function trimWalletAddress(address: string): string {
   return address.replace(/\s+/g, "").trim();
 }
 
-/** Same snippet as authenticated home header: `..` + last N chars (lowercase). */
+/**
+ * Same format as the switch-wallet list: `UQBY1Y...gM-NF8` (head…tail, original casing).
+ */
+export function walletAddressMiddleEllipsis(
+  address: string,
+  head = AH.walletAddressSnippetHeadLength ?? 6,
+  tail = AH.walletAddressSnippetTailLength ?? 6,
+): string {
+  const trimmed = trimWalletAddress(address);
+  if (!trimmed) return AH.walletAddressSnippetPlaceholder;
+  if (trimmed.length <= head + tail + 3) return trimmed;
+  return `${trimmed.slice(0, head)}...${trimmed.slice(-tail)}`;
+}
+
+/** Header / dialog address chip — matches wallets list middle-ellipsis format. */
 export function walletAddressHeaderSnippet(trimmed: string): string {
-  if (trimmed.length === 0) return AH.walletAddressSnippetPlaceholder;
-  const tail = trimmed.slice(-AH.walletAddressSnippetTailLength).toLowerCase();
-  return `${AH.walletAddressSnippetPrefix}${tail}`;
+  return walletAddressMiddleEllipsis(trimmed);
 }
 
 /** Centered copyable address lines (prev-main get page uses ~12 chars per row). */

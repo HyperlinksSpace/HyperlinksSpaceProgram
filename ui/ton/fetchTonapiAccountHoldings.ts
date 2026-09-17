@@ -190,9 +190,9 @@ export async function fetchTonapiAccountHoldings(
           return value;
         }
       }
-      // Proxy reachable but failed (429/502/etc.): do NOT hammer public TonAPI.
-      if (res.status !== 404) {
-        return cached?.value ?? emptyHoldings(trimmed);
+      // Proxy reachable but failed (429/502/etc.): keep cache if any; otherwise try direct TonAPI.
+      if (res.status !== 404 && cached?.value) {
+        return cached.value;
       }
     } catch {
       /* network / CORS — try direct TonAPI once */
