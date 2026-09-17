@@ -10,6 +10,10 @@
 
 import { transmit, type AiRequest } from "../../ai/transmitter.js";
 import { getTinyModelStatus } from "../../ai/tinymodel.js";
+import {
+  getUniversalBrainBaseUrl,
+  isUniversalBrainConfigured,
+} from "../../ai/universalBrain.js";
 import { parseRequestJsonBody } from "../_lib/parse-request-body.js";
 
 type NodeRes = {
@@ -33,7 +37,15 @@ async function handler(
 
   if (method === "GET") {
     const tinymodel = await getTinyModelStatus();
-    const body = { ok: true, ai: true, tinymodel };
+    const body = {
+      ok: true,
+      ai: true,
+      tinymodel,
+      universal_brain: {
+        configured: isUniversalBrainConfigured(),
+        base_url: isUniversalBrainConfigured() ? getUniversalBrainBaseUrl() : null,
+      },
+    };
 
     if (res) {
       res.setHeader("Content-Type", "application/json");

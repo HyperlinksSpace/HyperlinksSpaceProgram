@@ -3,8 +3,13 @@ import { callOpenAiChat, callOpenAiChatStream } from "./openai.js";
 import {
   buildTinyModelOnlyAnswer,
   canAnswerWithTinyModel,
+  shouldUseUniversalBrainInAuto,
 } from "./llmRouter.js";
 import { enrichWithTinyModel, type TinyModelEnrichmentMeta } from "./tinymodel.js";
+import {
+  generateWithUniversalBrain,
+  isUniversalBrainConfigured,
+} from "./universalBrain.js";
 import { actionsFromRouteHint } from "./intentActions.js";
 import { toPublicAiErrorCode } from "./publicAiErrors.js";
 import {
@@ -275,6 +280,84 @@ function tinyOnlyResponse(
   };
 }
 
+/**
+ * Universal Brain generative reply (shared by Tiny Model mode and Auto ladder).
+ * Returns null when UB is off/down so the caller can fall through.
+ */
+async function tryUniversalBrainAnswer(
+  request: AiRequest,
+  enrichment: Awaited<ReturnType<typeof enrichWithTinyModel>> | undefined,
+  routeReason: string,
+): Promise<AiResponse | null> {
+  if (!isUniversalBrainConfigured()) return null;
+  const ub = await generateWithUniversalBrain({
+    message: request.input,
+    contextBlock: enrichment?.contextBlock ?? null,
+    scopeKey: request.userId ?? request.threadContext?.telegram_username ?? null,
+  });
+  if (!ub.ok || !ub.text.trim()) return null;
+  const actions = actionsFromRouteHint(enrichment?.meta.route);
+  return {
+    ok: true,
+    provider: "tinymodel",
+    mode: "chat",
+    output_text: ub.text.trim(),
+    ...(actions.length > 0 ? { actions } : {}),
+    meta: {
+      model: "tinymodel/universal-brain",
+      backend: "universal_brain",
+      route_reason: routeReason,
+      universal_brain: {
+        backend: ub.backend,
+        elapsed_ms: ub.elapsedMs,
+      },
+      ...(enrichment?.meta ? { tinymodel: enrichment.meta } : {}),
+    },
+  };
+}
+
+/**
+ * User picked Tiny Model: always Universal Brain for any question,
+ * fall back to encoder/RAG templates when UB is down (never silent GPT).
+ */
+async function answerForcedTinyModel(
+  request: AiRequest,
+  enrichment: Awaited<ReturnType<typeof enrichWithTinyModel>> | undefined,
+): Promise<AiResponse> {
+  const ub = await tryUniversalBrainAnswer(
+    request,
+    enrichment,
+    "user_tinymodel_universal_brain",
+  );
+  if (ub) return ub;
+
+  if (enrichment) {
+    const fallback = tinyOnlyResponse(request, enrichment);
+    return {
+      ...fallback,
+      meta: {
+        ...(fallback.meta ?? {}),
+        route_reason: "user_tinymodel_rag_fallback",
+        universal_brain_error: isUniversalBrainConfigured()
+          ? "generate_failed"
+          : "UB_CHAT_URL_not_configured",
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    provider: "tinymodel",
+    mode: "chat",
+    error: toPublicAiErrorCode("ai_unavailable"),
+    meta: {
+      model: "tinymodel/universal-brain",
+      backend: "universal_brain",
+      route_reason: "user_tinymodel_unavailable",
+    },
+  };
+}
+
 export async function transmit(request: AiRequest): Promise<AiResponse> {
   const mode: AiMode = request.mode ?? "chat";
   const thread = request.threadContext;
@@ -330,25 +413,37 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
   const pinnedExternal = pref?.modelMode === "model";
   const forceTiny = pref?.modelMode === "tinymodel";
   // Explicit external model: never answer from Tiny Model — only that provider stands.
+  if (!pinnedExternal && forceTiny) {
+    const result = await answerForcedTinyModel(request, enrichment);
+    if (result.ok && result.output_text && thread) {
+      await persistAssistantMessage(thread, result.output_text);
+    }
+    return result;
+  }
+  if (!pinnedExternal && enrichment && canAnswerWithTinyModel(request.input, tinymodel)) {
+    const result = tinyOnlyResponse(request, enrichment);
+    if (result.ok && result.output_text && thread) {
+      await persistAssistantMessage(thread, result.output_text);
+    }
+    return result;
+  }
+
+  // Auto ladder step 2: Universal Brain for ordinary general chat before cloud.
   if (
     !pinnedExternal &&
-    (forceTiny ||
-      (enrichment && canAnswerWithTinyModel(request.input, tinymodel)))
+    (pref?.modelMode ?? "auto") === "auto" &&
+    shouldUseUniversalBrainInAuto(request.input)
   ) {
-    if (forceTiny && !enrichment) {
-      return {
-        ok: false,
-        provider: "tinymodel",
-        mode,
-        error: toPublicAiErrorCode("ai_unavailable"),
-      };
-    }
-    if (enrichment) {
-      const result = tinyOnlyResponse(request, enrichment);
-      if (result.ok && result.output_text && thread) {
-        await persistAssistantMessage(thread, result.output_text);
+    const ub = await tryUniversalBrainAnswer(
+      request,
+      enrichment,
+      "auto_universal_brain",
+    );
+    if (ub) {
+      if (ub.ok && ub.output_text && thread) {
+        await persistAssistantMessage(thread, ub.output_text);
       }
-      return result;
+      return ub;
     }
   }
 
@@ -525,26 +620,40 @@ export async function transmitStream(
 
   const pinnedExternal = pref?.modelMode === "model";
   const forceTiny = pref?.modelMode === "tinymodel";
+  if (!pinnedExternal && forceTiny) {
+    const result = await answerForcedTinyModel(request, enrichment);
+    if (result.ok && result.output_text) {
+      await onDelta(result.output_text);
+      if (thread) await persistAssistantMessage(thread, result.output_text);
+    }
+    return result;
+  }
+  if (!pinnedExternal && enrichment && canAnswerWithTinyModel(request.input, tinymodel)) {
+    const result = tinyOnlyResponse(request, enrichment);
+    if (result.ok && result.output_text) {
+      await onDelta(result.output_text);
+      if (thread) await persistAssistantMessage(thread, result.output_text);
+    }
+    return result;
+  }
+
+  // Auto ladder step 2: Universal Brain for ordinary general chat before cloud.
   if (
     !pinnedExternal &&
-    (forceTiny ||
-      (enrichment && canAnswerWithTinyModel(request.input, tinymodel)))
+    (pref?.modelMode ?? "auto") === "auto" &&
+    shouldUseUniversalBrainInAuto(request.input)
   ) {
-    if (forceTiny && !enrichment) {
-      return {
-        ok: false,
-        provider: "tinymodel",
-        mode,
-        error: toPublicAiErrorCode("ai_unavailable"),
-      };
-    }
-    if (enrichment) {
-      const result = tinyOnlyResponse(request, enrichment);
-      if (result.ok && result.output_text) {
-        await onDelta(result.output_text);
-        if (thread) await persistAssistantMessage(thread, result.output_text);
+    const ub = await tryUniversalBrainAnswer(
+      request,
+      enrichment,
+      "auto_universal_brain",
+    );
+    if (ub) {
+      if (ub.ok && ub.output_text) {
+        await onDelta(ub.output_text);
+        if (thread) await persistAssistantMessage(thread, ub.output_text);
       }
-      return result;
+      return ub;
     }
   }
 

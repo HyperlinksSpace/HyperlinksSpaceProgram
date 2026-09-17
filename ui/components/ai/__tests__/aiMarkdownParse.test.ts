@@ -37,4 +37,12 @@ describe("aiMarkdownParse", () => {
       assert.equal(blocks[1].depth, 1);
     }
   });
+
+  it("keeps *italic* when more text follows on the same line (Brain trace)", () => {
+    const md = "привет\n\n---\n*Brain trace:* classify:Sci/Tech(0.48) · RAG:2chunk(s)";
+    const plain = aiMarkdownToPlainText(md);
+    assert.doesNotMatch(plain, /\*/);
+    assert.match(plain, /Brain trace:/);
+    assert.match(plain, /classify:Sci\/Tech/);
+  });
 });

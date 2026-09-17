@@ -32,17 +32,42 @@ export function stripIncompleteAiMarkdownTail(md: string): string {
     const i = out.lastIndexOf("```");
     if (i >= 0) out = out.slice(0, i);
   }
-  out = out.replace(/(\*\*|__|`|\*)[^*`_\n]*$/u, (m) => {
-    if (/^(\*\*|__|`|\*)$/u.test(m)) return "";
-    if (/^(\*\*|__)[^*_\n]+$/u.test(m)) return "";
-    if (/^`[^`\n]+$/u.test(m)) return "";
-    if (/^\*[^*\n]+$/u.test(m)) return "";
-    return m;
-  });
-  const boldStars = (out.match(/\*\*/g) ?? []).length;
-  if (boldStars % 2 === 1) {
-    out = out.replace(/\*\*([^*]*)$/u, "$1");
+
+  // Incomplete **bold** — odd number of `**` markers.
+  if (((out.match(/\*\*/g) ?? []).length) % 2 === 1) {
+    const i = out.lastIndexOf("**");
+    if (i >= 0) out = `${out.slice(0, i)}${out.slice(i + 2)}`;
   }
+
+  // Incomplete `code` — odd backticks (fences already trimmed above).
+  if (((out.match(/`/g) ?? []).length) % 2 === 1) {
+    const i = out.lastIndexOf("`");
+    if (i >= 0) out = out.slice(0, i);
+  }
+
+  // Incomplete *italic* — only when a lone `*` is unpaired.
+  // Do NOT strip from a closing `*` through EOL (that left `*Brain trace:` visible).
+  const loneStarCount = (out.replace(/\*\*/g, "").match(/\*/g) ?? []).length;
+  if (loneStarCount % 2 === 1) {
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      if (out[i] !== "*") continue;
+      if (out[i - 1] === "*" || out[i + 1] === "*") continue;
+      out = out.slice(0, i);
+      break;
+    }
+  }
+
+  // Incomplete _italic_
+  const loneUnderscore = (out.replace(/__/g, "").match(/_/g) ?? []).length;
+  if (loneUnderscore % 2 === 1) {
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      if (out[i] !== "_") continue;
+      if (out[i - 1] === "_" || out[i + 1] === "_") continue;
+      out = out.slice(0, i);
+      break;
+    }
+  }
+
   return out;
 }
 

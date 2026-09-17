@@ -65,7 +65,7 @@ export function resolveSelectedModelDisclosure(
 ): SelectedModelDisclosure {
   const mode = preference?.modelMode ?? "auto";
   if (mode === "tinymodel") {
-    return { mode: "tinymodel", modelId: "tinymodel/rag", label: "Tiny Model" };
+    return { mode: "tinymodel", modelId: "tinymodel/universal-brain", label: "Tiny Model" };
   }
   if (mode === "model" && preference?.modelId?.trim()) {
     const id = preference.modelId.trim();
@@ -102,14 +102,16 @@ export function buildModelIdentityAnswer(
     if (lang === "ru") {
       return (
         "В AI tools выбрана **Tiny Model**. " +
-        "Этот ответ из знаний Hyperlinks Space Program (Tiny Model / локальный корпус), " +
-        "а не из облачной frontier-модели. Внутренний id: `tinymodel/rag`."
+        "Ответы идут через **Universal Brain** (Hyperlinks Space Tiny Model) — " +
+        "это встроенный генеративный мозг, а не облачная frontier-модель. " +
+        "Внутренний id: `tinymodel/universal-brain`."
       );
     }
     return (
       "You selected **Tiny Model** in AI tools. " +
-      "This turn is answered from Hyperlinks Space Program knowledge (Tiny Model / local corpus), " +
-      "not a frontier cloud LLM. Internal id: `tinymodel/rag`."
+      "Replies come from **Universal Brain** (Hyperlinks Space Tiny Model) — " +
+      "the built-in generative brain, not a frontier cloud LLM. " +
+      "Internal id: `tinymodel/universal-brain`."
     );
   }
 
@@ -142,15 +144,15 @@ export function buildModelIdentityAnswer(
 
   if (lang === "ru") {
     return (
-      "В AI tools стоит **Auto**. Бэкенд на каждое сообщение выбирает достаточно дешёвую модель " +
-      "(Tiny Model для фактов о программе, иначе Gateway / OpenAI). " +
-      "Откройте AI tools и выберите конкретную модель, если нужен фиксированный id каждый раз."
+      "В AI tools стоит **Auto** (как Cursor Auto). **AI Transmitter** на каждое сообщение выбирает: " +
+      "1) программа RAG, 2) **Tiny Model / Universal Brain**, 3) облако Gateway / OpenAI для сложных запросов. " +
+      "Выберите **Tiny Model**, чтобы всегда был только встроенный мозг, или конкретную облачную модель для фиксированного id."
     );
   }
   return (
-    "AI tools is set to **Auto**. The backend picks the cheapest sufficient model for each message " +
-    "(Tiny Model for program facts when possible, otherwise a Gateway / OpenAI chat model). " +
-    "Open AI tools and pick a specific model if you want a fixed id every turn."
+    "AI tools is set to **Auto** (like Cursor Auto). The **AI Transmitter** picks per message: " +
+    "1) program RAG, 2) **Tiny Model / Universal Brain**, 3) Gateway / OpenAI cloud for hard prompts. " +
+    "Pick **Tiny Model** to stay on the built-in brain only, or a named cloud model for a fixed id every turn."
   );
 }
 
@@ -163,9 +165,9 @@ export function appendSelectedModelIdentityInstructions(
   let identity: string;
   if (selected.mode === "tinymodel") {
     identity =
-      "User selected Tiny Model. If asked which model/version you are, say Tiny Model " +
-      "(Hyperlinks program knowledge / tinymodel/rag) in the same language as the user's question. " +
-      "Do not claim to be GPT, Claude, Gemini, or another cloud model.";
+      "User selected Tiny Model (Universal Brain). If asked which model/version you are, say Tiny Model / Universal Brain " +
+      "(Hyperlinks Space built-in brain, tinymodel/universal-brain) in the same language as the user's question. " +
+      "Answer any topic as a general assistant. Do not claim to be GPT, Claude, Gemini, or another cloud model.";
   } else if (selected.mode === "model" && selected.modelId) {
     identity =
       `User selected model "${selected.label}" with exact id "${selected.modelId}". ` +
@@ -175,8 +177,10 @@ export function appendSelectedModelIdentityInstructions(
       "Do not invent a different model name, claim a generic OpenAI assistant, or refuse to disclose the selected id.";
   } else {
     identity =
-      "User selected Auto routing. When asked which model you are, say Auto is enabled and the backend " +
-      "chooses per message (reply in the same language as the user); invite them to pick a fixed model in AI tools for a stable id.";
+      "User selected Auto routing (AI Transmitter). Per message it may use program RAG, " +
+      "Tiny Model / Universal Brain, or a Gateway / OpenAI cloud model. " +
+      "When asked which model you are, say Auto is enabled and invite them to pick Tiny Model " +
+      "(built-in Universal Brain) or a fixed cloud model in AI tools for a stable id.";
   }
   const prefix = (base ?? "").trim();
   return prefix ? `${prefix} ${identity}` : identity;

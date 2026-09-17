@@ -78,6 +78,18 @@ export function openAiModelForInput(input: string, preferFrontier: boolean): str
 }
 
 /**
+ * Prefer Universal Brain in Auto for ordinary general chat (not frontier-hard).
+ * Hard analysis/code/long prompts stay on Gateway/OpenAI.
+ */
+export function shouldUseUniversalBrainInAuto(input: string): boolean {
+  const trimmed = input.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > 900) return false;
+  if (selectSmartChatModel(trimmed) === "gpt-5.2") return false;
+  return true;
+}
+
+/**
  * True when TinyModel RAG / route hints can satisfy the user without an LLM call.
  * Keeps quality bar: factual HSP help, navigation, or high-confidence retrieve.
  */
@@ -222,7 +234,7 @@ export function resolveLlmRoute(
     return {
       backend: "tinymodel",
       tier: "none",
-      model: "tinymodel/rag",
+      model: "tinymodel/universal-brain",
       reason: "user_tinymodel_only",
     };
   }

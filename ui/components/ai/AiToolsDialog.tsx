@@ -441,6 +441,22 @@ export function AiToolsDialog({ visible, onClose }: Props) {
               font={font}
             />
 
+            {(models.length > 0 ? models : []).length > 0 ? (
+              <Text
+                style={{
+                  color: colors.secondary,
+                  fontSize: 11,
+                  letterSpacing: 0.4,
+                  marginTop: 14,
+                  marginBottom: 8,
+                  fontFamily: font,
+                  textTransform: "uppercase",
+                }}
+              >
+                {t("ai.tools.cloudSection")}
+              </Text>
+            ) : null}
+
             {(models.length > 0 ? models : []).map((m) => (
               <ModeRow
                 key={m.id}

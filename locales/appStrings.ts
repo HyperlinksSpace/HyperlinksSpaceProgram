@@ -80,12 +80,14 @@ const en = {
     "After the included monthly budget, charge ~${{rate}} per 1k tokens from DLLR hot ({{balance}}$ available).",
   "ai.tools.buyProCta": "Buy Pro subscription",
   "ai.tools.enableOnDemandCta": "Enable on-demand DLLR",
-  "ai.tools.modelSection": "Model",
+  "ai.tools.modelSection": "Built-in",
   "ai.tools.modeAuto": "Auto",
   "ai.tools.modeAutoHint":
-    "Smart selection between models available depending on the prompt",
+    "AI Transmitter picks per prompt: program RAG → Tiny Model (Universal Brain) → cloud when needed.",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint": "The built-in model by https://www.hyperlinks.space/",
+  "ai.tools.modeTinyHint":
+    "Always Universal Brain by Hyperlinks Space — built-in general brain for any question (never GPT/Claude/Gemini).",
+  "ai.tools.cloudSection": "Cloud models",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",
 
@@ -1036,12 +1038,14 @@ const ru = {
     "После включённого бюджета — ≈${{rate}} за 1k токенов с горячего DLLR (доступно {{balance}}$).",
   "ai.tools.buyProCta": "Купить подписку Pro",
   "ai.tools.enableOnDemandCta": "Включить on-demand DLLR",
-  "ai.tools.modelSection": "Модель",
+  "ai.tools.modelSection": "Встроенные",
   "ai.tools.modeAuto": "Авто",
   "ai.tools.modeAutoHint":
-    "Умный выбор между доступными моделями в зависимости от запроса",
+    "AI Transmitter выбирает на запрос: RAG программы → Tiny Model (Universal Brain) → облако при необходимости.",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint": "Встроенная модель от https://www.hyperlinks.space/",
+  "ai.tools.modeTinyHint":
+    "Всегда Universal Brain от Hyperlinks Space — встроенный общий мозг на любой вопрос (не GPT/Claude/Gemini).",
+  "ai.tools.cloudSection": "Облачные модели",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",
 
@@ -1988,11 +1992,14 @@ const zh = {
   "ai.tools.onDemandHint": "超出包含预算后，按约 ${{rate}} / 1k tokens 从 DLLR 热余额扣费（可用 {{balance}}$）。",
   "ai.tools.buyProCta": "购买 Pro 订阅",
   "ai.tools.enableOnDemandCta": "开启按需 DLLR",
-  "ai.tools.modelSection": "模型",
+  "ai.tools.modelSection": "内置",
   "ai.tools.modeAuto": "自动",
-  "ai.tools.modeAutoHint": "根据提示智能选择可用模型",
+  "ai.tools.modeAutoHint":
+    "AI Transmitter 按提示选择：程序 RAG → Tiny Model（Universal Brain）→ 需要时用云端。",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint": "由 https://www.hyperlinks.space/ 提供的内置模型",
+  "ai.tools.modeTinyHint":
+    "始终使用 Hyperlinks Space 的 Universal Brain — 内置通用大脑，回答任意问题（不会用 GPT/Claude/Gemini）。",
+  "ai.tools.cloudSection": "云端模型",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",
   "common.back": "返回",

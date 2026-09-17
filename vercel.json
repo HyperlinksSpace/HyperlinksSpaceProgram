@@ -124,7 +124,7 @@
   ],
   "functions": {
     "api/[...path].ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "api/wallet/[slug].ts": {
       "maxDuration": 60
