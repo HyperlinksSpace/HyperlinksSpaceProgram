@@ -85,8 +85,7 @@ const en = {
   "ai.tools.modeAutoHint":
     "AI Transmitter picks per prompt: program RAG → Tiny Model (Universal Brain) → cloud when needed.",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint":
-    "Always Universal Brain by Hyperlinks Space — built-in general brain for any question (never GPT/Claude/Gemini).",
+  "ai.tools.modeTinyHint": "The built-in model by https://www.hyperlinks.space/",
   "ai.tools.cloudSection": "Cloud models",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",
@@ -1043,8 +1042,7 @@ const ru = {
   "ai.tools.modeAutoHint":
     "AI Transmitter выбирает на запрос: RAG программы → Tiny Model (Universal Brain) → облако при необходимости.",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint":
-    "Всегда Universal Brain от Hyperlinks Space — встроенный общий мозг на любой вопрос (не GPT/Claude/Gemini).",
+  "ai.tools.modeTinyHint": "Встроенная модель от https://www.hyperlinks.space/",
   "ai.tools.cloudSection": "Облачные модели",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",
@@ -1997,8 +1995,7 @@ const zh = {
   "ai.tools.modeAutoHint":
     "AI Transmitter 按提示选择：程序 RAG → Tiny Model（Universal Brain）→ 需要时用云端。",
   "ai.tools.modeTiny": "Tiny Model",
-  "ai.tools.modeTinyHint":
-    "始终使用 Hyperlinks Space 的 Universal Brain — 内置通用大脑，回答任意问题（不会用 GPT/Claude/Gemini）。",
+  "ai.tools.modeTinyHint": "由 https://www.hyperlinks.space/ 提供的内置模型",
   "ai.tools.cloudSection": "云端模型",
   "ai.tools.viaGateway": "Multi-model gateway",
   "ai.tools.viaOpenAi": "OpenAI direct",

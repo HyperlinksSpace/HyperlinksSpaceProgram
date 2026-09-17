@@ -288,12 +288,14 @@ async function tryUniversalBrainAnswer(
   request: AiRequest,
   enrichment: Awaited<ReturnType<typeof enrichWithTinyModel>> | undefined,
   routeReason: string,
+  timeoutMs?: number,
 ): Promise<AiResponse | null> {
   if (!isUniversalBrainConfigured()) return null;
   const ub = await generateWithUniversalBrain({
     message: request.input,
     contextBlock: enrichment?.contextBlock ?? null,
     scopeKey: request.userId ?? request.threadContext?.telegram_username ?? null,
+    timeoutMs,
   });
   if (!ub.ok || !ub.text.trim()) return null;
   const actions = actionsFromRouteHint(enrichment?.meta.route);
@@ -328,32 +330,36 @@ async function answerForcedTinyModel(
     request,
     enrichment,
     "user_tinymodel_universal_brain",
+    45_000,
   );
   if (ub) return ub;
 
   if (enrichment) {
     const fallback = tinyOnlyResponse(request, enrichment);
-    return {
-      ...fallback,
-      meta: {
-        ...(fallback.meta ?? {}),
-        route_reason: "user_tinymodel_rag_fallback",
-        universal_brain_error: isUniversalBrainConfigured()
-          ? "generate_failed"
-          : "UB_CHAT_URL_not_configured",
-      },
-    };
+    if (fallback.ok && fallback.output_text?.trim()) {
+      return {
+        ...fallback,
+        meta: {
+          ...(fallback.meta ?? {}),
+          route_reason: "user_tinymodel_rag_fallback",
+          universal_brain_error: isUniversalBrainConfigured()
+            ? "generate_failed"
+            : "UB_CHAT_URL_not_configured",
+        },
+      };
+    }
   }
 
   return {
-    ok: false,
+    ok: true,
     provider: "tinymodel",
     mode: "chat",
-    error: toPublicAiErrorCode("ai_unavailable"),
+    output_text:
+      "Tiny Model is warming up or briefly unavailable. Try again in a moment, or switch AI tools to Auto / a cloud model.",
     meta: {
       model: "tinymodel/universal-brain",
       backend: "universal_brain",
-      route_reason: "user_tinymodel_unavailable",
+      route_reason: "user_tinymodel_degraded_notice",
     },
   };
 }
@@ -438,6 +444,7 @@ export async function transmit(request: AiRequest): Promise<AiResponse> {
       request,
       enrichment,
       "auto_universal_brain",
+      12_000,
     );
     if (ub) {
       if (ub.ok && ub.output_text && thread) {
@@ -647,6 +654,7 @@ export async function transmitStream(
       request,
       enrichment,
       "auto_universal_brain",
+      12_000,
     );
     if (ub) {
       if (ub.ok && ub.output_text) {

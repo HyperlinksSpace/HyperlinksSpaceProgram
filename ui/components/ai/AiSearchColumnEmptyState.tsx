@@ -749,15 +749,20 @@ export function AiSearchColumnEmptyState() {
       );
       scrollAiThreadToEnd();
 
-      const res = await postAiAgentChatAction({
-        action: "send",
-        chatId: tabId,
-        clientId: tabId,
-        input: trimmed,
-        // Explicit tools selection must drive this turn (server may still lag on prefs).
-        modelMode: sendModelMode,
-        modelId: sendModelId,
-      });
+      let res: Awaited<ReturnType<typeof postAiAgentChatAction>>;
+      try {
+        res = await postAiAgentChatAction({
+          action: "send",
+          chatId: tabId,
+          clientId: tabId,
+          input: trimmed,
+          // Explicit tools selection must drive this turn (server may still lag on prefs).
+          modelMode: sendModelMode,
+          modelId: sendModelId,
+        });
+      } catch {
+        res = { ok: false, error: "network_error" };
+      }
 
       logPageDisplay("ai_send_result", {
         ok: Boolean(res.ok),

@@ -10,7 +10,8 @@
  */
 
 const DEFAULT_UB_CHAT_URL = "https://hyperlinksspace-tinymodel1space.hf.space";
-const DEFAULT_TIMEOUT_MS = 120_000;
+/** Keep under Vercel maxDuration so Tiny Model can fall back instead of hanging the UI. */
+const DEFAULT_TIMEOUT_MS = 45_000;
 
 export type UniversalBrainGenerateResult =
   | { ok: true; text: string; backend: "gradio_chat" | "horizon2_generate"; elapsedMs: number }
@@ -32,11 +33,23 @@ export function getUniversalBrainBaseUrl(): string {
   return baseUrl();
 }
 
-function timeoutMs(): number {
+function resolveTimeoutMs(overrideMs?: number): number {
+  if (typeof overrideMs === "number" && Number.isFinite(overrideMs) && overrideMs > 0) {
+    return Math.floor(overrideMs);
+  }
   const raw = process.env.UB_CHAT_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_TIMEOUT_MS;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_TIMEOUT_MS;
+}
+
+function looksLikeHuggingFaceSpace(base: string): boolean {
+  try {
+    const host = new URL(base).hostname.toLowerCase();
+    return host.endsWith(".hf.space") || host.includes("huggingface");
+  } catch {
+    return /hf\.space|huggingface/i.test(base);
+  }
 }
 
 function withTimeout(ms: number): { signal: AbortSignal; clear: () => void } {
@@ -48,9 +61,13 @@ function withTimeout(ms: number): { signal: AbortSignal; clear: () => void } {
 async function tryHorizon2Generate(
   base: string,
   message: string,
-  contextBlock?: string,
+  contextBlock: string | undefined,
+  budgetMs: number,
 ): Promise<UniversalBrainGenerateResult | null> {
-  const health = withTimeout(8_000);
+  // HF Spaces are Gradio-only; skip the /healthz probe (often slow/404).
+  if (looksLikeHuggingFaceSpace(base)) return null;
+
+  const health = withTimeout(Math.min(3_000, budgetMs));
   try {
     const healthRes = await fetch(`${base}/healthz`, { signal: health.signal });
     if (!healthRes.ok) return null;
@@ -65,7 +82,7 @@ async function tryHorizon2Generate(
   const started = Date.now();
   const ctx = (contextBlock ?? "").trim();
   const task = ctx ? "grounded" : "reformulate";
-  const gen = withTimeout(timeoutMs());
+  const gen = withTimeout(budgetMs);
   try {
     const res = await fetch(`${base}/v1/generate`, {
       method: "POST",
@@ -137,10 +154,10 @@ export function sanitizeUniversalBrainUserText(text: string): string {
 async function generateViaGradioChat(
   base: string,
   message: string,
-  opts?: { scopeKey?: string | null; contextBlock?: string | null },
+  opts?: { scopeKey?: string | null; contextBlock?: string | null; timeoutMs?: number },
 ): Promise<UniversalBrainGenerateResult> {
   const started = Date.now();
-  const budget = timeoutMs();
+  const budget = resolveTimeoutMs(opts?.timeoutMs);
   const ctx = (opts?.contextBlock ?? "").trim();
   const userMessage = ctx
     ? `${ctx}\n\n---\nUser question:\n${message}`
@@ -250,6 +267,8 @@ export async function generateWithUniversalBrain(args: {
   message: string;
   contextBlock?: string | null;
   scopeKey?: string | null;
+  /** Cap wait so Auto/Tiny can fall back before the serverless request dies. */
+  timeoutMs?: number;
 }): Promise<UniversalBrainGenerateResult> {
   const trimmed = args.message.trim();
   if (!trimmed) {
@@ -260,11 +279,18 @@ export async function generateWithUniversalBrain(args: {
     return { ok: false, error: "UB_CHAT_URL not set" };
   }
 
-  const horizon = await tryHorizon2Generate(base, trimmed, args.contextBlock ?? undefined);
+  const budget = resolveTimeoutMs(args.timeoutMs);
+  const horizon = await tryHorizon2Generate(
+    base,
+    trimmed,
+    args.contextBlock ?? undefined,
+    budget,
+  );
   if (horizon) return horizon;
 
   return generateViaGradioChat(base, trimmed, {
     scopeKey: args.scopeKey,
     contextBlock: args.contextBlock,
+    timeoutMs: budget,
   });
 }

@@ -67,11 +67,31 @@ export async function getSharedAiAgentChat(shareToken: string): Promise<{
 export async function postAiAgentChatAction(
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown> & { ok?: boolean; error?: string }> {
-  const res = await fetch(buildApiUrl("/api/ai-chats"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  return parseJson(res);
+  // Send waits on Tiny Model / Universal Brain; keep under serverless maxDuration.
+  const isSend = body.action === "send";
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    isSend ? 100_000 : 30_000,
+  );
+  try {
+    const res = await fetch(buildApiUrl("/api/ai-chats"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return parseJson(res);
+  } catch (e: unknown) {
+    const aborted =
+      (e instanceof Error && e.name === "AbortError") ||
+      (typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError");
+    return {
+      ok: false,
+      error: aborted ? "ai_timeout" : "network_error",
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 }
