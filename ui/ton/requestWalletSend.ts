@@ -83,18 +83,18 @@ export async function requestWalletSend(opts: {
       recipient_dllr_balance_usd?: number;
     } | null;
 
+    if (
+      typeof data?.dllr_hot_usd === "number" &&
+      typeof data?.dllr_frozen_usd === "number"
+    ) {
+      applyServerDllrLedgerFromSession({
+        hotUsd: data.dllr_hot_usd,
+        frozenUsd: data.dllr_frozen_usd,
+      });
+    }
+
     if (res.ok && data?.ok) {
       const isDllr = data.asset === "dllr";
-      if (
-        isDllr &&
-        typeof data.dllr_hot_usd === "number" &&
-        typeof data.dllr_frozen_usd === "number"
-      ) {
-        applyServerDllrLedgerFromSession({
-          hotUsd: data.dllr_hot_usd,
-          frozenUsd: data.dllr_frozen_usd,
-        });
-      }
       if (!isDllr && typeof data.seqno !== "number") {
         return {
           ok: false,

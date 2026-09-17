@@ -240,13 +240,15 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     provider_username: loginProfile.providerUsername,
     telegram_username_actual: loginProfile.telegramUsernameActual,
   };
-  const dllrFields = dllrLedger
-    ? {
-        dllr_hot_usd: dllrLedger.hotUsd,
-        dllr_frozen_usd: dllrLedger.frozenUsd,
-        dllr_balance_usd: Math.round((dllrLedger.hotUsd + dllrLedger.frozenUsd) * 1e6) / 1e6,
-      }
-    : {};
+  // Always emit ledger fields so the client replaces any stale localStorage balance
+  // (e.g. a previous 1B gift) instead of keeping it when the DB row is missing.
+  const dllrHot = dllrLedger?.hotUsd ?? 0;
+  const dllrFrozen = dllrLedger?.frozenUsd ?? 0;
+  const dllrFields = {
+    dllr_hot_usd: dllrHot,
+    dllr_frozen_usd: dllrFrozen,
+    dllr_balance_usd: Math.round((dllrHot + dllrFrozen) * 1e6) / 1e6,
+  };
   const body = wallet
     ? {
         ok: true,

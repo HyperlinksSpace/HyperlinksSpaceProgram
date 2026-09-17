@@ -10,6 +10,7 @@ import {
 } from "../../database/telegramAuth.js";
 import {
   findUsernameByBuiltinWalletAddress,
+  getDllrLedgerForUsername,
   tonAddressesEqual,
   transferDllrBetweenUsernames,
 } from "../../database/dllrBalances.js";
@@ -196,7 +197,20 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
             : transfer.error === "cannot_send_to_self"
               ? 400
               : 400;
-        return sendJson(res, transfer, status);
+        // Include current ledger so the client can drop a stale local balance display.
+        const fromLedger = await getDllrLedgerForUsername(username);
+        const hot = fromLedger?.hotUsd ?? 0;
+        const frozen = fromLedger?.frozenUsd ?? 0;
+        return sendJson(
+          res,
+          {
+            ...transfer,
+            dllr_hot_usd: hot,
+            dllr_frozen_usd: frozen,
+            dllr_balance_usd: Math.round((hot + frozen) * 1e6) / 1e6,
+          },
+          status,
+        );
       }
 
       const fromBalance =

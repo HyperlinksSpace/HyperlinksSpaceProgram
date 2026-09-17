@@ -49,7 +49,8 @@ export function WalletCurrenciesDialog({
     trimmedWallet,
     visible,
     getInitDataString(),
-    { includeDllrLedger: true },
+    // Ledger DLLR is only spendable / owned on the built-in app wallet.
+    { includeDllrLedger: walletKind === "builtin" },
   );
   const title =
     titleProp ??

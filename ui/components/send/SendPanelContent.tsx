@@ -281,13 +281,17 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
 
       const holdings = await fetchTonapiAccountHoldings(sourceAddress);
       const next: SendCurrencyOption[] = [];
+      const allowDllrLedger = sourceKind === "builtin";
 
-      // Ledger DLLR is always first — default send currency on open for every wallet.
-      next.push({
-        token: SWAP_DLLR_TOKEN,
-        balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-        priceUsd: 1,
-      });
+      // Built-in only: ledger DLLR is spendable via /api/wallet-send.
+      // Imported / TonConnect must not show the app ledger as a transferable balance.
+      if (allowDllrLedger) {
+        next.push({
+          token: SWAP_DLLR_TOKEN,
+          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+          priceUsd: 1,
+        });
+      }
 
       if (holdings.nativeBalance > 0) {
         next.push({
@@ -323,13 +327,17 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
       setSelected((prev) => {
         const match = next.find((row) => sameToken(row.token, prev.token));
         if (match) return match;
-        const dllr = next.find((row) => isDllrToken(row.token));
-        if (dllr) return dllr;
+        if (allowDllrLedger) {
+          const dllr = next.find((row) => isDllrToken(row.token));
+          if (dllr) return dllr;
+        }
         if (next[0]) return next[0];
         return {
-          token: SWAP_DLLR_TOKEN,
-          balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-          priceUsd: 1,
+          token: allowDllrLedger ? SWAP_DLLR_TOKEN : SWAP_GRAM_TOKEN,
+          balanceText: allowDllrLedger
+            ? formatLocaleDllrBalance(dllrBalanceUsd, locale)
+            : "0",
+          priceUsd: allowDllrLedger ? 1 : null,
         };
       });
     } catch {
@@ -337,7 +345,7 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     } finally {
       setSendFormState({ balancesLoading: false });
     }
-  }, [dllrBalanceUsd, locale, sourceAddress]);
+  }, [dllrBalanceUsd, locale, sourceAddress, sourceKind]);
 
   useEffect(() => {
     void refreshBalances();
@@ -346,18 +354,20 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     return () => clearInterval(id);
   }, [refreshBalances, sourceAddress]);
 
-  // Persisted home slot keeps this mounted — reset to DLLR whenever Send is opened again.
+  // Persisted home slot keeps this mounted — reset currency whenever Send is opened again.
   useEffect(() => {
     const justOpened = isActive && !wasActiveRef.current;
     wasActiveRef.current = isActive;
     if (!justOpened) return;
-    setSelected({
-      token: SWAP_DLLR_TOKEN,
-      balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
-      priceUsd: 1,
-    });
+    if (sourceKind === "builtin") {
+      setSelected({
+        token: SWAP_DLLR_TOKEN,
+        balanceText: formatLocaleDllrBalance(dllrBalanceUsd, locale),
+        priceUsd: 1,
+      });
+    }
     void refreshBalances();
-  }, [dllrBalanceUsd, isActive, locale, refreshBalances]);
+  }, [dllrBalanceUsd, isActive, locale, refreshBalances, sourceKind]);
 
   useEffect(() => {
     setSendFormState({
