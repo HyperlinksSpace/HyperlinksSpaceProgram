@@ -83,7 +83,7 @@ const en = {
   "ai.tools.modelSection": "Built-in",
   "ai.tools.modeAuto": "Auto",
   "ai.tools.modeAutoHint":
-    "AI Transmitter picks per prompt: program RAG → Tiny Model (Universal Brain) → cloud when needed.",
+    "Smart selection between models available depending on the prompt",
   "ai.tools.modeTiny": "Tiny Model",
   "ai.tools.modeTinyHint": "The built-in model by https://www.hyperlinks.space/",
   "ai.tools.cloudSection": "Cloud models",
@@ -1040,7 +1040,7 @@ const ru = {
   "ai.tools.modelSection": "Встроенные",
   "ai.tools.modeAuto": "Авто",
   "ai.tools.modeAutoHint":
-    "AI Transmitter выбирает на запрос: RAG программы → Tiny Model (Universal Brain) → облако при необходимости.",
+    "Умный выбор между доступными моделями в зависимости от запроса",
   "ai.tools.modeTiny": "Tiny Model",
   "ai.tools.modeTinyHint": "Встроенная модель от https://www.hyperlinks.space/",
   "ai.tools.cloudSection": "Облачные модели",
@@ -1992,8 +1992,7 @@ const zh = {
   "ai.tools.enableOnDemandCta": "开启按需 DLLR",
   "ai.tools.modelSection": "内置",
   "ai.tools.modeAuto": "自动",
-  "ai.tools.modeAutoHint":
-    "AI Transmitter 按提示选择：程序 RAG → Tiny Model（Universal Brain）→ 需要时用云端。",
+  "ai.tools.modeAutoHint": "根据提示智能选择可用模型",
   "ai.tools.modeTiny": "Tiny Model",
   "ai.tools.modeTinyHint": "由 https://www.hyperlinks.space/ 提供的内置模型",
   "ai.tools.cloudSection": "云端模型",
