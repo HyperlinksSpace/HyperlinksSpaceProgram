@@ -289,6 +289,27 @@ type Props = {
   activeHeaderMenuKey?: HeaderMenuKey | null;
   /** When set, overrides width breakpoint inference (split-pane column count is authoritative). */
   layoutIsWide?: boolean;
+  /**
+   * Compact one-column: how many px of the collapsing bands (switch-wallet, Get/Swap, gap to nav)
+   * have scrolled away. First wallet row stays put.
+   */
+  compactCollapsePx?: number;
+  /** Compact: unclipped height of the collapsing bands (including the gap above the Feed/Messages strip). */
+  onCompactCollapsibleLayout?: (heightPx: number) => void;
+  /** Compact: sticky first-row stack (top inset + wallet row + scroll divider). */
+  onCompactStickyLayout?: (heightPx: number) => void;
+  /** Compact: top inset on the sticky first row (TMA/camera harmony). */
+  compactStickyTopInsetPx?: number;
+  /** Compact: live scroll offset (native sticky fallback via translate). */
+  compactScrollYPx?: number;
+  /** Compact: vertical scroll on the sticky first row (wheel / drag). */
+  compactStickyScrollBridge?: {
+    onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
+    onTouchMove?: (event: { nativeEvent: { pageY: number } }) => void;
+    onTouchEnd?: () => void;
+    onTouchCancel?: () => void;
+    onWheel?: (event: unknown) => void;
+  };
 };
 
 /**
@@ -304,6 +325,12 @@ export function HomeAuthenticatedHeaderRow({
   walletCurrenciesOpen = false,
   activeHeaderMenuKey,
   layoutIsWide,
+  compactCollapsePx = 0,
+  onCompactCollapsibleLayout,
+  onCompactStickyLayout,
+  compactStickyTopInsetPx = 0,
+  compactScrollYPx = 0,
+  compactStickyScrollBridge,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -817,30 +844,77 @@ export function HomeAuthenticatedHeaderRow({
           </View>
         ) : (
           <View style={{ width: "100%", flexDirection: "column" }}>
-            <View style={headerControlRowStyle}>
-              {balanceButton}
-              {walletAddressRow}
+            <View
+              onLayout={(e) => {
+                const h = Math.round(e.nativeEvent.layout.height);
+                if (h > 0) onCompactStickyLayout?.(h);
+              }}
+              {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
+                ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
+                : {})}
+              style={{
+                width: "100%",
+                backgroundColor: colors.background,
+                zIndex: 3,
+                paddingTop: compactStickyTopInsetPx,
+                ...(Platform.OS === "web"
+                  ? ({
+                      position: "sticky",
+                      top: 0,
+                      touchAction: "pan-y",
+                    } as object)
+                  : {
+                      zIndex: 3,
+                      transform: [{ translateY: compactScrollYPx }],
+                    }),
+              }}
+            >
+              <View style={headerControlRowStyle}>
+                {balanceButton}
+                {walletAddressRow}
+              </View>
+              <View
+                pointerEvents="none"
+                style={{
+                  height: AH.headerDividerHeight,
+                  width: "100%",
+                  marginHorizontal: -layout.contentSideInsetPx,
+                  backgroundColor: colors.highlight,
+                  opacity: Math.max(0, Math.min(1, compactCollapsePx / 8)),
+                  flexShrink: 0,
+                }}
+              />
             </View>
-            <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-              {switchWalletRow}
-              {headerActionIconsRow}
+            <View
+              onLayout={(e) => {
+                const h = Math.round(e.nativeEvent.layout.height);
+                if (h <= 0) return;
+                onCompactCollapsibleLayout?.(h);
+              }}
+              style={{
+                width: "100%",
+                paddingBottom: AH.leftNavStripMarginTopPx,
+              }}
+            >
+              <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                {switchWalletRow}
+                {headerActionIconsRow}
+              </View>
+              <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                  <AuthenticatedHomeMenuItems
+                    colors={colors}
+                    narrow
+                    columnWidth={0}
+                    t={t}
+                    onMenuKeyPress={handleMenuKeyPress}
+                    activeMenuKey={headerMenuActiveKey}
+                  />
+                </View>
+              </View>
             </View>
           </View>
         )}
-      {!atOrAboveFirstBreakpoint ? (
-        <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-          <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-            <AuthenticatedHomeMenuItems
-              colors={colors}
-              narrow
-              columnWidth={0}
-              t={t}
-              onMenuKeyPress={handleMenuKeyPress}
-              activeMenuKey={headerMenuActiveKey}
-            />
-          </View>
-        </View>
-      ) : null}
       </View>
       {atOrAboveFirstBreakpoint ? (
         <View

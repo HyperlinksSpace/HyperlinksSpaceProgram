@@ -2141,7 +2141,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       layoutH: chatListEffectiveLayoutH,
     }, {
       rowStridePx: chatListRowStride,
-      contentTopInsetPx: chatListShellTopInset,
+      contentTopInsetPx: chatListShellTopInset + (chatListScrollMetrics.contentTopInsetPx ?? 0),
       stickyWindow: chatListVirtualStickyRef.current,
     });
     chatListVirtualStickyRef.current = {

@@ -142,6 +142,8 @@ export function AuthenticatedHomeLeftNavStrip({
   selectedIndex: selectedIndexProp,
   onSelectIndex,
   feedUnreadCount = 0,
+  marginTopPx,
+  passVerticalScroll = false,
 }: {
   colors: ThemeColors;
   /** Controlled mode: parent owns which tab is highlighted. */
@@ -149,6 +151,10 @@ export function AuthenticatedHomeLeftNavStrip({
   onSelectIndex?: (index: number) => void;
   /** Unread feed notifications — badge to the right of the Feed label. */
   feedUnreadCount?: number;
+  /** Override strip `marginTop` (compact collapsing header uses 0 — gap lives in the header). */
+  marginTopPx?: number;
+  /** Compact sticky strip: allow vertical pan so the parent list can collapse/expand the header. */
+  passVerticalScroll?: boolean;
 }) {
   const { t, locale } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
@@ -176,7 +182,9 @@ export function AuthenticatedHomeLeftNavStrip({
       )
     : Math.round(windowWidth);
   const stripMarginTop =
-    chromeFromSplit && splitMetrics.columnCount >= 2
+    marginTopPx != null
+      ? marginTopPx
+      : chromeFromSplit && splitMetrics.columnCount >= 2
       ? 0
       : chromeFromSplit
         ? AH.leftNavStripMarginTopPx
@@ -718,10 +726,15 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 0,
         position: "relative",
         overflow: "visible",
+        backgroundColor: colors.background,
         ...(Platform.OS === "web"
           ? ({
               cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",
-              touchAction: scrollEnabled ? "pan-x" : "auto",
+              touchAction: passVerticalScroll
+                ? "pan-x pan-y"
+                : scrollEnabled
+                  ? "pan-x"
+                  : "auto",
             } as object)
           : null),
       }}

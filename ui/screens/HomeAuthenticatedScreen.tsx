@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { ActivityIndicator, Button, Platform, Text, View, useWindowDimensions } from "react-native";
+import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
 import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
@@ -630,6 +631,10 @@ function HomeAuthenticatedScreenMain() {
   );
   const showChatListBottomLoader = chatListBottomLoaderActive && homeNavIndex === 1;
   const homeLeftScrollRef = useRef<HspScrollColumnHandle | null>(null);
+  const [compactHeaderScrollY, setCompactHeaderScrollY] = useState(0);
+  const [compactCollapsibleHeightPx, setCompactCollapsibleHeightPx] = useState(0);
+  const compactHeaderDragStartYRef = useRef<number | null>(null);
+  const compactHeaderDragStartScrollRef = useRef(0);
   useEffect(() => {
     setChatListSearchScrollToEndHandler(() => {
       homeLeftScrollRef.current?.scrollToEnd();
@@ -661,12 +666,24 @@ function HomeAuthenticatedScreenMain() {
       homeLeftScrollRef.current?.clearNearBottomLatch();
     });
   }, [homeNavIndex, listSearchActive]);
+  const [compactStickyHeightPx, setCompactStickyHeightPx] = useState(
+    () =>
+      layout.authenticatedHome.contentInsetTop +
+      layout.bottomBar.undercoverButtonHeightPx +
+      layout.authenticatedHome.headerDividerHeight,
+  );
+  const [compactChromeHeightPx, setCompactChromeHeightPx] = useState(0);
   const handleHomeLeftScrollPositionChange = useCallback(
     (metrics: { scrollY: number; layoutH: number; contentH: number }) => {
+      setCompactHeaderScrollY(metrics.scrollY);
       if (homeNavIndex !== 1) return;
-      setChatListScrollMetrics({ scrollY: metrics.scrollY, layoutH: metrics.layoutH });
+      setChatListScrollMetrics({
+        scrollY: metrics.scrollY,
+        layoutH: metrics.layoutH,
+        contentTopInsetPx: compactChromeHeightPx,
+      });
     },
-    [homeNavIndex],
+    [homeNavIndex, compactChromeHeightPx],
   );
   const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
@@ -703,6 +720,53 @@ function HomeAuthenticatedScreenMain() {
     ? Math.min(splitLayoutMetrics.effectiveSplitWidthPx, fallbackLayoutWidthPx)
     : fallbackLayoutWidthPx;
   const isWideHome = isAuthenticatedHomeWideLayoutWidthPx(liveLayoutWidthPx);
+  const compactHeaderCollapsePx = !isWideHome
+    ? Math.min(Math.max(0, compactHeaderScrollY), Math.max(0, compactCollapsibleHeightPx))
+    : 0;
+
+  useEffect(() => {
+    if (isWideHome) {
+      setCompactChromeHeightPx(0);
+    }
+  }, [isWideHome]);
+
+  const scrollHomeLeftByDelta = useCallback((deltaY: number) => {
+    const col = homeLeftScrollRef.current;
+    if (!col) return;
+    const next = Math.max(0, col.getMetrics().scrollY + deltaY);
+    col.scrollToY(next);
+  }, []);
+
+  const onCompactHeaderWheel = useCallback(
+    (event: { nativeEvent?: { deltaY?: number; ctrlKey?: boolean; metaKey?: boolean }; preventDefault?: () => void }) => {
+      const native = event.nativeEvent ?? (event as unknown as { deltaY?: number; ctrlKey?: boolean; metaKey?: boolean });
+      if (isBrowserZoomWheelEvent({ ctrlKey: Boolean(native.ctrlKey), metaKey: Boolean(native.metaKey) })) {
+        return;
+      }
+      event.preventDefault?.();
+      const dy = typeof native.deltaY === "number" ? native.deltaY : 0;
+      if (dy === 0) return;
+      scrollHomeLeftByDelta(dy);
+    },
+    [scrollHomeLeftByDelta],
+  );
+
+  const onCompactHeaderTouchStart = useCallback((event: { nativeEvent: { pageY: number } }) => {
+    compactHeaderDragStartYRef.current = event.nativeEvent.pageY;
+    compactHeaderDragStartScrollRef.current = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+  }, []);
+
+  const onCompactHeaderTouchMove = useCallback((event: { nativeEvent: { pageY: number } }) => {
+    const startY = compactHeaderDragStartYRef.current;
+    if (startY == null) return;
+    const dy = startY - event.nativeEvent.pageY;
+    if (Math.abs(dy) < 2) return;
+    homeLeftScrollRef.current?.scrollToY(Math.max(0, compactHeaderDragStartScrollRef.current + dy));
+  }, []);
+
+  const onCompactHeaderTouchEnd = useCallback(() => {
+    compactHeaderDragStartYRef.current = null;
+  }, []);
   const isTripleColumn = isAuthenticatedHomeTripleColumnLayoutWidthPx(liveLayoutWidthPx);
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
@@ -1620,10 +1684,9 @@ function HomeAuthenticatedScreenMain() {
     ...homeMainColumnInsetStyle,
     paddingTop: 0,
   } as const;
-  /** Compact: vertical chrome insets scroll with the main column. */
+  /** Compact: header/nav scroll with the list; sticky bands pin after collapse. */
   const homeCompactScrollContentStyle = {
     flexGrow: 0,
-    // Header/nav are pinned above the scroll in one-column mode — no extra top inset here.
     paddingTop: 0,
     paddingBottom:
       layout.authenticatedHome.contentInsetBottom +
@@ -1707,6 +1770,12 @@ function HomeAuthenticatedScreenMain() {
     </>
   );
 
+  const compactStickyScrollBridge = !isWideHome
+    ? {
+        onWheel: onCompactHeaderWheel,
+      }
+    : undefined;
+
   const homeHeaderRow = (
     <HomeAuthenticatedHeaderRow
       walletAddress={effectiveWalletAddress ?? ""}
@@ -1714,6 +1783,12 @@ function HomeAuthenticatedScreenMain() {
       onBalancePress={onHeaderBalancePress}
       walletCurrenciesOpen={walletCurrenciesOpen}
       layoutIsWide={isWideHome}
+      compactCollapsePx={compactHeaderCollapsePx}
+      onCompactCollapsibleLayout={setCompactCollapsibleHeightPx}
+      onCompactStickyLayout={setCompactStickyHeightPx}
+      compactStickyTopInsetPx={layout.authenticatedHome.contentInsetTop}
+      compactScrollYPx={isWideHome ? 0 : compactHeaderScrollY}
+      compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
             ? null
@@ -1749,27 +1824,20 @@ function HomeAuthenticatedScreenMain() {
   );
 
   /**
-   * Compact: pin wallet header + nav above the scroll so search results move under them.
-   * Wide: nav pinned beside the scroll. Stable keys keep feed/messages mounted when the
-   * compact header is inserted and when the split goes 3 columns → 1.
+   * Compact: wallet header + Feed/Messages strip live in the same scroller as the list
+   * (sticky first row + sticky nav). Wide: nav pinned beside the scroll.
    */
   const homeLeftColumn = (
     <>
-      {!isWideHome ? (
-        <View
-          key="authenticated-home-compact-header"
-          style={{ paddingTop: layout.authenticatedHome.contentInsetTop, width: "100%" }}
-        >
-          {homeHeaderRow}
-        </View>
+      {isWideHome ? (
+        <AuthenticatedHomeLeftNavStrip
+          key="authenticated-home-left-nav"
+          colors={colors}
+          selectedIndex={leftNavSelectedIndex}
+          onSelectIndex={setAuthenticatedHomeLeftNavIndex}
+          feedUnreadCount={feedUnreadCount}
+        />
       ) : null}
-      <AuthenticatedHomeLeftNavStrip
-        key="authenticated-home-left-nav"
-        colors={colors}
-        selectedIndex={leftNavSelectedIndex}
-        onSelectIndex={setAuthenticatedHomeLeftNavIndex}
-        feedUnreadCount={feedUnreadCount}
-      />
       {homeLeftScrollShell(
         <HspScrollColumn
           style={{ flex: 1, minHeight: 0 }}
@@ -1784,6 +1852,59 @@ function HomeAuthenticatedScreenMain() {
           scrollbarRightInsetPx={isWideHome ? 0 : layout.scrollIndicatorRightInsetPx}
           indicatorColor={colors.scrollIndicator}
         >
+          {!isWideHome ? (
+            <View
+              key="authenticated-home-compact-chrome"
+              onLayout={(e) => {
+                const h = Math.round(e.nativeEvent.layout.height);
+                if (h > 0) {
+                  setCompactChromeHeightPx((prev) => (prev === h ? prev : h));
+                }
+              }}
+            >
+              {homeHeaderRow}
+              <View
+                onTouchStart={onCompactHeaderTouchStart}
+                onTouchMove={onCompactHeaderTouchMove}
+                onTouchEnd={onCompactHeaderTouchEnd}
+                onTouchCancel={onCompactHeaderTouchEnd}
+                {...(Platform.OS === "web"
+                  ? ({ onWheel: onCompactHeaderWheel } as object)
+                  : {})}
+                style={{
+                  zIndex: 2,
+                  width: "100%",
+                  backgroundColor: colors.background,
+                  ...(Platform.OS === "web"
+                    ? ({
+                        position: "sticky",
+                        top: compactStickyHeightPx,
+                        touchAction: "pan-y",
+                      } as object)
+                    : {
+                        transform: [
+                          {
+                            translateY: Math.max(
+                              0,
+                              compactHeaderScrollY - compactCollapsibleHeightPx,
+                            ),
+                          },
+                        ],
+                      }),
+                }}
+              >
+                <AuthenticatedHomeLeftNavStrip
+                  key="authenticated-home-left-nav"
+                  colors={colors}
+                  selectedIndex={leftNavSelectedIndex}
+                  onSelectIndex={setAuthenticatedHomeLeftNavIndex}
+                  feedUnreadCount={feedUnreadCount}
+                  marginTopPx={0}
+                  passVerticalScroll
+                />
+              </View>
+            </View>
+          ) : null}
           <View style={isWideHome ? undefined : homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
         </HspScrollColumn>,
       )}
