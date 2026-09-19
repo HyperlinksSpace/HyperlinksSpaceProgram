@@ -1288,5 +1288,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 0,
+    overflow: "visible",
   },
 });

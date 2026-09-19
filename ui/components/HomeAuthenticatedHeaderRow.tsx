@@ -651,9 +651,12 @@ export function HomeAuthenticatedHeaderRow({
         alignItems: "center",
         gap: HEADER_IDENTITY_GAP_PX,
         minWidth: 0,
-        maxWidth: "100%",
         flexShrink: 1,
         height: HEADER_CONTROL_ROW_PX,
+      }}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w > 0) setRightSlotWidthPx((prev) => (prev === w ? prev : w));
       }}
     >
       <Pressable
@@ -1013,9 +1016,7 @@ export function HomeAuthenticatedHeaderRow({
                 : {})}
               style={{
                 width: "100%",
-                marginHorizontal: -layout.contentSideInsetPx,
-                paddingHorizontal: layout.contentSideInsetPx,
-                backgroundColor: colors.undercover,
+                backgroundColor: colors.background,
                 zIndex: compactStickFirstRow ? 4 : 1,
                 paddingTop: compactStickyTopInsetPx,
                 overflow: "visible",
@@ -1030,14 +1031,10 @@ export function HomeAuthenticatedHeaderRow({
                   : null),
               }}
             >
-              <HeaderBandSlots
-                centerReservePx={0}
-                leftGrows={false}
-                onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
-                onRightWidth={(w) => setRightSlotWidthPx((prev) => (prev === w ? prev : w))}
-                left={balanceButton}
-                right={walletAddressRow}
-              />
+              <View style={headerControlRowStyle}>
+                {balanceButton}
+                {walletAddressRow}
+              </View>
               <View
                 pointerEvents="none"
                 style={{

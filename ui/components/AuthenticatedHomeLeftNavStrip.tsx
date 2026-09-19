@@ -144,7 +144,7 @@ export function AuthenticatedHomeLeftNavStrip({
   feedUnreadCount = 0,
   marginTopPx,
   passVerticalScroll = false,
-  tone = "background",
+  tone: _chromeTone = "background",
 }: {
   colors: ThemeColors;
   /** Controlled mode: parent owns which tab is highlighted. */
@@ -729,7 +729,7 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 0,
         position: "relative",
         overflow: "visible",
-        backgroundColor: tone === "undercover" ? colors.undercover : colors.background,
+        backgroundColor: colors.background,
         ...(Platform.OS === "web"
           ? ({
               cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",

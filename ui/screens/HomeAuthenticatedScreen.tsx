@@ -677,6 +677,15 @@ function HomeAuthenticatedScreenMain() {
       layout.authenticatedHome.headerDividerHeight,
   );
   const [compactChromeHeightPx, setCompactChromeHeightPx] = useState(0);
+  const compactHeaderStackPxRef = useRef(0);
+  const compactNavPxRef = useRef(0);
+  const commitCompactChromeHeightPx = useCallback((part: "header" | "nav", heightPx: number) => {
+    if (!(heightPx > 0)) return;
+    if (part === "header") compactHeaderStackPxRef.current = heightPx;
+    else compactNavPxRef.current = heightPx;
+    const next = compactHeaderStackPxRef.current + compactNavPxRef.current;
+    setCompactChromeHeightPx((prev) => (prev === next ? prev : next));
+  }, []);
   const [webSafeAreaInsetTopPx, setWebSafeAreaInsetTopPx] = useState(0);
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -1712,6 +1721,7 @@ function HomeAuthenticatedScreenMain() {
   const homeCompactScrollContentStyle = {
     flexGrow: 0,
     paddingTop: 0,
+    overflow: "visible" as const,
     paddingBottom:
       layout.authenticatedHome.contentInsetBottom +
       (!isWideHome
@@ -1885,17 +1895,21 @@ function HomeAuthenticatedScreenMain() {
         >
           {!isWideHome ? (
             <View
-              key="authenticated-home-compact-chrome"
-              onLayout={(e) => {
-                const h = Math.round(e.nativeEvent.layout.height);
-                if (h > 0) {
-                  setCompactChromeHeightPx((prev) => (prev === h ? prev : h));
-                }
-              }}
+              key="authenticated-home-compact-scroll-stack"
               style={{ width: "100%", overflow: "visible" }}
             >
-              {homeHeaderRow}
               <View
+                onLayout={(e) => {
+                  commitCompactChromeHeightPx("header", Math.round(e.nativeEvent.layout.height));
+                }}
+                style={{ width: "100%", overflow: "visible" }}
+              >
+                {homeHeaderRow}
+              </View>
+              <View
+                onLayout={(e) => {
+                  commitCompactChromeHeightPx("nav", Math.round(e.nativeEvent.layout.height));
+                }}
                 onTouchStart={onCompactHeaderTouchStart}
                 onTouchMove={onCompactHeaderTouchMove}
                 onTouchEnd={onCompactHeaderTouchEnd}
@@ -1904,21 +1918,26 @@ function HomeAuthenticatedScreenMain() {
                   ? ({ onWheel: onCompactHeaderWheel } as object)
                   : {})}
                 style={{
-                  zIndex: 3,
+                  zIndex: 5,
                   width: "100%",
-                  backgroundColor: colors.undercover,
+                  backgroundColor: colors.background,
                   overflow: "visible",
-                  transform: [
-                    {
-                      translateY: Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
-                    },
-                  ],
                   ...(Platform.OS === "web"
                     ? ({
-                        willChange: "transform",
+                        position: "sticky",
+                        top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
                         touchAction: "pan-y",
                       } as object)
-                    : null),
+                    : {
+                        transform: [
+                          {
+                            translateY: Math.max(
+                              0,
+                              compactHeaderScrollY - compactNavLockAfterPx,
+                            ),
+                          },
+                        ],
+                      }),
                 }}
               >
                 <AuthenticatedHomeLeftNavStrip
@@ -1929,12 +1948,14 @@ function HomeAuthenticatedScreenMain() {
                   feedUnreadCount={feedUnreadCount}
                   marginTopPx={0}
                   passVerticalScroll
-                  tone="undercover"
+                  tone="background"
                 />
               </View>
+              <View style={homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
             </View>
-          ) : null}
-          <View style={isWideHome ? undefined : homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
+          ) : (
+            <View style={undefined}>{homeMainColumnBlocks}</View>
+          )}
         </HspScrollColumn>,
       )}
     </>
