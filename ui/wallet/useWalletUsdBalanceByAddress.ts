@@ -8,7 +8,7 @@ import {
 } from "../pro/dllrBalanceStore";
 import {
   formatHeaderWalletBalanceLabel,
-} from "./useWalletHeldCurrencyRows";
+} from "./formatHeaderWalletBalanceLabel";
 import {
   getWalletBalanceRefreshNonce,
   subscribeWalletBalanceRefresh,

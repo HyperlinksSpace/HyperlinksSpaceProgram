@@ -10,9 +10,9 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { fetchTonapiAccountHoldings } from "../ton/fetchTonapiAccountHoldings";
 import { requestWalletActivate } from "../ton/requestWalletActivate";
 import { postWalletTopUpFeedNotification } from "../feed/feedNotificationActions";
+import { formatHeaderWalletBalanceLabel } from "./formatHeaderWalletBalanceLabel";
 import type { AppLocale } from "../../locales/appStrings";
 import {
-  formatLocaleAmount,
   formatLocaleDllrBalance,
   formatLocaleTokenBalance,
   parseLocaleAmount,
@@ -87,29 +87,7 @@ function parseUsdValue(row: ChooseCurrencyRow, locale: AppLocale): number {
   return balance * rate;
 }
 
-/** Header balance line — pinned 1 DLLR plus live holdings. */
-export function formatHeaderWalletBalanceLabel(
-  totalUsd: number,
-  locale: AppLocale = "en",
-): string {
-  if (!Number.isFinite(totalUsd) || totalUsd <= 0) return "0$";
-  if (totalUsd < 0.01) {
-    return `<${formatLocaleAmount(0.01, locale, { maxFractionDigits: 2, minFractionDigits: 2, trimFractionZeros: false })}$`;
-  }
-  if (totalUsd < 1_000) {
-    return `${formatLocaleAmount(totalUsd, locale, {
-      maxFractionDigits: totalUsd >= 10 ? 0 : 2,
-      trimFractionZeros: true,
-    })}$`;
-  }
-  if (totalUsd < 1_000_000) {
-    return `${formatLocaleAmount(Math.round(totalUsd / 1_000), locale, { maxFractionDigits: 0 })}K$`;
-  }
-  if (totalUsd < 1_000_000_000) {
-    return `${formatLocaleAmount(totalUsd / 1_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}M$`;
-  }
-  return `${formatLocaleAmount(totalUsd / 1_000_000_000, locale, { maxFractionDigits: 1, trimFractionZeros: true })}B$`;
-}
+export { formatHeaderWalletBalanceLabel } from "./formatHeaderWalletBalanceLabel";
 
 export type WalletHeldCurrencyRowsState = {
   rows: readonly ChooseCurrencyRow[];

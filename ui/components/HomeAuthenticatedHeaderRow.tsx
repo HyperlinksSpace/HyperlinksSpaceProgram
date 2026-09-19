@@ -40,6 +40,11 @@ import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
 import { trimWalletAddress, walletAddressHeaderSnippet } from "../wallet/walletAddressFormat";
 import {
+  fitHeaderAmountFontSize,
+  HEADER_AMOUNT_FONT_MAX_PX,
+  pickHeaderDisplayName,
+} from "../wallet/headerRowFit";
+import {
   resolveActiveWalletAddress,
   useActiveWalletPreference,
 } from "../wallet/activeWalletPreference";
@@ -76,8 +81,73 @@ const WALLET_TO_BALANCE_OPTICAL_PULL_PX = 10;
  * Replaces the global Text −1px nudge with a stronger lift for this size only.
  */
 const BALANCE_OPTICAL_NUDGE_Y_PX = -2;
-/** Below this width, show only the first name token in the header identity line. */
-const HEADER_FIRST_NAME_ONLY_MAX_WIDTH_PX = 460;
+/** Tonviewer chip diameter in the identity cluster. */
+const HEADER_EXPLORER_PX = 20;
+const HEADER_IDENTITY_GAP_PX = 8;
+
+/** One header band with optional reserved center (wide Get/Swap overlay). */
+function HeaderBandSlots({
+  centerReservePx,
+  leftGrows,
+  left,
+  right,
+  onLeftWidth,
+  onRightWidth,
+}: {
+  centerReservePx: number;
+  /** Compact: left (amount) keeps intrinsic width so digits are not squeezed. */
+  leftGrows: boolean;
+  left: ReactNode;
+  right: ReactNode;
+  onLeftWidth?: (widthPx: number) => void;
+  onRightWidth?: (widthPx: number) => void;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        height: WIDE_HEADER_BAND_PX,
+        width: "100%",
+      }}
+    >
+      <View
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w > 0) onLeftWidth?.(w);
+        }}
+        style={{
+          flex: leftGrows ? 1 : 0,
+          flexGrow: leftGrows ? 1 : 0,
+          flexShrink: leftGrows ? 1 : 0,
+          minWidth: 0,
+          overflow: "hidden",
+          justifyContent: "center",
+        }}
+      >
+        {left}
+      </View>
+      {centerReservePx > 0 ? (
+        <View style={{ width: centerReservePx, flexShrink: 0, height: "100%" }} />
+      ) : null}
+      <View
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w > 0) onRightWidth?.(w);
+        }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          alignItems: "flex-end",
+          justifyContent: "center",
+        }}
+      >
+        {right}
+      </View>
+    </View>
+  );
+}
 
 /** Horizontal switch-wallet glyph (two opposing arrows). */
 function HeaderSwitchWalletIcon({ color, size = 16 }: { color: string; size?: number }) {
@@ -355,6 +425,13 @@ export function HomeAuthenticatedHeaderRow({
   const [copiedDialogOpen, setCopiedDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [mnemonicDialogOpen, setMnemonicDialogOpen] = useState(false);
+  const [rightSlotWidthPx, setRightSlotWidthPx] = useState(0);
+  const [leftSlotWidthPx, setLeftSlotWidthPx] = useState(0);
+  const [chipClusterWidthPx, setChipClusterWidthPx] = useState(0);
+  const [naturalAmountWidthPx, setNaturalAmountWidthPx] = useState(0);
+  const [fullNameWidthPx, setFullNameWidthPx] = useState(0);
+  const [firstNameWidthPx, setFirstNameWidthPx] = useState(0);
+  const [snippetWidthPx, setSnippetWidthPx] = useState(0);
   const switchWalletRef = useRef<View>(null);
   const proSubscribed = useSyncExternalStore(
     subscribeProAccess,
@@ -386,6 +463,10 @@ export function HomeAuthenticatedHeaderRow({
   );
   const atOrAboveFirstBreakpoint =
     widthForLayout > AH.firstBreakpoint && (layoutIsWide ?? true);
+  const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(widthForLayout);
+  const wideMenuStripWidth = atOrAboveFirstBreakpoint
+    ? wideMenuColumnWidth * WIDE_MENU_ITEM_KEYS.length
+    : 0;
   const headerMenuActiveKey =
     atOrAboveFirstBreakpoint && activeHeaderMenuKey ? activeHeaderMenuKey : null;
   const builtinTrimmed = trimWalletAddress(walletAddress);
@@ -426,16 +507,37 @@ export function HomeAuthenticatedHeaderRow({
   const balanceLabel =
     knownWalletAddresses.length > 0 ? allWalletsBalanceLabel : headerBalanceLabel;
   const displaySnippet = walletAddressHeaderSnippet(trimmed);
-  const walletNameLabel = (() => {
+  const headerIdentity = (() => {
     const name = displayName.trim();
     const emDash = t("common.emDash");
-    if (!name || name === emDash) return null;
-    if (widthForLayout < HEADER_FIRST_NAME_ONLY_MAX_WIDTH_PX) {
-      const first = name.split(/\s+/)[0]?.trim();
-      return first || name;
+    if (!name || name === emDash) {
+      return { fullName: null as string | null, firstName: null as string | null };
     }
-    return name;
+    const first = name.split(/\s+/).filter(Boolean)[0] ?? name;
+    return { fullName: name, firstName: first };
   })();
+  const identityChromePx =
+    (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * 9) +
+    (trimmed ? HEADER_EXPLORER_PX + HEADER_IDENTITY_GAP_PX : 0);
+  const availableNamePx = Math.max(
+    0,
+    rightSlotWidthPx - identityChromePx - (headerIdentity.fullName ? HEADER_IDENTITY_GAP_PX : 0),
+  );
+  const walletNameLabel = pickHeaderDisplayName({
+    fullName: headerIdentity.fullName,
+    firstName: headerIdentity.firstName,
+    availablePx: availableNamePx,
+    fullNameWidthPx,
+    firstNameWidthPx,
+  });
+  const innerContentW = Math.max(0, widthForLayout - 2 * layout.contentSideInsetPx);
+  const amountAvailablePx = atOrAboveFirstBreakpoint
+    ? Math.max(0, leftSlotWidthPx - chipClusterWidthPx)
+    : Math.max(
+        0,
+        innerContentW - chipClusterWidthPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
+      );
+  const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
 
   const copyFullWalletAddress = useCallback(async () => {
     if (!trimmed) return;
@@ -471,27 +573,36 @@ export function HomeAuthenticatedHeaderRow({
         alignItems: "center",
         height: HEADER_CONTROL_ROW_PX,
         gap: 0,
+        maxWidth: "100%",
       }}
     >
-      <UndercoverProButton
-        accessibilityLabel={t("pro.buyCta")}
-        active={proDialogOpen}
-        subscribed={proSubscribed}
-        onPress={() => setProDialogOpen((open) => !open)}
-      />
-      <View style={{ width: AH.headerIconGap, flexShrink: 0 }} />
-      <UndercoverWalletButton
-        accessibilityLabel={t("home.header.balanceExpandHint")}
-        active={walletCurrenciesOpen}
-        disabled={!onBalancePress}
-        onPress={onBalancePress}
-      />
       <View
-        style={{
-          width: Math.max(0, AH.headerIconGap - WALLET_TO_BALANCE_OPTICAL_PULL_PX),
-          flexShrink: 0,
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w > 0) setChipClusterWidthPx((prev) => (prev === w ? prev : w));
         }}
-      />
+        style={{ flexDirection: "row", alignItems: "center", flexShrink: 0 }}
+      >
+        <UndercoverProButton
+          accessibilityLabel={t("pro.buyCta")}
+          active={proDialogOpen}
+          subscribed={proSubscribed}
+          onPress={() => setProDialogOpen((open) => !open)}
+        />
+        <View style={{ width: AH.headerIconGap, flexShrink: 0 }} />
+        <UndercoverWalletButton
+          accessibilityLabel={t("home.header.balanceExpandHint")}
+          active={walletCurrenciesOpen}
+          disabled={!onBalancePress}
+          onPress={onBalancePress}
+        />
+        <View
+          style={{
+            width: Math.max(0, AH.headerIconGap - WALLET_TO_BALANCE_OPTICAL_PULL_PX),
+            flexShrink: 0,
+          }}
+        />
+      </View>
       <View
         style={{
           height: HEADER_CONTROL_ROW_PX,
@@ -502,12 +613,14 @@ export function HomeAuthenticatedHeaderRow({
       >
         <Text
           {...displayAmountTextProps}
+          numberOfLines={1}
+          ellipsizeMode="clip"
           style={[
             homeWalletBalanceHeaderText,
             {
               color: colors.primary,
+              fontSize: amountFontSizePx,
               lineHeight: HEADER_CONTROL_ROW_PX,
-              // Stronger than global Text −1px: large digits center below the wallet/PRO chips.
               transform: [{ translateY: BALANCE_OPTICAL_NUDGE_Y_PX }],
             },
           ]}
@@ -531,8 +644,9 @@ export function HomeAuthenticatedHeaderRow({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        gap: 8,
+        gap: HEADER_IDENTITY_GAP_PX,
         minWidth: 0,
+        maxWidth: "100%",
         flexShrink: 1,
         height: HEADER_CONTROL_ROW_PX,
       }}
@@ -552,7 +666,14 @@ export function HomeAuthenticatedHeaderRow({
           justifyContent: "center",
         }}
       >
-        <Text numberOfLines={1} style={headerMonoLineStyle}>
+        <Text
+          numberOfLines={1}
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0) setSnippetWidthPx((prev) => (prev === w ? prev : w));
+          }}
+          style={headerMonoLineStyle}
+        >
           {displaySnippet}
         </Text>
       </Pressable>
@@ -563,7 +684,11 @@ export function HomeAuthenticatedHeaderRow({
         />
       ) : null}
       {walletNameLabel ? (
-        <Text numberOfLines={1} style={[...headerMonoLineStyle, { flexShrink: 1, minWidth: 0 }]}>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="clip"
+          style={[...headerMonoLineStyle, { flexShrink: 0 }]}
+        >
           {walletNameLabel}
         </Text>
       ) : null}
@@ -722,13 +847,6 @@ export function HomeAuthenticatedHeaderRow({
     </View>
   );
 
-  const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(widthForLayout);
-
-  /** Total strip width scales with viewport via {@link authenticatedHomeWideMenuColumnWidthPx}. */
-  const wideMenuStripWidth = atOrAboveFirstBreakpoint
-    ? wideMenuColumnWidth * WIDE_MENU_ITEM_KEYS.length
-    : 0;
-
   const wideMenuStrip = atOrAboveFirstBreakpoint ? (
     <View
       pointerEvents="box-none"
@@ -784,6 +902,49 @@ export function HomeAuthenticatedHeaderRow({
 
   return (
     <>
+    <View
+      pointerEvents="none"
+      style={{ position: "absolute", opacity: 0, left: 0, top: 0, zIndex: -1 }}
+    >
+      <Text
+        {...displayAmountTextProps}
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w > 0) setNaturalAmountWidthPx((prev) => (prev === w ? prev : w));
+        }}
+        style={[
+          homeWalletBalanceHeaderText,
+          {
+            fontSize: HEADER_AMOUNT_FONT_MAX_PX,
+            lineHeight: HEADER_CONTROL_ROW_PX,
+          },
+        ]}
+      >
+        {balanceLabel}
+      </Text>
+      {headerIdentity.fullName ? (
+        <Text
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0) setFullNameWidthPx((prev) => (prev === w ? prev : w));
+          }}
+          style={headerMonoLineStyle}
+        >
+          {headerIdentity.fullName}
+        </Text>
+      ) : null}
+      {headerIdentity.firstName ? (
+        <Text
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0) setFirstNameWidthPx((prev) => (prev === w ? prev : w));
+          }}
+          style={headerMonoLineStyle}
+        >
+          {headerIdentity.firstName}
+        </Text>
+      ) : null}
+    </View>
     {/* Outer shell: full width; marginBottom = gap under header+divider before body (see theme `headerRowMarginBottom`). */}
     <View
       style={{ width: "100%", marginBottom: AH.headerRowMarginBottom, overflow: "visible" }}
@@ -819,27 +980,20 @@ export function HomeAuthenticatedHeaderRow({
               Shared rows (not side columns): left+right on each band share one vertical center.
               Top: balance · address/name · Bottom: switch wallet · action icons.
             */}
-            <View style={headerControlRowStyle}>
-              {balanceButton}
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  minWidth: 0,
-                  flexShrink: 1,
-                  height: HEADER_CONTROL_ROW_PX,
-                  position: "relative",
-                  zIndex: 2,
-                }}
-              >
-                {walletAddressRow}
-              </View>
-            </View>
-            <View style={headerControlRowStyle}>
-              {switchWalletRow}
-              {headerActionIconsRow}
-            </View>
+            <HeaderBandSlots
+              centerReservePx={wideMenuStripWidth}
+              leftGrows
+              onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
+              onRightWidth={(w) => setRightSlotWidthPx((prev) => (prev === w ? prev : w))}
+              left={balanceButton}
+              right={walletAddressRow}
+            />
+            <HeaderBandSlots
+              centerReservePx={wideMenuStripWidth}
+              leftGrows
+              left={switchWalletRow}
+              right={headerActionIconsRow}
+            />
             {wideMenuStrip}
           </View>
         ) : (
@@ -869,10 +1023,14 @@ export function HomeAuthenticatedHeaderRow({
                     }),
               }}
             >
-              <View style={headerControlRowStyle}>
-                {balanceButton}
-                {walletAddressRow}
-              </View>
+              <HeaderBandSlots
+                centerReservePx={0}
+                leftGrows={false}
+                onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
+                onRightWidth={(w) => setRightSlotWidthPx((prev) => (prev === w ? prev : w))}
+                left={balanceButton}
+                right={walletAddressRow}
+              />
               <View
                 pointerEvents="none"
                 style={{

@@ -6,6 +6,10 @@ export function trimWalletAddress(address: string): string {
   return address.replace(/\s+/g, "").trim();
 }
 
+/** Header / dialog address chip: four dots + last four characters on every width. */
+export const WALLET_ADDRESS_HEADER_TAIL_LENGTH = 4;
+export const WALLET_ADDRESS_HEADER_DOTS = "....";
+
 /**
  * Same format as the switch-wallet list: `UQBY1Y...gM-NF8` (head…tail, original casing).
  */
@@ -20,9 +24,12 @@ export function walletAddressMiddleEllipsis(
   return `${trimmed.slice(0, head)}...${trimmed.slice(-tail)}`;
 }
 
-/** Header / dialog address chip — matches wallets list middle-ellipsis format. */
+/** Header / dialog address chip — `....` + last four symbols, any screen width. */
 export function walletAddressHeaderSnippet(trimmed: string): string {
-  return walletAddressMiddleEllipsis(trimmed);
+  const value = trimWalletAddress(trimmed);
+  if (!value) return AH.walletAddressSnippetPlaceholder;
+  if (value.length <= WALLET_ADDRESS_HEADER_TAIL_LENGTH) return value;
+  return `${WALLET_ADDRESS_HEADER_DOTS}${value.slice(-WALLET_ADDRESS_HEADER_TAIL_LENGTH)}`;
 }
 
 /** Centered copyable address lines (prev-main get page uses ~12 chars per row). */

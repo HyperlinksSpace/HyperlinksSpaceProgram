@@ -227,7 +227,7 @@ export const layout = {
     headerPressableHitSlop: { top: 8, bottom: 8, left: 8, right: 8 },
     /** Full-bleed divider stroke height (px) under the wide header row. */
     headerDividerHeight: 1,
-    /** Character counts for middle-ellipsis address chips (matches switch-wallet list). */
+    /** Character counts for middle-ellipsis address chips (switch-wallet list). */
     walletAddressSnippetHeadLength: 6,
     walletAddressSnippetTailLength: 6,
     /** @deprecated Prefer middle-ellipsis; kept for older call sites. */
