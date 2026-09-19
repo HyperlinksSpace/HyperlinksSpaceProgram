@@ -144,6 +144,7 @@ export function AuthenticatedHomeLeftNavStrip({
   feedUnreadCount = 0,
   marginTopPx,
   passVerticalScroll = false,
+  tone = "background",
 }: {
   colors: ThemeColors;
   /** Controlled mode: parent owns which tab is highlighted. */
@@ -155,6 +156,8 @@ export function AuthenticatedHomeLeftNavStrip({
   marginTopPx?: number;
   /** Compact sticky strip: allow vertical pan so the parent list can collapse/expand the header. */
   passVerticalScroll?: boolean;
+  /** Compact sticky last header band uses undercover so list rows do not show through. */
+  tone?: "background" | "undercover";
 }) {
   const { t, locale } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
@@ -726,7 +729,7 @@ export function AuthenticatedHomeLeftNavStrip({
         marginBottom: 0,
         position: "relative",
         overflow: "visible",
-        backgroundColor: colors.background,
+        backgroundColor: tone === "undercover" ? colors.undercover : colors.background,
         ...(Platform.OS === "web"
           ? ({
               cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",

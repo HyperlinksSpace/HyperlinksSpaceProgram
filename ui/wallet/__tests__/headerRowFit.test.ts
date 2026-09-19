@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  compactNavStickAfterPx,
   fitHeaderAmountFontSize,
   pickHeaderDisplayName,
+  shouldStickCompactFirstHeaderRow,
 } from "../headerRowFit";
 import { formatHeaderWalletBalanceLabel } from "../formatHeaderWalletBalanceLabel";
 
@@ -73,5 +75,35 @@ describe("fitHeaderAmountFontSize", () => {
     assert.equal(fitHeaderAmountFontSize(80, 120), 30);
     assert.equal(fitHeaderAmountFontSize(120, 80), 20);
     assert.equal(fitHeaderAmountFontSize(120, 60), 15);
+  });
+});
+
+describe("shouldStickCompactFirstHeaderRow", () => {
+  it("pins only when the top inset is a camera-sized band", () => {
+    assert.equal(shouldStickCompactFirstHeaderRow(0), false);
+    assert.equal(shouldStickCompactFirstHeaderRow(22), false);
+    assert.equal(shouldStickCompactFirstHeaderRow(40), true);
+    assert.equal(shouldStickCompactFirstHeaderRow(59), true);
+  });
+});
+
+describe("compactNavStickAfterPx", () => {
+  it("locks Feed/Messages after the first row when that row is not pinned", () => {
+    assert.equal(
+      compactNavStickAfterPx({
+        stickFirstRow: false,
+        firstRowHeightPx: 50,
+        collapsibleHeightPx: 80,
+      }),
+      130,
+    );
+    assert.equal(
+      compactNavStickAfterPx({
+        stickFirstRow: true,
+        firstRowHeightPx: 50,
+        collapsibleHeightPx: 80,
+      }),
+      80,
+    );
   });
 });

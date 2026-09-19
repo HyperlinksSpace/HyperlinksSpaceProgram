@@ -297,7 +297,12 @@ export function GlobalLogoBar() {
     <View
       style={[
         styles.container,
-        { height: blockHeight, backgroundColor },
+        { height: blockHeight, backgroundColor, zIndex: 6 },
+        isInTelegram
+          ? Platform.OS === "web"
+            ? ({ position: "sticky", top: 0 } as object)
+            : { zIndex: 6 }
+          : null,
         logoBarBottomSeparator,
       ]}
     >

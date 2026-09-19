@@ -31,6 +31,10 @@ import {
   readImportedWallets,
   subscribeImportedWallets,
 } from "../wallet/importedWalletsStore";
+import {
+  compactNavStickAfterPx,
+  shouldStickCompactFirstHeaderRow,
+} from "../wallet/headerRowFit";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
@@ -673,6 +677,17 @@ function HomeAuthenticatedScreenMain() {
       layout.authenticatedHome.headerDividerHeight,
   );
   const [compactChromeHeightPx, setCompactChromeHeightPx] = useState(0);
+  const [webSafeAreaInsetTopPx, setWebSafeAreaInsetTopPx] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:absolute;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top, 0px)";
+    document.body.appendChild(probe);
+    const px = Number.parseFloat(window.getComputedStyle(probe).paddingTop || "0") || 0;
+    probe.remove();
+    setWebSafeAreaInsetTopPx(px);
+  }, []);
   const handleHomeLeftScrollPositionChange = useCallback(
     (metrics: { scrollY: number; layoutH: number; contentH: number }) => {
       setCompactHeaderScrollY(metrics.scrollY);
@@ -701,6 +716,7 @@ function HomeAuthenticatedScreenMain() {
     debug,
     applyServerWalletAfterRegister,
     browserSessionChecked,
+    safeAreaInsetTop,
   } = useTelegram();
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
@@ -720,6 +736,14 @@ function HomeAuthenticatedScreenMain() {
     ? Math.min(splitLayoutMetrics.effectiveSplitWidthPx, fallbackLayoutWidthPx)
     : fallbackLayoutWidthPx;
   const isWideHome = isAuthenticatedHomeWideLayoutWidthPx(liveLayoutWidthPx);
+  const stickCompactFirstHeaderRow =
+    !isWideHome &&
+    shouldStickCompactFirstHeaderRow(Math.max(safeAreaInsetTop, webSafeAreaInsetTopPx));
+  const compactNavLockAfterPx = compactNavStickAfterPx({
+    stickFirstRow: stickCompactFirstHeaderRow,
+    firstRowHeightPx: compactStickyHeightPx,
+    collapsibleHeightPx: compactCollapsibleHeightPx,
+  });
   const compactHeaderCollapsePx = !isWideHome
     ? Math.min(Math.max(0, compactHeaderScrollY), Math.max(0, compactCollapsibleHeightPx))
     : 0;
@@ -1786,9 +1810,16 @@ function HomeAuthenticatedScreenMain() {
       compactCollapsePx={compactHeaderCollapsePx}
       onCompactCollapsibleLayout={setCompactCollapsibleHeightPx}
       onCompactStickyLayout={setCompactStickyHeightPx}
-      compactStickyTopInsetPx={layout.authenticatedHome.contentInsetTop}
-      compactScrollYPx={isWideHome ? 0 : compactHeaderScrollY}
-      compactStickyScrollBridge={compactStickyScrollBridge}
+      compactStickyTopInsetPx={
+        stickCompactFirstHeaderRow ? layout.authenticatedHome.contentInsetTop : 0
+      }
+      compactScrollYPx={
+        !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
+      }
+      compactStickFirstRow={stickCompactFirstHeaderRow}
+      compactStickyScrollBridge={
+        stickCompactFirstHeaderRow ? compactStickyScrollBridge : undefined
+      }
         activeHeaderMenuKey={
           messagesChatOpen
             ? null
@@ -1875,14 +1906,11 @@ function HomeAuthenticatedScreenMain() {
                 style={{
                   zIndex: 3,
                   width: "100%",
-                  backgroundColor: colors.background,
+                  backgroundColor: colors.undercover,
                   overflow: "visible",
                   transform: [
                     {
-                      translateY: Math.max(
-                        0,
-                        compactHeaderScrollY - compactCollapsibleHeightPx,
-                      ),
+                      translateY: Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
                     },
                   ],
                   ...(Platform.OS === "web"
@@ -1901,6 +1929,7 @@ function HomeAuthenticatedScreenMain() {
                   feedUnreadCount={feedUnreadCount}
                   marginTopPx={0}
                   passVerticalScroll
+                  tone="undercover"
                 />
               </View>
             </View>

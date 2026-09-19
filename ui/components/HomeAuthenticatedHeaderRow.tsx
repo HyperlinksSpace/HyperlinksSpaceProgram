@@ -373,6 +373,8 @@ type Props = {
   compactStickyTopInsetPx?: number;
   /** Compact: live scroll offset (native sticky fallback via translate). */
   compactScrollYPx?: number;
+  /** Compact: pin the wallet row (camera / notch band only). */
+  compactStickFirstRow?: boolean;
   /** Compact: vertical scroll on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
@@ -401,6 +403,7 @@ export function HomeAuthenticatedHeaderRow({
   onCompactStickyLayout,
   compactStickyTopInsetPx = 0,
   compactScrollYPx = 0,
+  compactStickFirstRow = false,
   compactStickyScrollBridge,
 }: Props) {
   const router = useRouter();
@@ -1010,14 +1013,18 @@ export function HomeAuthenticatedHeaderRow({
                 : {})}
               style={{
                 width: "100%",
-                backgroundColor: colors.background,
-                zIndex: 4,
+                marginHorizontal: -layout.contentSideInsetPx,
+                paddingHorizontal: layout.contentSideInsetPx,
+                backgroundColor: colors.undercover,
+                zIndex: compactStickFirstRow ? 4 : 1,
                 paddingTop: compactStickyTopInsetPx,
                 overflow: "visible",
-                transform: [{ translateY: compactScrollYPx }],
+                ...(compactStickFirstRow
+                  ? { transform: [{ translateY: compactScrollYPx }] }
+                  : null),
                 ...(Platform.OS === "web"
                   ? ({
-                      willChange: "transform",
+                      ...(compactStickFirstRow ? { willChange: "transform" } : null),
                       touchAction: "pan-y",
                     } as object)
                   : null),
