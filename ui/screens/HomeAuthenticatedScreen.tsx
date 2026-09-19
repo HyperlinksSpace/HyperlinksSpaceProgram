@@ -1861,6 +1861,7 @@ function HomeAuthenticatedScreenMain() {
                   setCompactChromeHeightPx((prev) => (prev === h ? prev : h));
                 }
               }}
+              style={{ width: "100%", overflow: "visible" }}
             >
               {homeHeaderRow}
               <View
@@ -1872,25 +1873,24 @@ function HomeAuthenticatedScreenMain() {
                   ? ({ onWheel: onCompactHeaderWheel } as object)
                   : {})}
                 style={{
-                  zIndex: 2,
+                  zIndex: 3,
                   width: "100%",
                   backgroundColor: colors.background,
+                  overflow: "visible",
+                  transform: [
+                    {
+                      translateY: Math.max(
+                        0,
+                        compactHeaderScrollY - compactCollapsibleHeightPx,
+                      ),
+                    },
+                  ],
                   ...(Platform.OS === "web"
                     ? ({
-                        position: "sticky",
-                        top: compactStickyHeightPx,
+                        willChange: "transform",
                         touchAction: "pan-y",
                       } as object)
-                    : {
-                        transform: [
-                          {
-                            translateY: Math.max(
-                              0,
-                              compactHeaderScrollY - compactCollapsibleHeightPx,
-                            ),
-                          },
-                        ],
-                      }),
+                    : null),
                 }}
               >
                 <AuthenticatedHomeLeftNavStrip

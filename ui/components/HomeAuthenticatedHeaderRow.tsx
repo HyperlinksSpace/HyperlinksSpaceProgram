@@ -117,11 +117,12 @@ function HeaderBandSlots({
           if (w > 0) onLeftWidth?.(w);
         }}
         style={{
-          flex: leftGrows ? 1 : 0,
+          // `flex: 0` is flexBasis 0 on RN — the compact amount/chips would clip away.
           flexGrow: leftGrows ? 1 : 0,
           flexShrink: leftGrows ? 1 : 0,
-          minWidth: 0,
-          overflow: "hidden",
+          flexBasis: leftGrows ? 0 : "auto",
+          minWidth: leftGrows ? 0 : undefined,
+          overflow: leftGrows ? "hidden" : "visible",
           justifyContent: "center",
         }}
       >
@@ -574,6 +575,7 @@ export function HomeAuthenticatedHeaderRow({
         height: HEADER_CONTROL_ROW_PX,
         gap: 0,
         maxWidth: "100%",
+        flexShrink: 0,
       }}
     >
       <View
@@ -997,7 +999,7 @@ export function HomeAuthenticatedHeaderRow({
             {wideMenuStrip}
           </View>
         ) : (
-          <View style={{ width: "100%", flexDirection: "column" }}>
+          <View style={{ width: "100%", flexDirection: "column", overflow: "visible" }}>
             <View
               onLayout={(e) => {
                 const h = Math.round(e.nativeEvent.layout.height);
@@ -1009,18 +1011,16 @@ export function HomeAuthenticatedHeaderRow({
               style={{
                 width: "100%",
                 backgroundColor: colors.background,
-                zIndex: 3,
+                zIndex: 4,
                 paddingTop: compactStickyTopInsetPx,
+                overflow: "visible",
+                transform: [{ translateY: compactScrollYPx }],
                 ...(Platform.OS === "web"
                   ? ({
-                      position: "sticky",
-                      top: 0,
+                      willChange: "transform",
                       touchAction: "pan-y",
                     } as object)
-                  : {
-                      zIndex: 3,
-                      transform: [{ translateY: compactScrollYPx }],
-                    }),
+                  : null),
               }}
             >
               <HeaderBandSlots
