@@ -53,8 +53,10 @@ export type FounderPdfPayload = {
     observedOnDemandUsdMonth?: number;
     costs: { variablePerActiveHourUsd: number };
     breakeven: {
-      payingUsersInfraOnly: number;
-      payingUsersWithPersonalBurn: number;
+      payingUsersInfraOnly: number | null;
+      payingUsersWithPersonalBurn: number | null;
+      reachableInfra?: boolean;
+      reachableLife?: boolean;
       assumptions: string;
     };
     launchExperiment: {
@@ -186,8 +188,8 @@ function buildHtml(data: FounderPdfPayload): string {
 
   <h2>Breakeven</h2>
   <div class="grid">
-    <div class="metric"><div class="label">Infra only</div><div class="value">${m.breakeven.payingUsersInfraOnly}</div></div>
-    <div class="metric"><div class="label">Life burn</div><div class="value">${m.breakeven.payingUsersWithPersonalBurn}</div></div>
+    <div class="metric"><div class="label">Infra only</div><div class="value">${m.breakeven.reachableInfra === false || m.breakeven.payingUsersInfraOnly == null ? "Unreachable" : m.breakeven.payingUsersInfraOnly}</div></div>
+    <div class="metric"><div class="label">Life burn</div><div class="value">${m.breakeven.reachableLife === false || m.breakeven.payingUsersWithPersonalBurn == null ? "Unreachable" : m.breakeven.payingUsersWithPersonalBurn}</div></div>
     <div class="metric"><div class="label">Blended ARPU</div><div class="value">${money(m.tariffs.blendedArpuMonthlyUsd)}</div></div>
     <div class="metric"><div class="label">Monthly burn</div><div class="value">${money(m.burnTotalUsdMonth)}</div></div>
     <div class="metric"><div class="label">Observed on-demand</div><div class="value">${money(m.observedOnDemandUsdMonth ?? 0)}</div></div>

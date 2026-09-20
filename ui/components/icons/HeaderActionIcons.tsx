@@ -14,7 +14,14 @@ function Root({
   children: ReactNode;
 }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 30 30" fill="none">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 30 30"
+      fill="none"
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: size, height: size }}
+    >
       {children}
     </Svg>
   );

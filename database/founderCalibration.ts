@@ -313,13 +313,16 @@ export function calibrateFromEvidence(input: {
       : input.envFallbackUsdPerActiveHour;
 
   const hours = Math.max(input.evidence.screenActiveHours30d, 0);
-  let liveRate: number | null = null;
+  let liveObserved: number | null = null;
   if (hours >= 1 && input.liveOnDemandUsdMonth > 0) {
-    liveRate = (input.liveOnDemandUsdMonth * attr) / hours;
-    // Soft cap vs prior while evidence is still thin.
+    liveObserved = (input.liveOnDemandUsdMonth * attr) / hours;
+  }
+  // Need a dense hour sample before using bill÷hours as the scale driver.
+  let liveRate: number | null = null;
+  if (hours >= 80 && liveObserved != null) {
     const confPreview = computeCalibrationConfidence(input.evidence);
-    const maxMult = 2 + confPreview * 10;
-    liveRate = Math.min(liveRate, prior * maxMult);
+    const maxMult = 1.5 + confPreview * 2;
+    liveRate = Math.min(liveObserved, prior * maxMult);
   }
 
   const regression = input.regressionUsdPerActiveHour;
@@ -340,12 +343,18 @@ export function calibrateFromEvidence(input: {
   } else if (liveRate != null) {
     rate = (1 - confidence) * prior + confidence * liveRate;
     source = `confidence_${confidence.toFixed(2)}_prior+live_ondemand/screen_hours`;
+  } else if (liveObserved != null) {
+    notes.push(
+      "Live $/hour is Vercel on-demand ÷ screen hours (diagnostic). Unit cost stays on the probe until ≥80h/30d.",
+    );
   } else {
     notes.push("Live $/hour not used yet — need ≥1h of stored screen time in 30d.");
   }
 
   if (confidence < 0.25) {
     notes.push("Low confidence — estimates still lean on probe/prior until more screen-time accrues.");
+  } else if (liveRate == null) {
+    notes.push("Medium sample — keep the app open so bill÷hours can replace the probe.");
   } else if (confidence < 0.6) {
     notes.push("Medium confidence — blending prior with real usage; keep the app open to improve.");
   } else {
@@ -360,7 +369,7 @@ export function calibrateFromEvidence(input: {
   return {
     onDemandUsdPerActiveHour: round4(rate),
     priorUsdPerActiveHour: round4(prior),
-    liveUsdPerActiveHour: liveRate != null ? round4(liveRate) : null,
+    liveUsdPerActiveHour: liveObserved != null ? round4(liveObserved) : null,
     regressionUsdPerActiveHour: regression != null ? round4(regression) : null,
     confidence: round4(confidence),
     source,

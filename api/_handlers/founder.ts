@@ -215,28 +215,23 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
 
   const vercelFixed = vercel.source === "live" ? vercel.fixedUsdMonth : 0;
   const vercelOnDemand = vercel.source === "live" ? vercel.onDemandUsdMonth : 0;
-  // Railway usage beyond plan ≈ on-demand; plan fee ≈ fixed.
-  const railwayOnDemand = railway.usageUsdMonth;
-  const railwayFixed = railway.fixedPlanUsdMonth;
   const amneziaUsd = Math.max(0, amnezia.usdMonth);
-  // Only subtract Amnezia amounts that came from Cloud Billing (already inside GCP export).
+  const amneziaWindowUsd = (amnezia.byDay ?? []).reduce((a, d) => a + Math.max(0, d.usd), 0);
   const amneziaBilledWindow = (amnezia.byDay ?? [])
     .filter((d) => d.fromBilling)
     .reduce((a, d) => a + d.usd, 0);
-  const amneziaBilledDays = (amnezia.byDay ?? []).filter((d) => d.fromBilling).length;
-  const amneziaBilledMonth =
-    amneziaBilledDays > 0
-      ? round4Local(amneziaBilledWindow * (30 / amneziaBilledDays))
-      : 0;
+  const amneziaOverlapUsd =
+    amneziaBilledWindow > 0 ? amneziaBilledWindow : amneziaWindowUsd;
   const gcpUsdRaw = Math.max(0, gcp.usdMonth);
   const gcpUsd =
-    gcp.source === "live" && amneziaBilledMonth > 0
-      ? Math.max(0, round4Local(gcpUsdRaw - amneziaBilledMonth))
+    gcp.source === "live" && amneziaOverlapUsd > 0
+      ? Math.max(0, round4Local(gcpUsdRaw - amneziaOverlapUsd))
       : gcpUsdRaw;
 
-  const liveOnDemandUsdMonth = vercelOnDemand + railwayOnDemand + gcpUsd * 0.5;
+  // Marginal usage = Vercel on-demand only. Railway/GCP/Amnezia are always-on seats.
+  const liveOnDemandUsdMonth = vercelOnDemand;
   const liveFixedUsdMonth =
-    vercelFixed + railwayFixed + gcpUsd * 0.5 + amneziaUsd;
+    vercelFixed + railway.totalUsdMonth + gcpUsd + amneziaUsd;
 
   try {
     await upsertTodayFounderCostSnapshot({
@@ -247,7 +242,7 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         vercelFixedUsd: vercelFixed,
         vercelOnDemandUsd: vercelOnDemand,
         railwayUsd: railway.totalUsdMonth,
-        gcpUsd: gcpUsd + amneziaUsd,
+        gcpUsd: gcpUsd,
         onDemandUsd: liveOnDemandUsdMonth,
         fixedUsd: liveFixedUsdMonth,
       },
@@ -293,8 +288,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
     source: gcp.source,
     usdMonth: gcpUsd,
     detail:
-      gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
-        ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
+      gcp.source === "live" && amneziaOverlapUsd > 0 && gcpUsdRaw > gcpUsd
+        ? `${gcp.detail} · Amnezia VPS $${amneziaOverlapUsd.toFixed(2)} shown separately`
         : gcp.detail,
   }, {
     source: amnezia.source,

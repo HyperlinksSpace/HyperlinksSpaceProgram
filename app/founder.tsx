@@ -53,6 +53,7 @@ type FounderPayload = {
     avgActiveHoursPerUser: number;
     totalSessions: number;
     avgHoursPerActiveUserPerDay7d: number;
+    avgHoursPerUserDay7d?: number;
     last7d: {
       activeHours: number;
       sessions: number;
@@ -176,8 +177,11 @@ type FounderPayload = {
       tdlibFixedUntilUsers: number;
     };
     breakeven: {
-      payingUsersInfraOnly: number;
-      payingUsersWithPersonalBurn: number;
+      payingUsersInfraOnly: number | null;
+      payingUsersWithPersonalBurn: number | null;
+      reachableInfra?: boolean;
+      reachableLife?: boolean;
+      contributionUsdPerUser?: number;
       assumptions: string;
     };
     launchExperiment: {
@@ -323,6 +327,12 @@ function money(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1000) return `${sign}$${abs.toFixed(0)}`;
   return `${sign}$${abs.toFixed(2)}`;
+}
+
+function fmtPayingUsers(n: number | null | undefined, reachable?: boolean): string {
+  if (reachable === false || n == null || n <= 0) return "Unreachable";
+  if (!Number.isFinite(n) || n > 1_000_000) return "Unreachable";
+  return String(n);
 }
 
 function hoursFromMs(ms: number): string {
@@ -1099,16 +1109,9 @@ export default function FounderScreen() {
       const vercel = slice.reduce((a, r) => a + (r.vercelUsd ?? 0), 0);
       const amnezia = slice.reduce((a, r) => a + (r.amneziaVpnUsd ?? 0), 0);
       const sessions = slice.reduce((a, r) => a + r.sessions, 0);
-      const userSet = new Set<number>();
-      // distinctUsers is per-day; use max as lower bound display + sum of hours avg
-      const daysWithUsers = slice.filter((r) => r.distinctUsers > 0);
-      const avgUserHours =
-        daysWithUsers.length > 0
-          ? daysWithUsers.reduce((a, r) => a + r.avgActiveHoursPerUser, 0) /
-            daysWithUsers.length
-          : 0;
-      const usersPeak = daysWithUsers.reduce((a, r) => Math.max(a, r.distinctUsers), 0);
-      void userSet;
+      const userDays = slice.reduce((a, r) => a + r.distinctUsers, 0);
+      const avgUserHours = userDays > 0 ? activeMs / userDays / 3_600_000 : 0;
+      const usersPeak = slice.reduce((a, r) => Math.max(a, r.distinctUsers), 0);
       return { activeMs, provider, vercel, amnezia, sessions, usersPeak, avgUserHours };
     };
     return {
@@ -1606,8 +1609,7 @@ export default function FounderScreen() {
 
       <Card title="Pro sales · history & diagrams" colors={colors}>
         <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, fontFamily: font }}>
-          Ledger of Pro Access activations (built-in DLLR and USDT flows). Counts update when a
-          user successfully activates; founder revoke does not delete history.
+          Ledger of paid Pro Access (DLLR / USDT). Founder grants and $0 test activations are excluded.
         </Text>
         {data.proSales?.tablesExist ? (
           <>
@@ -2158,13 +2160,19 @@ export default function FounderScreen() {
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>
           <Metric
             label="Paying users · infra only"
-            value={String(model.breakeven.payingUsersInfraOnly)}
+            value={fmtPayingUsers(
+              model.breakeven.payingUsersInfraOnly,
+              model.breakeven.reachableInfra,
+            )}
             colors={colors}
             emphasize
           />
           <Metric
             label="Paying users · life burn"
-            value={String(model.breakeven.payingUsersWithPersonalBurn)}
+            value={fmtPayingUsers(
+              model.breakeven.payingUsersWithPersonalBurn,
+              model.breakeven.reachableLife,
+            )}
             colors={colors}
             emphasize
           />
@@ -2493,8 +2501,13 @@ export default function FounderScreen() {
           <Metric label="Users w/ totals" value={String(screenTime.usersWithScreenTime)} colors={colors} />
           <Metric label="Sessions (all)" value={String(screenTime.totalSessions)} colors={colors} />
           <Metric
-            label="Avg h / active user / day (7d)"
+            label="Avg h / active user / calendar day (7d)"
             value={`${screenTime.avgHoursPerActiveUserPerDay7d.toFixed(2)}h`}
+            colors={colors}
+          />
+          <Metric
+            label="Avg h / user-day (7d)"
+            value={`${(screenTime.avgHoursPerUserDay7d ?? 0).toFixed(2)}h`}
             colors={colors}
           />
           <Metric
@@ -2749,7 +2762,9 @@ export default function FounderScreen() {
                 <Text style={{ width: 160, color: colors.primary, fontSize: 12, fontFamily: font }}>
                   {s.label}
                 </Text>
-                <Text style={{ width: 72, color: colors.primary, fontSize: 12 }}>{s.payingUsers}</Text>
+                <Text style={{ width: 72, color: colors.primary, fontSize: 12 }}>
+                  {s.payingUsers > 0 ? s.payingUsers : "—"}
+                </Text>
                 <Text style={{ width: 72, color: colors.primary, fontSize: 12 }}>
                   {s.avgScreenHoursPerDay}
                 </Text>

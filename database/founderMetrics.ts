@@ -45,8 +45,10 @@ export type FounderScreenTimeSnapshot = {
     sessions: number;
     distinctUsers: number;
   };
-  /** Average active hours / user / day among users with activity in last 7d. */
+  /** Average active hours / user / calendar day among users with activity in last 7d. */
   avgHoursPerActiveUserPerDay7d: number;
+  /** Average hours among user-days (days a user actually had a session). */
+  avgHoursPerUserDay7d: number;
   topUsers: Array<{
     telegramUsername: string;
     totalActiveMs: number;
@@ -106,6 +108,7 @@ export async function getFounderScreenTimeSnapshot(): Promise<FounderScreenTimeS
     last7d: { activeMs: 0, activeHours: 0, sessions: 0, distinctUsers: 0 },
     last30d: { activeMs: 0, activeHours: 0, sessions: 0, distinctUsers: 0 },
     avgHoursPerActiveUserPerDay7d: 0,
+    avgHoursPerUserDay7d: 0,
     topUsers: [],
     recentSessions: [],
     dailyLast14d: [],
@@ -184,6 +187,13 @@ export async function getFounderScreenTimeSnapshot(): Promise<FounderScreenTimeS
   const users7 = asNum(r7?.users);
   const avgHoursPerActiveUserPerDay7d =
     users7 > 0 ? ms7 / users7 / 7 / 3_600_000 : 0;
+  const dailyMapped = mapDailyRows(daily as Array<Record<string, unknown>>);
+  const dailyLast30d = fillDailyCalendar(dailyMapped, 30);
+  const last7Calendar = dailyLast30d.slice(-7);
+  const userDays7 = last7Calendar.reduce((a, d) => a + d.distinctUsers, 0);
+  const msUserDays7 = last7Calendar.reduce((a, d) => a + d.activeMs, 0);
+  const avgHoursPerUserDay7d =
+    userDays7 > 0 ? msUserDays7 / userDays7 / 3_600_000 : 0;
 
   return {
     tablesExist: true,
@@ -206,6 +216,7 @@ export async function getFounderScreenTimeSnapshot(): Promise<FounderScreenTimeS
       distinctUsers: asNum(r30?.users),
     },
     avgHoursPerActiveUserPerDay7d,
+    avgHoursPerUserDay7d,
     topUsers: (top as Array<Record<string, unknown>>).map((row) => ({
       telegramUsername: String(row.telegram_username ?? ""),
       totalActiveMs: asNum(row.total_active_ms),
@@ -221,11 +232,8 @@ export async function getFounderScreenTimeSnapshot(): Promise<FounderScreenTimeS
       activeMs: asNum(row.active_ms),
       platform: typeof row.platform === "string" ? row.platform : null,
     })),
-    dailyLast14d: mapDailyRows(daily as Array<Record<string, unknown>>).slice(-14),
-    dailyLast30d: fillDailyCalendar(
-      mapDailyRows(daily as Array<Record<string, unknown>>),
-      30,
-    ),
+    dailyLast14d: dailyLast30d.slice(-14),
+    dailyLast30d,
   };
 }
 

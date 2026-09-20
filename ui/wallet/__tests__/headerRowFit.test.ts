@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   compactNavStickAfterPx,
+  fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
   pickHeaderDisplayName,
   shouldStickCompactFirstHeaderRow,
@@ -65,7 +66,19 @@ describe("pickHeaderDisplayName", () => {
         fullNameWidthPx: 120,
         firstNameWidthPx: 40,
       }),
-      null,
+      "Ada",
+    );
+    assert.equal(
+      pickHeaderDisplayName({
+        fullName: "Ada Lovelace",
+        firstName: "Ada",
+        availablePx: 0,
+        fullNameWidthPx: 0,
+        firstNameWidthPx: 0,
+        slotReady: false,
+        previous: "Ada",
+      }),
+      "Ada",
     );
   });
 });
@@ -75,6 +88,16 @@ describe("fitHeaderAmountFontSize", () => {
     assert.equal(fitHeaderAmountFontSize(80, 120), 30);
     assert.equal(fitHeaderAmountFontSize(120, 80), 20);
     assert.equal(fitHeaderAmountFontSize(120, 60), 15);
+  });
+});
+
+describe("fitHeaderActionIconSize", () => {
+  it("keeps the max size when the cluster fits and scales when the slot is tighter", () => {
+    assert.deepEqual(fitHeaderActionIconSize(200), { sizePx: 24, gapPx: 12 });
+    const tight = fitHeaderActionIconSize(90);
+    assert.equal(tight.sizePx < 24, true);
+    assert.equal(tight.sizePx >= 12, true);
+    assert.equal(5 * tight.sizePx + 4 * tight.gapPx <= 90, true);
   });
 });
 

@@ -40,8 +40,11 @@ export type ScaleScenario = {
 };
 
 export type BreakevenPoint = {
-  payingUsersInfraOnly: number;
-  payingUsersWithPersonalBurn: number;
+  payingUsersInfraOnly: number | null;
+  payingUsersWithPersonalBurn: number | null;
+  reachableInfra: boolean;
+  reachableLife: boolean;
+  contributionUsdPerUser: number;
   assumptions: string;
 };
 
@@ -101,8 +104,17 @@ export function buildScaleScenarios(
     observedHoursPerDay && observedHoursPerDay > 0.05 ? observedHoursPerDay : 2.5;
   const arpu = tariffs.blendedArpuMonthlyUsd;
   const personal = personalBase(inputs);
+  const beHours = hours;
+  const be = computeBreakeven(tariffs, inputs, beHours, opts);
 
-  const rows: Array<{ id: string; label: string; users: number; hours: number; note: string }> = [
+  const rows: Array<{
+    id: string;
+    label: string;
+    users: number;
+    hours: number;
+    note: string;
+    skipLife?: boolean;
+  }> = [
     {
       id: "solo",
       label: "You only (today)",
@@ -134,16 +146,21 @@ export function buildScaleScenarios(
     {
       id: "be_infra",
       label: "Infra breakeven",
-      users: 0,
-      hours: 2.5,
-      note: "Revenue covers fixed+on-demand (no personal burn).",
+      users: be.payingUsersInfraOnly ?? 0,
+      hours: beHours,
+      skipLife: true,
+      note: be.reachableInfra
+        ? `Revenue covers fixed+on-demand at ${beHours.toFixed(2)}h/user/day (no personal burn).`
+        : "Unreachable: usage COGS per user ≥ ARPU at this engagement — raise price or cut on-demand $/hour.",
     },
     {
       id: "be_life",
       label: "Life breakeven",
-      users: 0,
-      hours: 2.5,
-      note: "Revenue covers infra + rent/food/Cursor/etc.",
+      users: be.payingUsersWithPersonalBurn ?? 0,
+      hours: beHours,
+      note: be.reachableLife
+        ? "Revenue covers infra + rent/food/Cursor/etc."
+        : "Unreachable: contribution per user cannot cover infra + life burn at this engagement.",
     },
     {
       id: "u50",
@@ -189,14 +206,10 @@ export function buildScaleScenarios(
     },
   ];
 
-  const be = computeBreakeven(tariffs, inputs, 2.5, opts);
-  rows[4]!.users = Math.max(1, be.payingUsersInfraOnly);
-  rows[5]!.users = Math.max(1, be.payingUsersWithPersonalBurn);
-
   return rows.map((row) => {
     const { fixed, onDemand } = estimateInfraAtScale(inputs, row.users, row.hours, opts);
     const revenue = row.users * arpu;
-    const life = row.id === "be_infra" ? 0 : personal;
+    const life = row.skipLife ? 0 : personal;
     const totalCost = fixed + onDemand + life;
     const profit = revenue - totalCost;
     return {
@@ -227,21 +240,45 @@ export function computeBreakeven(
   opts?: { vercelFixedUsdMonth?: number | null },
 ): BreakevenPoint {
   const arpu = Math.max(0.01, tariffs.blendedArpuMonthlyUsd);
-  const solve = (includePersonal: boolean): number => {
-    let n = 1;
-    for (let i = 0; i < 40; i++) {
-      const { fixed, onDemand } = estimateInfraAtScale(inputs, n, avgHoursPerDay, opts);
-      const need = fixed + onDemand + (includePersonal ? personalBase(inputs) : 0);
-      const next = Math.ceil(need / arpu);
-      if (next === n) return n;
-      n = Math.max(1, next);
-    }
-    return n;
+  const hours = Math.max(0, avgHoursPerDay);
+  const variablePerUser = hours * 30 * inputs.variablePerActiveHourUsd;
+  const contribution = arpu - variablePerUser;
+  const fixed = fixedInfraBase(inputs, opts?.vercelFixedUsdMonth);
+  const railway = Math.max(0, inputs.infra.railwayUsdMonth);
+  const pack = Math.max(1, inputs.tdlibFixedUntilUsers);
+  const personal = personalBase(inputs);
+
+  const solve = (needFixed: number): number | null => {
+    if (!(contribution > 1e-9)) return null;
+    const nAtBase = Math.max(1, Math.ceil(needFixed / contribution));
+    if (nAtBase <= pack) return nAtBase;
+    const extraPerUser = railway / pack;
+    const contribAfterScale = contribution - extraPerUser;
+    if (!(contribAfterScale > 1e-9)) return null;
+    const nAfter = Math.ceil((needFixed - railway) / contribAfterScale);
+    return Math.max(pack + 1, nAfter);
   };
+
+  const infraN = solve(fixed);
+  const lifeN = solve(fixed + personal);
+  const hoursLabel = hours.toFixed(2);
+  const rateLabel = inputs.variablePerActiveHourUsd.toFixed(4);
+  const contribLabel = contribution.toFixed(2);
+  const impossible =
+    contribution <= 1e-9
+      ? `Unreachable: on-demand $${variablePerUser.toFixed(2)}/user/mo at ${hoursLabel}h/day ≥ ARPU $${arpu.toFixed(2)}.`
+      : infraN == null
+        ? `Unreachable past ${pack} TDLib seats: Railway step $${(railway / pack).toFixed(2)}/user ≥ remaining contribution.`
+        : "";
   return {
-    payingUsersInfraOnly: solve(false),
-    payingUsersWithPersonalBurn: solve(true),
-    assumptions: `Blended ARPU $${arpu.toFixed(2)}/mo; ~${avgHoursPerDay.toFixed(2)} active h/user/day; on-demand $${inputs.variablePerActiveHourUsd.toFixed(4)}/active-hour; fixed stack separate from usage.`,
+    payingUsersInfraOnly: infraN,
+    payingUsersWithPersonalBurn: lifeN,
+    reachableInfra: infraN != null,
+    reachableLife: lifeN != null,
+    contributionUsdPerUser: round2(contribution),
+    assumptions: impossible
+      ? `${impossible} Blended ARPU $${arpu.toFixed(2)}/mo; ${hoursLabel} active h/user/day; on-demand $${rateLabel}/active-hour; contribution $${contribLabel}/user/mo.`
+      : `Blended ARPU $${arpu.toFixed(2)}/mo; ${hoursLabel} active h/user/day; on-demand $${rateLabel}/active-hour; contribution $${contribLabel}/user/mo after usage COGS; TDLib pack ${pack}.`,
   };
 }
 
@@ -302,6 +339,12 @@ export type FounderStrategy = {
 };
 
 export function buildFounderStrategy(breakeven: BreakevenPoint): FounderStrategy {
+  const infraLabel = breakeven.reachableInfra
+    ? `~${breakeven.payingUsersInfraOnly} paying`
+    : "after usage COGS < ARPU";
+  const lifeLabel = breakeven.reachableLife
+    ? `~${breakeven.payingUsersWithPersonalBurn} paying`
+    : "after contribution covers life burn";
   return {
     sales: [
       "Sell Pro to people already living in Telegram + TON (traders, builders, power DMs) — lead with unlimited accounts + AI + cashback, not generic ‘wallet’.",
@@ -311,7 +354,9 @@ export function buildFounderStrategy(breakeven: BreakevenPoint): FounderStrategy
       "Partner: 2–3 mini-app / toolkit accounts for distribution; revenue share only after infra breakeven.",
     ],
     hiring: [
-      `Stay solo until ~${breakeven.payingUsersWithPersonalBurn} paying users cover life burn — hiring earlier burns runway.`,
+      breakeven.reachableLife
+        ? `Stay solo until ~${breakeven.payingUsersWithPersonalBurn} paying users cover life burn — hiring earlier burns runway.`
+        : "Stay solo until on-demand $/user is below ARPU — hiring earlier burns runway.",
       "First hire: part-time support / community (Telegram) OR contractor for payment+billing — not a second full-time eng.",
       "Second: growth (content + partnerships) once 100+ paying and churn < 8%/mo.",
       "Third: backend/TDLib reliability when concurrent connected accounts exceed FOUNDER_TDLIB_FIXED_UNTIL_USERS.",
@@ -323,11 +368,11 @@ export function buildFounderStrategy(breakeven: BreakevenPoint): FounderStrategy
         what: "Close payment, instrument COGS weekly, convert your own usage into case study metrics.",
       },
       {
-        when: `~${breakeven.payingUsersInfraOnly} paying`,
+        when: infraLabel,
         what: "Servers+AI paid by customers; keep personal burn lean; freeze non-essential Cursor/cloud spend spikes.",
       },
       {
-        when: `~${breakeven.payingUsersWithPersonalBurn} paying`,
+        when: lifeLabel,
         what: "Rent/food/Cursor covered; start a small paid acquisition or partner test with capped budget.",
       },
       {

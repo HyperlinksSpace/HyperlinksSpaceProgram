@@ -2,6 +2,10 @@
  * Pro Access sales ledger for founder analytics.
  */
 import { sql } from "./start.js";
+import {
+  isCustomerPaidProSale,
+  MIN_PAID_PRO_SALE_USD,
+} from "./proSalesExclude.js";
 
 function asNum(raw: unknown): number {
   if (typeof raw === "bigint") return Number(raw);
@@ -65,13 +69,26 @@ async function dedupeDuplicateProSales(): Promise<void> {
     DELETE FROM pro_sales a
     USING pro_sales b
     WHERE a.id > b.id
-      AND a.username = b.username
+      AND lower(regexp_replace(trim(a.username), '^@+', ''))
+        = lower(regexp_replace(trim(b.username), '^@+', ''))
       AND a.plan_id = b.plan_id
       AND a.months = b.months
-      AND ABS(a.price_usd - b.price_usd) < 0.0001
+      AND ABS(a.price_usd - b.price_usd) < 0.01
       AND COALESCE(a.expires_at, 'epoch'::timestamptz)
         = COALESCE(b.expires_at, 'epoch'::timestamptz)
-      AND ABS(EXTRACT(EPOCH FROM (a.created_at - b.created_at))) < 120
+      AND ABS(EXTRACT(EPOCH FROM (a.created_at - b.created_at))) < 86400
+  `;
+}
+
+/** Drop founder test grants and unpaid $0.00/$0.01 rows from the paid ledger. */
+async function scrubNonCustomerProSales(): Promise<void> {
+  await sql`
+    DELETE FROM pro_sales
+    WHERE lower(regexp_replace(trim(username), '^@+', '')) = 'anriltine'
+  `;
+  await sql`
+    DELETE FROM pro_sales
+    WHERE price_usd < ${MIN_PAID_PRO_SALE_USD}
   `;
 }
 
@@ -106,6 +123,8 @@ export async function ensureProSalesTable(): Promise<void> {
         ON pro_sales (payment_memo)
         WHERE payment_memo IS NOT NULL AND length(trim(payment_memo)) > 0
       `;
+      await dedupeDuplicateProSales();
+      await scrubNonCustomerProSales();
       await dedupeDuplicateProSales();
     })().catch((err) => {
       tableReady = null;
@@ -153,6 +172,7 @@ export async function recordProSale(opts: {
   if (!username) return null;
   const priceUsd = Number(opts.priceUsd);
   if (!Number.isFinite(priceUsd) || priceUsd < 0) return null;
+  if (!isCustomerPaidProSale(username, priceUsd)) return null;
   const months = Math.max(1, Math.trunc(Number(opts.months) || 1));
   const planId = normalizePlanId(opts.planId);
   const expiresAt =
@@ -261,25 +281,36 @@ export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
     return empty;
   }
 
+  await scrubNonCustomerProSales();
+  await dedupeDuplicateProSales();
+
   const [totals, week, month, byPlanRows, dailyRows, recentRows, activeRows] =
     await Promise.all([
       sql`
         SELECT COUNT(*)::int AS sales, COALESCE(SUM(price_usd), 0)::float AS revenue
         FROM pro_sales
+        WHERE price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
       `,
       sql`
         SELECT COUNT(*)::int AS sales, COALESCE(SUM(price_usd), 0)::float AS revenue
         FROM pro_sales
         WHERE created_at >= NOW() - INTERVAL '7 days'
+          AND price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
       `,
       sql`
         SELECT COUNT(*)::int AS sales, COALESCE(SUM(price_usd), 0)::float AS revenue
         FROM pro_sales
         WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
       `,
       sql`
         SELECT plan_id, COUNT(*)::int AS sales, COALESCE(SUM(price_usd), 0)::float AS revenue
         FROM pro_sales
+        WHERE price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
         GROUP BY plan_id
       `,
       sql`
@@ -289,20 +320,26 @@ export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
           COALESCE(SUM(price_usd), 0)::float AS revenue
         FROM pro_sales
         WHERE created_at >= NOW() - INTERVAL '30 days'
+          AND price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
         GROUP BY 1
         ORDER BY 1 ASC
       `,
       sql`
         SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
         FROM pro_sales
+        WHERE price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
         ORDER BY created_at DESC
         LIMIT 50
       `,
       sql`
-        SELECT COUNT(*)::int AS n
-        FROM user_ai_free_quota
-        WHERE pro_expires_at IS NOT NULL AND pro_expires_at > NOW()
-      `.catch(() => [{ n: 0 }]),
+        SELECT COUNT(DISTINCT lower(regexp_replace(trim(username), '^@+', '')))::int AS n
+        FROM pro_sales
+        WHERE price_usd >= ${MIN_PAID_PRO_SALE_USD}
+          AND lower(regexp_replace(trim(username), '^@+', '')) <> 'anriltine'
+          AND (expires_at IS NULL OR expires_at > NOW())
+      `,
     ]);
 
   const byPlanMap: Record<ProSalePlanId, { sales: number; revenueUsd: number }> = {
@@ -335,9 +372,9 @@ export async function getProSalesSnapshot(): Promise<ProSalesSnapshot> {
     });
   }
 
-  const recent: ProSaleRow[] = (recentRows as Array<Record<string, unknown>>).map((row) =>
-    mapSaleRow(row),
-  );
+  const recent: ProSaleRow[] = (recentRows as Array<Record<string, unknown>>)
+    .map((row) => mapSaleRow(row))
+    .filter((row) => isCustomerPaidProSale(row.username, row.priceUsd));
 
   return {
     tablesExist: true,

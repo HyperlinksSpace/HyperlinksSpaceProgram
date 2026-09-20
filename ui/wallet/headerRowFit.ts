@@ -1,22 +1,32 @@
-/** Header identity: prefer the full name, then first token, then hide. */
+/** Header identity: prefer the full name, then first token. Never hide once a name exists. */
 export function pickHeaderDisplayName(options: {
   fullName: string | null;
   firstName: string | null;
   availablePx: number;
   fullNameWidthPx: number;
   firstNameWidthPx: number;
+  /** Slot has been measured; until then keep the first name so the label does not flash. */
+  slotReady?: boolean;
+  previous?: string | null;
 }): string | null {
   const full = options.fullName?.trim() || null;
   const first = options.firstName?.trim() || full;
-  if (!full) return null;
+  if (!full || !first) return null;
   const availablePx = options.availablePx;
   const fullW = options.fullNameWidthPx;
-  const firstW = options.firstNameWidthPx;
-  if (!(availablePx > 0)) return first;
-  if (fullW > 0 && fullW <= availablePx) return full;
-  if (firstW > 0 && firstW <= availablePx) return first;
-  if (fullW <= 0 && firstW <= 0) return first;
-  return null;
+  const previous = options.previous ?? null;
+  const slotReady = options.slotReady !== false && availablePx > 0;
+  if (!slotReady) {
+    return previous === first || previous === full ? previous : first;
+  }
+  const expandSlackPx = 28;
+  const keepSlackPx = 8;
+  const fullFits = fullW > 0 && fullW <= availablePx + keepSlackPx;
+  const fullFitsExpand = fullW > 0 && fullW <= availablePx - expandSlackPx;
+  if (previous === full && (fullFits || fullW <= 0)) return full;
+  if (previous === first && fullW > 0 && !fullFitsExpand) return first;
+  if (fullFits) return full;
+  return first;
 }
 
 export const HEADER_AMOUNT_FONT_MAX_PX = 30;
@@ -58,4 +68,33 @@ export function fitHeaderAmountFontSize(
     return maxPx;
   }
   return Math.max(minPx, Math.floor((availableWidthPx / naturalWidthPx) * maxPx));
+}
+
+export const HEADER_ACTION_ICON_COUNT = 5;
+export const HEADER_ACTION_ICON_MAX_PX = 24;
+export const HEADER_ACTION_ICON_MIN_PX = 12;
+export const HEADER_ACTION_ICON_GAP_MAX_PX = 12;
+
+/** Shrink copy/edit/key/language/exit together so they track width instead of clipping. */
+export function fitHeaderActionIconSize(
+  availableWidthPx: number,
+  iconCount = HEADER_ACTION_ICON_COUNT,
+  maxPx = HEADER_ACTION_ICON_MAX_PX,
+  minPx = HEADER_ACTION_ICON_MIN_PX,
+  gapMaxPx = HEADER_ACTION_ICON_GAP_MAX_PX,
+): { sizePx: number; gapPx: number } {
+  const count = Math.max(1, Math.floor(iconCount));
+  const gaps = Math.max(0, count - 1);
+  const sizeMax = Math.max(minPx, maxPx);
+  const gapMax = Math.max(0, gapMaxPx);
+  const natural = count * sizeMax + gaps * gapMax;
+  if (!(availableWidthPx > 0) || natural <= availableWidthPx) {
+    return { sizePx: sizeMax, gapPx: gapMax };
+  }
+  const scale = availableWidthPx / natural;
+  const sizePx = Math.max(minPx, Math.floor(sizeMax * scale));
+  const used = count * sizePx;
+  const gapPx =
+    gaps > 0 ? Math.max(0, Math.floor((availableWidthPx - used) / gaps)) : 0;
+  return { sizePx, gapPx };
 }

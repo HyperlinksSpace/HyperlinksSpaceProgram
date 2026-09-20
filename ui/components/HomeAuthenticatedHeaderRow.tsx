@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { usePathname, useRouter } from "expo-router";
 import { useAuth } from "../../auth/AuthContext";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, Platform, type LayoutRectangle } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import {
@@ -40,7 +40,11 @@ import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
 import { trimWalletAddress, walletAddressHeaderSnippet } from "../wallet/walletAddressFormat";
 import {
+  fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
+  HEADER_ACTION_ICON_COUNT,
+  HEADER_ACTION_ICON_MAX_PX,
+  HEADER_ACTION_ICON_MIN_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
   pickHeaderDisplayName,
 } from "../wallet/headerRowFit";
@@ -205,10 +209,12 @@ const HEADER_ICON_PRESS_FLASH_MS = 180;
 function HeaderActionIconButton({
   accessibilityLabel,
   onPress,
+  size,
   children,
 }: {
   accessibilityLabel: string;
   onPress: () => void;
+  size: number;
   children: (color: string) => ReactNode;
 }) {
   const colors = useColors();
@@ -243,17 +249,27 @@ function HeaderActionIconButton({
       }}
       onPress={onPress}
       style={{
-        width: AH.headerIconDisplaySize,
-        height: AH.headerIconDisplaySize,
+        width: size,
+        height: size,
         alignItems: "center",
         justifyContent: "center",
-        // Match global Text −1px optical lift so icons share a center with “Switch wallet”.
+        // Same optical lift as Switch wallet so this glyph stays on the 30px band center.
         ...uiIconButtonVerticalCompensationTransform,
       }}
     >
-      {({ pressed }) =>
-        children(menuIconStrokeColor(colors, pressed || flash ? "primary" : "highlight"))
-      }
+      {({ pressed }) => (
+        <View
+          pointerEvents="none"
+          style={{
+            width: size,
+            height: size,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {children(menuIconStrokeColor(colors, pressed || flash ? "primary" : "highlight"))}
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -429,14 +445,16 @@ export function HomeAuthenticatedHeaderRow({
   const [copiedDialogOpen, setCopiedDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [mnemonicDialogOpen, setMnemonicDialogOpen] = useState(false);
-  const [rightSlotWidthPx, setRightSlotWidthPx] = useState(0);
+  const [rightBandAvailablePx, setRightBandAvailablePx] = useState(0);
   const [leftSlotWidthPx, setLeftSlotWidthPx] = useState(0);
   const [chipClusterWidthPx, setChipClusterWidthPx] = useState(0);
   const [naturalAmountWidthPx, setNaturalAmountWidthPx] = useState(0);
   const [fullNameWidthPx, setFullNameWidthPx] = useState(0);
   const [firstNameWidthPx, setFirstNameWidthPx] = useState(0);
   const [snippetWidthPx, setSnippetWidthPx] = useState(0);
+  const [switchWalletWidthPx, setSwitchWalletWidthPx] = useState(0);
   const switchWalletRef = useRef<View>(null);
+  const headerNameChoiceRef = useRef<string | null>(null);
   const proSubscribed = useSyncExternalStore(
     subscribeProAccess,
     isProAccessActive,
@@ -461,10 +479,7 @@ export function HomeAuthenticatedHeaderRow({
     });
   }, []);
   const liveViewportWidthPx = readAuthenticatedHomeLayoutWidthPx(windowWidth);
-  const widthForLayout = Math.min(
-    measuredWidth ?? liveViewportWidthPx,
-    liveViewportWidthPx > 0 ? liveViewportWidthPx : Number.POSITIVE_INFINITY,
-  );
+  const widthForLayout = measuredWidth ?? liveViewportWidthPx;
   const atOrAboveFirstBreakpoint =
     widthForLayout > AH.firstBreakpoint && (layoutIsWide ?? true);
   const wideMenuColumnWidth = authenticatedHomeWideMenuColumnWidthPx(widthForLayout);
@@ -523,9 +538,24 @@ export function HomeAuthenticatedHeaderRow({
   const identityChromePx =
     (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * 9) +
     (trimmed ? HEADER_EXPLORER_PX + HEADER_IDENTITY_GAP_PX : 0);
+  const innerContentW = Math.max(0, widthForLayout - 2 * layout.contentSideInsetPx);
+  const estimatedWideSidePx = Math.max(0, (innerContentW - wideMenuStripWidth) / 2);
+  const nameSlotPx = atOrAboveFirstBreakpoint
+    ? rightBandAvailablePx > 0
+      ? rightBandAvailablePx
+      : estimatedWideSidePx
+    : Math.max(
+        0,
+        innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - (naturalAmountWidthPx || 0),
+      );
+  const slotReady =
+    fullNameWidthPx > 0 &&
+    (atOrAboveFirstBreakpoint
+      ? rightBandAvailablePx > 0
+      : chipClusterWidthPx > 0 || naturalAmountWidthPx > 0);
   const availableNamePx = Math.max(
     0,
-    rightSlotWidthPx - identityChromePx - (headerIdentity.fullName ? HEADER_IDENTITY_GAP_PX : 0),
+    nameSlotPx - identityChromePx - (headerIdentity.fullName ? HEADER_IDENTITY_GAP_PX : 0),
   );
   const walletNameLabel = pickHeaderDisplayName({
     fullName: headerIdentity.fullName,
@@ -533,8 +563,12 @@ export function HomeAuthenticatedHeaderRow({
     availablePx: availableNamePx,
     fullNameWidthPx,
     firstNameWidthPx,
+    slotReady,
+    previous: headerNameChoiceRef.current,
   });
-  const innerContentW = Math.max(0, widthForLayout - 2 * layout.contentSideInsetPx);
+  useLayoutEffect(() => {
+    headerNameChoiceRef.current = walletNameLabel;
+  }, [walletNameLabel]);
   const amountAvailablePx = atOrAboveFirstBreakpoint
     ? Math.max(0, leftSlotWidthPx - chipClusterWidthPx)
     : Math.max(
@@ -542,6 +576,36 @@ export function HomeAuthenticatedHeaderRow({
         innerContentW - chipClusterWidthPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
       );
   const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
+  const actionIconsAvailablePx = atOrAboveFirstBreakpoint
+    ? rightBandAvailablePx > 0
+      ? rightBandAvailablePx
+      : estimatedWideSidePx
+    : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap);
+  const iconViewportT = (() => {
+    const lo = AH.wideMenuColumnExpandViewportMin;
+    const hi = AH.wideMenuColumnExpandViewportMax;
+    const span = hi - lo;
+    return span <= 0 ? 1 : Math.min(1, Math.max(0, (widthForLayout - lo) / span));
+  })();
+  const actionIconWideMinPx = Math.round(
+    HEADER_ACTION_ICON_MAX_PX * (AH.wideMenuColumnWidthMin / AH.wideMenuColumnWidthMax),
+  );
+  const actionIconMaxPx = atOrAboveFirstBreakpoint
+    ? Math.round(
+        actionIconWideMinPx +
+          iconViewportT * (HEADER_ACTION_ICON_MAX_PX - actionIconWideMinPx),
+      )
+    : HEADER_ACTION_ICON_MAX_PX;
+  const actionIconGapMaxPx = Math.round(
+    AH.headerIconGap * (actionIconMaxPx / AH.headerIconDisplaySize),
+  );
+  const { sizePx: actionIconSizePx, gapPx: actionIconGapPx } = fitHeaderActionIconSize(
+    actionIconsAvailablePx,
+    HEADER_ACTION_ICON_COUNT,
+    actionIconMaxPx,
+    HEADER_ACTION_ICON_MIN_PX,
+    actionIconGapMaxPx,
+  );
 
   const copyFullWalletAddress = useCallback(async () => {
     if (!trimmed) return;
@@ -654,11 +718,23 @@ export function HomeAuthenticatedHeaderRow({
         flexShrink: 1,
         height: HEADER_CONTROL_ROW_PX,
       }}
-      onLayout={(e) => {
-        const w = Math.round(e.nativeEvent.layout.width);
-        if (w > 0) setRightSlotWidthPx((prev) => (prev === w ? prev : w));
-      }}
     >
+      {walletNameLabel ? (
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="clip"
+          style={[
+            ...headerMonoLineStyle,
+            {
+              flexShrink: 1,
+              minWidth: 0,
+              maxWidth: availableNamePx > 0 ? availableNamePx : undefined,
+            },
+          ]}
+        >
+          {walletNameLabel}
+        </Text>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={tf("home.header.walletAddressA11y", { snippet: displaySnippet })}
@@ -691,20 +767,18 @@ export function HomeAuthenticatedHeaderRow({
           accessibilityLabel={t("home.header.openTonviewerA11y")}
         />
       ) : null}
-      {walletNameLabel ? (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          style={[...headerMonoLineStyle, { flexShrink: 0 }]}
-        >
-          {walletNameLabel}
-        </Text>
-      ) : null}
     </View>
   );
 
   const switchWalletRow = (
-    <View ref={switchWalletRef} collapsable={false}>
+    <View
+      ref={switchWalletRef}
+      collapsable={false}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w > 0) setSwitchWalletWidthPx((prev) => (prev === w ? prev : w));
+      }}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={t("home.header.switchWalletA11y")}
@@ -790,9 +864,10 @@ export function HomeAuthenticatedHeaderRow({
         flexDirection: "row",
         alignItems: "center",
         height: HEADER_CONTROL_ROW_PX,
-        gap: AH.headerIconGap,
+        gap: actionIconGapPx,
         justifyContent: "flex-end",
-        flexShrink: 0,
+        flexShrink: 1,
+        minWidth: 0,
       }}
     >
       {HEADER_ICONS_BEFORE_LANG.map(({ id, Icon, labelKey }) => {
@@ -800,6 +875,7 @@ export function HomeAuthenticatedHeaderRow({
         return (
           <HeaderActionIconButton
             key={id}
+            size={actionIconSizePx}
             accessibilityLabel={accessibilityLabel}
             onPress={() => {
               if (id === "copy") {
@@ -815,11 +891,12 @@ export function HomeAuthenticatedHeaderRow({
               }
             }}
           >
-            {(color) => <Icon color={color} size={AH.headerIconDisplaySize} />}
+            {(color) => <Icon color={color} size={actionIconSizePx} />}
           </HeaderActionIconButton>
         );
       })}
       <HeaderActionIconButton
+        size={actionIconSizePx}
         accessibilityLabel={
           headerLanguageToggleShows === "en"
             ? t("home.header.languageIconSwitchToEn")
@@ -836,20 +913,21 @@ export function HomeAuthenticatedHeaderRow({
       >
         {(color) =>
           headerLanguageToggleShows === "en" ? (
-            <HeaderIconEn color={color} size={AH.headerIconDisplaySize} />
+            <HeaderIconEn color={color} size={actionIconSizePx} />
           ) : headerLanguageToggleShows === "ru" ? (
-            <HeaderIconRu color={color} size={AH.headerIconDisplaySize} />
+            <HeaderIconRu color={color} size={actionIconSizePx} />
           ) : (
-            <HeaderIconZh color={color} size={AH.headerIconDisplaySize} />
+            <HeaderIconZh color={color} size={actionIconSizePx} />
           )
         }
       </HeaderActionIconButton>
       <HeaderActionIconButton
+        size={actionIconSizePx}
         accessibilityLabel={t(HEADER_ICON_EXIT_LABEL_KEY)}
         onPress={handleSignOut}
       >
         {(color) => (
-          <HeaderIconExit color={color} size={AH.headerIconDisplaySize} />
+          <HeaderIconExit color={color} size={actionIconSizePx} />
         )}
       </HeaderActionIconButton>
     </View>
@@ -992,7 +1070,9 @@ export function HomeAuthenticatedHeaderRow({
               centerReservePx={wideMenuStripWidth}
               leftGrows
               onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
-              onRightWidth={(w) => setRightSlotWidthPx((prev) => (prev === w ? prev : w))}
+              onRightWidth={(w) => {
+                setRightBandAvailablePx((prev) => (prev === w ? prev : w));
+              }}
               left={balanceButton}
               right={walletAddressRow}
             />
