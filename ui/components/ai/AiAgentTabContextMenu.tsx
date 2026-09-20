@@ -161,13 +161,14 @@ function Panel({
 
 function MenuNative(props: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );
@@ -213,13 +214,14 @@ function MenuNative(props: Props) {
 
 function MenuWeb(props: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

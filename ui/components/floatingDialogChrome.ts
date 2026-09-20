@@ -8,10 +8,16 @@ export const DIALOG_PAD_X_PX = 20;
 export const DIALOG_VIEWPORT_SIDE_INSET_MIN_PX = 16;
 
 /**
- * Extra space below Telegram’s header / close control so sheet chrome does not collide.
- * Applied when TMA reports a non-zero top safe/content inset.
+ * Extra space below Telegram’s reported safe/content top inset so sheet chrome
+ * does not sit under the close / menu controls.
  */
-export const DIALOG_TMA_TOP_CLEARANCE_PX = 8;
+export const DIALOG_TMA_TOP_CLEARANCE_PX = 20;
+
+/**
+ * Floor for the dialog top inset inside TMA. Telegram’s close + ⋯ controls need
+ * roughly this much even when `safeArea` / `contentSafeArea` under-report.
+ */
+export const DIALOG_TMA_TOP_MIN_PX = 56;
 
 export type FloatingDialogViewportInsets = {
   left: number;
@@ -23,13 +29,16 @@ export type FloatingDialogViewportInsets = {
 /**
  * Viewport margins for floating dialogs.
  * - Sides: at least {@link DIALOG_VIEWPORT_SIDE_INSET_MIN_PX} (wider than zero on mobile).
- * - Top: clears TMA safeArea + contentSafeArea so sheets stay below Telegram chrome.
+ * - Top: clears TMA safeArea + contentSafeArea (and a minimum header band) so sheets
+ *   stay below Telegram’s built-in close / menu icons.
  */
 export function resolveFloatingDialogViewportInsets(opts?: {
   windowWidth?: number;
   safeAreaInsetTop?: number;
   contentSafeAreaInsetTop?: number;
   safeAreaInsetBottom?: number;
+  /** When true, apply TMA top floor even if safe/content insets are still 0. */
+  inTelegram?: boolean;
 }): FloatingDialogViewportInsets {
   const base = layout.contentSideInsetPx;
   const side = Math.max(DIALOG_VIEWPORT_SIDE_INSET_MIN_PX, base);
@@ -43,9 +52,14 @@ export function resolveFloatingDialogViewportInsets(opts?: {
   const safeTop = Math.max(0, opts?.safeAreaInsetTop ?? 0);
   const contentTop = Math.max(0, opts?.contentSafeAreaInsetTop ?? 0);
   const tmaTop = safeTop + contentTop;
+  const inTelegram = Boolean(opts?.inTelegram);
   const top =
-    tmaTop > 0
-      ? Math.max(sideInset, Math.ceil(tmaTop + DIALOG_TMA_TOP_CLEARANCE_PX))
+    tmaTop > 0 || inTelegram
+      ? Math.max(
+          sideInset,
+          DIALOG_TMA_TOP_MIN_PX,
+          Math.ceil(tmaTop + DIALOG_TMA_TOP_CLEARANCE_PX),
+        )
       : sideInset;
 
   const safeBottom = Math.max(0, opts?.safeAreaInsetBottom ?? 0);

@@ -117,7 +117,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
     readImportedWallets,
   );
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const [busy, setBusy] = useState(false);
   const [addMethodOpen, setAddMethodOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -127,6 +127,7 @@ export function SwitchWalletMenu({ visible, anchor, builtinAddress, onClose }: P
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

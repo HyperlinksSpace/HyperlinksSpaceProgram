@@ -26,7 +26,7 @@ export function AiAgentRenameDialog({ visible, initialTitle, onClose, onSave }: 
   const colors = useColors();
   const { t } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const [value, setValue] = useState(initialTitle);
   const viewportInsets = useMemo(
     () =>
@@ -34,6 +34,7 @@ export function AiAgentRenameDialog({ visible, initialTitle, onClose, onSave }: 
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

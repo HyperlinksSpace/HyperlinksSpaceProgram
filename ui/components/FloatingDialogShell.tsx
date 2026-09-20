@@ -320,7 +320,7 @@ export function FloatingDialogShell({
 }: FloatingDialogShellProps) {
   const colors = useColors();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const surfaceIdRef = useRef(allocateFloatingSurfaceId(testId));
   const [stackZ, setStackZ] = useState(() =>
     registerFloatingSurface(surfaceIdRef.current, zIndex),
@@ -345,8 +345,9 @@ export function FloatingDialogShell({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
-    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+    [contentSafeAreaInsetTop, isInTelegram, safeAreaInsetTop, windowWidth],
   );
 
   const safeCenterOffset = useMemo(

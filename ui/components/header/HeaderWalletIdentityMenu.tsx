@@ -47,7 +47,7 @@ export function HeaderWalletIdentityMenu({
 }: Props) {
   const colors = useColors();
   const { t, tf } = useAppStrings();
-  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [tonHover, setTonHover] = useState(false);
   const trimmed = address.trim();
@@ -59,6 +59,7 @@ export function HeaderWalletIdentityMenu({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

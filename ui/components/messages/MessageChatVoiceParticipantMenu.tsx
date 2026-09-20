@@ -444,13 +444,14 @@ function ParticipantMenuPanel({
 
 function MessageChatVoiceParticipantMenuNative(props: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );
@@ -513,13 +514,14 @@ function MessageChatVoiceParticipantMenuNative(props: Props) {
 
 function MessageChatVoiceParticipantMenuWeb(props: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

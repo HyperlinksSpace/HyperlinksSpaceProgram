@@ -19,7 +19,7 @@ type Props = {
 export function PrivateCallLoadingShell({ chat, onClose }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
-  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { colorScheme, safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const { t } = useAppStrings();
   const title = (chat.title ?? "").trim() || t("messages.privateCall.active");
   const avatarUrl = resolveTelegramThreadAvatarUrl(chat);
@@ -30,6 +30,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
     [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
   );

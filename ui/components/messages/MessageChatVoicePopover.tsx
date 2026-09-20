@@ -1079,15 +1079,16 @@ export function MessageChatVoicePopover({
     ],
   );
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const { safeAreaInsetTop, contentSafeAreaInsetTop } = useTelegram();
+  const { safeAreaInsetTop, contentSafeAreaInsetTop, isInTelegram } = useTelegram();
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
         windowWidth,
         safeAreaInsetTop,
         contentSafeAreaInsetTop,
+        inTelegram: isInTelegram,
       }),
-    [contentSafeAreaInsetTop, safeAreaInsetTop, windowWidth],
+    [contentSafeAreaInsetTop, isInTelegram, safeAreaInsetTop, windowWidth],
   );
   const safeCenterOffset = useMemo(
     () => floatingDialogSafeCenterOffset(viewportInsets),
