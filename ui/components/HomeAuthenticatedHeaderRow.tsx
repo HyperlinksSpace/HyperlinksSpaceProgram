@@ -153,7 +153,8 @@ function HeaderBandSlots({
           minWidth: 0,
           overflow: "hidden",
           height: "100%",
-          alignItems: "flex-end",
+          // Stretch children to the full right-band width so their own
+          // `justifyContent: "flex-end"` pins content to the trailing edge.
           justifyContent: "center",
         }}
       >
@@ -799,6 +800,7 @@ export function HomeAuthenticatedHeaderRow({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "flex-end",
+        alignSelf: "stretch",
         width: "100%",
         height: HEADER_CONTROL_ROW_PX,
       }}
@@ -815,10 +817,10 @@ export function HomeAuthenticatedHeaderRow({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "flex-end",
+        alignSelf: "stretch",
+        width: "100%",
         gap: HEADER_IDENTITY_GAP_PX,
         minWidth: 0,
-        flexShrink: 1,
-        maxWidth: "100%",
         height: HEADER_CONTROL_ROW_PX,
       }}
     >
@@ -969,6 +971,8 @@ export function HomeAuthenticatedHeaderRow({
         height: HEADER_CONTROL_ROW_PX,
         gap: actionIconGapPx,
         justifyContent: "flex-end",
+        alignSelf: "stretch",
+        width: "100%",
         flexShrink: 1,
         minWidth: 0,
       }}
