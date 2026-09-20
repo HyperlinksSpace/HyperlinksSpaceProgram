@@ -91,6 +91,8 @@ const WALLET_TO_BALANCE_OPTICAL_PULL_PX = 10;
  * digits / mono sit on the same centerline as undercover chips (wallet, more).
  */
 const HEADER_BAND_TEXT_ALIGN_TRANSFORM = { transform: [{ translateY: 0 }] };
+/** Extra optical lift for the balance digits vs the wallet undercover chip. */
+const HEADER_AMOUNT_OPTICAL_LIFT_Y = -2;
 /** Tonviewer chip diameter in the identity cluster. */
 const HEADER_EXPLORER_PX = 20;
 const HEADER_IDENTITY_GAP_PX = 8;
@@ -767,7 +769,7 @@ export function HomeAuthenticatedHeaderRow({
               color: colors.primary,
               fontSize: amountFontSizePx,
               lineHeight: HEADER_CONTROL_ROW_PX,
-              ...HEADER_BAND_TEXT_ALIGN_TRANSFORM,
+              transform: [{ translateY: HEADER_AMOUNT_OPTICAL_LIFT_Y }],
             },
           ]}
         >
