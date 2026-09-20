@@ -161,12 +161,13 @@ export function replaceBuiltinDllrLedger(input: {
   return getBuiltinDllrBalanceUsd();
 }
 
-/** Apply server session ledger when present (does not wipe local gift when server has no row). */
+/** Apply server session ledger when both legs are present (omit fields ⇒ leave local alone). */
 export function applyServerDllrLedgerFromSession(input: {
   hotUsd?: number | null;
   frozenUsd?: number | null;
 } | null | undefined): void {
   if (!input) return;
+  if (input.hotUsd == null || input.frozenUsd == null) return;
   const hot = Number(input.hotUsd);
   const frozen = Number(input.frozenUsd);
   if (!Number.isFinite(hot) || !Number.isFinite(frozen)) return;

@@ -1,4 +1,7 @@
-import { getDllrLedgerForUsername } from "../../database/dllrBalances.js";
+import {
+  ensureRegistrationDllrGift,
+  getDllrLedgerForUsername,
+} from "../../database/dllrBalances.js";
 import { bootstrapAuthenticatedFeedItems } from "../../database/feed.js";
 import { getConnection, isTelegramMessagesConnected } from "../../database/telegramMessages.js";
 import {
@@ -214,14 +217,14 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
   // Overlap wallet/profile/connected/feed/connection — do not serialize
   // getConnection behind the first batch (cold session felt "lazy").
   const connectedPromise = isTelegramMessagesConnected(row.telegram_username);
-  const [displayName, wallet, loginProfile, _telegramMessagesConnectedInitial, feed_items, dllrLedger] =
+  const [displayName, wallet, loginProfile, _telegramMessagesConnectedInitial, feed_items, ensuredLedger] =
     await Promise.all([
       getDisplayNameForUsername(row.telegram_username),
       getDefaultWalletByUsername(row.telegram_username),
       getAuthLoginProfileForUsername(row.telegram_username),
       connectedPromise,
       feedPromise,
-      getDllrLedgerForUsername(row.telegram_username).catch(() => null),
+      ensureRegistrationDllrGift(row.telegram_username).catch(() => null),
     ]);
   // Re-check after parallel work — eager gateway warmup can revoke the link while
   // connectedPromise was already in flight (session then lied connected=true).
@@ -240,15 +243,18 @@ async function handler(request: AnyRequest, res?: NodeRes): Promise<Response | v
     provider_username: loginProfile.providerUsername,
     telegram_username_actual: loginProfile.telegramUsernameActual,
   };
-  // Always emit ledger fields so the client replaces any stale localStorage balance
-  // (e.g. a previous 1B gift) instead of keeping it when the DB row is missing.
-  const dllrHot = dllrLedger?.hotUsd ?? 0;
-  const dllrFrozen = dllrLedger?.frozenUsd ?? 0;
-  const dllrFields = {
-    dllr_hot_usd: dllrHot,
-    dllr_frozen_usd: dllrFrozen,
-    dllr_balance_usd: Math.round((dllrHot + dllrFrozen) * 1e6) / 1e6,
-  };
+  // Prefer ensure result; on failure re-read. Never invent 0/0 — that wiped client ledgers.
+  const dllrLedger =
+    ensuredLedger ??
+    (await getDllrLedgerForUsername(row.telegram_username).catch(() => null));
+  const dllrFields = dllrLedger
+    ? {
+        dllr_hot_usd: dllrLedger.hotUsd,
+        dllr_frozen_usd: dllrLedger.frozenUsd,
+        dllr_balance_usd:
+          Math.round((dllrLedger.hotUsd + dllrLedger.frozenUsd) * 1e6) / 1e6,
+      }
+    : {};
   const body = wallet
     ? {
         ok: true,

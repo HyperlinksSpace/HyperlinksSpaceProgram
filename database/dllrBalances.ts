@@ -7,6 +7,9 @@ import { sql } from "./start.js";
 import { normalizeUsername } from "./users.js";
 import { findUsernamesByWalletAddress } from "./wallets.js";
 
+/** Registration gift — frozen until product rules change (must match ui/pro/dllrBalanceStore). */
+export const DLLR_REGISTRATION_FROZEN_USD = 1;
+
 export type DllrLedgerRow = {
   username: string;
   hotUsd: number;
@@ -39,6 +42,60 @@ export async function getDllrLedgerForUsername(
     username: u,
     hotUsd: parseUsd(row.hot_usd),
     frozenUsd: parseUsd(row.frozen_usd),
+  };
+}
+
+/**
+ * Ensure the account has a registration gift row. **Insert-only** when missing —
+ * never overwrites an existing ledger (protects grants and spent balances).
+ */
+export async function ensureRegistrationDllrGift(
+  telegramUsername: string,
+): Promise<DllrLedgerRow | null> {
+  const u = normalizeUsername(telegramUsername);
+  if (!u) return null;
+  const gift = DLLR_REGISTRATION_FROZEN_USD;
+  const existing = await getDllrLedgerForUsername(u);
+  if (existing) return existing;
+
+  // Insert only if still missing (race-safe). Do not ON CONFLICT UPDATE amounts.
+  await sql`
+    INSERT INTO user_dllr_balances (telegram_username, hot_usd, frozen_usd, updated_at)
+    VALUES (${u}, 0, ${gift}, NOW())
+    ON CONFLICT (telegram_username) DO NOTHING
+  `;
+  return (
+    (await getDllrLedgerForUsername(u)) ?? {
+      username: u,
+      hotUsd: 0,
+      frozenUsd: gift,
+    }
+  );
+}
+
+/**
+ * Backfill registration gift for users with **no** ledger row.
+ * Never modifies existing hot/frozen amounts.
+ */
+export async function backfillRegistrationDllrGifts(): Promise<{
+  inserted: number;
+  toppedUp: number;
+}> {
+  const gift = DLLR_REGISTRATION_FROZEN_USD;
+  const insertedRows = (await sql`
+    INSERT INTO user_dllr_balances (telegram_username, hot_usd, frozen_usd, updated_at)
+    SELECT u.telegram_username, 0, ${gift}, NOW()
+    FROM users u
+    WHERE NOT EXISTS (
+      SELECT 1 FROM user_dllr_balances b
+      WHERE b.telegram_username = u.telegram_username
+    )
+    RETURNING telegram_username
+  `) as Array<{ telegram_username?: unknown }>;
+
+  return {
+    inserted: insertedRows.length,
+    toppedUp: 0,
   };
 }
 

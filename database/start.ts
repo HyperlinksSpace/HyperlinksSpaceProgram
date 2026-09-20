@@ -592,6 +592,14 @@ async function runSchemaMigrations() {
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `;
+
+  // Insert-only: grant missing registration $1 (frozen). Never rewrites existing ledgers.
+  try {
+    const { backfillRegistrationDllrGifts } = await import("./dllrBalances.js");
+    await backfillRegistrationDllrGifts();
+  } catch {
+    /* non-fatal — auth-session ensure still heals per user */
+  }
 }
 
 let schemaInitPromise: Promise<void> | null = null;

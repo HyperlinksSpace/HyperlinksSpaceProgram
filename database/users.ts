@@ -278,6 +278,10 @@ async function upsertUserProfile(opts: UserAuthProfileInput): Promise<{ displayN
   `) as UserUpsertRow[];
 
   const displayName = rows[0]?.display_name;
+  // Dynamic import avoids a static cycle with dllrBalances → users.normalizeUsername.
+  void import("./dllrBalances.js")
+    .then((m) => m.ensureRegistrationDllrGift(telegramUsername))
+    .catch(() => null);
   if (typeof displayName === "string" && displayName.trim().length > 0) {
     return { displayName: displayName.trim() };
   }

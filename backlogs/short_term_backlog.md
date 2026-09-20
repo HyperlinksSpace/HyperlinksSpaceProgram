@@ -1,3 +1,6 @@
+Header on mobile
+Rocket sticker
+Screen time health
 Switch wallet and wallet address visual connection on wallet switching
 Через юсдт двойной роут
 Program mint/redeem desk (or on-chain vault) that always exchanges 1 DLLR ↔ 1 USDT for signed-in users / KYC tiers, funded by a USDT treasury.

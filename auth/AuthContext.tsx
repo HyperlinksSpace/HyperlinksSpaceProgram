@@ -90,12 +90,12 @@ function cacheSessionPayload(json: SessionJson, authenticated: boolean): void {
     wallet: json.wallet ?? null,
   });
   if (
-    typeof json.dllr_hot_usd === "number" ||
+    typeof json.dllr_hot_usd === "number" &&
     typeof json.dllr_frozen_usd === "number"
   ) {
     applyServerDllrLedgerFromSession({
-      hotUsd: typeof json.dllr_hot_usd === "number" ? json.dllr_hot_usd : 0,
-      frozenUsd: typeof json.dllr_frozen_usd === "number" ? json.dllr_frozen_usd : 0,
+      hotUsd: json.dllr_hot_usd,
+      frozenUsd: json.dllr_frozen_usd,
     });
   }
 }

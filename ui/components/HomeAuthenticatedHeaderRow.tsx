@@ -719,22 +719,6 @@ export function HomeAuthenticatedHeaderRow({
         height: HEADER_CONTROL_ROW_PX,
       }}
     >
-      {walletNameLabel ? (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          style={[
-            ...headerMonoLineStyle,
-            {
-              flexShrink: 1,
-              minWidth: 0,
-              maxWidth: availableNamePx > 0 ? availableNamePx : undefined,
-            },
-          ]}
-        >
-          {walletNameLabel}
-        </Text>
-      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={tf("home.header.walletAddressA11y", { snippet: displaySnippet })}
@@ -766,6 +750,22 @@ export function HomeAuthenticatedHeaderRow({
           address={trimmed}
           accessibilityLabel={t("home.header.openTonviewerA11y")}
         />
+      ) : null}
+      {walletNameLabel ? (
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="clip"
+          style={[
+            ...headerMonoLineStyle,
+            {
+              flexShrink: 1,
+              minWidth: 0,
+              maxWidth: availableNamePx > 0 ? availableNamePx : undefined,
+            },
+          ]}
+        >
+          {walletNameLabel}
+        </Text>
       ) : null}
     </View>
   );
