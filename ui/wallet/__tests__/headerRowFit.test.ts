@@ -8,19 +8,47 @@ import {
   shouldStickCompactFirstHeaderRow,
 } from "../headerRowFit";
 import { formatHeaderWalletBalanceLabel } from "../formatHeaderWalletBalanceLabel";
-
-function headerSnippet(address: string): string {
-  const value = address.replace(/\s+/g, "").trim();
-  if (!value) return "…";
-  if (value.length <= 4) return value;
-  return `....${value.slice(-4)}`;
-}
+import {
+  fitHeaderAddressTailLength,
+  walletAddressHeaderSnippet,
+} from "../walletAddressFormat";
 
 describe("walletAddressHeaderSnippet", () => {
-  it("shows four dots and the last four characters", () => {
-    assert.equal(headerSnippet("UQBY1YxxxxgM-NF8"), "....-NF8");
-    assert.equal(headerSnippet("ABCD"), "ABCD");
-    assert.equal(headerSnippet(""), "…");
+  it("shows two dots and the last five characters by default", () => {
+    assert.equal(walletAddressHeaderSnippet("UQBY1YxxxxgM-NF8"), "..M-NF8");
+    assert.equal(walletAddressHeaderSnippet("ABCD"), "ABCD");
+    assert.equal(walletAddressHeaderSnippet(""), "…");
+  });
+
+  it("never goes below two address characters", () => {
+    assert.equal(walletAddressHeaderSnippet("UQBY1YxxxxgM-NF8", 2), "..F8");
+    assert.equal(walletAddressHeaderSnippet("UQBY1YxxxxgM-NF8", 1), "..F8");
+  });
+});
+
+describe("fitHeaderAddressTailLength", () => {
+  it("prefers five characters when the identity slot is wide enough", () => {
+    assert.equal(
+      fitHeaderAddressTailLength({
+        identitySlotPx: 200,
+        monoCharWidthPx: 9,
+        explorerChromePx: 28,
+        nameFloorPx: 20,
+      }),
+      5,
+    );
+  });
+
+  it("steps down to two when space is tight", () => {
+    assert.equal(
+      fitHeaderAddressTailLength({
+        identitySlotPx: 80,
+        monoCharWidthPx: 9,
+        explorerChromePx: 28,
+        nameFloorPx: 20,
+      }),
+      2,
+    );
   });
 });
 
@@ -37,7 +65,7 @@ describe("formatHeaderWalletBalanceLabel", () => {
 });
 
 describe("pickHeaderDisplayName", () => {
-  it("keeps the full name when it fits and drops the last token when it does not", () => {
+  it("keeps the full name when it fits and floors to one letter when tight", () => {
     assert.equal(
       pickHeaderDisplayName({
         fullName: "Ada Lovelace",
@@ -45,6 +73,7 @@ describe("pickHeaderDisplayName", () => {
         availablePx: 200,
         fullNameWidthPx: 120,
         firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
       }),
       "Ada Lovelace",
     );
@@ -55,6 +84,7 @@ describe("pickHeaderDisplayName", () => {
         availablePx: 80,
         fullNameWidthPx: 120,
         firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
       }),
       "Ada",
     );
@@ -62,11 +92,12 @@ describe("pickHeaderDisplayName", () => {
       pickHeaderDisplayName({
         fullName: "Ada Lovelace",
         firstName: "Ada",
-        availablePx: 20,
+        availablePx: 10,
         fullNameWidthPx: 120,
         firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
       }),
-      "Ada",
+      "A",
     );
     assert.equal(
       pickHeaderDisplayName({

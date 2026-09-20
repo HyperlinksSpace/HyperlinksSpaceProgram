@@ -1,10 +1,12 @@
-/** Header identity: prefer the full name, then first token. Never hide once a name exists. */
+/** Header identity: prefer the full name, then first token. Never hide below one letter. */
 export function pickHeaderDisplayName(options: {
   fullName: string | null;
   firstName: string | null;
   availablePx: number;
   fullNameWidthPx: number;
   firstNameWidthPx: number;
+  /** Width of the first glyph of `firstName` (floor when space is tight). */
+  firstLetterWidthPx?: number;
   /** Slot has been measured; until then keep the first name so the label does not flash. */
   slotReady?: boolean;
   previous?: string | null;
@@ -12,21 +14,33 @@ export function pickHeaderDisplayName(options: {
   const full = options.fullName?.trim() || null;
   const first = options.firstName?.trim() || full;
   if (!full || !first) return null;
+  const firstLetter = first.slice(0, 1);
   const availablePx = options.availablePx;
   const fullW = options.fullNameWidthPx;
+  const firstW = options.firstNameWidthPx;
+  const letterW = Math.max(0, options.firstLetterWidthPx ?? 0);
   const previous = options.previous ?? null;
   const slotReady = options.slotReady !== false && availablePx > 0;
   if (!slotReady) {
-    return previous === first || previous === full ? previous : first;
+    if (previous === first || previous === full || previous === firstLetter) return previous;
+    return first;
   }
   const expandSlackPx = 28;
   const keepSlackPx = 8;
   const fullFits = fullW > 0 && fullW <= availablePx + keepSlackPx;
   const fullFitsExpand = fullW > 0 && fullW <= availablePx - expandSlackPx;
   if (previous === full && (fullFits || fullW <= 0)) return full;
-  if (previous === first && fullW > 0 && !fullFitsExpand) return first;
+  if (previous === first && firstW > 0 && firstW <= availablePx + keepSlackPx) return first;
+  if (previous === first && fullW > 0 && !fullFitsExpand) {
+    // First name itself no longer fits — floor to one letter, never blank.
+    if (firstW > availablePx + keepSlackPx) return firstLetter;
+    return first;
+  }
   if (fullFits) return full;
-  return first;
+  if (firstW > 0 && firstW <= availablePx + keepSlackPx) return first;
+  // Tightest floor: keep one letter of the name visible.
+  if (letterW > 0 && letterW > availablePx + keepSlackPx) return firstLetter;
+  return firstLetter;
 }
 
 export const HEADER_AMOUNT_FONT_MAX_PX = 30;

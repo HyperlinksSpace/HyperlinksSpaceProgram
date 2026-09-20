@@ -38,7 +38,11 @@ import { UndercoverProButton, UndercoverWalletButton } from "./swap/SwapFormIcon
 import { ProAccessDialog } from "../pro/ProAccessDialog";
 import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
-import { trimWalletAddress, walletAddressHeaderSnippet } from "../wallet/walletAddressFormat";
+import {
+  fitHeaderAddressTailLength,
+  trimWalletAddress,
+  walletAddressHeaderSnippet,
+} from "../wallet/walletAddressFormat";
 import {
   fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
@@ -445,6 +449,7 @@ export function HomeAuthenticatedHeaderRow({
   const [naturalAmountWidthPx, setNaturalAmountWidthPx] = useState(0);
   const [fullNameWidthPx, setFullNameWidthPx] = useState(0);
   const [firstNameWidthPx, setFirstNameWidthPx] = useState(0);
+  const [firstLetterWidthPx, setFirstLetterWidthPx] = useState(0);
   const [snippetWidthPx, setSnippetWidthPx] = useState(0);
   const [switchWalletWidthPx, setSwitchWalletWidthPx] = useState(0);
   const switchWalletRef = useRef<View>(null);
@@ -519,19 +524,19 @@ export function HomeAuthenticatedHeaderRow({
   });
   const balanceLabel =
     knownWalletAddresses.length > 0 ? allWalletsBalanceLabel : headerBalanceLabel;
-  const displaySnippet = walletAddressHeaderSnippet(trimmed);
   const headerIdentity = (() => {
     const name = displayName.trim();
     const emDash = t("common.emDash");
     if (!name || name === emDash) {
-      return { fullName: null as string | null, firstName: null as string | null };
+      return {
+        fullName: null as string | null,
+        firstName: null as string | null,
+        firstLetter: null as string | null,
+      };
     }
     const first = name.split(/\s+/).filter(Boolean)[0] ?? name;
-    return { fullName: name, firstName: first };
+    return { fullName: name, firstName: first, firstLetter: first.slice(0, 1) };
   })();
-  const identityChromePx =
-    (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * 9) +
-    (trimmed ? HEADER_EXPLORER_PX + HEADER_IDENTITY_GAP_PX : 0);
   const innerContentW = Math.max(0, widthForLayout - 2 * layout.contentSideInsetPx);
   const estimatedWideSidePx = Math.max(0, (innerContentW - wideMenuStripWidth) / 2);
   const nameSlotPx = atOrAboveFirstBreakpoint
@@ -542,21 +547,48 @@ export function HomeAuthenticatedHeaderRow({
         0,
         innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - (naturalAmountWidthPx || 0),
       );
+  const nameFloorPx = headerIdentity.firstLetter
+    ? Math.max(
+        firstLetterWidthPx,
+        firstNameWidthPx > 0 && headerIdentity.firstName
+          ? Math.ceil(firstNameWidthPx / Math.max(1, headerIdentity.firstName.length))
+          : 0,
+        8,
+      )
+    : 0;
+  const explorerChromePx = trimmed ? HEADER_EXPLORER_PX + HEADER_IDENTITY_GAP_PX : 0;
+  const monoCharWidthPx = 9;
+  // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
+  const addressTailLength = trimmed
+    ? fitHeaderAddressTailLength({
+        identitySlotPx: nameSlotPx,
+        monoCharWidthPx,
+        explorerChromePx,
+        nameFloorPx: nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0,
+      })
+    : 5;
+  const displaySnippet = walletAddressHeaderSnippet(trimmed, addressTailLength);
+  const identityChromePx =
+    (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * monoCharWidthPx) +
+    explorerChromePx;
   const slotReady =
-    fullNameWidthPx > 0 &&
+    (headerIdentity.fullName ? fullNameWidthPx > 0 : true) &&
     (atOrAboveFirstBreakpoint
       ? rightBandAvailablePx > 0
       : chipClusterWidthPx > 0 || naturalAmountWidthPx > 0);
-  const availableNamePx = Math.max(
-    0,
-    nameSlotPx - identityChromePx - (headerIdentity.fullName ? HEADER_IDENTITY_GAP_PX : 0),
-  );
+  const availableNamePx = headerIdentity.fullName
+    ? Math.max(
+        nameFloorPx,
+        nameSlotPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
+      )
+    : Math.max(0, nameSlotPx - identityChromePx);
   const walletNameLabel = pickHeaderDisplayName({
     fullName: headerIdentity.fullName,
     firstName: headerIdentity.firstName,
     availablePx: availableNamePx,
     fullNameWidthPx,
     firstNameWidthPx,
+    firstLetterWidthPx,
     slotReady,
     previous: headerNameChoiceRef.current,
   });
@@ -753,7 +785,7 @@ export function HomeAuthenticatedHeaderRow({
             ...headerMonoLineStyle,
             {
               flexShrink: 1,
-              minWidth: 0,
+              minWidth: nameFloorPx > 0 ? nameFloorPx : 0,
               maxWidth: availableNamePx > 0 ? availableNamePx : undefined,
             },
           ]}
@@ -1022,6 +1054,17 @@ export function HomeAuthenticatedHeaderRow({
           style={headerMonoLineStyle}
         >
           {headerIdentity.firstName}
+        </Text>
+      ) : null}
+      {headerIdentity.firstLetter ? (
+        <Text
+          onLayout={(e) => {
+            const w = Math.round(e.nativeEvent.layout.width);
+            if (w > 0) setFirstLetterWidthPx((prev) => (prev === w ? prev : w));
+          }}
+          style={headerMonoLineStyle}
+        >
+          {headerIdentity.firstLetter}
         </Text>
       ) : null}
     </View>
