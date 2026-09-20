@@ -312,8 +312,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
         label: "Google Cloud",
         usdMonthEstimate: gcpUsd,
         detail:
-          gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
-            ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
+          gcp.source === "live" && amneziaOverlapUsd > 0 && gcpUsdRaw > gcpUsd
+            ? `${gcp.detail} · Amnezia VPS billed $${amneziaOverlapUsd.toFixed(2)} shown separately`
             : gcp.detail,
       };
     }
@@ -395,8 +395,8 @@ async function buildPayload(probeOverride?: ReturnType<typeof buildConsumptionPr
       ...gcp,
       usdMonth: gcpUsd,
       detail:
-        gcp.source === "live" && amneziaBilledMonth > 0 && gcpUsdRaw > gcpUsd
-          ? `${gcp.detail} · Amnezia VPS billed $${amneziaBilledMonth.toFixed(2)} shown separately`
+        gcp.source === "live" && amneziaOverlapUsd > 0 && gcpUsdRaw > gcpUsd
+          ? `${gcp.detail} · Amnezia VPS billed $${amneziaOverlapUsd.toFixed(2)} shown separately`
           : gcp.detail,
     },
     amneziaVpsUsage: amnezia,
