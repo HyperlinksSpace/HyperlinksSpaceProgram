@@ -130,7 +130,7 @@ function HeaderBandSlots({
         style={{
           // `flex: 0` is flexBasis 0 on RN — the compact amount/chips would clip away.
           flexGrow: leftGrows ? 1 : 0,
-          flexShrink: leftGrows ? 1 : 0,
+          flexShrink: 1,
           flexBasis: leftGrows ? 0 : "auto",
           minWidth: leftGrows ? 0 : undefined,
           overflow: leftGrows ? "hidden" : "visible",
@@ -141,21 +141,32 @@ function HeaderBandSlots({
         {left}
       </View>
       {centerReservePx > 0 ? (
-        <View style={{ width: centerReservePx, flexShrink: 0, height: "100%" }} />
-      ) : null}
+        <View
+          style={{
+            flexGrow: 1,
+            flexShrink: 0,
+            minWidth: centerReservePx,
+            height: "100%",
+          }}
+        />
+      ) : (
+        <View style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%" }} />
+      )}
       <View
         onLayout={(e) => {
           const w = Math.round(e.nativeEvent.layout.width);
           if (w > 0) onRightWidth?.(w);
         }}
         style={{
-          flex: 1,
+          // Intrinsic trailing column — sits on the content’s right edge (not a half-width band).
+          flexGrow: 0,
+          flexShrink: 1,
           minWidth: 0,
+          maxWidth: centerReservePx > 0 ? "45%" : "100%",
           overflow: "hidden",
           height: "100%",
-          // Stretch children to the full right-band width so their own
-          // `justifyContent: "flex-end"` pins content to the trailing edge.
           justifyContent: "center",
+          alignItems: "flex-end",
         }}
       >
         {right}
@@ -819,59 +830,76 @@ export function HomeAuthenticatedHeaderRow({
         justifyContent: "flex-end",
         alignSelf: "stretch",
         width: "100%",
-        gap: HEADER_IDENTITY_GAP_PX,
-        minWidth: 0,
         height: HEADER_CONTROL_ROW_PX,
       }}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={tf("home.header.walletAddressA11y", { snippet: displaySnippet })}
-        accessibilityHint={t("home.header.copyWalletHint")}
-        disabled={!trimmed}
-        hitSlop={AH.headerPressableHitSlop}
-        onPress={() => {
-          void copyFullWalletAddress();
-        }}
+      {/*
+        Intrinsic-width cluster: a large name `maxWidth` must not expand the row and
+        leave “Morgan” looking inset from the trailing edge.
+      */}
+      <View
         style={{
-          flexShrink: 0,
-          height: HEADER_CONTROL_ROW_PX,
-          justifyContent: "center",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: HEADER_IDENTITY_GAP_PX,
+          flexGrow: 0,
+          flexShrink: 1,
+          minWidth: 0,
+          maxWidth: "100%",
         }}
       >
-        <Text
-          numberOfLines={1}
-          onLayout={(e) => {
-            const w = Math.round(e.nativeEvent.layout.width);
-            if (w > 0) setSnippetWidthPx((prev) => (prev === w ? prev : w));
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={tf("home.header.walletAddressA11y", { snippet: displaySnippet })}
+          accessibilityHint={t("home.header.copyWalletHint")}
+          disabled={!trimmed}
+          hitSlop={AH.headerPressableHitSlop}
+          onPress={() => {
+            void copyFullWalletAddress();
           }}
-          style={headerMonoLineStyle}
+          style={{
+            flexGrow: 0,
+            flexShrink: 0,
+            height: HEADER_CONTROL_ROW_PX,
+            justifyContent: "center",
+          }}
         >
-          {displaySnippet}
-        </Text>
-      </Pressable>
-      {trimmed ? (
-        <TonviewerExplorerButton
-          address={trimmed}
-          accessibilityLabel={t("home.header.openTonviewerA11y")}
-        />
-      ) : null}
-      {walletNameLabel ? (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="clip"
-          style={[
-            ...headerMonoLineStyle,
-            {
-              flexShrink: 1,
-              minWidth: nameFloorPx > 0 ? nameFloorPx : 0,
-              maxWidth: availableNamePx > 0 ? availableNamePx : undefined,
-            },
-          ]}
-        >
-          {walletNameLabel}
-        </Text>
-      ) : null}
+          <Text
+            numberOfLines={1}
+            onLayout={(e) => {
+              const w = Math.round(e.nativeEvent.layout.width);
+              if (w > 0) setSnippetWidthPx((prev) => (prev === w ? prev : w));
+            }}
+            style={headerMonoLineStyle}
+          >
+            {displaySnippet}
+          </Text>
+        </Pressable>
+        {trimmed ? (
+          <TonviewerExplorerButton
+            address={trimmed}
+            accessibilityLabel={t("home.header.openTonviewerA11y")}
+          />
+        ) : null}
+        {walletNameLabel ? (
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="clip"
+            style={[
+              ...headerMonoLineStyle,
+              {
+                flexGrow: 0,
+                flexShrink: 1,
+                minWidth: nameFloorPx > 0 ? nameFloorPx : 0,
+                ...(availableNamePx > 0 ? { maxWidth: availableNamePx } : null),
+              },
+            ]}
+          >
+            {walletNameLabel}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 
