@@ -128,6 +128,67 @@ export function UndercoverWalletButton({
   );
 }
 
+function MoreVerticalGlyph({ color, size = 17 }: { color: string; size?: number }) {
+  const r = size * 0.08;
+  const cx = size / 2;
+  const ys = [size * 0.22, size * 0.5, size * 0.78];
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+      {ys.map((cy) => (
+        <Circle key={cy} cx={cx} cy={cy} r={Math.max(1.5, r)} fill={color} />
+      ))}
+    </Svg>
+  );
+}
+
+/** Circular undercover chip with three vertical dots (header identity overflow). */
+export function UndercoverMoreButton({
+  onPress,
+  accessibilityLabel,
+  disabled,
+  active = false,
+}: {
+  onPress?: () => void;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  active?: boolean;
+}) {
+  const colors = useColors();
+  const { colorScheme } = useTelegram();
+  const [hover, setHover] = useState(false);
+  const { contentColor, backgroundColor } = undercoverChipColors(
+    colors,
+    colorScheme,
+    active,
+    hover,
+  );
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ expanded: active }}
+      disabled={disabled}
+      onPress={onPress}
+      onHoverIn={Platform.OS === "web" ? () => setHover(true) : undefined}
+      onHoverOut={Platform.OS === "web" ? () => setHover(false) : undefined}
+      style={({ pressed }) => ({
+        width: UNDERCOVER_CIRCLE_PX,
+        height: UNDERCOVER_CIRCLE_PX,
+        borderRadius: UNDERCOVER_CIRCLE_PX / 2,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor:
+          !active && pressed
+            ? welcomeAuthButtonActiveBackground(colors, colorScheme)
+            : backgroundColor,
+      })}
+    >
+      <MoreVerticalGlyph color={contentColor} />
+    </Pressable>
+  );
+}
+
 /** Rectangle PRO chip: inactive = inner dotted border; subscribed = flat undercover. */
 export function UndercoverProButton({
   onPress,

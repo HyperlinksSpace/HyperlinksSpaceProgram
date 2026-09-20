@@ -43,6 +43,21 @@ export function pickHeaderDisplayName(options: {
   return firstLetter;
 }
 
+/** True when the minimized identity cluster cannot fit the available slot. */
+export function shouldUseHeaderIdentityOverflow(options: {
+  identitySlotPx: number;
+  minClusterPx: number;
+  /** Overflow chip diameter (undercover circle). */
+  overflowChipPx: number;
+}): boolean {
+  const slot = Math.max(0, options.identitySlotPx);
+  const minCluster = Math.max(0, options.minClusterPx);
+  const chip = Math.max(1, options.overflowChipPx);
+  if (!(minCluster > 0)) return false;
+  // Collapse to the chip whenever the minimized row no longer fits.
+  return minCluster > slot && chip > 0;
+}
+
 export const HEADER_AMOUNT_FONT_MAX_PX = 30;
 export const HEADER_AMOUNT_FONT_MIN_PX = 12;
 

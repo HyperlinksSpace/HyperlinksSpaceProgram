@@ -13,7 +13,7 @@ const CIRCLE_PX = 20;
 const ICON_PX = 14;
 
 /** Official Tonviewer mark (diamond) from tonviewer.com branding. */
-function TonviewerGlyph({ size = ICON_PX }: { size?: number }) {
+export function TonviewerGlyph({ size = ICON_PX }: { size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 40 40" fill="none">
       <Path fill="#89B8FF" d="m11 20 9-14 9 14-9 14z" />

@@ -34,13 +34,14 @@ import { openSwapCurrenciesBrowse } from "../swap/swapCurrencyPicker";
 import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../authenticatedHomeSelectedChat";
 import { TonviewerExplorerButton } from "./TonviewerExplorerButton";
 import { SwitchWalletMenu } from "./wallet/SwitchWalletMenu";
-import { UndercoverProButton, UndercoverWalletButton } from "./swap/SwapFormIcons";
+import { UndercoverMoreButton, UndercoverProButton, UndercoverWalletButton } from "./swap/SwapFormIcons";
 import { ProAccessDialog } from "../pro/ProAccessDialog";
 import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
 import {
   fitHeaderAddressTailLength,
   trimWalletAddress,
+  WALLET_ADDRESS_HEADER_TAIL_MIN_LENGTH,
   walletAddressHeaderSnippet,
 } from "../wallet/walletAddressFormat";
 import {
@@ -51,6 +52,7 @@ import {
   HEADER_ACTION_ICON_MIN_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
   pickHeaderDisplayName,
+  shouldUseHeaderIdentityOverflow,
 } from "../wallet/headerRowFit";
 import {
   resolveActiveWalletAddress,
@@ -65,6 +67,7 @@ import { useAllWalletsHeaderBalanceLabel } from "../wallet/useWalletUsdBalanceBy
 import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { HeaderAddressCopiedDialog } from "./header/HeaderAddressCopiedDialog";
 import { HeaderRenameDisplayNameDialog } from "./header/HeaderRenameDisplayNameDialog";
+import { HeaderWalletIdentityMenu } from "./header/HeaderWalletIdentityMenu";
 import { HeaderWalletMnemonicDialog } from "./header/HeaderWalletMnemonicDialog";
 import {
   HeaderIconCopy,
@@ -443,6 +446,8 @@ export function HomeAuthenticatedHeaderRow({
   const [copiedDialogOpen, setCopiedDialogOpen] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [mnemonicDialogOpen, setMnemonicDialogOpen] = useState(false);
+  const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
+  const [identityMenuAnchor, setIdentityMenuAnchor] = useState<LayoutRectangle | null>(null);
   const [rightBandAvailablePx, setRightBandAvailablePx] = useState(0);
   const [leftSlotWidthPx, setLeftSlotWidthPx] = useState(0);
   const [chipClusterWidthPx, setChipClusterWidthPx] = useState(0);
@@ -453,6 +458,7 @@ export function HomeAuthenticatedHeaderRow({
   const [snippetWidthPx, setSnippetWidthPx] = useState(0);
   const [switchWalletWidthPx, setSwitchWalletWidthPx] = useState(0);
   const switchWalletRef = useRef<View>(null);
+  const identityOverflowRef = useRef<View>(null);
   const headerNameChoiceRef = useRef<string | null>(null);
   const proSubscribed = useSyncExternalStore(
     subscribeProAccess,
@@ -475,6 +481,12 @@ export function HomeAuthenticatedHeaderRow({
     switchWalletRef.current?.measureInWindow((x, y, width, height) => {
       setSwitchWalletAnchor({ x, y, width, height });
       setSwitchWalletOpen(true);
+    });
+  }, []);
+  const openIdentityOverflowMenu = useCallback(() => {
+    identityOverflowRef.current?.measureInWindow((x, y, width, height) => {
+      setIdentityMenuAnchor({ x, y, width, height });
+      setIdentityMenuOpen(true);
     });
   }, []);
   const liveViewportWidthPx = readAuthenticatedHomeLayoutWidthPx(windowWidth);
@@ -539,14 +551,6 @@ export function HomeAuthenticatedHeaderRow({
   })();
   const innerContentW = Math.max(0, widthForLayout - 2 * layout.contentSideInsetPx);
   const estimatedWideSidePx = Math.max(0, (innerContentW - wideMenuStripWidth) / 2);
-  const nameSlotPx = atOrAboveFirstBreakpoint
-    ? rightBandAvailablePx > 0
-      ? rightBandAvailablePx
-      : estimatedWideSidePx
-    : Math.max(
-        0,
-        innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - (naturalAmountWidthPx || 0),
-      );
   const nameFloorPx = headerIdentity.firstLetter
     ? Math.max(
         firstLetterWidthPx,
@@ -558,6 +562,43 @@ export function HomeAuthenticatedHeaderRow({
     : 0;
   const explorerChromePx = trimmed ? HEADER_EXPLORER_PX + HEADER_IDENTITY_GAP_PX : 0;
   const monoCharWidthPx = 9;
+  const minSnippet = walletAddressHeaderSnippet(
+    trimmed,
+    WALLET_ADDRESS_HEADER_TAIL_MIN_LENGTH,
+  );
+  const minIdentityClusterPx =
+    (trimmed ? minSnippet.length * monoCharWidthPx : 0) +
+    explorerChromePx +
+    (nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0);
+  // Compact: reserve amount width at the font size that still leaves room for the
+  // minimized identity (or the overflow chip), so overflow detection is not stuck
+  // on the unscaled 30px amount width.
+  const compactAmountBudgetPx = Math.max(
+    0,
+    innerContentW -
+      chipClusterWidthPx -
+      HEADER_IDENTITY_GAP_PX -
+      Math.max(minIdentityClusterPx, HEADER_CONTROL_ROW_PX) -
+      HEADER_IDENTITY_GAP_PX,
+  );
+  const compactAmountFontPx = fitHeaderAmountFontSize(
+    naturalAmountWidthPx,
+    compactAmountBudgetPx,
+  );
+  const compactAmountWidthPx =
+    naturalAmountWidthPx > 0
+      ? Math.ceil(
+          naturalAmountWidthPx * (compactAmountFontPx / HEADER_AMOUNT_FONT_MAX_PX),
+        )
+      : 0;
+  const nameSlotPx = atOrAboveFirstBreakpoint
+    ? rightBandAvailablePx > 0
+      ? rightBandAvailablePx
+      : estimatedWideSidePx
+    : Math.max(
+        0,
+        innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - compactAmountWidthPx,
+      );
   // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
   const addressTailLength = trimmed
     ? fitHeaderAddressTailLength({
@@ -568,9 +609,17 @@ export function HomeAuthenticatedHeaderRow({
       })
     : 5;
   const displaySnippet = walletAddressHeaderSnippet(trimmed, addressTailLength);
-  const identityChromePx =
-    (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * monoCharWidthPx) +
-    explorerChromePx;
+  const identityOverflow =
+    Boolean(trimmed || headerIdentity.fullName) &&
+    shouldUseHeaderIdentityOverflow({
+      identitySlotPx: nameSlotPx,
+      minClusterPx: minIdentityClusterPx,
+      overflowChipPx: HEADER_CONTROL_ROW_PX,
+    });
+  const identityChromePx = identityOverflow
+    ? HEADER_CONTROL_ROW_PX
+    : (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * monoCharWidthPx) +
+      explorerChromePx;
   const slotReady =
     (headerIdentity.fullName ? fullNameWidthPx > 0 : true) &&
     (atOrAboveFirstBreakpoint
@@ -734,7 +783,25 @@ export function HomeAuthenticatedHeaderRow({
     },
   ];
 
-  const walletAddressRow = (
+  const walletAddressRow = identityOverflow ? (
+    <View
+      ref={identityOverflowRef}
+      collapsable={false}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        width: "100%",
+        height: HEADER_CONTROL_ROW_PX,
+      }}
+    >
+      <UndercoverMoreButton
+        accessibilityLabel={t("home.header.walletIdentityMoreA11y")}
+        active={identityMenuOpen}
+        onPress={openIdentityOverflowMenu}
+      />
+    </View>
+  ) : (
     <View
       style={{
         flexDirection: "row",
@@ -1206,6 +1273,19 @@ export function HomeAuthenticatedHeaderRow({
       anchor={switchWalletAnchor}
       builtinAddress={builtinTrimmed}
       onClose={() => setSwitchWalletOpen(false)}
+    />
+    <HeaderWalletIdentityMenu
+      visible={identityMenuOpen}
+      anchor={identityMenuAnchor}
+      address={trimmed}
+      displayName={
+        headerIdentity.fullName ??
+        (displayName.trim() === t("common.emDash") ? null : displayName.trim() || null)
+      }
+      onCopyAddress={() => {
+        void copyFullWalletAddress();
+      }}
+      onClose={() => setIdentityMenuOpen(false)}
     />
     <HeaderAddressCopiedDialog
       visible={copiedDialogOpen}

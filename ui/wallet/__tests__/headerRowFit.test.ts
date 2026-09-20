@@ -6,6 +6,7 @@ import {
   fitHeaderAmountFontSize,
   pickHeaderDisplayName,
   shouldStickCompactFirstHeaderRow,
+  shouldUseHeaderIdentityOverflow,
 } from "../headerRowFit";
 import { formatHeaderWalletBalanceLabel } from "../formatHeaderWalletBalanceLabel";
 import {
@@ -129,6 +130,27 @@ describe("fitHeaderActionIconSize", () => {
     assert.equal(tight.sizePx < 24, true);
     assert.equal(tight.sizePx >= 12, true);
     assert.equal(5 * tight.sizePx + 4 * tight.gapPx <= 90, true);
+  });
+});
+
+describe("shouldUseHeaderIdentityOverflow", () => {
+  it("collapses to the more chip when the minimized cluster overflows", () => {
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 120,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 80,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+      }),
+      true,
+    );
   });
 });
 
