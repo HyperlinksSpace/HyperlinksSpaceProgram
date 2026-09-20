@@ -88,10 +88,10 @@ const HEADER_CONTROL_ROW_PX = layout.bottomBar.undercoverButtonHeightPx;
  */
 const WALLET_TO_BALANCE_OPTICAL_PULL_PX = 10;
 /**
- * 30px balance digits sit optically low in the line box vs the wallet/PRO chips.
- * Replaces the global Text −1px nudge with a stronger lift for this size only.
+ * Cancel global Text `uiTextVerticalCompensationY` (−1) in the 30px header band so
+ * digits / mono sit on the same centerline as undercover chips (wallet, more).
  */
-const BALANCE_OPTICAL_NUDGE_Y_PX = -2;
+const HEADER_BAND_TEXT_ALIGN_TRANSFORM = { transform: [{ translateY: 0 }] };
 /** Tonviewer chip diameter in the identity cluster. */
 const HEADER_EXPLORER_PX = 20;
 const HEADER_IDENTITY_GAP_PX = 8;
@@ -117,7 +117,7 @@ function HeaderBandSlots({
     <View
       style={{
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "stretch",
         height: WIDE_HEADER_BAND_PX,
         width: "100%",
       }}
@@ -134,6 +134,7 @@ function HeaderBandSlots({
           flexBasis: leftGrows ? 0 : "auto",
           minWidth: leftGrows ? 0 : undefined,
           overflow: leftGrows ? "hidden" : "visible",
+          height: "100%",
           justifyContent: "center",
         }}
       >
@@ -151,6 +152,7 @@ function HeaderBandSlots({
           flex: 1,
           minWidth: 0,
           overflow: "hidden",
+          height: "100%",
           alignItems: "flex-end",
           justifyContent: "center",
         }}
@@ -725,7 +727,12 @@ export function HomeAuthenticatedHeaderRow({
           const w = Math.round(e.nativeEvent.layout.width);
           if (w > 0) setChipClusterWidthPx((prev) => (prev === w ? prev : w));
         }}
-        style={{ flexDirection: "row", alignItems: "center", flexShrink: 0 }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          height: HEADER_CONTROL_ROW_PX,
+          flexShrink: 0,
+        }}
       >
         <UndercoverProButton
           accessibilityLabel={t("pro.buyCta")}
@@ -765,7 +772,7 @@ export function HomeAuthenticatedHeaderRow({
               color: colors.primary,
               fontSize: amountFontSizePx,
               lineHeight: HEADER_CONTROL_ROW_PX,
-              transform: [{ translateY: BALANCE_OPTICAL_NUDGE_Y_PX }],
+              ...HEADER_BAND_TEXT_ALIGN_TRANSFORM,
             },
           ]}
         >
@@ -780,6 +787,7 @@ export function HomeAuthenticatedHeaderRow({
     {
       color: colors.secondary,
       lineHeight: HEADER_CONTROL_ROW_PX,
+      ...HEADER_BAND_TEXT_ALIGN_TRANSFORM,
     },
   ];
 
