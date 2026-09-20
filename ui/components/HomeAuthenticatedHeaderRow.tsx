@@ -48,7 +48,6 @@ import {
   fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
   HEADER_ACTION_ICON_COUNT,
-  HEADER_ACTION_ICON_MAX_PX,
   HEADER_ACTION_ICON_MIN_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
   pickHeaderDisplayName,
@@ -143,11 +142,12 @@ function HeaderBandSlots({
       {centerReservePx > 0 ? (
         <View
           style={{
-            // Fixed menu reserve only — do not absorb leftover width or the side
-            // slots never get a real available-width measurement.
-            width: centerReservePx,
-            flexGrow: 0,
+            // Absorb leftover so the right column stays intrinsic on the trailing
+            // edge (not a half-width band). Fit budgets use a computed side width,
+            // not this spacer’s onLayout.
+            flexGrow: 1,
             flexShrink: 0,
+            minWidth: centerReservePx,
             height: "100%",
           }}
         />
@@ -160,14 +160,11 @@ function HeaderBandSlots({
           if (w > 0) onRightWidth?.(w);
         }}
         style={{
-          // Wide: share leftover with the left band so fit logic sees real free
-          // space; content still docks to the trailing edge via alignItems.
-          // Compact: stay intrinsic — compact fit uses content-width math, not
-          // this onLayout width.
-          flexGrow: centerReservePx > 0 ? 1 : 0,
+          // Intrinsic trailing column — docks address/icons to the content edge.
+          flexGrow: 0,
           flexShrink: 1,
-          flexBasis: centerReservePx > 0 ? 0 : "auto",
           minWidth: 0,
+          maxWidth: centerReservePx > 0 ? "45%" : "100%",
           overflow: "hidden",
           height: "100%",
           justifyContent: "center",
@@ -467,7 +464,6 @@ export function HomeAuthenticatedHeaderRow({
   const [mnemonicDialogOpen, setMnemonicDialogOpen] = useState(false);
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
   const [identityMenuAnchor, setIdentityMenuAnchor] = useState<LayoutRectangle | null>(null);
-  const [rightBandAvailablePx, setRightBandAvailablePx] = useState(0);
   const [leftSlotWidthPx, setLeftSlotWidthPx] = useState(0);
   const [chipClusterWidthPx, setChipClusterWidthPx] = useState(0);
   const [naturalAmountWidthPx, setNaturalAmountWidthPx] = useState(0);
@@ -610,10 +606,11 @@ export function HomeAuthenticatedHeaderRow({
           naturalAmountWidthPx * (compactAmountFontPx / HEADER_AMOUNT_FONT_MAX_PX),
         )
       : 0;
+  // Wide fit budget is the fair side share around the menu — not the intrinsic
+  // right column’s onLayout width (that shrink-wraps and collapses fit).
+  const wideSideBudgetPx = estimatedWideSidePx;
   const nameSlotPx = atOrAboveFirstBreakpoint
-    ? rightBandAvailablePx > 0
-      ? rightBandAvailablePx
-      : estimatedWideSidePx
+    ? wideSideBudgetPx
     : Math.max(
         0,
         innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - compactAmountWidthPx,
@@ -642,7 +639,7 @@ export function HomeAuthenticatedHeaderRow({
   const slotReady =
     (headerIdentity.fullName ? fullNameWidthPx > 0 : true) &&
     (atOrAboveFirstBreakpoint
-      ? rightBandAvailablePx > 0
+      ? wideSideBudgetPx > 0
       : chipClusterWidthPx > 0 || naturalAmountWidthPx > 0);
   const availableNamePx = headerIdentity.fullName
     ? Math.max(
@@ -671,28 +668,11 @@ export function HomeAuthenticatedHeaderRow({
       );
   const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
   const actionIconsAvailablePx = atOrAboveFirstBreakpoint
-    ? rightBandAvailablePx > 0
-      ? rightBandAvailablePx
-      : estimatedWideSidePx
+    ? wideSideBudgetPx
     : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap);
-  const iconViewportT = (() => {
-    const lo = AH.wideMenuColumnExpandViewportMin;
-    const hi = AH.wideMenuColumnExpandViewportMax;
-    const span = hi - lo;
-    return span <= 0 ? 1 : Math.min(1, Math.max(0, (widthForLayout - lo) / span));
-  })();
-  const actionIconWideMinPx = Math.round(
-    HEADER_ACTION_ICON_MAX_PX * (AH.wideMenuColumnWidthMin / AH.wideMenuColumnWidthMax),
-  );
-  const actionIconMaxPx = atOrAboveFirstBreakpoint
-    ? Math.round(
-        actionIconWideMinPx +
-          iconViewportT * (HEADER_ACTION_ICON_MAX_PX - actionIconWideMinPx),
-      )
-    : HEADER_ACTION_ICON_MAX_PX;
-  const actionIconGapMaxPx = Math.round(
-    AH.headerIconGap * (actionIconMaxPx / AH.headerIconDisplaySize),
-  );
+  // Full icon size whenever the side budget fits; shrink only to avoid overlay.
+  const actionIconMaxPx = AH.headerIconDisplaySize;
+  const actionIconGapMaxPx = AH.headerIconGap;
   const { sizePx: actionIconSizePx, gapPx: actionIconGapPx } = fitHeaderActionIconSize(
     actionIconsAvailablePx,
     HEADER_ACTION_ICON_COUNT,
@@ -1221,9 +1201,6 @@ export function HomeAuthenticatedHeaderRow({
               centerReservePx={wideMenuStripWidth}
               leftGrows
               onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
-              onRightWidth={(w) => {
-                setRightBandAvailablePx((prev) => (prev === w ? prev : w));
-              }}
               left={balanceButton}
               right={walletAddressRow}
             />
