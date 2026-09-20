@@ -143,9 +143,11 @@ function HeaderBandSlots({
       {centerReservePx > 0 ? (
         <View
           style={{
-            flexGrow: 1,
+            // Fixed menu reserve only — do not absorb leftover width or the side
+            // slots never get a real available-width measurement.
+            width: centerReservePx,
+            flexGrow: 0,
             flexShrink: 0,
-            minWidth: centerReservePx,
             height: "100%",
           }}
         />
@@ -158,11 +160,14 @@ function HeaderBandSlots({
           if (w > 0) onRightWidth?.(w);
         }}
         style={{
-          // Intrinsic trailing column — sits on the content’s right edge (not a half-width band).
-          flexGrow: 0,
+          // Wide: share leftover with the left band so fit logic sees real free
+          // space; content still docks to the trailing edge via alignItems.
+          // Compact: stay intrinsic — compact fit uses content-width math, not
+          // this onLayout width.
+          flexGrow: centerReservePx > 0 ? 1 : 0,
           flexShrink: 1,
+          flexBasis: centerReservePx > 0 ? 0 : "auto",
           minWidth: 0,
-          maxWidth: centerReservePx > 0 ? "45%" : "100%",
           overflow: "hidden",
           height: "100%",
           justifyContent: "center",
