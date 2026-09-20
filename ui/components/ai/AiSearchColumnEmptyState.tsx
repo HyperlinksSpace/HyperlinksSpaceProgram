@@ -219,7 +219,6 @@ export function AiSearchColumnEmptyState() {
   const pinToBottomRef = useRef(true);
   const [pinToBottom, setPinToBottom] = useState(true);
   const [columnWidth, setColumnWidth] = useState(0);
-  const [headerHeightPx, setHeaderHeightPx] = useState(0);
   const [viewportHeightPx, setViewportHeightPx] = useState(0);
   const [tabs, setTabs] = useState<AiAgentTab[]>(() => [createIdleTab()]);
   const [activeTabId, setActiveTabId] = useState(() => tabs[0]!.id);
@@ -249,11 +248,6 @@ export function AiSearchColumnEmptyState() {
     setViewportHeightPx((current) => (current === nextH ? current : nextH));
   }, []);
 
-  const onHeaderLayout = useCallback((event: LayoutChangeEvent) => {
-    const next = Math.round(event.nativeEvent.layout.height);
-    setHeaderHeightPx((current) => (current === next ? current : next));
-  }, []);
-
   const remeasureScrollColumn = useCallback(() => {
     if (Platform.OS !== "web") return;
     requestAnimationFrame(() => {
@@ -261,6 +255,10 @@ export function AiSearchColumnEmptyState() {
       requestAnimationFrame(() => scrollRef.current?.syncScrollMetricsFromDom());
     });
   }, []);
+
+  const onHeaderLayout = useCallback(() => {
+    remeasureScrollColumn();
+  }, [remeasureScrollColumn]);
 
   const scrollAiThreadToEnd = useCallback((opts?: { reactPinState?: boolean }) => {
     pinToBottomRef.current = true;
@@ -354,7 +352,6 @@ export function AiSearchColumnEmptyState() {
     remeasureScrollColumn,
     columnWidth,
     viewportHeightPx,
-    headerHeightPx,
     windowHeight,
     windowWidth,
     splitMetrics?.columnCount,
@@ -969,7 +966,6 @@ export function AiSearchColumnEmptyState() {
         }}
         indicatorColor={colors.scrollIndicator}
         scrollbarRightInsetPx={0}
-        scrollIndicatorExtendTopPx={headerHeightPx}
         preserveViewportOnResize={!showEmptyBody}
         stickToBottomOnResize={pinToBottom}
         onUserScrollIntent={onUserScrollIntent}
