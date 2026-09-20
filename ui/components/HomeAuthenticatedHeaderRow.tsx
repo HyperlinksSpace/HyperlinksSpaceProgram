@@ -739,9 +739,11 @@ export function HomeAuthenticatedHeaderRow({
       style={{
         flexDirection: "row",
         alignItems: "center",
+        justifyContent: "flex-end",
         gap: HEADER_IDENTITY_GAP_PX,
         minWidth: 0,
         flexShrink: 1,
+        maxWidth: "100%",
         height: HEADER_CONTROL_ROW_PX,
       }}
     >
@@ -1148,10 +1150,12 @@ export function HomeAuthenticatedHeaderRow({
                   : null),
               }}
             >
-              <View style={headerControlRowStyle}>
-                {balanceButton}
-                {walletAddressRow}
-              </View>
+              <HeaderBandSlots
+                centerReservePx={0}
+                leftGrows={false}
+                left={balanceButton}
+                right={walletAddressRow}
+              />
             </View>
             <View
               onLayout={(e) => {
