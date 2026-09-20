@@ -142,12 +142,10 @@ function HeaderBandSlots({
       {centerReservePx > 0 ? (
         <View
           style={{
-            // Absorb leftover so the right column stays intrinsic on the trailing
-            // edge (not a half-width band). Fit budgets use a computed side width,
-            // not this spacer’s onLayout.
-            flexGrow: 1,
+            // Fixed menu reserve; leftover is split by the growing side slots.
+            width: centerReservePx,
+            flexGrow: 0,
             flexShrink: 0,
-            minWidth: centerReservePx,
             height: "100%",
           }}
         />
@@ -160,15 +158,15 @@ function HeaderBandSlots({
           if (w > 0) onRightWidth?.(w);
         }}
         style={{
-          // Intrinsic trailing column — docks address/icons to the content edge.
-          flexGrow: 0,
+          // Fill to the content trailing edge so flex-end children share one right edge
+          // (identity row + action icons). Fit budgets still use computed side width.
+          flexGrow: centerReservePx > 0 ? 1 : 0,
           flexShrink: 1,
+          flexBasis: centerReservePx > 0 ? 0 : "auto",
           minWidth: 0,
-          maxWidth: centerReservePx > 0 ? "45%" : "100%",
           overflow: "hidden",
           height: "100%",
           justifyContent: "center",
-          alignItems: "flex-end",
         }}
       >
         {right}
@@ -874,10 +872,11 @@ export function HomeAuthenticatedHeaderRow({
             style={[
               ...headerMonoLineStyle,
               {
+                // Do not set maxWidth here — on web it expands the text box past the
+                // glyphs and leaves “Morgan” inset from the trailing edge. Label choice
+                // already respects availableNamePx via pickHeaderDisplayName.
                 flexGrow: 0,
-                flexShrink: 1,
-                minWidth: nameFloorPx > 0 ? nameFloorPx : 0,
-                ...(availableNamePx > 0 ? { maxWidth: availableNamePx } : null),
+                flexShrink: 0,
               },
             ]}
           >
