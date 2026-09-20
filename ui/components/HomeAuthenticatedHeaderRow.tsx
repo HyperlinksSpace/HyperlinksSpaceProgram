@@ -376,16 +376,11 @@ type Props = {
   activeHeaderMenuKey?: HeaderMenuKey | null;
   /** When set, overrides width breakpoint inference (split-pane column count is authoritative). */
   layoutIsWide?: boolean;
-  /**
-   * Compact one-column: how many px of the collapsing bands (switch-wallet, Get/Swap, gap to nav)
-   * have scrolled away. First wallet row stays put.
-   */
-  compactCollapsePx?: number;
   /** Compact: unclipped height of the collapsing bands (including the gap above the Feed/Messages strip). */
   onCompactCollapsibleLayout?: (heightPx: number) => void;
-  /** Compact: sticky first-row stack (top inset + wallet row + scroll divider). */
+  /** Compact: sticky first-row stack (top inset + wallet row). */
   onCompactStickyLayout?: (heightPx: number) => void;
-  /** Compact: top inset on the sticky first row (TMA/camera harmony). */
+  /** Compact: top inset on the first wallet row (always; sticky only when camera band). */
   compactStickyTopInsetPx?: number;
   /** Compact: live scroll offset (native sticky fallback via translate). */
   compactScrollYPx?: number;
@@ -414,7 +409,6 @@ export function HomeAuthenticatedHeaderRow({
   walletCurrenciesOpen = false,
   activeHeaderMenuKey,
   layoutIsWide,
-  compactCollapsePx = 0,
   onCompactCollapsibleLayout,
   onCompactStickyLayout,
   compactStickyTopInsetPx = 0,
@@ -1115,17 +1109,6 @@ export function HomeAuthenticatedHeaderRow({
                 {balanceButton}
                 {walletAddressRow}
               </View>
-              <View
-                pointerEvents="none"
-                style={{
-                  height: AH.headerDividerHeight,
-                  width: "100%",
-                  marginHorizontal: -layout.contentSideInsetPx,
-                  backgroundColor: colors.highlight,
-                  opacity: Math.max(0, Math.min(1, compactCollapsePx / 8)),
-                  flexShrink: 0,
-                }}
-              />
             </View>
             <View
               onLayout={(e) => {

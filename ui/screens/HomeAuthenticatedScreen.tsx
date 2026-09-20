@@ -673,8 +673,7 @@ function HomeAuthenticatedScreenMain() {
   const [compactStickyHeightPx, setCompactStickyHeightPx] = useState(
     () =>
       layout.authenticatedHome.contentInsetTop +
-      layout.bottomBar.undercoverButtonHeightPx +
-      layout.authenticatedHome.headerDividerHeight,
+      layout.bottomBar.undercoverButtonHeightPx,
   );
   const [compactChromeHeightPx, setCompactChromeHeightPx] = useState(0);
   const compactHeaderStackPxRef = useRef(0);
@@ -753,9 +752,6 @@ function HomeAuthenticatedScreenMain() {
     firstRowHeightPx: compactStickyHeightPx,
     collapsibleHeightPx: compactCollapsibleHeightPx,
   });
-  const compactHeaderCollapsePx = !isWideHome
-    ? Math.min(Math.max(0, compactHeaderScrollY), Math.max(0, compactCollapsibleHeightPx))
-    : 0;
 
   useEffect(() => {
     if (isWideHome) {
@@ -1817,11 +1813,10 @@ function HomeAuthenticatedScreenMain() {
       onBalancePress={onHeaderBalancePress}
       walletCurrenciesOpen={walletCurrenciesOpen}
       layoutIsWide={isWideHome}
-      compactCollapsePx={compactHeaderCollapsePx}
       onCompactCollapsibleLayout={setCompactCollapsibleHeightPx}
       onCompactStickyLayout={setCompactStickyHeightPx}
       compactStickyTopInsetPx={
-        stickCompactFirstHeaderRow ? layout.authenticatedHome.contentInsetTop : 0
+        !isWideHome ? layout.authenticatedHome.contentInsetTop : 0
       }
       compactScrollYPx={
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0

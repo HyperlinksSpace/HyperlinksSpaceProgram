@@ -61,8 +61,10 @@ export type ProSalesSnapshot = {
 let tableReady: Promise<void> | null = null;
 
 /**
- * Drop near-duplicate sale rows (same user/plan/price/months/expiry within 2 minutes),
- * keeping the earliest id. Cleans recover+client double-records.
+ * Drop near-duplicate sale rows (same user/plan/price/months within 24h),
+ * keeping the earliest id. Expiry may differ by minutes when client+recover
+ * both insert — do not require exact expires_at equality.
+ * Does not touch user_ai_free_quota (subscription entitlement stays).
  */
 async function dedupeDuplicateProSales(): Promise<void> {
   await sql`
@@ -74,8 +76,6 @@ async function dedupeDuplicateProSales(): Promise<void> {
       AND a.plan_id = b.plan_id
       AND a.months = b.months
       AND ABS(a.price_usd - b.price_usd) < 0.01
-      AND COALESCE(a.expires_at, 'epoch'::timestamptz)
-        = COALESCE(b.expires_at, 'epoch'::timestamptz)
       AND ABS(EXTRACT(EPOCH FROM (a.created_at - b.created_at))) < 86400
   `;
 }
@@ -196,15 +196,17 @@ export async function recordProSale(opts: {
       return mapSaleRow(hit, { username, planId, priceUsd, months });
     }
   } else {
-    // DLLR / founder grants without memo: collapse rapid double-inserts.
+    // DLLR / recover without memo: collapse double-inserts within 24h
+    // (client sync + recover often land minutes apart with different expires_at).
     const recent = await sql`
       SELECT id, username, plan_id, price_usd, months, expires_at, created_at, payment_memo
       FROM pro_sales
-      WHERE username = ${username}
+      WHERE lower(regexp_replace(trim(username), '^@+', ''))
+          = lower(regexp_replace(trim(${username}), '^@+', ''))
         AND plan_id = ${planId}
         AND months = ${months}
         AND ABS(price_usd - ${priceUsd}) < 0.0001
-        AND created_at >= NOW() - INTERVAL '2 minutes'
+        AND created_at >= NOW() - INTERVAL '24 hours'
       ORDER BY id ASC
       LIMIT 1
     `;
