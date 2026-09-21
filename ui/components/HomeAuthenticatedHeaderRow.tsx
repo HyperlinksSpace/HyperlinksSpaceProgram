@@ -410,11 +410,11 @@ type Props = {
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
   /**
-   * Compact: when pulling the hidden bands out over a scrolled list, cancel-scroll
-   * translateY so the pocket sits under the visible chrome (same as sticky first row).
+   * Compact: when > 0, past-lock tear drawer is active — cancel-scroll translateY for the
+   * undercover plate (first row + clipped hidden bands).
    */
   compactHeaderPullScrollYPx?: number;
-  /** Compact: how many px of the hidden bands are currently torn out (0 = tucked away). */
+  /** Compact: how many px of the hidden bands are currently torn out (0 = tucked). */
   compactHeaderPullPx?: number;
   /** Compact: vertical gesture on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
@@ -448,13 +448,13 @@ export function HomeAuthenticatedHeaderRow({
   compactHeaderPullPx = 0,
   compactStickyScrollBridge,
 }: Props) {
-  const headerPullActive = compactHeaderPullPx > 0 && compactHeaderPullScrollYPx > 0;
-  // Sticky first row keeps cancelling scroll; pull-out sits under it with the same cancel.
-  const stickRowTranslateY = compactStickFirstRow
-    ? headerPullActive
-      ? compactHeaderPullScrollYPx
-      : compactScrollYPx
-    : 0;
+  /**
+   * Past-lock tear drawer: scrollY cancel is set while the list is past the collapse range.
+   * First row + pocket share one translated undercover plate (not separate transforms).
+   */
+  const headerPullActive = compactHeaderPullScrollYPx > 0;
+  const stickRowTranslateY =
+    compactStickFirstRow && !headerPullActive ? compactScrollYPx : 0;
   const router = useRouter();
   const pathname = usePathname();
   const { signOut } = useAuth();
@@ -1249,7 +1249,7 @@ export function HomeAuthenticatedHeaderRow({
               flexDirection: "column",
               backgroundColor: colors.background,
               zIndex: headerPullActive || compactStickFirstRow ? 6 : 1,
-              // No sticky first row: the whole header is the thing you tear out from the top.
+              // No camera-band stick: tear the whole header out from the top as one plate.
               ...(!compactStickFirstRow && headerPullActive
                 ? {
                     transform: [{ translateY: compactHeaderPullScrollYPx }],
@@ -1272,89 +1272,162 @@ export function HomeAuthenticatedHeaderRow({
               ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
               : {})}
           >
-            <View
-              onLayout={(e) => {
-                const h = Math.round(e.nativeEvent.layout.height);
-                if (h > 0) {
-                  setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
-                  onCompactStickyLayout?.(h);
-                }
-              }}
-              style={{
-                width: "100%",
-                backgroundColor: colors.background,
-                paddingTop: compactStickyTopInsetPx,
-                overflow: "visible",
-                ...(stickRowTranslateY !== 0
-                  ? { transform: [{ translateY: stickRowTranslateY }] }
-                  : null),
-                ...(Platform.OS === "web"
-                  ? ({
-                      ...(stickRowTranslateY !== 0 ? { willChange: "transform" } : null),
-                      touchAction: "pan-y",
-                    } as object)
-                  : null),
-              }}
-            >
-              <HeaderBandSlots
-                centerReservePx={0}
-                leftGrows={false}
-                left={balanceButton}
-                right={walletAddressRow}
-              />
-            </View>
-            {/*
-              Pull pocket: same bands as the initial header. Height follows the tear gesture
-              so content is revealed from under the visible chrome (top of the clip).
-            */}
-            <View
-              style={
-                headerPullActive && compactStickFirstRow
-                  ? {
+            {headerPullActive && compactStickFirstRow ? (
+              <>
+                {/*
+                  One translated plate: visible chrome + height-clipped hidden bands.
+                  Tear opens downward under the first row; solid bg covers the list.
+                */}
+                <View
+                  style={{
+                    width: "100%",
+                    backgroundColor: colors.background,
+                    transform: [{ translateY: compactHeaderPullScrollYPx }],
+                    zIndex: 7,
+                    ...(Platform.OS === "web"
+                      ? ({ willChange: "transform", touchAction: "pan-y" } as object)
+                      : null),
+                  }}
+                >
+                  <View
+                    onLayout={(e) => {
+                      const h = Math.round(e.nativeEvent.layout.height);
+                      if (h > 0) {
+                        setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
+                        onCompactStickyLayout?.(h);
+                      }
+                    }}
+                    style={{
                       width: "100%",
                       backgroundColor: colors.background,
-                      transform: [{ translateY: compactHeaderPullScrollYPx }],
-                      height: compactHeaderPullPx,
-                      overflow: "hidden" as const,
-                      marginBottom: Math.max(
-                        0,
-                        compactCollapsibleNaturalHeightPx - compactHeaderPullPx,
-                      ),
-                    }
-                  : { width: "100%" }
-              }
-            >
-              <View
-                onLayout={(e) => {
-                  const h = Math.round(e.nativeEvent.layout.height);
-                  if (h <= 0) return;
-                  setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
-                  onCompactCollapsibleLayout?.(h);
-                }}
-                style={{
-                  width: "100%",
-                  paddingBottom: AH.leftNavStripMarginTopPx,
-                  backgroundColor: colors.background,
-                }}
-              >
-                <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-                  {switchWalletRow}
-                  {headerActionIconsRow}
-                </View>
-                <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                    <AuthenticatedHomeMenuItems
-                      colors={colors}
-                      narrow
-                      columnWidth={0}
-                      t={t}
-                      onMenuKeyPress={handleMenuKeyPress}
-                      activeMenuKey={headerMenuActiveKey}
+                      paddingTop: compactStickyTopInsetPx,
+                    }}
+                  >
+                    <HeaderBandSlots
+                      centerReservePx={0}
+                      leftGrows={false}
+                      left={balanceButton}
+                      right={walletAddressRow}
                     />
                   </View>
+                  <View
+                    style={{
+                      width: "100%",
+                      height: compactHeaderPullPx,
+                      overflow: "hidden" as const,
+                      backgroundColor: colors.background,
+                    }}
+                  >
+                    <View
+                      onLayout={(e) => {
+                        const h = Math.round(e.nativeEvent.layout.height);
+                        if (h <= 0) return;
+                        setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                        onCompactCollapsibleLayout?.(h);
+                      }}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        width: "100%",
+                        paddingBottom: AH.leftNavStripMarginTopPx,
+                        backgroundColor: colors.background,
+                      }}
+                    >
+                      <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                        {switchWalletRow}
+                        {headerActionIconsRow}
+                      </View>
+                      <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                          <AuthenticatedHomeMenuItems
+                            colors={colors}
+                            narrow
+                            columnWidth={0}
+                            t={t}
+                            onMenuKeyPress={handleMenuKeyPress}
+                            activeMenuKey={headerMenuActiveKey}
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-              </View>
-            </View>
+                <View
+                  pointerEvents="none"
+                  style={{
+                    height: Math.max(0, compactCollapsibleNaturalHeightPx - compactHeaderPullPx),
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <View
+                  onLayout={(e) => {
+                    const h = Math.round(e.nativeEvent.layout.height);
+                    if (h > 0) {
+                      setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
+                      onCompactStickyLayout?.(h);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    backgroundColor: colors.background,
+                    paddingTop: compactStickyTopInsetPx,
+                    overflow: "visible",
+                    ...(stickRowTranslateY !== 0
+                      ? { transform: [{ translateY: stickRowTranslateY }] }
+                      : null),
+                    ...(Platform.OS === "web"
+                      ? ({
+                          ...(stickRowTranslateY !== 0 ? { willChange: "transform" } : null),
+                          touchAction: "pan-y",
+                        } as object)
+                      : null),
+                  }}
+                >
+                  <HeaderBandSlots
+                    centerReservePx={0}
+                    leftGrows={false}
+                    left={balanceButton}
+                    right={walletAddressRow}
+                  />
+                </View>
+                <View style={{ width: "100%" }}>
+                  <View
+                    onLayout={(e) => {
+                      const h = Math.round(e.nativeEvent.layout.height);
+                      if (h <= 0) return;
+                      setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                      onCompactCollapsibleLayout?.(h);
+                    }}
+                    style={{
+                      width: "100%",
+                      paddingBottom: AH.leftNavStripMarginTopPx,
+                      backgroundColor: colors.background,
+                    }}
+                  >
+                    <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                      {switchWalletRow}
+                      {headerActionIconsRow}
+                    </View>
+                    <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                        <AuthenticatedHomeMenuItems
+                          colors={colors}
+                          narrow
+                          columnWidth={0}
+                          t={t}
+                          onMenuKeyPress={handleMenuKeyPress}
+                          activeMenuKey={headerMenuActiveKey}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
         )}
       </View>

@@ -776,7 +776,7 @@ function HomeAuthenticatedScreenMain() {
     !isWideHome && compactHeaderScrollY >= compactNavLockAfterPx && compactNavLockAfterPx > 0;
   const compactHeaderPullActive = compactHeaderUsePullDrawer && compactHeaderPullPx > 0;
   // Nav sits under the minimized chrome + whatever has been torn out.
-  const compactNavStickyTopPx = compactHeaderPullActive
+  const compactNavStickyTopPx = compactHeaderUsePullDrawer
     ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) + compactHeaderPullPx
     : stickCompactFirstHeaderRow
       ? compactStickyHeightPx
@@ -1885,8 +1885,8 @@ function HomeAuthenticatedScreenMain() {
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
-      compactHeaderPullScrollYPx={compactHeaderPullActive ? compactHeaderScrollY : 0}
-      compactHeaderPullPx={compactHeaderPullActive ? compactHeaderPullPx : 0}
+      compactHeaderPullScrollYPx={compactHeaderUsePullDrawer ? compactHeaderScrollY : 0}
+      compactHeaderPullPx={compactHeaderUsePullDrawer ? compactHeaderPullPx : 0}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
