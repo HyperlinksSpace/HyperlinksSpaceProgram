@@ -1220,6 +1220,10 @@ export function HomeAuthenticatedHeaderRow({
                 const h = Math.round(e.nativeEvent.layout.height);
                 if (h > 0) onCompactStickyLayout?.(h);
               }}
+              onTouchStart={compactStickyScrollBridge?.onTouchStart}
+              onTouchMove={compactStickyScrollBridge?.onTouchMove}
+              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
+              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
               {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
                 ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
                 : {})}
@@ -1253,9 +1257,17 @@ export function HomeAuthenticatedHeaderRow({
                 if (h <= 0) return;
                 onCompactCollapsibleLayout?.(h);
               }}
+              onTouchStart={compactStickyScrollBridge?.onTouchStart}
+              onTouchMove={compactStickyScrollBridge?.onTouchMove}
+              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
+              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
+              {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
+                ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
+                : {})}
               style={{
                 width: "100%",
                 paddingBottom: AH.leftNavStripMarginTopPx,
+                ...(Platform.OS === "web" ? ({ touchAction: "pan-y" } as object) : null),
               }}
             >
               <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>

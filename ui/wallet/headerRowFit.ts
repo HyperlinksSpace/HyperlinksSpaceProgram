@@ -67,9 +67,9 @@ export const HEADER_AMOUNT_FONT_MIN_PX = 12;
  */
 export const COMPACT_CAMERA_BAND_MIN_PX = 40;
 
-/** Pin the compact wallet row only when a camera-style top inset is reserved. */
-export function shouldStickCompactFirstHeaderRow(safeAreaInsetTopPx: number): boolean {
-  return Math.max(0, safeAreaInsetTopPx) >= COMPACT_CAMERA_BAND_MIN_PX;
+/** Pin the compact wallet row (always on compact; safe-area arg kept for call-site compat). */
+export function shouldStickCompactFirstHeaderRow(_safeAreaInsetTopPx?: number): boolean {
+  return true;
 }
 
 /**
