@@ -643,6 +643,9 @@ function HomeAuthenticatedScreenMain() {
   const compactNavLockAfterPxRef = useRef(0);
   const compactHeaderScrollYRef = useRef(0);
   const [compactHeaderManualExpanded, setCompactHeaderManualExpanded] = useState(false);
+  /** 0 = slid away above; 1 = fully open like the initial top header. */
+  const [compactHeaderPinProgress, setCompactHeaderPinProgress] = useState(0);
+  const compactHeaderPinCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     setChatListSearchScrollToEndHandler(() => {
       homeLeftScrollRef.current?.scrollToEnd();
@@ -711,6 +714,7 @@ function HomeAuthenticatedScreenMain() {
         metrics.scrollY > prevY + 2 &&
         compactHeaderManualExpanded
       ) {
+        setCompactHeaderPinProgress(0);
         setCompactHeaderManualExpanded(false);
       }
       if (homeNavIndex !== 1) return;
@@ -773,37 +777,79 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderManualExpanded &&
     compactHeaderScrollY >= compactNavLockAfterPx &&
     compactNavLockAfterPx > 0;
-  const compactNavStickyTopPx = stickCompactFirstHeaderRow
-    ? compactStickyHeightPx + (compactHeaderPinnedOpen ? compactCollapsibleHeightPx : 0)
-    : compactHeaderPinnedOpen
-      ? compactCollapsibleHeightPx
+  const compactHeaderStackHeightPx = compactStickyHeightPx + compactCollapsibleHeightPx;
+  const compactHeaderPinSlideRemainPx = compactHeaderPinnedOpen
+    ? Math.round(
+        (1 - Math.min(1, Math.max(0, compactHeaderPinProgress))) *
+          (stickCompactFirstHeaderRow
+            ? compactCollapsibleHeightPx
+            : compactHeaderStackHeightPx),
+      )
+    : 0;
+  // When pinned, the full stack (first row + collapsing bands) sits above the nav.
+  const compactNavStickyTopPx = compactHeaderPinnedOpen
+    ? compactHeaderStackHeightPx
+    : stickCompactFirstHeaderRow
+      ? compactStickyHeightPx
       : 0;
 
   useEffect(() => {
     if (isWideHome) {
       setCompactChromeHeightPx(0);
       setCompactHeaderManualExpanded(false);
+      setCompactHeaderPinProgress(0);
     }
   }, [isWideHome]);
 
+  useEffect(() => {
+    return () => {
+      if (compactHeaderPinCloseTimerRef.current) {
+        clearTimeout(compactHeaderPinCloseTimerRef.current);
+      }
+    };
+  }, []);
+
   const expandCompactHeader = useCallback(() => {
-    setCompactHeaderManualExpanded(true);
+    if (compactHeaderPinCloseTimerRef.current) {
+      clearTimeout(compactHeaderPinCloseTimerRef.current);
+      compactHeaderPinCloseTimerRef.current = null;
+    }
     const lock = compactNavLockAfterPxRef.current;
     const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
     // Near the top, finish opening by scrolling within the collapse range only.
     if (lock > 0 && y > 0 && y < lock) {
+      setCompactHeaderManualExpanded(false);
+      setCompactHeaderPinProgress(0);
       homeLeftScrollRef.current?.scrollToY(0);
+      return;
     }
+    setCompactHeaderManualExpanded(true);
+    setCompactHeaderPinProgress(0);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setCompactHeaderPinProgress(1);
+      });
+    });
   }, []);
 
   const minimizeCompactHeader = useCallback(() => {
-    setCompactHeaderManualExpanded(false);
     const lock = compactNavLockAfterPxRef.current;
     const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
     // Near the top, collapse by scrolling to the lock point (list barely moves).
     if (lock > 0 && y < lock) {
+      setCompactHeaderManualExpanded(false);
+      setCompactHeaderPinProgress(0);
       homeLeftScrollRef.current?.scrollToY(lock);
+      return;
     }
+    setCompactHeaderPinProgress(0);
+    if (compactHeaderPinCloseTimerRef.current) {
+      clearTimeout(compactHeaderPinCloseTimerRef.current);
+    }
+    compactHeaderPinCloseTimerRef.current = setTimeout(() => {
+      compactHeaderPinCloseTimerRef.current = null;
+      setCompactHeaderManualExpanded(false);
+    }, 230);
   }, []);
 
   const onCompactHeaderWheel = useCallback(
@@ -1873,7 +1919,8 @@ function HomeAuthenticatedScreenMain() {
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
-      compactCollapsiblePinScrollYPx={compactHeaderPinnedOpen ? compactHeaderScrollY : 0}
+      compactHeaderPinScrollYPx={compactHeaderPinnedOpen ? compactHeaderScrollY : 0}
+      compactHeaderPinSlideRemainPx={compactHeaderPinSlideRemainPx}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
@@ -1976,12 +2023,9 @@ function HomeAuthenticatedScreenMain() {
                     : {
                         transform: [
                           {
-                            translateY: Math.max(
-                              0,
-                              compactHeaderScrollY -
-                                compactNavLockAfterPx +
-                                (compactHeaderPinnedOpen ? compactCollapsibleHeightPx : 0),
-                            ),
+                            translateY: compactHeaderPinnedOpen
+                              ? compactHeaderScrollY
+                              : Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
                           },
                         ],
                       }),

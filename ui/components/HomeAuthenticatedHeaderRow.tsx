@@ -410,10 +410,15 @@ type Props = {
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
   /**
-   * Compact: when > 0, translate the collapsing bands by this scroll offset so they
-   * stay under the sticky chrome even if the message list is scrolled past them.
+   * Compact: when > 0, the list scrollY used to pin a manual expand over scrolled content.
+   * Combined with {@link compactHeaderPinSlideRemainPx} so the stack slides in from above.
    */
-  compactCollapsiblePinScrollYPx?: number;
+  compactHeaderPinScrollYPx?: number;
+  /**
+   * Compact: extra upward offset while sliding open (animates  stack/collapsible height → 0).
+   * Final open position uses only {@link compactHeaderPinScrollYPx} (same as initial top layout).
+   */
+  compactHeaderPinSlideRemainPx?: number;
   /** Compact: vertical gesture on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
@@ -442,9 +447,20 @@ export function HomeAuthenticatedHeaderRow({
   compactStickyTopInsetPx = 0,
   compactScrollYPx = 0,
   compactStickFirstRow = false,
-  compactCollapsiblePinScrollYPx = 0,
+  compactHeaderPinScrollYPx = 0,
+  compactHeaderPinSlideRemainPx = 0,
   compactStickyScrollBridge,
 }: Props) {
+  const headerPinnedOpen = compactHeaderPinScrollYPx > 0;
+  const stackPinTranslateY = headerPinnedOpen
+    ? compactHeaderPinScrollYPx - compactHeaderPinSlideRemainPx
+    : 0;
+  // When the first row is already sticky, keep it pinned; collapsing bands slide out under it.
+  const stickRowTranslateY = compactStickFirstRow
+    ? headerPinnedOpen
+      ? compactHeaderPinScrollYPx
+      : compactScrollYPx
+    : 0;
   const router = useRouter();
   const pathname = usePathname();
   const { signOut } = useAuth();
@@ -1171,7 +1187,12 @@ export function HomeAuthenticatedHeaderRow({
     </View>
     {/* Outer shell: full width; marginBottom = gap under header+divider before body (see theme `headerRowMarginBottom`). */}
     <View
-      style={{ width: "100%", marginBottom: AH.headerRowMarginBottom, overflow: "visible" }}
+      style={{
+        width: "100%",
+        marginBottom: AH.headerRowMarginBottom,
+        overflow: "visible",
+        backgroundColor: !atOrAboveFirstBreakpoint ? colors.background : undefined,
+      }}
       onLayout={(e) => {
         const w = Math.round(e.nativeEvent.layout.width);
         setMeasuredWidth((prev) => {
@@ -1185,7 +1206,13 @@ export function HomeAuthenticatedHeaderRow({
         });
       }}
     >
-      <View style={{ width: "100%", paddingHorizontal: layout.contentSideInsetPx }}>
+      <View
+        style={{
+          width: "100%",
+          paddingHorizontal: layout.contentSideInsetPx,
+          backgroundColor: !atOrAboveFirstBreakpoint ? colors.background : undefined,
+        }}
+      >
         {atOrAboveFirstBreakpoint ? (
           <View
             style={{
@@ -1220,31 +1247,48 @@ export function HomeAuthenticatedHeaderRow({
             {wideMenuStrip}
           </View>
         ) : (
-          <View style={{ width: "100%", flexDirection: "column", overflow: "visible" }}>
+          <View
+            style={{
+              width: "100%",
+              flexDirection: "column",
+              overflow: headerPinnedOpen && !compactStickFirstRow ? "hidden" : "visible",
+              backgroundColor: colors.background,
+              zIndex: headerPinnedOpen || compactStickFirstRow ? 6 : 1,
+              // No sticky first row: the whole stack slides down from above into the initial layout.
+              ...(!compactStickFirstRow && headerPinnedOpen
+                ? { transform: [{ translateY: stackPinTranslateY }] }
+                : null),
+              ...(Platform.OS === "web" && headerPinnedOpen
+                ? ({
+                    transition: "transform 220ms ease-out",
+                    willChange: "transform",
+                  } as object)
+                : null),
+            }}
+            onTouchStart={compactStickyScrollBridge?.onTouchStart}
+            onTouchMove={compactStickyScrollBridge?.onTouchMove}
+            onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
+            onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
+            {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
+              ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
+              : {})}
+          >
             <View
               onLayout={(e) => {
                 const h = Math.round(e.nativeEvent.layout.height);
                 if (h > 0) onCompactStickyLayout?.(h);
               }}
-              onTouchStart={compactStickyScrollBridge?.onTouchStart}
-              onTouchMove={compactStickyScrollBridge?.onTouchMove}
-              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
-              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
-              {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
-                ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
-                : {})}
               style={{
                 width: "100%",
                 backgroundColor: colors.background,
-                zIndex: compactStickFirstRow ? 4 : 1,
                 paddingTop: compactStickyTopInsetPx,
                 overflow: "visible",
-                ...(compactStickFirstRow
-                  ? { transform: [{ translateY: compactScrollYPx }] }
+                ...(stickRowTranslateY !== 0
+                  ? { transform: [{ translateY: stickRowTranslateY }] }
                   : null),
                 ...(Platform.OS === "web"
                   ? ({
-                      ...(compactStickFirstRow ? { willChange: "transform" } : null),
+                      ...(stickRowTranslateY !== 0 ? { willChange: "transform" } : null),
                       touchAction: "pan-y",
                     } as object)
                   : null),
@@ -1263,27 +1307,24 @@ export function HomeAuthenticatedHeaderRow({
                 if (h <= 0) return;
                 onCompactCollapsibleLayout?.(h);
               }}
-              onTouchStart={compactStickyScrollBridge?.onTouchStart}
-              onTouchMove={compactStickyScrollBridge?.onTouchMove}
-              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
-              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
-              {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
-                ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
-                : {})}
               style={{
                 width: "100%",
                 paddingBottom: AH.leftNavStripMarginTopPx,
                 backgroundColor: colors.background,
-                zIndex: compactCollapsiblePinScrollYPx > 0 ? 3 : 1,
-                ...(compactCollapsiblePinScrollYPx > 0
-                  ? { transform: [{ translateY: compactCollapsiblePinScrollYPx }] }
+                ...(headerPinnedOpen && compactStickFirstRow
+                  ? {
+                      transform: [
+                        {
+                          translateY:
+                            compactHeaderPinScrollYPx - compactHeaderPinSlideRemainPx,
+                        },
+                      ],
+                    }
                   : null),
-                ...(Platform.OS === "web"
+                ...(Platform.OS === "web" && headerPinnedOpen && compactStickFirstRow
                   ? ({
-                      touchAction: "pan-y",
-                      ...(compactCollapsiblePinScrollYPx > 0
-                        ? { willChange: "transform" }
-                        : null),
+                      transition: "transform 220ms ease-out",
+                      willChange: "transform",
                     } as object)
                   : null),
               }}
