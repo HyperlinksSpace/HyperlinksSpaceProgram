@@ -410,15 +410,12 @@ type Props = {
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
   /**
-   * Compact: when > 0, manually pin/reveal the header over a scrolled list.
-   * Used as sticky cancel scrollY for the first row; reveal uses {@link compactHeaderRevealHeightPx}.
+   * Compact: when pulling the hidden bands out over a scrolled list, cancel-scroll
+   * translateY so the pocket sits under the visible chrome (same as sticky first row).
    */
-  compactHeaderPinScrollYPx?: number;
-  /**
-   * Compact: visible height (px) of the tearing-open region below the minimized chrome.
-   * `null` / omit = normal in-flow collapse (not manually pinned).
-   */
-  compactHeaderRevealHeightPx?: number | null;
+  compactHeaderPullScrollYPx?: number;
+  /** Compact: how many px of the hidden bands are currently torn out (0 = tucked away). */
+  compactHeaderPullPx?: number;
   /** Compact: vertical gesture on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
@@ -447,16 +444,15 @@ export function HomeAuthenticatedHeaderRow({
   compactStickyTopInsetPx = 0,
   compactScrollYPx = 0,
   compactStickFirstRow = false,
-  compactHeaderPinScrollYPx = 0,
-  compactHeaderRevealHeightPx = null,
+  compactHeaderPullScrollYPx = 0,
+  compactHeaderPullPx = 0,
   compactStickyScrollBridge,
 }: Props) {
-  const headerPinnedOpen =
-    compactHeaderRevealHeightPx != null && compactHeaderRevealHeightPx >= 0;
-  // Sticky first row keeps cancelling scroll; when pinned it stays put while bands tear open under it.
+  const headerPullActive = compactHeaderPullPx > 0 && compactHeaderPullScrollYPx > 0;
+  // Sticky first row keeps cancelling scroll; pull-out sits under it with the same cancel.
   const stickRowTranslateY = compactStickFirstRow
-    ? headerPinnedOpen
-      ? compactHeaderPinScrollYPx
+    ? headerPullActive
+      ? compactHeaderPullScrollYPx
       : compactScrollYPx
     : 0;
   const router = useRouter();
@@ -1252,26 +1248,20 @@ export function HomeAuthenticatedHeaderRow({
               width: "100%",
               flexDirection: "column",
               backgroundColor: colors.background,
-              zIndex: headerPinnedOpen || compactStickFirstRow ? 6 : 1,
-              // No sticky first row: pin stack + tear height open from the top.
-              ...(!compactStickFirstRow && headerPinnedOpen
+              zIndex: headerPullActive || compactStickFirstRow ? 6 : 1,
+              // No sticky first row: the whole header is the thing you tear out from the top.
+              ...(!compactStickFirstRow && headerPullActive
                 ? {
-                    transform: [{ translateY: compactHeaderPinScrollYPx }],
-                    height: Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                    transform: [{ translateY: compactHeaderPullScrollYPx }],
+                    height: compactHeaderPullPx,
                     overflow: "hidden" as const,
                     marginBottom: Math.max(
                       0,
                       compactStickyNaturalHeightPx +
                         compactCollapsibleNaturalHeightPx -
-                        Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                        compactHeaderPullPx,
                     ),
                   }
-                : null),
-              ...(Platform.OS === "web" && headerPinnedOpen && !compactStickFirstRow
-                ? ({
-                    transition: "height 220ms ease-out",
-                    willChange: "height",
-                  } as object)
                 : null),
             }}
             onTouchStart={compactStickyScrollBridge?.onTouchStart}
@@ -1313,59 +1303,27 @@ export function HomeAuthenticatedHeaderRow({
                 right={walletAddressRow}
               />
             </View>
-            {headerPinnedOpen && compactStickFirstRow ? (
-              <View
-                style={{
-                  width: "100%",
-                  backgroundColor: colors.background,
-                  transform: [{ translateY: compactHeaderPinScrollYPx }],
-                  height: Math.max(0, compactHeaderRevealHeightPx ?? 0),
-                  overflow: "hidden",
-                  marginBottom: Math.max(
-                    0,
-                    compactCollapsibleNaturalHeightPx -
-                      Math.max(0, compactHeaderRevealHeightPx ?? 0),
-                  ),
-                  ...(Platform.OS === "web"
-                    ? ({
-                        transition: "height 220ms ease-out",
-                        willChange: "height",
-                      } as object)
-                    : null),
-                }}
-              >
-                <View
-                  onLayout={(e) => {
-                    const h = Math.round(e.nativeEvent.layout.height);
-                    if (h <= 0) return;
-                    setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
-                    onCompactCollapsibleLayout?.(h);
-                  }}
-                  style={{
-                    width: "100%",
-                    paddingBottom: AH.leftNavStripMarginTopPx,
-                    backgroundColor: colors.background,
-                  }}
-                >
-                  <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-                    {switchWalletRow}
-                    {headerActionIconsRow}
-                  </View>
-                  <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                      <AuthenticatedHomeMenuItems
-                        colors={colors}
-                        narrow
-                        columnWidth={0}
-                        t={t}
-                        onMenuKeyPress={handleMenuKeyPress}
-                        activeMenuKey={headerMenuActiveKey}
-                      />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            ) : (
+            {/*
+              Pull pocket: same bands as the initial header. Height follows the tear gesture
+              so content is revealed from under the visible chrome (top of the clip).
+            */}
+            <View
+              style={
+                headerPullActive && compactStickFirstRow
+                  ? {
+                      width: "100%",
+                      backgroundColor: colors.background,
+                      transform: [{ translateY: compactHeaderPullScrollYPx }],
+                      height: compactHeaderPullPx,
+                      overflow: "hidden" as const,
+                      marginBottom: Math.max(
+                        0,
+                        compactCollapsibleNaturalHeightPx - compactHeaderPullPx,
+                      ),
+                    }
+                  : { width: "100%" }
+              }
+            >
               <View
                 onLayout={(e) => {
                   const h = Math.round(e.nativeEvent.layout.height);
@@ -1396,7 +1354,7 @@ export function HomeAuthenticatedHeaderRow({
                   </View>
                 </View>
               </View>
-            )}
+            </View>
           </View>
         )}
       </View>

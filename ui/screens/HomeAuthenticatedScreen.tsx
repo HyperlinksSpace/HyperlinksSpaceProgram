@@ -638,14 +638,15 @@ function HomeAuthenticatedScreenMain() {
   const [compactHeaderScrollY, setCompactHeaderScrollY] = useState(0);
   const [compactCollapsibleHeightPx, setCompactCollapsibleHeightPx] = useState(0);
   const compactHeaderDragStartYRef = useRef<number | null>(null);
+  const compactHeaderDragStartScrollRef = useRef(0);
+  const compactHeaderDragStartPullRef = useRef(0);
   const compactHeaderDidDragRef = useRef(false);
   const compactHeaderGestureRef = useRef(false);
   const compactNavLockAfterPxRef = useRef(0);
   const compactHeaderScrollYRef = useRef(0);
-  const [compactHeaderManualExpanded, setCompactHeaderManualExpanded] = useState(false);
-  /** 0 = slid away above; 1 = fully open like the initial top header. */
-  const [compactHeaderPinProgress, setCompactHeaderPinProgress] = useState(0);
-  const compactHeaderPinCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const compactHeaderPullFullPxRef = useRef(0);
+  /** Pulled-out height of the hidden header bands while the list is scrolled past them. */
+  const [compactHeaderPullPx, setCompactHeaderPullPx] = useState(0);
   useEffect(() => {
     setChatListSearchScrollToEndHandler(() => {
       homeLeftScrollRef.current?.scrollToEnd();
@@ -708,14 +709,9 @@ function HomeAuthenticatedScreenMain() {
       const prevY = compactHeaderScrollYRef.current;
       compactHeaderScrollYRef.current = metrics.scrollY;
       setCompactHeaderScrollY(metrics.scrollY);
-      // Scrolling the list down while the header was manually opened collapses it again.
-      if (
-        !compactHeaderGestureRef.current &&
-        metrics.scrollY > prevY + 2 &&
-        compactHeaderManualExpanded
-      ) {
-        setCompactHeaderPinProgress(0);
-        setCompactHeaderManualExpanded(false);
+      // Scrolling the list down tucks the pulled-out header back under the chrome.
+      if (!compactHeaderGestureRef.current && metrics.scrollY > prevY + 2 && compactHeaderPullPx > 0) {
+        setCompactHeaderPullPx(0);
       }
       if (homeNavIndex !== 1) return;
       setChatListScrollMetrics({
@@ -724,7 +720,7 @@ function HomeAuthenticatedScreenMain() {
         contentTopInsetPx: compactChromeHeightPx,
       });
     },
-    [homeNavIndex, compactChromeHeightPx, compactHeaderManualExpanded],
+    [homeNavIndex, compactChromeHeightPx, compactHeaderPullPx],
   );
   const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
@@ -771,23 +767,17 @@ function HomeAuthenticatedScreenMain() {
     collapsibleHeightPx: compactCollapsibleHeightPx,
   });
   compactNavLockAfterPxRef.current = compactNavLockAfterPx;
-  /** Pin the collapsing bands under the sticky chrome without moving the message list. */
-  const compactHeaderPinnedOpen =
-    !isWideHome &&
-    compactHeaderManualExpanded &&
-    compactHeaderScrollY >= compactNavLockAfterPx &&
-    compactNavLockAfterPx > 0;
-  const compactHeaderStackHeightPx = compactStickyHeightPx + compactCollapsibleHeightPx;
-  const compactHeaderRevealFullPx = stickCompactFirstHeaderRow
+  const compactHeaderPullFullPx = stickCompactFirstHeaderRow
     ? compactCollapsibleHeightPx
-    : compactHeaderStackHeightPx;
-  const compactHeaderRevealHeightPx = compactHeaderPinnedOpen
-    ? Math.round(Math.min(1, Math.max(0, compactHeaderPinProgress)) * compactHeaderRevealFullPx)
-    : null;
-  // When pinned, nav sits under the minimized chrome + the torn-open region.
-  const compactNavStickyTopPx = compactHeaderPinnedOpen
-    ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) +
-      (compactHeaderRevealHeightPx ?? 0)
+    : compactStickyHeightPx + compactCollapsibleHeightPx;
+  compactHeaderPullFullPxRef.current = compactHeaderPullFullPx;
+  /** List is past the natural collapse range — pull-out drawer is used instead of scroll. */
+  const compactHeaderUsePullDrawer =
+    !isWideHome && compactHeaderScrollY >= compactNavLockAfterPx && compactNavLockAfterPx > 0;
+  const compactHeaderPullActive = compactHeaderUsePullDrawer && compactHeaderPullPx > 0;
+  // Nav sits under the minimized chrome + whatever has been torn out.
+  const compactNavStickyTopPx = compactHeaderPullActive
+    ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) + compactHeaderPullPx
     : stickCompactFirstHeaderRow
       ? compactStickyHeightPx
       : 0;
@@ -795,61 +785,9 @@ function HomeAuthenticatedScreenMain() {
   useEffect(() => {
     if (isWideHome) {
       setCompactChromeHeightPx(0);
-      setCompactHeaderManualExpanded(false);
-      setCompactHeaderPinProgress(0);
+      setCompactHeaderPullPx(0);
     }
   }, [isWideHome]);
-
-  useEffect(() => {
-    return () => {
-      if (compactHeaderPinCloseTimerRef.current) {
-        clearTimeout(compactHeaderPinCloseTimerRef.current);
-      }
-    };
-  }, []);
-
-  const expandCompactHeader = useCallback(() => {
-    if (compactHeaderPinCloseTimerRef.current) {
-      clearTimeout(compactHeaderPinCloseTimerRef.current);
-      compactHeaderPinCloseTimerRef.current = null;
-    }
-    const lock = compactNavLockAfterPxRef.current;
-    const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
-    // Near the top, finish opening by scrolling within the collapse range only.
-    if (lock > 0 && y > 0 && y < lock) {
-      setCompactHeaderManualExpanded(false);
-      setCompactHeaderPinProgress(0);
-      homeLeftScrollRef.current?.scrollToY(0);
-      return;
-    }
-    setCompactHeaderManualExpanded(true);
-    setCompactHeaderPinProgress(0);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setCompactHeaderPinProgress(1);
-      });
-    });
-  }, []);
-
-  const minimizeCompactHeader = useCallback(() => {
-    const lock = compactNavLockAfterPxRef.current;
-    const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
-    // Near the top, collapse by scrolling to the lock point (list barely moves).
-    if (lock > 0 && y < lock) {
-      setCompactHeaderManualExpanded(false);
-      setCompactHeaderPinProgress(0);
-      homeLeftScrollRef.current?.scrollToY(lock);
-      return;
-    }
-    setCompactHeaderPinProgress(0);
-    if (compactHeaderPinCloseTimerRef.current) {
-      clearTimeout(compactHeaderPinCloseTimerRef.current);
-    }
-    compactHeaderPinCloseTimerRef.current = setTimeout(() => {
-      compactHeaderPinCloseTimerRef.current = null;
-      setCompactHeaderManualExpanded(false);
-    }, 230);
-  }, []);
 
   const onCompactHeaderWheel = useCallback(
     (event: { nativeEvent?: { deltaY?: number; ctrlKey?: boolean; metaKey?: boolean }; preventDefault?: () => void }) => {
@@ -860,30 +798,59 @@ function HomeAuthenticatedScreenMain() {
       event.preventDefault?.();
       const dy = typeof native.deltaY === "number" ? native.deltaY : 0;
       if (dy === 0) return;
-      if (dy < 0) expandCompactHeader();
-      else minimizeCompactHeader();
+      const lock = compactNavLockAfterPxRef.current;
+      const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+      const full = compactHeaderPullFullPxRef.current;
+      if (lock > 0 && y < lock) {
+        homeLeftScrollRef.current?.scrollToY(Math.max(0, Math.min(lock, y + dy)));
+        setCompactHeaderPullPx(0);
+        return;
+      }
+      setCompactHeaderPullPx((prev) => Math.max(0, Math.min(full, prev - dy)));
     },
-    [expandCompactHeader, minimizeCompactHeader],
+    [],
   );
 
   const onCompactHeaderTouchStart = useCallback((event: { nativeEvent: { pageY: number } }) => {
     compactHeaderDragStartYRef.current = event.nativeEvent.pageY;
+    compactHeaderDragStartScrollRef.current = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    compactHeaderDragStartPullRef.current = compactHeaderPullPx;
     compactHeaderDidDragRef.current = false;
     compactHeaderGestureRef.current = true;
-  }, []);
+  }, [compactHeaderPullPx]);
 
   const onCompactHeaderTouchMove = useCallback((event: { nativeEvent: { pageY: number } }) => {
     const startY = compactHeaderDragStartYRef.current;
     if (startY == null) return;
     const dy = event.nativeEvent.pageY - startY;
-    if (Math.abs(dy) < 8) return;
+    if (Math.abs(dy) < 4) return;
     compactHeaderDidDragRef.current = true;
-    // Finger down → expand; finger up → minimize (do not scrub the message list).
-    if (dy > 0) expandCompactHeader();
-    else minimizeCompactHeader();
-  }, [expandCompactHeader, minimizeCompactHeader]);
+    const lock = compactNavLockAfterPxRef.current;
+    const startScroll = compactHeaderDragStartScrollRef.current;
+    const full = compactHeaderPullFullPxRef.current;
+    if (lock > 0 && startScroll < lock) {
+      homeLeftScrollRef.current?.scrollToY(Math.max(0, Math.min(lock, startScroll - dy)));
+      setCompactHeaderPullPx(0);
+      return;
+    }
+    // Finger down pulls the hidden part out from under the visible chrome.
+    setCompactHeaderPullPx(
+      Math.max(0, Math.min(full, compactHeaderDragStartPullRef.current + dy)),
+    );
+  }, []);
 
   const onCompactHeaderTouchEnd = useCallback(() => {
+    if (compactHeaderDidDragRef.current) {
+      const lock = compactNavLockAfterPxRef.current;
+      const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+      const full = compactHeaderPullFullPxRef.current;
+      if (lock > 0 && y < lock) {
+        homeLeftScrollRef.current?.scrollToY(y < lock / 2 ? 0 : lock);
+        setCompactHeaderPullPx(0);
+      } else if (full > 0) {
+        setCompactHeaderPullPx((prev) => (prev >= full / 2 ? full : 0));
+      }
+    }
     compactHeaderDragStartYRef.current = null;
     compactHeaderDidDragRef.current = false;
     compactHeaderGestureRef.current = false;
@@ -1918,8 +1885,8 @@ function HomeAuthenticatedScreenMain() {
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
-      compactHeaderPinScrollYPx={compactHeaderPinnedOpen ? compactHeaderScrollY : 0}
-      compactHeaderRevealHeightPx={compactHeaderRevealHeightPx}
+      compactHeaderPullScrollYPx={compactHeaderPullActive ? compactHeaderScrollY : 0}
+      compactHeaderPullPx={compactHeaderPullActive ? compactHeaderPullPx : 0}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
@@ -2022,7 +1989,7 @@ function HomeAuthenticatedScreenMain() {
                     : {
                         transform: [
                           {
-                            translateY: compactHeaderPinnedOpen
+                            translateY: compactHeaderPullActive
                               ? compactHeaderScrollY
                               : Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
                           },
