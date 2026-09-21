@@ -1301,9 +1301,6 @@ export function HomeAuthenticatedHeaderRow({
                     bottom: 0,
                     backgroundColor: colors.background,
                     zIndex: 0,
-                    ...(Platform.OS === "web"
-                      ? ({ transform: "translateZ(0)" } as object)
-                      : null),
                   }}
                 />
                 <View
@@ -1429,9 +1426,6 @@ export function HomeAuthenticatedHeaderRow({
                         bottom: 0,
                         backgroundColor: colors.background,
                         zIndex: 0,
-                        ...(Platform.OS === "web"
-                          ? ({ transform: "translateZ(0)" } as object)
-                          : null),
                       }}
                     />
                     <View

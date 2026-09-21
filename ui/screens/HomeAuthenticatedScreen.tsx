@@ -2034,32 +2034,6 @@ function HomeAuthenticatedScreenMain() {
               >
                 {homeHeaderRow}
               </View>
-              {compactHeaderPullActive ? (
-                <View
-                  pointerEvents="none"
-                  style={{
-                    width: "100%",
-                    height: compactHeaderPullPx,
-                    marginBottom: -compactHeaderPullPx,
-                    backgroundColor: colors.background,
-                    zIndex: 6,
-                    ...(Platform.OS === "web"
-                      ? ({
-                          position: "sticky",
-                          top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
-                          // Force a painted layer over scrolled list rows.
-                          transform: "translateZ(0)",
-                        } as object)
-                      : {
-                          transform: [
-                            {
-                              translateY: compactHeaderScrollY,
-                            },
-                          ],
-                        }),
-                  }}
-                />
-              ) : null}
               <View
                 onLayout={(e) => {
                   commitCompactChromeHeightPx("nav", Math.round(e.nativeEvent.layout.height));
