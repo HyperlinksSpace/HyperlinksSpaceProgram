@@ -155,9 +155,9 @@ describe("shouldUseHeaderIdentityOverflow", () => {
 });
 
 describe("shouldStickCompactFirstHeaderRow", () => {
-  it("pins the compact wallet row for swipe expand/collapse", () => {
-    assert.equal(shouldStickCompactFirstHeaderRow(0), true);
-    assert.equal(shouldStickCompactFirstHeaderRow(22), true);
+  it("pins only when the top inset is a camera-sized band", () => {
+    assert.equal(shouldStickCompactFirstHeaderRow(0), false);
+    assert.equal(shouldStickCompactFirstHeaderRow(22), false);
     assert.equal(shouldStickCompactFirstHeaderRow(40), true);
     assert.equal(shouldStickCompactFirstHeaderRow(59), true);
   });
