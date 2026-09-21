@@ -3,10 +3,16 @@ import { Platform } from "react-native";
 
 export type WebHorizontalStripPickScrollEl = (root: HTMLElement) => HTMLElement | null;
 
+export type WebStripVerticalDragHandlers = {
+  onStart: (pageY: number) => void;
+  onMove: (pageY: number) => void;
+  onEnd: () => void;
+};
+
 type Options = {
   /** Host that wraps the horizontal ScrollView (web DOM node). */
   rootRef: RefObject<unknown> | MutableRefObject<unknown>;
-  /** When false, wheel/drag are idle (content fits). */
+  /** When false, horizontal wheel/drag are idle (content fits). */
   overflows: boolean;
   /** Resolve the real overflow:auto node under {@link rootRef}. */
   pickScrollEl: WebHorizontalStripPickScrollEl;
@@ -22,6 +28,13 @@ type Options = {
    * deltaY to the nearest parent vertical scroller (Pro dialog body).
    */
   forwardUnusedWheelToParentVertical?: boolean;
+  /**
+   * Vertical-dominant pointer drag (expand/minimize header, etc.).
+   * When set, vertical drags are handled even if the strip does not overflow horizontally.
+   */
+  verticalDrag?: WebStripVerticalDragHandlers | null;
+  /** Vertical-dominant wheel → header expand/minimize (deltaY, same sign as wheel events). */
+  onVerticalWheel?: ((deltaY: number) => void) | null;
 };
 
 function asHtmlElement(ref: RefObject<unknown> | MutableRefObject<unknown>): HTMLElement | null {
@@ -68,7 +81,7 @@ function setDocumentDragSelectLock(locked: boolean) {
 
 /**
  * Web-only: mouse wheel scrolls a horizontal strip (deltaY → scrollLeft), and
- * click-drag pans the same strip. Use on AI tabs, Feed nav, Pro tariffs, etc.
+ * click-drag pans the same strip. Optional vertical-dominant drag for expand/minimize.
  */
 export function useWebHorizontalStripGestures({
   rootRef,
@@ -77,6 +90,8 @@ export function useWebHorizontalStripGestures({
   onScrollX,
   suppressPressRef,
   forwardUnusedWheelToParentVertical = false,
+  verticalDrag = null,
+  onVerticalWheel = null,
 }: Options): { grabbing: boolean } {
   const [grabbing, setGrabbing] = useState(false);
   const onScrollXRef = useRef(onScrollX);
@@ -87,6 +102,10 @@ export function useWebHorizontalStripGestures({
   overflowsRef.current = overflows;
   const forwardRef = useRef(forwardUnusedWheelToParentVertical);
   forwardRef.current = forwardUnusedWheelToParentVertical;
+  const verticalDragRef = useRef(verticalDrag);
+  verticalDragRef.current = verticalDrag;
+  const onVerticalWheelRef = useRef(onVerticalWheel);
+  onVerticalWheelRef.current = onVerticalWheel;
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -101,6 +120,16 @@ export function useWebHorizontalStripGestures({
       const absX = Math.abs(e.deltaX);
       const absY = Math.abs(e.deltaY);
       if (absX < 0.5 && absY < 0.5) return;
+
+      const wheelVertical = onVerticalWheelRef.current;
+      // When the strip does not overflow, vertical wheel expands/minimizes the header.
+      // When it overflows, keep mapping wheel → horizontal scroll (below).
+      if (wheelVertical && !overflowsRef.current && absY >= absX + 0.25) {
+        e.preventDefault();
+        e.stopPropagation();
+        wheelVertical(e.deltaY);
+        return;
+      }
 
       const hScroll = pickScrollElRef.current(root);
       const canH = overflowsRef.current && hScroll != null;
@@ -162,15 +191,17 @@ export function useWebHorizontalStripGestures({
   }, [rootRef, overflows]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined" || !overflows) return;
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const hasVertical = verticalDrag != null;
+    if (!overflows && !hasVertical) return;
     let cancelled = false;
     let rafId = 0;
     let attempts = 0;
     let attachedRoot: HTMLElement | null = null;
 
-    const ACTIVATE_DX_PX = 8;
+    const ACTIVATE_PX = 8;
     let tracking = false;
-    let dragging = false;
+    let mode: "none" | "horizontal" | "vertical" = "none";
     let startX = 0;
     let startY = 0;
     let startScroll = 0;
@@ -182,13 +213,13 @@ export function useWebHorizontalStripGestures({
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button != null && e.button !== 0) return;
-      const el = resolveScroll();
-      if (!el) return;
+      // Touch pans are handled by RN / parent touch bridges; this is mouse/pen drag.
+      if (e.pointerType === "touch") return;
       tracking = true;
-      dragging = false;
+      mode = "none";
       startX = e.clientX;
-      startY = e.clientY;
-      startScroll = el.scrollLeft;
+      startY = e.pageY;
+      startScroll = resolveScroll()?.scrollLeft ?? 0;
       pointerId = e.pointerId;
       host = e.currentTarget as HTMLElement;
     };
@@ -196,24 +227,45 @@ export function useWebHorizontalStripGestures({
     const onPointerMove = (e: PointerEvent) => {
       if (!tracking) return;
       const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      if (!dragging) {
-        if (Math.abs(dx) < ACTIVATE_DX_PX && Math.abs(dy) < ACTIVATE_DX_PX) return;
+      const dy = e.pageY - startY;
+      if (mode === "none") {
+        if (Math.abs(dx) < ACTIVATE_PX && Math.abs(dy) < ACTIVATE_PX) return;
         if (Math.abs(dy) >= Math.abs(dx)) {
+          if (!verticalDragRef.current) {
+            tracking = false;
+            return;
+          }
+          mode = "vertical";
+          setGrabbing(true);
+          setDocumentDragSelectLock(true);
+          if (suppressPressRef) suppressPressRef.current = true;
+          verticalDragRef.current.onStart(startY);
+          try {
+            host?.setPointerCapture?.(pointerId ?? e.pointerId);
+          } catch {
+            /* ignore */
+          }
+        } else if (overflowsRef.current && resolveScroll()) {
+          mode = "horizontal";
+          setGrabbing(true);
+          setDocumentDragSelectLock(true);
+          if (suppressPressRef) suppressPressRef.current = true;
+          try {
+            host?.setPointerCapture?.(pointerId ?? e.pointerId);
+          } catch {
+            /* ignore */
+          }
+        } else {
           tracking = false;
           return;
         }
-        dragging = true;
-        setGrabbing(true);
-        setDocumentDragSelectLock(true);
-        if (suppressPressRef) suppressPressRef.current = true;
-        try {
-          host?.setPointerCapture?.(pointerId ?? e.pointerId);
-        } catch {
-          /* ignore */
-        }
       }
+
       e.preventDefault();
+      if (mode === "vertical") {
+        verticalDragRef.current?.onMove(e.pageY);
+        return;
+      }
       const el = resolveScroll();
       if (!el) return;
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
@@ -223,15 +275,20 @@ export function useWebHorizontalStripGestures({
     };
 
     const endDrag = () => {
-      if (!tracking && !dragging) return;
+      if (!tracking && mode === "none") return;
+      const wasVertical = mode === "vertical";
+      const wasDragging = mode !== "none";
       tracking = false;
-      if (dragging) {
-        dragging = false;
+      mode = "none";
+      if (wasDragging) {
         setGrabbing(false);
         setDocumentDragSelectLock(false);
         window.setTimeout(() => {
           if (suppressPressRef) suppressPressRef.current = false;
         }, 0);
+      }
+      if (wasVertical) {
+        verticalDragRef.current?.onEnd();
       }
       try {
         if (host && pointerId != null) host.releasePointerCapture?.(pointerId);

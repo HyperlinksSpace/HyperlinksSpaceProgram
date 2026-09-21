@@ -416,13 +416,17 @@ type Props = {
   compactHeaderPullScrollYPx?: number;
   /** Compact: how many px of the hidden bands are currently torn out (0 = tucked). */
   compactHeaderPullPx?: number;
-  /** Compact: vertical gesture on the sticky first row (wheel / drag). */
+  /** Compact: vertical gesture on the sticky first row / menu (wheel / drag / pointer). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
     onTouchMove?: (event: { nativeEvent: { pageY: number } }) => void;
     onTouchEnd?: () => void;
     onTouchCancel?: () => void;
     onWheel?: (event: unknown) => void;
+    onPointerDown?: (event: unknown) => void;
+    onPointerMove?: (event: unknown) => void;
+    onPointerUp?: (event: unknown) => void;
+    onPointerCancel?: (event: unknown) => void;
   };
 };
 
@@ -1249,7 +1253,7 @@ export function HomeAuthenticatedHeaderRow({
               flexDirection: "column",
               backgroundColor: colors.background,
               zIndex: headerPullActive || compactStickFirstRow ? 6 : 1,
-              // No camera-band stick: tear the whole header out from the top as one plate.
+              // No camera-band stick: tear the whole header as one stack, menu at the bottom.
               ...(!compactStickFirstRow && headerPullActive
                 ? {
                     transform: [{ translateY: compactHeaderPullScrollYPx }],
@@ -1268,15 +1272,91 @@ export function HomeAuthenticatedHeaderRow({
             onTouchMove={compactStickyScrollBridge?.onTouchMove}
             onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
             onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
-            {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
-              ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
+            {...(Platform.OS === "web" && compactStickyScrollBridge
+              ? ({
+                  ...(compactStickyScrollBridge.onWheel
+                    ? { onWheel: compactStickyScrollBridge.onWheel }
+                    : null),
+                  ...(compactStickyScrollBridge.onPointerDown
+                    ? {
+                        onPointerDown: compactStickyScrollBridge.onPointerDown,
+                        onPointerMove: compactStickyScrollBridge.onPointerMove,
+                        onPointerUp: compactStickyScrollBridge.onPointerUp,
+                        onPointerCancel: compactStickyScrollBridge.onPointerCancel,
+                      }
+                    : null),
+                } as object)
               : {})}
           >
-            {headerPullActive && compactStickFirstRow ? (
+            {headerPullActive && !compactStickFirstRow ? (
+              <View
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  width: "100%",
+                  backgroundColor: colors.background,
+                }}
+              >
+                <View
+                  onLayout={(e) => {
+                    const h = Math.round(e.nativeEvent.layout.height);
+                    if (h > 0) {
+                      setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
+                      onCompactStickyLayout?.(h);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    backgroundColor: colors.background,
+                    paddingTop: compactStickyTopInsetPx,
+                  }}
+                >
+                  <HeaderBandSlots
+                    centerReservePx={0}
+                    leftGrows={false}
+                    left={balanceButton}
+                    right={walletAddressRow}
+                  />
+                </View>
+                <View
+                  onLayout={(e) => {
+                    const h = Math.round(e.nativeEvent.layout.height);
+                    if (h <= 0) return;
+                    setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                    onCompactCollapsibleLayout?.(h);
+                  }}
+                  style={{
+                    width: "100%",
+                    paddingBottom: AH.leftNavStripMarginTopPx,
+                    backgroundColor: colors.background,
+                  }}
+                >
+                  <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                    {switchWalletRow}
+                    {headerActionIconsRow}
+                  </View>
+                  <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                      <AuthenticatedHomeMenuItems
+                        colors={colors}
+                        narrow
+                        columnWidth={0}
+                        t={t}
+                        onMenuKeyPress={handleMenuKeyPress}
+                        activeMenuKey={headerMenuActiveKey}
+                      />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ) : headerPullActive && compactStickFirstRow ? (
               <>
                 {/*
-                  One translated plate: visible chrome + height-clipped hidden bands.
-                  Tear opens downward under the first row; solid bg covers the list.
+                  Sticky first row stays put. Hidden bands tear out under it bottom-aligned
+                  so the Get/Swap menu (last row) is the handle and upper rows stay attached
+                  exactly as in the initial header stack — content slides in from the top.
                 */}
                 <View
                   style={{
@@ -1327,9 +1407,9 @@ export function HomeAuthenticatedHeaderRow({
                       }}
                       style={{
                         position: "absolute",
-                        top: 0,
                         left: 0,
                         right: 0,
+                        bottom: 0,
                         width: "100%",
                         paddingBottom: AH.leftNavStripMarginTopPx,
                         backgroundColor: colors.background,

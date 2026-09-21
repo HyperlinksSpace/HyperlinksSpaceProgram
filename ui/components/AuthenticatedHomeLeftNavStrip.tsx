@@ -24,7 +24,7 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
 import { getAppString } from "../../locales/appStrings";
 import { formatFeedUnreadCountLabel } from "../feed/feedUnreadStore";
-import { useWebHorizontalStripGestures } from "../hooks/useWebHorizontalStripGestures";
+import { useWebHorizontalStripGestures, type WebStripVerticalDragHandlers } from "../hooks/useWebHorizontalStripGestures";
 
 const NAV_IDS = ["feed", "messages", "tasks", "items", "coins"] as const;
 
@@ -145,6 +145,8 @@ export function AuthenticatedHomeLeftNavStrip({
   marginTopPx,
   passVerticalScroll = false,
   tone: _chromeTone = "background",
+  verticalDrag = null,
+  onVerticalWheel = null,
 }: {
   colors: ThemeColors;
   /** Controlled mode: parent owns which tab is highlighted. */
@@ -158,6 +160,10 @@ export function AuthenticatedHomeLeftNavStrip({
   passVerticalScroll?: boolean;
   /** Compact sticky last header band uses undercover so list rows do not show through. */
   tone?: "background" | "undercover";
+  /** Desktop: vertical drag on this strip expands/minimizes the compact header. */
+  verticalDrag?: WebStripVerticalDragHandlers | null;
+  /** Desktop: vertical-dominant wheel on this strip expands/minimizes the compact header. */
+  onVerticalWheel?: ((deltaY: number) => void) | null;
 }) {
   const { t, locale } = useAppStrings();
   const { width: windowWidth } = useWindowDimensions();
@@ -446,6 +452,8 @@ export function AuthenticatedHomeLeftNavStrip({
     pickScrollEl: pickStripScrollEl,
     onScrollX: setScrollX,
     suppressPressRef: suppressNavPressRef,
+    verticalDrag,
+    onVerticalWheel,
   });
 
   const { thumbSpan: thumbW, thumbOffset: thumbLeft } = scrollIndicatorThumbSpanAndOffset(
@@ -732,7 +740,7 @@ export function AuthenticatedHomeLeftNavStrip({
         backgroundColor: colors.background,
         ...(Platform.OS === "web"
           ? ({
-              cursor: grabbing ? "grabbing" : scrollEnabled ? "grab" : "default",
+              cursor: grabbing ? "grabbing" : scrollEnabled || verticalDrag ? "grab" : "default",
               touchAction: passVerticalScroll
                 ? "pan-x pan-y"
                 : scrollEnabled

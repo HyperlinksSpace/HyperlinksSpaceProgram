@@ -855,6 +855,68 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderDidDragRef.current = false;
     compactHeaderGestureRef.current = false;
   }, []);
+
+  const readPointerPageY = (event: {
+    nativeEvent?: { pageY?: number; clientY?: number; button?: number; pointerType?: string };
+    pageY?: number;
+    clientY?: number;
+    button?: number;
+    pointerType?: string;
+  }) => {
+    const ne = event.nativeEvent ?? event;
+    return typeof ne.pageY === "number" ? ne.pageY : typeof ne.clientY === "number" ? ne.clientY : 0;
+  };
+
+  const onCompactHeaderPointerDown = useCallback(
+    (event: {
+      nativeEvent?: { pageY?: number; clientY?: number; button?: number; pointerType?: string };
+      pageY?: number;
+      clientY?: number;
+      button?: number;
+      pointerType?: string;
+    }) => {
+      const ne = event.nativeEvent ?? event;
+      if (ne.button != null && ne.button !== 0) return;
+      // Touch is handled by onTouch*; this path is mouse/pen on desktop web.
+      if (ne.pointerType === "touch") return;
+      onCompactHeaderTouchStart({ nativeEvent: { pageY: readPointerPageY(event) } });
+    },
+    [onCompactHeaderTouchStart],
+  );
+
+  const onCompactHeaderPointerMove = useCallback(
+    (event: {
+      nativeEvent?: { pageY?: number; clientY?: number; pointerType?: string };
+      pageY?: number;
+      clientY?: number;
+      pointerType?: string;
+    }) => {
+      const ne = event.nativeEvent ?? event;
+      if (ne.pointerType === "touch") return;
+      if (compactHeaderDragStartYRef.current == null) return;
+      onCompactHeaderTouchMove({ nativeEvent: { pageY: readPointerPageY(event) } });
+    },
+    [onCompactHeaderTouchMove],
+  );
+
+  const compactHeaderVerticalDrag = useMemo(
+    () => ({
+      onStart: (pageY: number) => onCompactHeaderTouchStart({ nativeEvent: { pageY } }),
+      onMove: (pageY: number) => onCompactHeaderTouchMove({ nativeEvent: { pageY } }),
+      onEnd: onCompactHeaderTouchEnd,
+    }),
+    [onCompactHeaderTouchStart, onCompactHeaderTouchMove, onCompactHeaderTouchEnd],
+  );
+
+  const onCompactHeaderVerticalWheel = useCallback(
+    (deltaY: number) => {
+      onCompactHeaderWheel({
+        nativeEvent: { deltaY },
+        preventDefault: () => undefined,
+      });
+    },
+    [onCompactHeaderWheel],
+  );
   const isTripleColumn = isAuthenticatedHomeTripleColumnLayoutWidthPx(liveLayoutWidthPx);
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
   const swapActiveOnWide = isWideHome && rightPanel === "swap";
@@ -1866,6 +1928,14 @@ function HomeAuthenticatedScreenMain() {
         onTouchMove: onCompactHeaderTouchMove,
         onTouchEnd: onCompactHeaderTouchEnd,
         onTouchCancel: onCompactHeaderTouchEnd,
+        ...(Platform.OS === "web"
+          ? {
+              onPointerDown: onCompactHeaderPointerDown,
+              onPointerMove: onCompactHeaderPointerMove,
+              onPointerUp: onCompactHeaderTouchEnd,
+              onPointerCancel: onCompactHeaderTouchEnd,
+            }
+          : null),
       }
     : undefined;
 
@@ -1973,7 +2043,13 @@ function HomeAuthenticatedScreenMain() {
                 onTouchEnd={onCompactHeaderTouchEnd}
                 onTouchCancel={onCompactHeaderTouchEnd}
                 {...(Platform.OS === "web"
-                  ? ({ onWheel: onCompactHeaderWheel } as object)
+                  ? ({
+                      onWheel: onCompactHeaderWheel,
+                      onPointerDown: onCompactHeaderPointerDown,
+                      onPointerMove: onCompactHeaderPointerMove,
+                      onPointerUp: onCompactHeaderTouchEnd,
+                      onPointerCancel: onCompactHeaderTouchEnd,
+                    } as object)
                   : {})}
                 style={{
                   zIndex: 5,
@@ -2006,6 +2082,8 @@ function HomeAuthenticatedScreenMain() {
                   marginTopPx={0}
                   passVerticalScroll
                   tone="background"
+                  verticalDrag={compactHeaderVerticalDrag}
+                  onVerticalWheel={onCompactHeaderVerticalWheel}
                 />
               </View>
               <View style={homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
