@@ -409,7 +409,12 @@ type Props = {
   compactScrollYPx?: number;
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
-  /** Compact: vertical scroll on the sticky first row (wheel / drag). */
+  /**
+   * Compact: when > 0, translate the collapsing bands by this scroll offset so they
+   * stay under the sticky chrome even if the message list is scrolled past them.
+   */
+  compactCollapsiblePinScrollYPx?: number;
+  /** Compact: vertical gesture on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
     onTouchMove?: (event: { nativeEvent: { pageY: number } }) => void;
@@ -437,6 +442,7 @@ export function HomeAuthenticatedHeaderRow({
   compactStickyTopInsetPx = 0,
   compactScrollYPx = 0,
   compactStickFirstRow = false,
+  compactCollapsiblePinScrollYPx = 0,
   compactStickyScrollBridge,
 }: Props) {
   const router = useRouter();
@@ -1220,6 +1226,10 @@ export function HomeAuthenticatedHeaderRow({
                 const h = Math.round(e.nativeEvent.layout.height);
                 if (h > 0) onCompactStickyLayout?.(h);
               }}
+              onTouchStart={compactStickyScrollBridge?.onTouchStart}
+              onTouchMove={compactStickyScrollBridge?.onTouchMove}
+              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
+              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
               {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
                 ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
                 : {})}
@@ -1253,9 +1263,29 @@ export function HomeAuthenticatedHeaderRow({
                 if (h <= 0) return;
                 onCompactCollapsibleLayout?.(h);
               }}
+              onTouchStart={compactStickyScrollBridge?.onTouchStart}
+              onTouchMove={compactStickyScrollBridge?.onTouchMove}
+              onTouchEnd={compactStickyScrollBridge?.onTouchEnd}
+              onTouchCancel={compactStickyScrollBridge?.onTouchCancel}
+              {...(Platform.OS === "web" && compactStickyScrollBridge?.onWheel
+                ? ({ onWheel: compactStickyScrollBridge.onWheel } as object)
+                : {})}
               style={{
                 width: "100%",
                 paddingBottom: AH.leftNavStripMarginTopPx,
+                backgroundColor: colors.background,
+                zIndex: compactCollapsiblePinScrollYPx > 0 ? 3 : 1,
+                ...(compactCollapsiblePinScrollYPx > 0
+                  ? { transform: [{ translateY: compactCollapsiblePinScrollYPx }] }
+                  : null),
+                ...(Platform.OS === "web"
+                  ? ({
+                      touchAction: "pan-y",
+                      ...(compactCollapsiblePinScrollYPx > 0
+                        ? { willChange: "transform" }
+                        : null),
+                    } as object)
+                  : null),
               }}
             >
               <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>

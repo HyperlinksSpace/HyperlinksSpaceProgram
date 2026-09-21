@@ -638,7 +638,11 @@ function HomeAuthenticatedScreenMain() {
   const [compactHeaderScrollY, setCompactHeaderScrollY] = useState(0);
   const [compactCollapsibleHeightPx, setCompactCollapsibleHeightPx] = useState(0);
   const compactHeaderDragStartYRef = useRef<number | null>(null);
-  const compactHeaderDragStartScrollRef = useRef(0);
+  const compactHeaderDidDragRef = useRef(false);
+  const compactHeaderGestureRef = useRef(false);
+  const compactNavLockAfterPxRef = useRef(0);
+  const compactHeaderScrollYRef = useRef(0);
+  const [compactHeaderManualExpanded, setCompactHeaderManualExpanded] = useState(false);
   useEffect(() => {
     setChatListSearchScrollToEndHandler(() => {
       homeLeftScrollRef.current?.scrollToEnd();
@@ -698,7 +702,17 @@ function HomeAuthenticatedScreenMain() {
   }, []);
   const handleHomeLeftScrollPositionChange = useCallback(
     (metrics: { scrollY: number; layoutH: number; contentH: number }) => {
+      const prevY = compactHeaderScrollYRef.current;
+      compactHeaderScrollYRef.current = metrics.scrollY;
       setCompactHeaderScrollY(metrics.scrollY);
+      // Scrolling the list down while the header was manually opened collapses it again.
+      if (
+        !compactHeaderGestureRef.current &&
+        metrics.scrollY > prevY + 2 &&
+        compactHeaderManualExpanded
+      ) {
+        setCompactHeaderManualExpanded(false);
+      }
       if (homeNavIndex !== 1) return;
       setChatListScrollMetrics({
         scrollY: metrics.scrollY,
@@ -706,7 +720,7 @@ function HomeAuthenticatedScreenMain() {
         contentTopInsetPx: compactChromeHeightPx,
       });
     },
-    [homeNavIndex, compactChromeHeightPx],
+    [homeNavIndex, compactChromeHeightPx, compactHeaderManualExpanded],
   );
   const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
@@ -752,18 +766,44 @@ function HomeAuthenticatedScreenMain() {
     firstRowHeightPx: compactStickyHeightPx,
     collapsibleHeightPx: compactCollapsibleHeightPx,
   });
+  compactNavLockAfterPxRef.current = compactNavLockAfterPx;
+  /** Pin the collapsing bands under the sticky chrome without moving the message list. */
+  const compactHeaderPinnedOpen =
+    !isWideHome &&
+    compactHeaderManualExpanded &&
+    compactHeaderScrollY >= compactNavLockAfterPx &&
+    compactNavLockAfterPx > 0;
+  const compactNavStickyTopPx = stickCompactFirstHeaderRow
+    ? compactStickyHeightPx + (compactHeaderPinnedOpen ? compactCollapsibleHeightPx : 0)
+    : compactHeaderPinnedOpen
+      ? compactCollapsibleHeightPx
+      : 0;
 
   useEffect(() => {
     if (isWideHome) {
       setCompactChromeHeightPx(0);
+      setCompactHeaderManualExpanded(false);
     }
   }, [isWideHome]);
 
-  const scrollHomeLeftByDelta = useCallback((deltaY: number) => {
-    const col = homeLeftScrollRef.current;
-    if (!col) return;
-    const next = Math.max(0, col.getMetrics().scrollY + deltaY);
-    col.scrollToY(next);
+  const expandCompactHeader = useCallback(() => {
+    setCompactHeaderManualExpanded(true);
+    const lock = compactNavLockAfterPxRef.current;
+    const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    // Near the top, finish opening by scrolling within the collapse range only.
+    if (lock > 0 && y > 0 && y < lock) {
+      homeLeftScrollRef.current?.scrollToY(0);
+    }
+  }, []);
+
+  const minimizeCompactHeader = useCallback(() => {
+    setCompactHeaderManualExpanded(false);
+    const lock = compactNavLockAfterPxRef.current;
+    const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    // Near the top, collapse by scrolling to the lock point (list barely moves).
+    if (lock > 0 && y < lock) {
+      homeLeftScrollRef.current?.scrollToY(lock);
+    }
   }, []);
 
   const onCompactHeaderWheel = useCallback(
@@ -775,26 +815,33 @@ function HomeAuthenticatedScreenMain() {
       event.preventDefault?.();
       const dy = typeof native.deltaY === "number" ? native.deltaY : 0;
       if (dy === 0) return;
-      scrollHomeLeftByDelta(dy);
+      if (dy < 0) expandCompactHeader();
+      else minimizeCompactHeader();
     },
-    [scrollHomeLeftByDelta],
+    [expandCompactHeader, minimizeCompactHeader],
   );
 
   const onCompactHeaderTouchStart = useCallback((event: { nativeEvent: { pageY: number } }) => {
     compactHeaderDragStartYRef.current = event.nativeEvent.pageY;
-    compactHeaderDragStartScrollRef.current = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    compactHeaderDidDragRef.current = false;
+    compactHeaderGestureRef.current = true;
   }, []);
 
   const onCompactHeaderTouchMove = useCallback((event: { nativeEvent: { pageY: number } }) => {
     const startY = compactHeaderDragStartYRef.current;
     if (startY == null) return;
-    const dy = startY - event.nativeEvent.pageY;
-    if (Math.abs(dy) < 2) return;
-    homeLeftScrollRef.current?.scrollToY(Math.max(0, compactHeaderDragStartScrollRef.current + dy));
-  }, []);
+    const dy = event.nativeEvent.pageY - startY;
+    if (Math.abs(dy) < 8) return;
+    compactHeaderDidDragRef.current = true;
+    // Finger down → expand; finger up → minimize (do not scrub the message list).
+    if (dy > 0) expandCompactHeader();
+    else minimizeCompactHeader();
+  }, [expandCompactHeader, minimizeCompactHeader]);
 
   const onCompactHeaderTouchEnd = useCallback(() => {
     compactHeaderDragStartYRef.current = null;
+    compactHeaderDidDragRef.current = false;
+    compactHeaderGestureRef.current = false;
   }, []);
   const isTripleColumn = isAuthenticatedHomeTripleColumnLayoutWidthPx(liveLayoutWidthPx);
   const aiBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, true);
@@ -1803,6 +1850,10 @@ function HomeAuthenticatedScreenMain() {
   const compactStickyScrollBridge = !isWideHome
     ? {
         onWheel: onCompactHeaderWheel,
+        onTouchStart: onCompactHeaderTouchStart,
+        onTouchMove: onCompactHeaderTouchMove,
+        onTouchEnd: onCompactHeaderTouchEnd,
+        onTouchCancel: onCompactHeaderTouchEnd,
       }
     : undefined;
 
@@ -1822,9 +1873,8 @@ function HomeAuthenticatedScreenMain() {
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
-      compactStickyScrollBridge={
-        stickCompactFirstHeaderRow ? compactStickyScrollBridge : undefined
-      }
+      compactCollapsiblePinScrollYPx={compactHeaderPinnedOpen ? compactHeaderScrollY : 0}
+      compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
             ? null
@@ -1920,7 +1970,7 @@ function HomeAuthenticatedScreenMain() {
                   ...(Platform.OS === "web"
                     ? ({
                         position: "sticky",
-                        top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
+                        top: compactNavStickyTopPx,
                         touchAction: "pan-y",
                       } as object)
                     : {
@@ -1928,7 +1978,9 @@ function HomeAuthenticatedScreenMain() {
                           {
                             translateY: Math.max(
                               0,
-                              compactHeaderScrollY - compactNavLockAfterPx,
+                              compactHeaderScrollY -
+                                compactNavLockAfterPx +
+                                (compactHeaderPinnedOpen ? compactCollapsibleHeightPx : 0),
                             ),
                           },
                         ],
