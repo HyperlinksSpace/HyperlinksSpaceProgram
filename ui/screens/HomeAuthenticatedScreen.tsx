@@ -2030,10 +2030,37 @@ function HomeAuthenticatedScreenMain() {
                 onLayout={(e) => {
                   commitCompactChromeHeightPx("header", Math.round(e.nativeEvent.layout.height));
                 }}
-                style={{ width: "100%", overflow: "visible" }}
+                style={{
+                  width: "100%",
+                  overflow: "visible",
+                  // Above the sticky undercover plate so controls stay visible; undercover stays above the list.
+                  ...(compactHeaderPullActive
+                    ? { zIndex: 8, position: "relative" as const }
+                    : null),
+                }}
               >
                 {homeHeaderRow}
               </View>
+              {compactHeaderPullActive ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    width: "100%",
+                    height: compactHeaderPullPx,
+                    marginBottom: -compactHeaderPullPx,
+                    backgroundColor: colors.background,
+                    zIndex: 6,
+                    ...(Platform.OS === "web"
+                      ? ({
+                          position: "sticky",
+                          top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
+                        } as object)
+                      : {
+                          transform: [{ translateY: compactHeaderScrollY }],
+                        }),
+                  }}
+                />
+              ) : null}
               <View
                 onLayout={(e) => {
                   commitCompactChromeHeightPx("nav", Math.round(e.nativeEvent.layout.height));
