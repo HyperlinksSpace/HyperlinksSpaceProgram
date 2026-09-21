@@ -410,15 +410,15 @@ type Props = {
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
   /**
-   * Compact: when > 0, the list scrollY used to pin a manual expand over scrolled content.
-   * Combined with {@link compactHeaderPinSlideRemainPx} so the stack slides in from above.
+   * Compact: when > 0, manually pin/reveal the header over a scrolled list.
+   * Used as sticky cancel scrollY for the first row; reveal uses {@link compactHeaderRevealHeightPx}.
    */
   compactHeaderPinScrollYPx?: number;
   /**
-   * Compact: extra upward offset while sliding open (animates  stack/collapsible height → 0).
-   * Final open position uses only {@link compactHeaderPinScrollYPx} (same as initial top layout).
+   * Compact: visible height (px) of the tearing-open region below the minimized chrome.
+   * `null` / omit = normal in-flow collapse (not manually pinned).
    */
-  compactHeaderPinSlideRemainPx?: number;
+  compactHeaderRevealHeightPx?: number | null;
   /** Compact: vertical gesture on the sticky first row (wheel / drag). */
   compactStickyScrollBridge?: {
     onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
@@ -448,14 +448,12 @@ export function HomeAuthenticatedHeaderRow({
   compactScrollYPx = 0,
   compactStickFirstRow = false,
   compactHeaderPinScrollYPx = 0,
-  compactHeaderPinSlideRemainPx = 0,
+  compactHeaderRevealHeightPx = null,
   compactStickyScrollBridge,
 }: Props) {
-  const headerPinnedOpen = compactHeaderPinScrollYPx > 0;
-  const stackPinTranslateY = headerPinnedOpen
-    ? compactHeaderPinScrollYPx - compactHeaderPinSlideRemainPx
-    : 0;
-  // When the first row is already sticky, keep it pinned; collapsing bands slide out under it.
+  const headerPinnedOpen =
+    compactHeaderRevealHeightPx != null && compactHeaderRevealHeightPx >= 0;
+  // Sticky first row keeps cancelling scroll; when pinned it stays put while bands tear open under it.
   const stickRowTranslateY = compactStickFirstRow
     ? headerPinnedOpen
       ? compactHeaderPinScrollYPx
@@ -494,6 +492,8 @@ export function HomeAuthenticatedHeaderRow({
   const [firstLetterWidthPx, setFirstLetterWidthPx] = useState(0);
   const [snippetWidthPx, setSnippetWidthPx] = useState(0);
   const [switchWalletWidthPx, setSwitchWalletWidthPx] = useState(0);
+  const [compactStickyNaturalHeightPx, setCompactStickyNaturalHeightPx] = useState(0);
+  const [compactCollapsibleNaturalHeightPx, setCompactCollapsibleNaturalHeightPx] = useState(0);
   const switchWalletRef = useRef<View>(null);
   const identityOverflowRef = useRef<View>(null);
   const headerNameChoiceRef = useRef<string | null>(null);
@@ -1251,17 +1251,26 @@ export function HomeAuthenticatedHeaderRow({
             style={{
               width: "100%",
               flexDirection: "column",
-              overflow: headerPinnedOpen && !compactStickFirstRow ? "hidden" : "visible",
               backgroundColor: colors.background,
               zIndex: headerPinnedOpen || compactStickFirstRow ? 6 : 1,
-              // No sticky first row: the whole stack slides down from above into the initial layout.
+              // No sticky first row: pin stack + tear height open from the top.
               ...(!compactStickFirstRow && headerPinnedOpen
-                ? { transform: [{ translateY: stackPinTranslateY }] }
+                ? {
+                    transform: [{ translateY: compactHeaderPinScrollYPx }],
+                    height: Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                    overflow: "hidden" as const,
+                    marginBottom: Math.max(
+                      0,
+                      compactStickyNaturalHeightPx +
+                        compactCollapsibleNaturalHeightPx -
+                        Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                    ),
+                  }
                 : null),
-              ...(Platform.OS === "web" && headerPinnedOpen
+              ...(Platform.OS === "web" && headerPinnedOpen && !compactStickFirstRow
                 ? ({
-                    transition: "transform 220ms ease-out",
-                    willChange: "transform",
+                    transition: "height 220ms ease-out",
+                    willChange: "height",
                   } as object)
                 : null),
             }}
@@ -1276,7 +1285,10 @@ export function HomeAuthenticatedHeaderRow({
             <View
               onLayout={(e) => {
                 const h = Math.round(e.nativeEvent.layout.height);
-                if (h > 0) onCompactStickyLayout?.(h);
+                if (h > 0) {
+                  setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
+                  onCompactStickyLayout?.(h);
+                }
               }}
               style={{
                 width: "100%",
@@ -1301,51 +1313,90 @@ export function HomeAuthenticatedHeaderRow({
                 right={walletAddressRow}
               />
             </View>
-            <View
-              onLayout={(e) => {
-                const h = Math.round(e.nativeEvent.layout.height);
-                if (h <= 0) return;
-                onCompactCollapsibleLayout?.(h);
-              }}
-              style={{
-                width: "100%",
-                paddingBottom: AH.leftNavStripMarginTopPx,
-                backgroundColor: colors.background,
-                ...(headerPinnedOpen && compactStickFirstRow
-                  ? {
-                      transform: [
-                        {
-                          translateY:
-                            compactHeaderPinScrollYPx - compactHeaderPinSlideRemainPx,
-                        },
-                      ],
-                    }
-                  : null),
-                ...(Platform.OS === "web" && headerPinnedOpen && compactStickFirstRow
-                  ? ({
-                      transition: "transform 220ms ease-out",
-                      willChange: "transform",
-                    } as object)
-                  : null),
-              }}
-            >
-              <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-                {switchWalletRow}
-                {headerActionIconsRow}
-              </View>
-              <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                  <AuthenticatedHomeMenuItems
-                    colors={colors}
-                    narrow
-                    columnWidth={0}
-                    t={t}
-                    onMenuKeyPress={handleMenuKeyPress}
-                    activeMenuKey={headerMenuActiveKey}
-                  />
+            {headerPinnedOpen && compactStickFirstRow ? (
+              <View
+                style={{
+                  width: "100%",
+                  backgroundColor: colors.background,
+                  transform: [{ translateY: compactHeaderPinScrollYPx }],
+                  height: Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                  overflow: "hidden",
+                  marginBottom: Math.max(
+                    0,
+                    compactCollapsibleNaturalHeightPx -
+                      Math.max(0, compactHeaderRevealHeightPx ?? 0),
+                  ),
+                  ...(Platform.OS === "web"
+                    ? ({
+                        transition: "height 220ms ease-out",
+                        willChange: "height",
+                      } as object)
+                    : null),
+                }}
+              >
+                <View
+                  onLayout={(e) => {
+                    const h = Math.round(e.nativeEvent.layout.height);
+                    if (h <= 0) return;
+                    setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                    onCompactCollapsibleLayout?.(h);
+                  }}
+                  style={{
+                    width: "100%",
+                    paddingBottom: AH.leftNavStripMarginTopPx,
+                    backgroundColor: colors.background,
+                  }}
+                >
+                  <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                    {switchWalletRow}
+                    {headerActionIconsRow}
+                  </View>
+                  <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                      <AuthenticatedHomeMenuItems
+                        colors={colors}
+                        narrow
+                        columnWidth={0}
+                        t={t}
+                        onMenuKeyPress={handleMenuKeyPress}
+                        activeMenuKey={headerMenuActiveKey}
+                      />
+                    </View>
+                  </View>
                 </View>
               </View>
-            </View>
+            ) : (
+              <View
+                onLayout={(e) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h <= 0) return;
+                  setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                  onCompactCollapsibleLayout?.(h);
+                }}
+                style={{
+                  width: "100%",
+                  paddingBottom: AH.leftNavStripMarginTopPx,
+                  backgroundColor: colors.background,
+                }}
+              >
+                <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                  {switchWalletRow}
+                  {headerActionIconsRow}
+                </View>
+                <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                    <AuthenticatedHomeMenuItems
+                      colors={colors}
+                      narrow
+                      columnWidth={0}
+                      t={t}
+                      onMenuKeyPress={handleMenuKeyPress}
+                      activeMenuKey={headerMenuActiveKey}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         )}
       </View>

@@ -778,17 +778,16 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderScrollY >= compactNavLockAfterPx &&
     compactNavLockAfterPx > 0;
   const compactHeaderStackHeightPx = compactStickyHeightPx + compactCollapsibleHeightPx;
-  const compactHeaderPinSlideRemainPx = compactHeaderPinnedOpen
-    ? Math.round(
-        (1 - Math.min(1, Math.max(0, compactHeaderPinProgress))) *
-          (stickCompactFirstHeaderRow
-            ? compactCollapsibleHeightPx
-            : compactHeaderStackHeightPx),
-      )
-    : 0;
-  // When pinned, the full stack (first row + collapsing bands) sits above the nav.
+  const compactHeaderRevealFullPx = stickCompactFirstHeaderRow
+    ? compactCollapsibleHeightPx
+    : compactHeaderStackHeightPx;
+  const compactHeaderRevealHeightPx = compactHeaderPinnedOpen
+    ? Math.round(Math.min(1, Math.max(0, compactHeaderPinProgress)) * compactHeaderRevealFullPx)
+    : null;
+  // When pinned, nav sits under the minimized chrome + the torn-open region.
   const compactNavStickyTopPx = compactHeaderPinnedOpen
-    ? compactHeaderStackHeightPx
+    ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) +
+      (compactHeaderRevealHeightPx ?? 0)
     : stickCompactFirstHeaderRow
       ? compactStickyHeightPx
       : 0;
@@ -1920,7 +1919,7 @@ function HomeAuthenticatedScreenMain() {
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
       compactHeaderPinScrollYPx={compactHeaderPinnedOpen ? compactHeaderScrollY : 0}
-      compactHeaderPinSlideRemainPx={compactHeaderPinSlideRemainPx}
+      compactHeaderRevealHeightPx={compactHeaderRevealHeightPx}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
