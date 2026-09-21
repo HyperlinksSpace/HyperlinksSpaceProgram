@@ -1289,68 +1289,87 @@ export function HomeAuthenticatedHeaderRow({
               : {})}
           >
             {headerPullActive && !compactStickFirstRow ? (
-              <View
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  width: "100%",
-                  backgroundColor: colors.background,
-                }}
-              >
+              <>
+                {/* Full-bleed undercover: transform + overflow clip often skips parent bg on web. */}
                 <View
-                  onLayout={(e) => {
-                    const h = Math.round(e.nativeEvent.layout.height);
-                    if (h > 0) {
-                      setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
-                      onCompactStickyLayout?.(h);
-                    }
-                  }}
+                  pointerEvents="none"
                   style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: colors.background,
+                    zIndex: 0,
+                    ...(Platform.OS === "web"
+                      ? ({ transform: "translateZ(0)" } as object)
+                      : null),
+                  }}
+                />
+                <View
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
                     width: "100%",
                     backgroundColor: colors.background,
-                    paddingTop: compactStickyTopInsetPx,
+                    zIndex: 1,
                   }}
                 >
-                  <HeaderBandSlots
-                    centerReservePx={0}
-                    leftGrows={false}
-                    left={balanceButton}
-                    right={walletAddressRow}
-                  />
-                </View>
-                <View
-                  onLayout={(e) => {
-                    const h = Math.round(e.nativeEvent.layout.height);
-                    if (h <= 0) return;
-                    setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
-                    onCompactCollapsibleLayout?.(h);
-                  }}
-                  style={{
-                    width: "100%",
-                    paddingBottom: AH.leftNavStripMarginTopPx,
-                    backgroundColor: colors.background,
-                  }}
-                >
-                  <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-                    {switchWalletRow}
-                    {headerActionIconsRow}
+                  <View
+                    onLayout={(e) => {
+                      const h = Math.round(e.nativeEvent.layout.height);
+                      if (h > 0) {
+                        setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
+                        onCompactStickyLayout?.(h);
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      backgroundColor: colors.background,
+                      paddingTop: compactStickyTopInsetPx,
+                    }}
+                  >
+                    <HeaderBandSlots
+                      centerReservePx={0}
+                      leftGrows={false}
+                      left={balanceButton}
+                      right={walletAddressRow}
+                    />
                   </View>
-                  <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                      <AuthenticatedHomeMenuItems
-                        colors={colors}
-                        narrow
-                        columnWidth={0}
-                        t={t}
-                        onMenuKeyPress={handleMenuKeyPress}
-                        activeMenuKey={headerMenuActiveKey}
-                      />
+                  <View
+                    onLayout={(e) => {
+                      const h = Math.round(e.nativeEvent.layout.height);
+                      if (h <= 0) return;
+                      setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
+                      onCompactCollapsibleLayout?.(h);
+                    }}
+                    style={{
+                      width: "100%",
+                      paddingBottom: AH.leftNavStripMarginTopPx,
+                      backgroundColor: colors.background,
+                    }}
+                  >
+                    <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
+                      {switchWalletRow}
+                      {headerActionIconsRow}
+                    </View>
+                    <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
+                        <AuthenticatedHomeMenuItems
+                          colors={colors}
+                          narrow
+                          columnWidth={0}
+                          t={t}
+                          onMenuKeyPress={handleMenuKeyPress}
+                          activeMenuKey={headerMenuActiveKey}
+                        />
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
+              </>
             ) : headerPullActive && compactStickFirstRow ? (
               <>
                 {/*
@@ -1396,8 +1415,25 @@ export function HomeAuthenticatedHeaderRow({
                       height: compactHeaderPullPx,
                       overflow: "hidden" as const,
                       backgroundColor: colors.background,
+                      position: "relative",
                     }}
                   >
+                    {/* Opaque plate behind bottom-aligned bands (list must not show through). */}
+                    <View
+                      pointerEvents="none"
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: colors.background,
+                        zIndex: 0,
+                        ...(Platform.OS === "web"
+                          ? ({ transform: "translateZ(0)" } as object)
+                          : null),
+                      }}
+                    />
                     <View
                       onLayout={(e) => {
                         const h = Math.round(e.nativeEvent.layout.height);
@@ -1413,6 +1449,7 @@ export function HomeAuthenticatedHeaderRow({
                         width: "100%",
                         paddingBottom: AH.leftNavStripMarginTopPx,
                         backgroundColor: colors.background,
+                        zIndex: 1,
                       }}
                     >
                       <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
