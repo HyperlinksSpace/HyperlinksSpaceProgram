@@ -91,8 +91,6 @@ const WALLET_TO_BALANCE_OPTICAL_PULL_PX = 10;
  * digits / mono sit on the same centerline as undercover chips (wallet, more).
  */
 const HEADER_BAND_TEXT_ALIGN_TRANSFORM = { transform: [{ translateY: 0 }] };
-/** Extra optical lift for the balance digits vs the wallet undercover chip. */
-const HEADER_AMOUNT_OPTICAL_LIFT_Y = -2;
 /** Tonviewer chip diameter in the identity cluster. */
 const HEADER_EXPLORER_PX = 20;
 const HEADER_IDENTITY_GAP_PX = 8;
@@ -118,7 +116,7 @@ function HeaderBandSlots({
     <View
       style={{
         flexDirection: "row",
-        alignItems: "stretch",
+        alignItems: "center",
         height: WIDE_HEADER_BAND_PX,
         width: "100%",
       }}
@@ -135,8 +133,9 @@ function HeaderBandSlots({
           flexBasis: leftGrows ? 0 : "auto",
           minWidth: leftGrows ? 0 : undefined,
           overflow: leftGrows ? "hidden" : "visible",
-          height: "100%",
+          height: HEADER_CONTROL_ROW_PX,
           justifyContent: "center",
+          alignItems: "flex-start",
         }}
       >
         {left}
@@ -148,11 +147,11 @@ function HeaderBandSlots({
             width: centerReservePx,
             flexGrow: 0,
             flexShrink: 0,
-            height: "100%",
+            height: HEADER_CONTROL_ROW_PX,
           }}
         />
       ) : (
-        <View style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%" }} />
+        <View style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, height: HEADER_CONTROL_ROW_PX }} />
       )}
       <View
         onLayout={(e) => {
@@ -167,8 +166,9 @@ function HeaderBandSlots({
           flexBasis: centerReservePx > 0 ? 0 : "auto",
           minWidth: 0,
           overflow: "hidden",
-          height: "100%",
+          height: HEADER_CONTROL_ROW_PX,
           justifyContent: "center",
+          alignItems: "flex-end",
         }}
       >
         {right}
@@ -793,8 +793,9 @@ export function HomeAuthenticatedHeaderRow({
             {
               color: colors.primary,
               fontSize: amountFontSizePx,
-              lineHeight: HEADER_CONTROL_ROW_PX,
-              transform: [{ translateY: HEADER_AMOUNT_OPTICAL_LIFT_Y }],
+              // Tight line box + flex-centered parent = same 30px centerline as undercover chips.
+              lineHeight: amountFontSizePx,
+              ...HEADER_BAND_TEXT_ALIGN_TRANSFORM,
             },
           ]}
         >
