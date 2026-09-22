@@ -355,7 +355,8 @@ function HeaderIdentityMoreButton({
           <HeaderIconMoreSquares
             color={menuIconStrokeColor(
               colors,
-              active || pressed ? "primary" : "highlight",
+              // Inverse of other header glyphs: white at rest, grey while pressed.
+              pressed && !active ? "highlight" : "primary",
             )}
             size={size}
           />
