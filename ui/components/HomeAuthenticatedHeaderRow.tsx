@@ -350,6 +350,7 @@ function HeaderIdentityMoreButton({
             height: size,
             alignItems: "center",
             justifyContent: "center",
+            transform: [{ translateY: -1 }],
           }}
         >
           <HeaderIconMoreSquares
