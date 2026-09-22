@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 import { useTelegram } from "../Telegram";
@@ -21,6 +21,9 @@ import {
 
 const UNDERCOVER_CIRCLE_PX = layout.bottomBar.undercoverButtonHeightPx;
 const WALLET_GLYPH_PX = 17;
+const MORE_GLYPH_PX = 17;
+/** Three-dot glyph reads slightly low in the circle vs the wallet icon — lift to match. */
+const MORE_GLYPH_OPTICAL_LIFT_Y = -1;
 const PRO_ROCKET_GLYPH_PX = 18;
 
 function isLightTheme(colors: ThemeColors): boolean {
@@ -79,18 +82,19 @@ function undercoverWithOpacity(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity})`;
 }
 
-/** Circular undercover chip wrapping a wallet icon (header balance control). */
-export function UndercoverWalletButton({
+/** Shared 30×30 undercover circle shell (wallet + more must match 1:1). */
+function UndercoverCircleChip({
   onPress,
   accessibilityLabel,
   disabled,
   active = false,
+  renderGlyph,
 }: {
   onPress?: () => void;
   accessibilityLabel: string;
   disabled?: boolean;
-  /** Dialog open — undercover fill at 71% opacity. */
   active?: boolean;
+  renderGlyph: (contentColor: string) => ReactNode;
 }) {
   const colors = useColors();
   const { colorScheme } = useTelegram();
@@ -117,18 +121,43 @@ export function UndercoverWalletButton({
         borderRadius: UNDERCOVER_CIRCLE_PX / 2,
         alignItems: "center",
         justifyContent: "center",
+        flexShrink: 0,
         backgroundColor:
           !active && pressed
             ? welcomeAuthButtonActiveBackground(colors, colorScheme)
             : backgroundColor,
       })}
     >
-      <WalletGlyph color={contentColor} />
+      {renderGlyph(contentColor)}
     </Pressable>
   );
 }
 
-function MoreVerticalGlyph({ color, size = 17 }: { color: string; size?: number }) {
+/** Circular undercover chip wrapping a wallet icon (header balance control). */
+export function UndercoverWalletButton({
+  onPress,
+  accessibilityLabel,
+  disabled,
+  active = false,
+}: {
+  onPress?: () => void;
+  accessibilityLabel: string;
+  disabled?: boolean;
+  /** Dialog open — undercover fill at 71% opacity. */
+  active?: boolean;
+}) {
+  return (
+    <UndercoverCircleChip
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}
+      disabled={disabled}
+      active={active}
+      renderGlyph={(contentColor) => <WalletGlyph color={contentColor} size={WALLET_GLYPH_PX} />}
+    />
+  );
+}
+
+function MoreVerticalGlyph({ color, size = MORE_GLYPH_PX }: { color: string; size?: number }) {
   const r = size * 0.08;
   const cx = size / 2;
   const ys = [size * 0.22, size * 0.5, size * 0.78];
@@ -153,39 +182,18 @@ export function UndercoverMoreButton({
   disabled?: boolean;
   active?: boolean;
 }) {
-  const colors = useColors();
-  const { colorScheme } = useTelegram();
-  const [hover, setHover] = useState(false);
-  const { contentColor, backgroundColor } = undercoverChipColors(
-    colors,
-    colorScheme,
-    active,
-    hover,
-  );
-
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ expanded: active }}
-      disabled={disabled}
+    <UndercoverCircleChip
       onPress={onPress}
-      onHoverIn={Platform.OS === "web" ? () => setHover(true) : undefined}
-      onHoverOut={Platform.OS === "web" ? () => setHover(false) : undefined}
-      style={({ pressed }) => ({
-        width: UNDERCOVER_CIRCLE_PX,
-        height: UNDERCOVER_CIRCLE_PX,
-        borderRadius: UNDERCOVER_CIRCLE_PX / 2,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor:
-          !active && pressed
-            ? welcomeAuthButtonActiveBackground(colors, colorScheme)
-            : backgroundColor,
-      })}
-    >
-      <MoreVerticalGlyph color={contentColor} />
-    </Pressable>
+      accessibilityLabel={accessibilityLabel}
+      disabled={disabled}
+      active={active}
+      renderGlyph={(contentColor) => (
+        <View style={{ transform: [{ translateY: MORE_GLYPH_OPTICAL_LIFT_Y }] }}>
+          <MoreVerticalGlyph color={contentColor} size={MORE_GLYPH_PX} />
+        </View>
+      )}
+    />
   );
 }
 
