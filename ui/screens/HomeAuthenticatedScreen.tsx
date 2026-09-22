@@ -719,9 +719,13 @@ function HomeAuthenticatedScreenMain() {
       const prevY = compactHeaderScrollYRef.current;
       compactHeaderScrollYRef.current = metrics.scrollY;
       setCompactHeaderScrollY(metrics.scrollY);
-      // Scrolling the list down tucks the pulled-out header back under the chrome.
-      if (!compactHeaderGestureRef.current && metrics.scrollY > prevY + 2 && compactHeaderPullPx > 0) {
-        setCompactHeaderPullPx(0);
+      // Scrolling the list down tucks the solid plate back to the collapsed first row.
+      if (
+        !compactHeaderGestureRef.current &&
+        metrics.scrollY > prevY + 2 &&
+        compactHeaderPullPx > compactHeaderPullCollapsedPxRef.current
+      ) {
+        setCompactHeaderPullPx(compactHeaderPullCollapsedPxRef.current);
       }
       if (homeNavIndex !== 1) return;
       setChatListScrollMetrics({
@@ -777,14 +781,16 @@ function HomeAuthenticatedScreenMain() {
     collapsibleHeightPx: compactCollapsibleHeightPx,
   });
   compactNavLockAfterPxRef.current = compactNavLockAfterPx;
-  const compactHeaderPullFullPx = stickCompactFirstHeaderRow
-    ? compactCollapsibleHeightPx
-    : compactStickyHeightPx + compactCollapsibleHeightPx;
+  const compactHeaderPullCollapsedPxRef = useRef(0);
+  const compactHeaderPullFullPx = compactStickyHeightPx + compactCollapsibleHeightPx;
   compactHeaderPullFullPxRef.current = compactHeaderPullFullPx;
-  /** List is past the natural collapse range — pull-out drawer is used instead of scroll. */
+  const compactHeaderPullCollapsedPx = stickCompactFirstHeaderRow ? compactStickyHeightPx : 0;
+  compactHeaderPullCollapsedPxRef.current = compactHeaderPullCollapsedPx;
+  /** List is past the natural collapse range — solid-plate tear drawer is used instead of scroll. */
   const compactHeaderUsePullDrawer =
     !isWideHome && compactHeaderScrollY >= compactNavLockAfterPx && compactNavLockAfterPx > 0;
-  const compactHeaderPullActive = compactHeaderUsePullDrawer && compactHeaderPullPx > 0;
+  // Past lock: always drive the solid plate (collapsed = first row when camera-band stick).
+  const compactHeaderPullActive = compactHeaderUsePullDrawer;
   /**
    * While the finger is tearing open, freeze cancel-scroll at the gesture start so the
    * plate does not translate with accidental list motion (mobile shake).
@@ -795,9 +801,9 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderDragStartScrollRef.current >= compactNavLockAfterPx
       ? compactHeaderDragStartScrollRef.current
       : compactHeaderScrollY;
-  // Nav sits under the minimized chrome + whatever has been torn out.
+  // Nav sits under the visible plate height.
   const compactNavStickyTopPx = compactHeaderUsePullDrawer
-    ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) + compactHeaderPullPx
+    ? compactHeaderPullPx
     : stickCompactFirstHeaderRow
       ? compactStickyHeightPx
       : 0;
@@ -808,6 +814,32 @@ function HomeAuthenticatedScreenMain() {
       setCompactHeaderPullPx(0);
     }
   }, [isWideHome]);
+
+  // Entering past-lock: seed plate to the collapsed first-row height (solid plate, not empty).
+  useEffect(() => {
+    if (!compactHeaderUsePullDrawer) {
+      setCompactHeaderPullPx(0);
+      return;
+    }
+    const collapsed = compactHeaderPullCollapsedPx;
+    const full = compactHeaderPullFullPx;
+    setCompactHeaderPullPx((prev) => {
+      if (prev <= 0 && collapsed > 0) return collapsed;
+      if (full > 0 && prev > full) return full;
+      if (collapsed > 0 && prev > 0 && prev < collapsed) return collapsed;
+      return prev;
+    });
+  }, [
+    compactHeaderUsePullDrawer,
+    compactHeaderPullCollapsedPx,
+    compactHeaderPullFullPx,
+  ]);
+
+  const clampHeaderPullPx = useCallback((value: number) => {
+    const collapsed = compactHeaderPullCollapsedPxRef.current;
+    const full = compactHeaderPullFullPxRef.current;
+    return Math.max(collapsed, Math.min(full > 0 ? full : collapsed, value));
+  }, []);
 
   const onCompactHeaderWheel = useCallback(
     (event: { nativeEvent?: { deltaY?: number; ctrlKey?: boolean; metaKey?: boolean }; preventDefault?: () => void }) => {
@@ -820,15 +852,14 @@ function HomeAuthenticatedScreenMain() {
       if (dy === 0) return;
       const lock = compactNavLockAfterPxRef.current;
       const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
-      const full = compactHeaderPullFullPxRef.current;
       if (lock > 0 && y < lock) {
         homeLeftScrollRef.current?.scrollToY(Math.max(0, Math.min(lock, y + dy)));
         setCompactHeaderPullPx(0);
         return;
       }
-      setCompactHeaderPullPx((prev) => Math.max(0, Math.min(full, prev - dy)));
+      setCompactHeaderPullPx((prev) => clampHeaderPullPx(prev - dy));
     },
-    [],
+    [clampHeaderPullPx],
   );
 
   const onCompactHeaderTouchStart = useCallback((event: { nativeEvent: { pageY: number } }) => {
@@ -851,7 +882,6 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderDidDragRef.current = true;
     const lock = compactNavLockAfterPxRef.current;
     const startScroll = compactHeaderDragStartScrollRef.current;
-    const full = compactHeaderPullFullPxRef.current;
     if (lock > 0 && startScroll < lock) {
       homeLeftScrollRef.current?.scrollToY(Math.max(0, Math.min(lock, startScroll - dy)));
       setCompactHeaderPullPx(0);
@@ -862,22 +892,24 @@ function HomeAuthenticatedScreenMain() {
     event.stopPropagation?.();
     homeLeftScrollRef.current?.scrollToY(startScroll);
     setCompactHeaderPullPx(
-      Math.max(0, Math.min(full, compactHeaderDragStartPullRef.current + dy)),
+      clampHeaderPullPx(compactHeaderDragStartPullRef.current + dy),
     );
-  }, []);
+  }, [clampHeaderPullPx]);
 
   const onCompactHeaderTouchEnd = useCallback(() => {
     if (compactHeaderDidDragRef.current) {
       const lock = compactNavLockAfterPxRef.current;
       const startScroll = compactHeaderDragStartScrollRef.current;
       const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+      const collapsed = compactHeaderPullCollapsedPxRef.current;
       const full = compactHeaderPullFullPxRef.current;
       if (lock > 0 && startScroll < lock) {
         homeLeftScrollRef.current?.scrollToY(y < lock / 2 ? 0 : lock);
         setCompactHeaderPullPx(0);
-      } else if (full > 0) {
+      } else if (full > collapsed) {
         if (lock > 0) homeLeftScrollRef.current?.scrollToY(startScroll);
-        setCompactHeaderPullPx((prev) => (prev >= full / 2 ? full : 0));
+        const mid = (collapsed + full) / 2;
+        setCompactHeaderPullPx((prev) => (prev >= mid ? full : collapsed));
       }
     }
     compactHeaderDragStartYRef.current = null;
@@ -1999,7 +2031,7 @@ function HomeAuthenticatedScreenMain() {
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
       compactHeaderPullScrollYPx={compactHeaderUsePullDrawer ? compactHeaderPlateScrollYPx : 0}
-      compactHeaderPullPx={compactHeaderUsePullDrawer ? compactHeaderPullPx : 0}
+      compactHeaderPullPx={compactHeaderUsePullDrawer ? Math.max(compactHeaderPullPx, 0) : 0}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
           messagesChatOpen
@@ -2084,7 +2116,7 @@ function HomeAuthenticatedScreenMain() {
               >
                 {homeHeaderRow}
               </View>
-              {compactHeaderPullActive ? (
+              {compactHeaderPullActive && compactHeaderPullPx > 0 ? (
                 <View
                   pointerEvents="none"
                   style={{
@@ -2096,7 +2128,8 @@ function HomeAuthenticatedScreenMain() {
                     ...(Platform.OS === "web"
                       ? ({
                           position: "sticky",
-                          top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
+                          // Solid plate includes the first row — undercover from the top.
+                          top: 0,
                         } as object)
                       : {
                           transform: [{ translateY: compactHeaderPlateScrollYPx }],

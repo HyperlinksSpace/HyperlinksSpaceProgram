@@ -410,11 +410,11 @@ type Props = {
   /** Compact: pin the wallet row (camera / notch band only). */
   compactStickFirstRow?: boolean;
   /**
-   * Compact: when > 0, past-lock tear drawer is active — cancel-scroll translateY for the
-   * undercover plate (first row + clipped hidden bands).
+   * Compact: when > 0, past-lock solid-plate tear is active — cancel-scroll translateY for the
+   * clipped plate. Visible plate height is {@link compactHeaderPullPx}.
    */
   compactHeaderPullScrollYPx?: number;
-  /** Compact: how many px of the hidden bands are currently torn out (0 = tucked). */
+  /** Compact: visible height of the solid header plate (collapsed first-row → full stack). */
   compactHeaderPullPx?: number;
   /** Compact: vertical gesture on the sticky first row / menu (wheel / drag / pointer). */
   compactStickyScrollBridge?: {
@@ -453,10 +453,16 @@ export function HomeAuthenticatedHeaderRow({
   compactStickyScrollBridge,
 }: Props) {
   /**
-   * Past-lock tear drawer: scrollY cancel is set while the list is past the collapse range.
-   * First row + pocket share one translated undercover plate (not separate transforms).
+   * Past-lock solid plate: scrollY cancel is set while the list is past the collapse range.
+   * The full header translates as one rigid body inside a height clip.
    */
-  const headerPullActive = compactHeaderPullScrollYPx > 0;
+  const headerPullActive = compactHeaderPullScrollYPx > 0 && compactHeaderPullPx > 0;
+  const compactPlateFullHPx =
+    compactStickyNaturalHeightPx + compactCollapsibleNaturalHeightPx;
+  const compactPlateTranslateYPx =
+    headerPullActive && compactPlateFullHPx > 0
+      ? compactHeaderPullPx - compactPlateFullHPx
+      : 0;
   const stickRowTranslateY =
     compactStickFirstRow && !headerPullActive ? compactScrollYPx : 0;
   const router = useRouter();
@@ -1253,8 +1259,9 @@ export function HomeAuthenticatedHeaderRow({
               flexDirection: "column",
               backgroundColor: colors.background,
               zIndex: headerPullActive || compactStickFirstRow ? 6 : 1,
-              // No camera-band stick: tear the whole header as one stack, menu at the bottom.
-              ...(!compactStickFirstRow && headerPullActive
+              // Past-lock: one solid plate — clip height follows the tear; inner stack
+              // translates as a rigid body (no height-clip shrink of individual rows).
+              ...(headerPullActive
                 ? {
                     transform: [{ translateY: compactHeaderPullScrollYPx }],
                     height: compactHeaderPullPx,
@@ -1265,6 +1272,9 @@ export function HomeAuthenticatedHeaderRow({
                         compactCollapsibleNaturalHeightPx -
                         compactHeaderPullPx,
                     ),
+                    ...(Platform.OS === "web"
+                      ? ({ willChange: "transform", touchAction: "none" } as object)
+                      : null),
                   }
                 : null),
             }}
@@ -1288,16 +1298,13 @@ export function HomeAuthenticatedHeaderRow({
                 } as object)
               : {})}
           >
-            {headerPullActive && !compactStickFirstRow ? (
+            {headerPullActive ? (
               <View
                 style={{
                   width: "100%",
                   backgroundColor: colors.background,
-                  marginTop:
-                    compactStickyNaturalHeightPx + compactCollapsibleNaturalHeightPx > 0
-                      ? compactHeaderPullPx -
-                        (compactStickyNaturalHeightPx + compactCollapsibleNaturalHeightPx)
-                      : 0,
+                  transform: [{ translateY: compactPlateTranslateYPx }],
+                  ...(Platform.OS === "web" ? ({ willChange: "transform" } as object) : null),
                 }}
               >
                 <View
@@ -1312,6 +1319,7 @@ export function HomeAuthenticatedHeaderRow({
                     width: "100%",
                     backgroundColor: colors.background,
                     paddingTop: compactStickyTopInsetPx,
+                    flexShrink: 0,
                   }}
                 >
                   <HeaderBandSlots
@@ -1332,6 +1340,7 @@ export function HomeAuthenticatedHeaderRow({
                     width: "100%",
                     paddingBottom: AH.leftNavStripMarginTopPx,
                     backgroundColor: colors.background,
+                    flexShrink: 0,
                   }}
                 >
                   <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
@@ -1352,101 +1361,6 @@ export function HomeAuthenticatedHeaderRow({
                   </View>
                 </View>
               </View>
-            ) : headerPullActive && compactStickFirstRow ? (
-              <>
-                {/*
-                  Sticky first row stays put. Hidden bands tear out under it bottom-aligned
-                  so the Get/Swap menu (last row) is the handle and upper rows stay attached
-                  exactly as in the initial header stack — content slides in from the top.
-                */}
-                <View
-                  style={{
-                    width: "100%",
-                    backgroundColor: colors.background,
-                    transform: [{ translateY: compactHeaderPullScrollYPx }],
-                    zIndex: 7,
-                    ...(Platform.OS === "web"
-                      ? ({ willChange: "transform", touchAction: "none" } as object)
-                      : null),
-                  }}
-                >
-                  <View
-                    onLayout={(e) => {
-                      const h = Math.round(e.nativeEvent.layout.height);
-                      if (h > 0) {
-                        setCompactStickyNaturalHeightPx((prev) => (prev === h ? prev : h));
-                        onCompactStickyLayout?.(h);
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      backgroundColor: colors.background,
-                      paddingTop: compactStickyTopInsetPx,
-                    }}
-                  >
-                    <HeaderBandSlots
-                      centerReservePx={0}
-                      leftGrows={false}
-                      left={balanceButton}
-                      right={walletAddressRow}
-                    />
-                  </View>
-                  <View
-                    style={{
-                      width: "100%",
-                      height: compactHeaderPullPx,
-                      overflow: "hidden" as const,
-                      backgroundColor: colors.background,
-                      position: "relative",
-                    }}
-                  >
-                    {/*
-                      Absolute bottom-align keeps the menu glued as the handle without
-                      marginTop reflow (which shook the bands on mobile while pullPx updated).
-                    */}
-                    <View
-                      onLayout={(e) => {
-                        const h = Math.round(e.nativeEvent.layout.height);
-                        if (h <= 0) return;
-                        setCompactCollapsibleNaturalHeightPx((prev) => (prev === h ? prev : h));
-                        onCompactCollapsibleLayout?.(h);
-                      }}
-                      style={{
-                        position: "absolute",
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        width: "100%",
-                        paddingBottom: AH.leftNavStripMarginTopPx,
-                        backgroundColor: colors.background,
-                      }}
-                    >
-                      <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
-                        {switchWalletRow}
-                        {headerActionIconsRow}
-                      </View>
-                      <View style={{ marginTop: AH.headerDividerTopGap, width: "100%" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", width: "100%" }}>
-                          <AuthenticatedHomeMenuItems
-                            colors={colors}
-                            narrow
-                            columnWidth={0}
-                            t={t}
-                            onMenuKeyPress={handleMenuKeyPress}
-                            activeMenuKey={headerMenuActiveKey}
-                          />
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                <View
-                  pointerEvents="none"
-                  style={{
-                    height: Math.max(0, compactCollapsibleNaturalHeightPx - compactHeaderPullPx),
-                  }}
-                />
-              </>
             ) : (
               <>
                 <View
