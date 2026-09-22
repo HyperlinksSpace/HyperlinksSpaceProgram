@@ -1366,7 +1366,7 @@ export function HomeAuthenticatedHeaderRow({
                     transform: [{ translateY: compactHeaderPullScrollYPx }],
                     zIndex: 7,
                     ...(Platform.OS === "web"
-                      ? ({ willChange: "transform", touchAction: "pan-y" } as object)
+                      ? ({ willChange: "transform", touchAction: "none" } as object)
                       : null),
                   }}
                 >
@@ -1397,11 +1397,12 @@ export function HomeAuthenticatedHeaderRow({
                       height: compactHeaderPullPx,
                       overflow: "hidden" as const,
                       backgroundColor: colors.background,
+                      position: "relative",
                     }}
                   >
                     {/*
-                      In-flow bottom align: margin pulls the stack up so the menu stays at the
-                      tear edge. Avoids absolute layers that skip opaque fills on web.
+                      Absolute bottom-align keeps the menu glued as the handle without
+                      marginTop reflow (which shook the bands on mobile while pullPx updated).
                     */}
                     <View
                       onLayout={(e) => {
@@ -1411,13 +1412,13 @@ export function HomeAuthenticatedHeaderRow({
                         onCompactCollapsibleLayout?.(h);
                       }}
                       style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
                         width: "100%",
                         paddingBottom: AH.leftNavStripMarginTopPx,
                         backgroundColor: colors.background,
-                        marginTop:
-                          compactCollapsibleNaturalHeightPx > 0
-                            ? compactHeaderPullPx - compactCollapsibleNaturalHeightPx
-                            : 0,
                       }}
                     >
                       <View style={{ ...headerControlRowStyle, marginTop: WIDE_HEADER_MID_GAP_PX }}>
@@ -1467,7 +1468,7 @@ export function HomeAuthenticatedHeaderRow({
                     ...(Platform.OS === "web"
                       ? ({
                           ...(stickRowTranslateY !== 0 ? { willChange: "transform" } : null),
-                          touchAction: "pan-y",
+                          touchAction: "none",
                         } as object)
                       : null),
                   }}

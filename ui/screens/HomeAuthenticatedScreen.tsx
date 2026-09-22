@@ -706,6 +706,16 @@ function HomeAuthenticatedScreenMain() {
   }, []);
   const handleHomeLeftScrollPositionChange = useCallback(
     (metrics: { scrollY: number; layoutH: number; contentH: number }) => {
+      // While tearing the header open on touch, keep the list pinned — mobile would
+      // otherwise scroll under the gesture and shake the translated plate.
+      if (compactHeaderGestureRef.current) {
+        const lock = compactNavLockAfterPxRef.current;
+        const pinned = compactHeaderDragStartScrollRef.current;
+        if (lock > 0 && pinned >= lock && Math.abs(metrics.scrollY - pinned) > 0.5) {
+          homeLeftScrollRef.current?.scrollToY(pinned);
+          return;
+        }
+      }
       const prevY = compactHeaderScrollYRef.current;
       compactHeaderScrollYRef.current = metrics.scrollY;
       setCompactHeaderScrollY(metrics.scrollY);
@@ -775,6 +785,16 @@ function HomeAuthenticatedScreenMain() {
   const compactHeaderUsePullDrawer =
     !isWideHome && compactHeaderScrollY >= compactNavLockAfterPx && compactNavLockAfterPx > 0;
   const compactHeaderPullActive = compactHeaderUsePullDrawer && compactHeaderPullPx > 0;
+  /**
+   * While the finger is tearing open, freeze cancel-scroll at the gesture start so the
+   * plate does not translate with accidental list motion (mobile shake).
+   */
+  const compactHeaderPlateScrollYPx =
+    compactHeaderUsePullDrawer &&
+    compactHeaderGestureRef.current &&
+    compactHeaderDragStartScrollRef.current >= compactNavLockAfterPx
+      ? compactHeaderDragStartScrollRef.current
+      : compactHeaderScrollY;
   // Nav sits under the minimized chrome + whatever has been torn out.
   const compactNavStickyTopPx = compactHeaderUsePullDrawer
     ? (stickCompactFirstHeaderRow ? compactStickyHeightPx : 0) + compactHeaderPullPx
@@ -819,7 +839,11 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderGestureRef.current = true;
   }, [compactHeaderPullPx]);
 
-  const onCompactHeaderTouchMove = useCallback((event: { nativeEvent: { pageY: number } }) => {
+  const onCompactHeaderTouchMove = useCallback((event: {
+    nativeEvent: { pageY: number };
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  }) => {
     const startY = compactHeaderDragStartYRef.current;
     if (startY == null) return;
     const dy = event.nativeEvent.pageY - startY;
@@ -833,7 +857,10 @@ function HomeAuthenticatedScreenMain() {
       setCompactHeaderPullPx(0);
       return;
     }
-    // Finger down pulls the hidden part out from under the visible chrome.
+    // Past lock: tear only — do not let the messages list scroll with the finger.
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    homeLeftScrollRef.current?.scrollToY(startScroll);
     setCompactHeaderPullPx(
       Math.max(0, Math.min(full, compactHeaderDragStartPullRef.current + dy)),
     );
@@ -842,18 +869,34 @@ function HomeAuthenticatedScreenMain() {
   const onCompactHeaderTouchEnd = useCallback(() => {
     if (compactHeaderDidDragRef.current) {
       const lock = compactNavLockAfterPxRef.current;
+      const startScroll = compactHeaderDragStartScrollRef.current;
       const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
       const full = compactHeaderPullFullPxRef.current;
-      if (lock > 0 && y < lock) {
+      if (lock > 0 && startScroll < lock) {
         homeLeftScrollRef.current?.scrollToY(y < lock / 2 ? 0 : lock);
         setCompactHeaderPullPx(0);
       } else if (full > 0) {
+        if (lock > 0) homeLeftScrollRef.current?.scrollToY(startScroll);
         setCompactHeaderPullPx((prev) => (prev >= full / 2 ? full : 0));
       }
     }
     compactHeaderDragStartYRef.current = null;
     compactHeaderDidDragRef.current = false;
     compactHeaderGestureRef.current = false;
+  }, []);
+
+  // Web mobile: RN touch handlers are often passive — block list scroll while tearing.
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const blockTouchMove = (e: TouchEvent) => {
+      if (!compactHeaderGestureRef.current) return;
+      const lock = compactNavLockAfterPxRef.current;
+      const startScroll = compactHeaderDragStartScrollRef.current;
+      if (!(lock > 0 && startScroll >= lock)) return;
+      if (e.cancelable) e.preventDefault();
+    };
+    document.addEventListener("touchmove", blockTouchMove, { passive: false, capture: true });
+    return () => document.removeEventListener("touchmove", blockTouchMove, true);
   }, []);
 
   const readPointerPageY = (event: {
@@ -1955,7 +1998,7 @@ function HomeAuthenticatedScreenMain() {
         !isWideHome && stickCompactFirstHeaderRow ? compactHeaderScrollY : 0
       }
       compactStickFirstRow={stickCompactFirstHeaderRow}
-      compactHeaderPullScrollYPx={compactHeaderUsePullDrawer ? compactHeaderScrollY : 0}
+      compactHeaderPullScrollYPx={compactHeaderUsePullDrawer ? compactHeaderPlateScrollYPx : 0}
       compactHeaderPullPx={compactHeaderUsePullDrawer ? compactHeaderPullPx : 0}
       compactStickyScrollBridge={compactStickyScrollBridge}
         activeHeaderMenuKey={
@@ -2056,7 +2099,7 @@ function HomeAuthenticatedScreenMain() {
                           top: stickCompactFirstHeaderRow ? compactStickyHeightPx : 0,
                         } as object)
                       : {
-                          transform: [{ translateY: compactHeaderScrollY }],
+                          transform: [{ translateY: compactHeaderPlateScrollYPx }],
                         }),
                   }}
                 />
@@ -2087,7 +2130,8 @@ function HomeAuthenticatedScreenMain() {
                     ? ({
                         position: "sticky",
                         top: compactNavStickyTopPx,
-                        touchAction: "pan-y",
+                        // Own vertical gesture (tear / near-top scroll); do not chain to the list.
+                        touchAction: "none",
                       } as object)
                     : {
                         transform: [

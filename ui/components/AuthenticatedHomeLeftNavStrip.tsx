@@ -741,11 +741,15 @@ export function AuthenticatedHomeLeftNavStrip({
         ...(Platform.OS === "web"
           ? ({
               cursor: grabbing ? "grabbing" : scrollEnabled || verticalDrag ? "grab" : "default",
-              touchAction: passVerticalScroll
-                ? "pan-x pan-y"
-                : scrollEnabled
+              touchAction: verticalDrag
+                ? scrollEnabled
                   ? "pan-x"
-                  : "auto",
+                  : "none"
+                : passVerticalScroll
+                  ? "pan-x pan-y"
+                  : scrollEnabled
+                    ? "pan-x"
+                    : "auto",
             } as object)
           : null),
       }}
