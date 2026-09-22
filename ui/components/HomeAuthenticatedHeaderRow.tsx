@@ -136,6 +136,7 @@ function HeaderBandSlots({
           height: HEADER_CONTROL_ROW_PX,
           justifyContent: "center",
           alignItems: "flex-start",
+          alignSelf: "center",
         }}
       >
         {left}
@@ -148,10 +149,19 @@ function HeaderBandSlots({
             flexGrow: 0,
             flexShrink: 0,
             height: HEADER_CONTROL_ROW_PX,
+            alignSelf: "center",
           }}
         />
       ) : (
-        <View style={{ flexGrow: 1, flexShrink: 1, minWidth: 0, height: HEADER_CONTROL_ROW_PX }} />
+        <View
+          style={{
+            flexGrow: 1,
+            flexShrink: 1,
+            minWidth: 0,
+            height: HEADER_CONTROL_ROW_PX,
+            alignSelf: "center",
+          }}
+        />
       )}
       <View
         onLayout={(e) => {
@@ -169,6 +179,7 @@ function HeaderBandSlots({
           height: HEADER_CONTROL_ROW_PX,
           justifyContent: "center",
           alignItems: "flex-end",
+          alignSelf: "center",
         }}
       >
         {right}

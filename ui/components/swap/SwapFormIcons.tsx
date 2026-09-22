@@ -22,8 +22,6 @@ import {
 const UNDERCOVER_CIRCLE_PX = layout.bottomBar.undercoverButtonHeightPx;
 const WALLET_GLYPH_PX = 17;
 const MORE_GLYPH_PX = 17;
-/** Three-dot glyph reads slightly low in the circle vs the wallet icon — lift to match. */
-const MORE_GLYPH_OPTICAL_LIFT_Y = -1;
 const PRO_ROCKET_GLYPH_PX = 18;
 
 function isLightTheme(colors: ThemeColors): boolean {
@@ -46,7 +44,13 @@ export function SwapSelectChevronDown() {
 
 function WalletGlyph({ color, size = WALLET_GLYPH_PX }: { color: string; size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ width: size, height: size }}
+    >
       <Rect x="3.5" y="6.5" width="17" height="12" rx="2.5" stroke={color} strokeWidth={1.75} />
       <Path d="M3.5 10h17" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
       <Circle cx="16.5" cy="14" r="1.25" fill={color} />
@@ -119,8 +123,12 @@ function UndercoverCircleChip({
         width: UNDERCOVER_CIRCLE_PX,
         height: UNDERCOVER_CIRCLE_PX,
         borderRadius: UNDERCOVER_CIRCLE_PX / 2,
+        padding: 0,
+        margin: 0,
+        overflow: "hidden",
         alignItems: "center",
         justifyContent: "center",
+        alignSelf: "center",
         flexShrink: 0,
         backgroundColor:
           !active && pressed
@@ -157,14 +165,22 @@ export function UndercoverWalletButton({
   );
 }
 
+/** Three vertical dots, geometrically centered in a square viewBox (same centering model as wallet). */
 function MoreVerticalGlyph({ color, size = MORE_GLYPH_PX }: { color: string; size?: number }) {
-  const r = size * 0.08;
-  const cx = size / 2;
-  const ys = [size * 0.22, size * 0.5, size * 0.78];
+  const vb = 24;
+  const cx = vb / 2;
+  const r = 2;
+  const ys = [6, 12, 18];
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
+    <Svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${vb} ${vb}`}
+      fill="none"
+      style={{ width: size, height: size }}
+    >
       {ys.map((cy) => (
-        <Circle key={cy} cx={cx} cy={cy} r={Math.max(1.5, r)} fill={color} />
+        <Circle key={cy} cx={cx} cy={cy} r={r} fill={color} />
       ))}
     </Svg>
   );
@@ -189,9 +205,7 @@ export function UndercoverMoreButton({
       disabled={disabled}
       active={active}
       renderGlyph={(contentColor) => (
-        <View style={{ transform: [{ translateY: MORE_GLYPH_OPTICAL_LIFT_Y }] }}>
-          <MoreVerticalGlyph color={contentColor} size={MORE_GLYPH_PX} />
-        </View>
+        <MoreVerticalGlyph color={contentColor} size={MORE_GLYPH_PX} />
       )}
     />
   );
