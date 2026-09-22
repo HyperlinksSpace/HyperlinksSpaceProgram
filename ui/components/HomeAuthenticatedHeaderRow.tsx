@@ -34,7 +34,7 @@ import { openSwapCurrenciesBrowse } from "../swap/swapCurrencyPicker";
 import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../authenticatedHomeSelectedChat";
 import { TonviewerExplorerButton } from "./TonviewerExplorerButton";
 import { SwitchWalletMenu } from "./wallet/SwitchWalletMenu";
-import { UndercoverMoreButton, UndercoverProButton, UndercoverWalletButton } from "./swap/SwapFormIcons";
+import { UndercoverProButton, UndercoverWalletButton } from "./swap/SwapFormIcons";
 import { ProAccessDialog } from "../pro/ProAccessDialog";
 import { subscribeOpenProAccess } from "../pro/openProAccess";
 import { isProAccessActive, subscribeProAccess } from "../pro/proAccessStore";
@@ -74,6 +74,7 @@ import {
   HeaderIconEn,
   HeaderIconExit,
   HeaderIconKey,
+  HeaderIconMoreSquares,
   HeaderIconRu,
   HeaderIconZh,
 } from "./icons/HeaderActionIcons";
@@ -302,6 +303,62 @@ function HeaderActionIconButton({
           }}
         >
           {children(menuIconStrokeColor(colors, pressed || flash ? "primary" : "highlight"))}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+/**
+ * Identity overflow: three vertical squares in a transparent 30×30 safezone.
+ * No undercover fill; no optical lift — shares the first-row centerline with PRO/card/amount.
+ */
+function HeaderIdentityMoreButton({
+  accessibilityLabel,
+  onPress,
+  active = false,
+}: {
+  accessibilityLabel: string;
+  onPress: () => void;
+  active?: boolean;
+}) {
+  const colors = useColors();
+  const size = HEADER_CONTROL_ROW_PX;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ expanded: active }}
+      hitSlop={AH.headerPressableHitSlop}
+      onPress={onPress}
+      style={{
+        width: size,
+        height: size,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        alignSelf: "center",
+        backgroundColor: "transparent",
+      }}
+    >
+      {({ pressed }) => (
+        <View
+          pointerEvents="none"
+          style={{
+            width: size,
+            height: size,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <HeaderIconMoreSquares
+            color={menuIconStrokeColor(
+              colors,
+              active || pressed ? "primary" : "highlight",
+            )}
+            size={size}
+          />
         </View>
       )}
     </Pressable>
@@ -837,7 +894,7 @@ export function HomeAuthenticatedHeaderRow({
         flexShrink: 0,
       }}
     >
-      <UndercoverMoreButton
+      <HeaderIdentityMoreButton
         accessibilityLabel={t("home.header.walletIdentityMoreA11y")}
         active={identityMenuOpen}
         onPress={openIdentityOverflowMenu}

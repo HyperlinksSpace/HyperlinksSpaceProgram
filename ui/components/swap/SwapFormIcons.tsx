@@ -21,7 +21,6 @@ import {
 
 const UNDERCOVER_CIRCLE_PX = layout.bottomBar.undercoverButtonHeightPx;
 const WALLET_GLYPH_PX = 17;
-const MORE_GLYPH_PX = 17;
 const PRO_ROCKET_GLYPH_PX = 18;
 
 function isLightTheme(colors: ThemeColors): boolean {
@@ -86,7 +85,7 @@ function undercoverWithOpacity(hex: string, opacity: number): string {
   return `rgba(${r},${g},${b},${opacity})`;
 }
 
-/** Shared 30×30 undercover circle shell (wallet + more must match 1:1). */
+/** Shared 30×30 undercover circle shell (wallet chip). */
 function UndercoverCircleChip({
   onPress,
   accessibilityLabel,
@@ -161,52 +160,6 @@ export function UndercoverWalletButton({
       disabled={disabled}
       active={active}
       renderGlyph={(contentColor) => <WalletGlyph color={contentColor} size={WALLET_GLYPH_PX} />}
-    />
-  );
-}
-
-/** Three vertical dots, geometrically centered in a square viewBox (same centering model as wallet). */
-function MoreVerticalGlyph({ color, size = MORE_GLYPH_PX }: { color: string; size?: number }) {
-  const vb = 24;
-  const cx = vb / 2;
-  const r = 2;
-  const ys = [6, 12, 18];
-  return (
-    <Svg
-      width={size}
-      height={size}
-      viewBox={`0 0 ${vb} ${vb}`}
-      fill="none"
-      style={{ width: size, height: size }}
-    >
-      {ys.map((cy) => (
-        <Circle key={cy} cx={cx} cy={cy} r={r} fill={color} />
-      ))}
-    </Svg>
-  );
-}
-
-/** Circular undercover chip with three vertical dots (header identity overflow). */
-export function UndercoverMoreButton({
-  onPress,
-  accessibilityLabel,
-  disabled,
-  active = false,
-}: {
-  onPress?: () => void;
-  accessibilityLabel: string;
-  disabled?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <UndercoverCircleChip
-      onPress={onPress}
-      accessibilityLabel={accessibilityLabel}
-      disabled={disabled}
-      active={active}
-      renderGlyph={(contentColor) => (
-        <MoreVerticalGlyph color={contentColor} size={MORE_GLYPH_PX} />
-      )}
     />
   );
 }

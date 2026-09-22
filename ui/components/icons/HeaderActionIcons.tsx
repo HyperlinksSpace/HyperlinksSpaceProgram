@@ -325,3 +325,19 @@ export function HeaderIconExit({ color, size }: Props) {
   );
 }
 
+/** Three vertical squares — identity overflow affordance (no undercover fill). */
+export function HeaderIconMoreSquares({ color, size }: Props) {
+  const s = 4;
+  const gap = 3;
+  const x = (30 - s) / 2;
+  const stack = s * 3 + gap * 2;
+  const y0 = (30 - stack) / 2;
+  return (
+    <Root size={size}>
+      {[0, 1, 2].map((i) => (
+        <Rect key={i} x={x} y={y0 + i * (s + gap)} width={s} height={s} fill={color} />
+      ))}
+    </Root>
+  );
+}
+
