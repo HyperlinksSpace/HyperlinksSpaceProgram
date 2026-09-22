@@ -822,9 +822,8 @@ export function HomeAuthenticatedHeaderRow({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "flex-end",
-        alignSelf: "stretch",
-        width: "100%",
         height: HEADER_CONTROL_ROW_PX,
+        flexShrink: 0,
       }}
     >
       <UndercoverMoreButton
