@@ -486,8 +486,12 @@ type Props = {
   compactHeaderPullPx?: number;
   /** Compact: vertical gesture on the sticky first row / menu (wheel / drag / pointer). */
   compactStickyScrollBridge?: {
-    onTouchStart?: (event: { nativeEvent: { pageY: number } }) => void;
-    onTouchMove?: (event: { nativeEvent: { pageY: number } }) => void;
+    onTouchStart?: (event: { nativeEvent: { pageY: number; pageX?: number } }) => void;
+    onTouchMove?: (event: {
+      nativeEvent: { pageY: number; pageX?: number };
+      preventDefault?: () => void;
+      stopPropagation?: () => void;
+    }) => void;
     onTouchEnd?: () => void;
     onTouchCancel?: () => void;
     onWheel?: (event: unknown) => void;

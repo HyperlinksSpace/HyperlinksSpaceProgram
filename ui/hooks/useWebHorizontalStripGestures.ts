@@ -124,6 +124,7 @@ export function useWebHorizontalStripGestures({
       const wheelVertical = onVerticalWheelRef.current;
       // When the strip does not overflow, vertical wheel expands/minimizes the header.
       // When it overflows, keep mapping wheel → horizontal scroll (below).
+      // Pointer/touch dual-axis still tears vertically while the strip pans horizontally.
       if (wheelVertical && !overflowsRef.current && absY >= absX + 0.25) {
         e.preventDefault();
         e.stopPropagation();

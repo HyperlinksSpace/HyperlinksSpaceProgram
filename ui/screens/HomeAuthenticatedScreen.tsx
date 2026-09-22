@@ -638,10 +638,14 @@ function HomeAuthenticatedScreenMain() {
   const [compactHeaderScrollY, setCompactHeaderScrollY] = useState(0);
   const [compactCollapsibleHeightPx, setCompactCollapsibleHeightPx] = useState(0);
   const compactHeaderDragStartYRef = useRef<number | null>(null);
+  const compactHeaderDragStartXRef = useRef<number | null>(null);
   const compactHeaderDragStartScrollRef = useRef(0);
   const compactHeaderDragStartPullRef = useRef(0);
   const compactHeaderDidDragRef = useRef(false);
+  /** True only after the gesture locks to vertical tear (not on touchstart). */
   const compactHeaderGestureRef = useRef(false);
+  const compactHeaderAxisModeRef = useRef<"none" | "vertical" | "horizontal">("none");
+  const COMPACT_HEADER_AXIS_ACTIVATE_PX = 8;
   const compactNavLockAfterPxRef = useRef(0);
   const compactHeaderScrollYRef = useRef(0);
   const compactHeaderPullFullPxRef = useRef(0);
@@ -862,23 +866,54 @@ function HomeAuthenticatedScreenMain() {
     [clampHeaderPullPx],
   );
 
-  const onCompactHeaderTouchStart = useCallback((event: { nativeEvent: { pageY: number } }) => {
+  const onCompactHeaderTouchStart = useCallback((event: {
+    nativeEvent: { pageY: number; pageX?: number };
+  }) => {
     compactHeaderDragStartYRef.current = event.nativeEvent.pageY;
+    compactHeaderDragStartXRef.current =
+      typeof event.nativeEvent.pageX === "number" ? event.nativeEvent.pageX : null;
     compactHeaderDragStartScrollRef.current = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
     compactHeaderDragStartPullRef.current = compactHeaderPullPx;
     compactHeaderDidDragRef.current = false;
-    compactHeaderGestureRef.current = true;
+    compactHeaderAxisModeRef.current = "none";
+    // Defer scroll-lock / document preventDefault until vertical axis is claimed so
+    // horizontal Feed/Messages strip pans still work when the header is minimized.
+    compactHeaderGestureRef.current = false;
   }, [compactHeaderPullPx]);
 
   const onCompactHeaderTouchMove = useCallback((event: {
-    nativeEvent: { pageY: number };
+    nativeEvent: { pageY: number; pageX?: number };
     preventDefault?: () => void;
     stopPropagation?: () => void;
   }) => {
     const startY = compactHeaderDragStartYRef.current;
     if (startY == null) return;
-    const dy = event.nativeEvent.pageY - startY;
-    if (Math.abs(dy) < 4) return;
+    const pageY = event.nativeEvent.pageY;
+    const pageX = event.nativeEvent.pageX;
+    const dy = pageY - startY;
+    const startX = compactHeaderDragStartXRef.current;
+    const dx =
+      startX != null && typeof pageX === "number" ? pageX - startX : 0;
+
+    if (compactHeaderAxisModeRef.current === "none") {
+      if (
+        Math.abs(dx) < COMPACT_HEADER_AXIS_ACTIVATE_PX &&
+        Math.abs(dy) < COMPACT_HEADER_AXIS_ACTIVATE_PX
+      ) {
+        return;
+      }
+      // No pageX (mouse verticalDrag after axis lock) → vertical only.
+      if (startX == null || Math.abs(dy) >= Math.abs(dx)) {
+        compactHeaderAxisModeRef.current = "vertical";
+        compactHeaderGestureRef.current = true;
+      } else {
+        compactHeaderAxisModeRef.current = "horizontal";
+        return;
+      }
+    }
+
+    if (compactHeaderAxisModeRef.current === "horizontal") return;
+
     compactHeaderDidDragRef.current = true;
     const lock = compactNavLockAfterPxRef.current;
     const startScroll = compactHeaderDragStartScrollRef.current;
@@ -897,7 +932,7 @@ function HomeAuthenticatedScreenMain() {
   }, [clampHeaderPullPx]);
 
   const onCompactHeaderTouchEnd = useCallback(() => {
-    if (compactHeaderDidDragRef.current) {
+    if (compactHeaderDidDragRef.current && compactHeaderAxisModeRef.current === "vertical") {
       const lock = compactNavLockAfterPxRef.current;
       const startScroll = compactHeaderDragStartScrollRef.current;
       const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
@@ -913,7 +948,9 @@ function HomeAuthenticatedScreenMain() {
       }
     }
     compactHeaderDragStartYRef.current = null;
+    compactHeaderDragStartXRef.current = null;
     compactHeaderDidDragRef.current = false;
+    compactHeaderAxisModeRef.current = "none";
     compactHeaderGestureRef.current = false;
   }, []);
 
@@ -921,7 +958,9 @@ function HomeAuthenticatedScreenMain() {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const blockTouchMove = (e: TouchEvent) => {
+      // Armed only after vertical axis lock — horizontal strip pans must not be cancelled.
       if (!compactHeaderGestureRef.current) return;
+      if (compactHeaderAxisModeRef.current !== "vertical") return;
       const lock = compactNavLockAfterPxRef.current;
       const startScroll = compactHeaderDragStartScrollRef.current;
       if (!(lock > 0 && startScroll >= lock)) return;
@@ -932,9 +971,11 @@ function HomeAuthenticatedScreenMain() {
   }, []);
 
   const readPointerPageY = (event: {
-    nativeEvent?: { pageY?: number; clientY?: number; button?: number; pointerType?: string };
+    nativeEvent?: { pageY?: number; clientY?: number; pageX?: number; clientX?: number; button?: number; pointerType?: string };
     pageY?: number;
     clientY?: number;
+    pageX?: number;
+    clientX?: number;
     button?: number;
     pointerType?: string;
   }) => {
@@ -942,11 +983,26 @@ function HomeAuthenticatedScreenMain() {
     return typeof ne.pageY === "number" ? ne.pageY : typeof ne.clientY === "number" ? ne.clientY : 0;
   };
 
+  const readPointerPageX = (event: {
+    nativeEvent?: { pageY?: number; clientY?: number; pageX?: number; clientX?: number; button?: number; pointerType?: string };
+    pageY?: number;
+    clientY?: number;
+    pageX?: number;
+    clientX?: number;
+    button?: number;
+    pointerType?: string;
+  }) => {
+    const ne = event.nativeEvent ?? event;
+    return typeof ne.pageX === "number" ? ne.pageX : typeof ne.clientX === "number" ? ne.clientX : 0;
+  };
+
   const onCompactHeaderPointerDown = useCallback(
     (event: {
-      nativeEvent?: { pageY?: number; clientY?: number; button?: number; pointerType?: string };
+      nativeEvent?: { pageY?: number; clientY?: number; pageX?: number; clientX?: number; button?: number; pointerType?: string };
       pageY?: number;
       clientY?: number;
+      pageX?: number;
+      clientX?: number;
       button?: number;
       pointerType?: string;
     }) => {
@@ -954,33 +1010,55 @@ function HomeAuthenticatedScreenMain() {
       if (ne.button != null && ne.button !== 0) return;
       // Touch is handled by onTouch*; this path is mouse/pen on desktop web.
       if (ne.pointerType === "touch") return;
-      onCompactHeaderTouchStart({ nativeEvent: { pageY: readPointerPageY(event) } });
+      onCompactHeaderTouchStart({
+        nativeEvent: {
+          pageY: readPointerPageY(event),
+          pageX: readPointerPageX(event),
+        },
+      });
     },
     [onCompactHeaderTouchStart],
   );
 
   const onCompactHeaderPointerMove = useCallback(
     (event: {
-      nativeEvent?: { pageY?: number; clientY?: number; pointerType?: string };
+      nativeEvent?: { pageY?: number; clientY?: number; pageX?: number; clientX?: number; pointerType?: string };
       pageY?: number;
       clientY?: number;
+      pageX?: number;
+      clientX?: number;
       pointerType?: string;
     }) => {
       const ne = event.nativeEvent ?? event;
       if (ne.pointerType === "touch") return;
       if (compactHeaderDragStartYRef.current == null) return;
-      onCompactHeaderTouchMove({ nativeEvent: { pageY: readPointerPageY(event) } });
+      onCompactHeaderTouchMove({
+        nativeEvent: {
+          pageY: readPointerPageY(event),
+          pageX: readPointerPageX(event),
+        },
+      });
     },
     [onCompactHeaderTouchMove],
   );
 
   const compactHeaderVerticalDrag = useMemo(
     () => ({
-      onStart: (pageY: number) => onCompactHeaderTouchStart({ nativeEvent: { pageY } }),
+      // Strip mouse/pen path already axis-locked to vertical before onStart.
+      onStart: (pageY: number) => {
+        compactHeaderDragStartYRef.current = pageY;
+        compactHeaderDragStartXRef.current = null;
+        compactHeaderDragStartScrollRef.current =
+          homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+        compactHeaderDragStartPullRef.current = compactHeaderPullPx;
+        compactHeaderDidDragRef.current = false;
+        compactHeaderAxisModeRef.current = "vertical";
+        compactHeaderGestureRef.current = true;
+      },
       onMove: (pageY: number) => onCompactHeaderTouchMove({ nativeEvent: { pageY } }),
       onEnd: onCompactHeaderTouchEnd,
     }),
-    [onCompactHeaderTouchStart, onCompactHeaderTouchMove, onCompactHeaderTouchEnd],
+    [compactHeaderPullPx, onCompactHeaderTouchMove, onCompactHeaderTouchEnd],
   );
 
   const onCompactHeaderVerticalWheel = useCallback(
@@ -2163,8 +2241,9 @@ function HomeAuthenticatedScreenMain() {
                     ? ({
                         position: "sticky",
                         top: compactNavStickyTopPx,
-                        // Own vertical gesture (tear / near-top scroll); do not chain to the list.
-                        touchAction: "none",
+                        // pan-x: Feed/Messages strip can scroll when labels overflow.
+                        // Vertical tear is claimed in JS after axis lock (not via touch-action).
+                        touchAction: "pan-x",
                       } as object)
                     : {
                         transform: [
