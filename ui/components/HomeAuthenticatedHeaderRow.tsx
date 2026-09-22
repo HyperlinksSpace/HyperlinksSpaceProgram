@@ -452,17 +452,7 @@ export function HomeAuthenticatedHeaderRow({
   compactHeaderPullPx = 0,
   compactStickyScrollBridge,
 }: Props) {
-  /**
-   * Past-lock solid plate: scrollY cancel is set while the list is past the collapse range.
-   * The full header translates as one rigid body inside a height clip.
-   */
   const headerPullActive = compactHeaderPullScrollYPx > 0 && compactHeaderPullPx > 0;
-  const compactPlateFullHPx =
-    compactStickyNaturalHeightPx + compactCollapsibleNaturalHeightPx;
-  const compactPlateTranslateYPx =
-    headerPullActive && compactPlateFullHPx > 0
-      ? compactHeaderPullPx - compactPlateFullHPx
-      : 0;
   const stickRowTranslateY =
     compactStickFirstRow && !headerPullActive ? compactScrollYPx : 0;
   const router = useRouter();
@@ -500,6 +490,13 @@ export function HomeAuthenticatedHeaderRow({
   const [switchWalletWidthPx, setSwitchWalletWidthPx] = useState(0);
   const [compactStickyNaturalHeightPx, setCompactStickyNaturalHeightPx] = useState(0);
   const [compactCollapsibleNaturalHeightPx, setCompactCollapsibleNaturalHeightPx] = useState(0);
+  /** Past-lock solid plate: full header height used to translate the stack as one rigid body. */
+  const compactPlateFullHPx =
+    compactStickyNaturalHeightPx + compactCollapsibleNaturalHeightPx;
+  const compactPlateTranslateYPx =
+    headerPullActive && compactPlateFullHPx > 0
+      ? compactHeaderPullPx - compactPlateFullHPx
+      : 0;
   const switchWalletRef = useRef<View>(null);
   const identityOverflowRef = useRef<View>(null);
   const headerNameChoiceRef = useRef<string | null>(null);
