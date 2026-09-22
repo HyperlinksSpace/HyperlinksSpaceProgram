@@ -642,10 +642,18 @@ function HomeAuthenticatedScreenMain() {
   const compactHeaderDragStartScrollRef = useRef(0);
   const compactHeaderDragStartPullRef = useRef(0);
   const compactHeaderDidDragRef = useRef(false);
-  /** True only after the gesture locks to vertical tear (not on touchstart). */
+  /**
+   * Past-lock: pin the list for the whole pointer lifetime so scroll cannot drop below the
+   * tear lock (that would exit the solid-plate path and shrink bands). Document
+   * `preventDefault` still waits for vertical axis lock so horizontal strip pans work.
+   */
+  const compactHeaderListPinRef = useRef(false);
+  /** True only after the gesture locks to vertical tear. */
   const compactHeaderGestureRef = useRef(false);
   const compactHeaderAxisModeRef = useRef<"none" | "vertical" | "horizontal">("none");
   const COMPACT_HEADER_AXIS_ACTIVATE_PX = 8;
+  /** State so plate cancel-scroll freezes on the first paint after touchstart (refs alone would not). */
+  const [compactHeaderDragActive, setCompactHeaderDragActive] = useState(false);
   const compactNavLockAfterPxRef = useRef(0);
   const compactHeaderScrollYRef = useRef(0);
   const compactHeaderPullFullPxRef = useRef(0);
@@ -710,9 +718,9 @@ function HomeAuthenticatedScreenMain() {
   }, []);
   const handleHomeLeftScrollPositionChange = useCallback(
     (metrics: { scrollY: number; layoutH: number; contentH: number }) => {
-      // While tearing the header open on touch, keep the list pinned — mobile would
-      // otherwise scroll under the gesture and shake the translated plate.
-      if (compactHeaderGestureRef.current) {
+      // While the finger is on the header/nav past lock, keep the list pinned — mobile would
+      // otherwise scroll under the gesture, exit the solid-plate path, and shrink bands.
+      if (compactHeaderListPinRef.current || compactHeaderGestureRef.current) {
         const lock = compactNavLockAfterPxRef.current;
         const pinned = compactHeaderDragStartScrollRef.current;
         if (lock > 0 && pinned >= lock && Math.abs(metrics.scrollY - pinned) > 0.5) {
@@ -725,6 +733,7 @@ function HomeAuthenticatedScreenMain() {
       setCompactHeaderScrollY(metrics.scrollY);
       // Scrolling the list down tucks the solid plate back to the collapsed first row.
       if (
+        !compactHeaderListPinRef.current &&
         !compactHeaderGestureRef.current &&
         metrics.scrollY > prevY + 2 &&
         compactHeaderPullPx > compactHeaderPullCollapsedPxRef.current
@@ -796,12 +805,12 @@ function HomeAuthenticatedScreenMain() {
   // Past lock: always drive the solid plate (collapsed = first row when camera-band stick).
   const compactHeaderPullActive = compactHeaderUsePullDrawer;
   /**
-   * While the finger is tearing open, freeze cancel-scroll at the gesture start so the
-   * plate does not translate with accidental list motion (mobile shake).
+   * While the finger is on chrome past lock, freeze cancel-scroll at the gesture start so the
+   * plate does not translate with accidental list motion (mobile shake / solid-plate exit).
    */
   const compactHeaderPlateScrollYPx =
     compactHeaderUsePullDrawer &&
-    compactHeaderGestureRef.current &&
+    compactHeaderDragActive &&
     compactHeaderDragStartScrollRef.current >= compactNavLockAfterPx
       ? compactHeaderDragStartScrollRef.current
       : compactHeaderScrollY;
@@ -869,16 +878,26 @@ function HomeAuthenticatedScreenMain() {
   const onCompactHeaderTouchStart = useCallback((event: {
     nativeEvent: { pageY: number; pageX?: number };
   }) => {
+    const startScroll = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    const lock = compactNavLockAfterPxRef.current;
     compactHeaderDragStartYRef.current = event.nativeEvent.pageY;
     compactHeaderDragStartXRef.current =
       typeof event.nativeEvent.pageX === "number" ? event.nativeEvent.pageX : null;
-    compactHeaderDragStartScrollRef.current = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    compactHeaderDragStartScrollRef.current = startScroll;
     compactHeaderDragStartPullRef.current = compactHeaderPullPx;
     compactHeaderDidDragRef.current = false;
     compactHeaderAxisModeRef.current = "none";
-    // Defer scroll-lock / document preventDefault until vertical axis is claimed so
-    // horizontal Feed/Messages strip pans still work when the header is minimized.
+    // Document preventDefault waits for vertical axis lock (horizontal strip pans).
     compactHeaderGestureRef.current = false;
+    // Past lock: pin list + freeze plate immediately so solid-plate tear cannot collapse.
+    if (lock > 0 && startScroll >= lock) {
+      compactHeaderListPinRef.current = true;
+      setCompactHeaderDragActive(true);
+      homeLeftScrollRef.current?.scrollToY(startScroll);
+    } else {
+      compactHeaderListPinRef.current = false;
+      setCompactHeaderDragActive(false);
+    }
   }, [compactHeaderPullPx]);
 
   const onCompactHeaderTouchMove = useCallback((event: {
@@ -908,6 +927,7 @@ function HomeAuthenticatedScreenMain() {
         compactHeaderGestureRef.current = true;
       } else {
         compactHeaderAxisModeRef.current = "horizontal";
+        // Keep list pin; do not preventDefault — native pan-x scrolls the strip.
         return;
       }
     }
@@ -952,13 +972,15 @@ function HomeAuthenticatedScreenMain() {
     compactHeaderDidDragRef.current = false;
     compactHeaderAxisModeRef.current = "none";
     compactHeaderGestureRef.current = false;
+    compactHeaderListPinRef.current = false;
+    setCompactHeaderDragActive(false);
   }, []);
 
-  // Web mobile: RN touch handlers are often passive — block list scroll while tearing.
+  // Web mobile: RN touch handlers are often passive — block list scroll while tearing vertically.
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const blockTouchMove = (e: TouchEvent) => {
-      // Armed only after vertical axis lock — horizontal strip pans must not be cancelled.
+      // Only after vertical axis lock — horizontal strip pans must not be cancelled.
       if (!compactHeaderGestureRef.current) return;
       if (compactHeaderAxisModeRef.current !== "vertical") return;
       const lock = compactNavLockAfterPxRef.current;
@@ -1046,14 +1068,23 @@ function HomeAuthenticatedScreenMain() {
     () => ({
       // Strip mouse/pen path already axis-locked to vertical before onStart.
       onStart: (pageY: number) => {
+        const startScroll = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+        const lock = compactNavLockAfterPxRef.current;
         compactHeaderDragStartYRef.current = pageY;
         compactHeaderDragStartXRef.current = null;
-        compactHeaderDragStartScrollRef.current =
-          homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+        compactHeaderDragStartScrollRef.current = startScroll;
         compactHeaderDragStartPullRef.current = compactHeaderPullPx;
         compactHeaderDidDragRef.current = false;
         compactHeaderAxisModeRef.current = "vertical";
         compactHeaderGestureRef.current = true;
+        if (lock > 0 && startScroll >= lock) {
+          compactHeaderListPinRef.current = true;
+          setCompactHeaderDragActive(true);
+          homeLeftScrollRef.current?.scrollToY(startScroll);
+        } else {
+          compactHeaderListPinRef.current = false;
+          setCompactHeaderDragActive(false);
+        }
       },
       onMove: (pageY: number) => onCompactHeaderTouchMove({ nativeEvent: { pageY } }),
       onEnd: onCompactHeaderTouchEnd,
