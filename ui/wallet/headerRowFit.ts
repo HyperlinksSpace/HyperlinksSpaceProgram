@@ -49,13 +49,19 @@ export function shouldUseHeaderIdentityOverflow(options: {
   minClusterPx: number;
   /** Overflow chip diameter (undercover circle). */
   overflowChipPx: number;
+  /**
+   * Extra room required beyond `minClusterPx` before collapsing (px). Keeps address/name
+   * visible when the slot is only a hair under the estimate.
+   */
+  collapseSlackPx?: number;
 }): boolean {
   const slot = Math.max(0, options.identitySlotPx);
   const minCluster = Math.max(0, options.minClusterPx);
   const chip = Math.max(1, options.overflowChipPx);
+  const slack = Math.max(0, options.collapseSlackPx ?? 0);
   if (!(minCluster > 0)) return false;
-  // Collapse to the chip whenever the minimized row no longer fits.
-  return minCluster > slot && chip > 0;
+  // Collapse only when the minimized row clearly no longer fits.
+  return minCluster > slot + slack && chip > 0;
 }
 
 export const HEADER_AMOUNT_FONT_MAX_PX = 30;
@@ -100,9 +106,13 @@ export function fitHeaderAmountFontSize(
 }
 
 export const HEADER_ACTION_ICON_COUNT = 5;
-export const HEADER_ACTION_ICON_MAX_PX = 24;
+export const HEADER_ACTION_ICON_MAX_PX = 22;
 export const HEADER_ACTION_ICON_MIN_PX = 12;
-export const HEADER_ACTION_ICON_GAP_MAX_PX = 12;
+export const HEADER_ACTION_ICON_GAP_MAX_PX = 10;
+/** Horizontal air between the wide Get/Swap strip and the copy/edit/… cluster. */
+export const HEADER_ACTION_MENU_CLEARANCE_PX = 20;
+/** Soften overflow so address stays visible when the slot is only slightly tight. */
+export const HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX = 12;
 
 /** Shrink copy/edit/key/language/exit together so they track width instead of clipping. */
 export function fitHeaderActionIconSize(

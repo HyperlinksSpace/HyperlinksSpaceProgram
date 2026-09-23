@@ -48,8 +48,12 @@ import {
   fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
   HEADER_ACTION_ICON_COUNT,
+  HEADER_ACTION_ICON_GAP_MAX_PX,
+  HEADER_ACTION_ICON_MAX_PX,
   HEADER_ACTION_ICON_MIN_PX,
+  HEADER_ACTION_MENU_CLEARANCE_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
+  HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
   pickHeaderDisplayName,
   shouldUseHeaderIdentityOverflow,
 } from "../wallet/headerRowFit";
@@ -680,9 +684,13 @@ export function HomeAuthenticatedHeaderRow({
     trimmed,
     WALLET_ADDRESS_HEADER_TAIL_MIN_LENGTH,
   );
+  // Overflow gate: address (+ explorer) only — a name letter must not hide the whole cluster
+  // when the right band still has room for the snippet (screenshot empty-space case).
   const minIdentityClusterPx =
-    (trimmed ? minSnippet.length * monoCharWidthPx : 0) +
-    explorerChromePx +
+    (trimmed ? minSnippet.length * monoCharWidthPx : 0) + explorerChromePx;
+  // Amount reservation still leaves room for a one-letter name when present.
+  const identityReservePx =
+    minIdentityClusterPx +
     (nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0);
   // Compact: reserve amount width at the font size that still leaves room for the
   // minimized identity (or the overflow chip), so overflow detection is not stuck
@@ -692,7 +700,7 @@ export function HomeAuthenticatedHeaderRow({
     innerContentW -
       chipClusterWidthPx -
       HEADER_IDENTITY_GAP_PX -
-      Math.max(minIdentityClusterPx, HEADER_CONTROL_ROW_PX) -
+      Math.max(identityReservePx, HEADER_CONTROL_ROW_PX) -
       HEADER_IDENTITY_GAP_PX,
   );
   const compactAmountFontPx = fitHeaderAmountFontSize(
@@ -712,7 +720,9 @@ export function HomeAuthenticatedHeaderRow({
     ? wideSideBudgetPx
     : Math.max(
         0,
-        innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - compactAmountWidthPx,
+        leftSlotWidthPx > 0
+          ? innerContentW - leftSlotWidthPx
+          : innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - compactAmountWidthPx,
       );
   // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
   const addressTailLength = trimmed
@@ -730,6 +740,7 @@ export function HomeAuthenticatedHeaderRow({
       identitySlotPx: nameSlotPx,
       minClusterPx: minIdentityClusterPx,
       overflowChipPx: HEADER_CONTROL_ROW_PX,
+      collapseSlackPx: HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
     });
   const identityChromePx = identityOverflow
     ? HEADER_CONTROL_ROW_PX
@@ -766,18 +777,20 @@ export function HomeAuthenticatedHeaderRow({
         innerContentW - chipClusterWidthPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
       );
   const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
-  const actionIconsAvailablePx = atOrAboveFirstBreakpoint
-    ? wideSideBudgetPx
-    : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap);
-  // Full icon size whenever the side budget fits; shrink only to avoid overlay.
-  const actionIconMaxPx = AH.headerIconDisplaySize;
-  const actionIconGapMaxPx = AH.headerIconGap;
+  const actionIconsAvailablePx = Math.max(
+    0,
+    (atOrAboveFirstBreakpoint
+      ? wideSideBudgetPx
+      : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap)) -
+      HEADER_ACTION_MENU_CLEARANCE_PX,
+  );
+  // Smaller than menu glyphs (30); leave clearance so copy/edit/… do not hug Get/Swap/….
   const { sizePx: actionIconSizePx, gapPx: actionIconGapPx } = fitHeaderActionIconSize(
     actionIconsAvailablePx,
     HEADER_ACTION_ICON_COUNT,
-    actionIconMaxPx,
+    HEADER_ACTION_ICON_MAX_PX,
     HEADER_ACTION_ICON_MIN_PX,
-    actionIconGapMaxPx,
+    HEADER_ACTION_ICON_GAP_MAX_PX,
   );
 
   const copyFullWalletAddress = useCallback(async () => {
@@ -1088,6 +1101,8 @@ export function HomeAuthenticatedHeaderRow({
         width: "100%",
         flexShrink: 1,
         minWidth: 0,
+        // Keep a stable air gap from the centered Get/Swap/… strip (and switch-wallet on compact).
+        paddingLeft: HEADER_ACTION_MENU_CLEARANCE_PX,
       }}
     >
       {HEADER_ICONS_BEFORE_LANG.map(({ id, Icon, labelKey }) => {

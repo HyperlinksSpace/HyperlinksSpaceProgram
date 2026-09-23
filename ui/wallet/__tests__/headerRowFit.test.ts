@@ -125,9 +125,9 @@ describe("fitHeaderAmountFontSize", () => {
 
 describe("fitHeaderActionIconSize", () => {
   it("keeps the max size when the cluster fits and scales when the slot is tighter", () => {
-    assert.deepEqual(fitHeaderActionIconSize(200), { sizePx: 24, gapPx: 12 });
+    assert.deepEqual(fitHeaderActionIconSize(200), { sizePx: 22, gapPx: 10 });
     const tight = fitHeaderActionIconSize(90);
-    assert.equal(tight.sizePx < 24, true);
+    assert.equal(tight.sizePx < 22, true);
     assert.equal(tight.sizePx >= 12, true);
     assert.equal(5 * tight.sizePx + 4 * tight.gapPx <= 90, true);
   });
@@ -148,6 +148,27 @@ describe("shouldUseHeaderIdentityOverflow", () => {
         identitySlotPx: 80,
         minClusterPx: 100,
         overflowChipPx: 30,
+      }),
+      true,
+    );
+  });
+
+  it("keeps identity when the slot is only slightly under the min cluster", () => {
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 95,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+        collapseSlackPx: 12,
+      }),
+      false,
+    );
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 80,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+        collapseSlackPx: 12,
       }),
       true,
     );
