@@ -1,0 +1,16 @@
+---
+description: One production deploy per git commit — do not double-deploy
+alwaysApply: true
+---
+
+# Single production deploy
+
+On `git push` to `main`, GitHub Actions already runs **Vercel Deploy (Test Envs)** once (`concurrency: vercel-prod`). That is the only automatic production deploy.
+
+Do **not**:
+
+- Run `gh workflow run "Vercel Deploy (Test Envs)"` (or `vercel --prod`) in the same turn as a push to `main`
+- Trigger **Electron Forge EXE Release** or **Electron EXE Release** unless the user asked for a Windows installer
+- Start a second Vercel production deploy while one is already in progress
+
+Windows EXE workflows are `workflow_dispatch` only. Web = commit. Installer = explicit request.

@@ -188,8 +188,8 @@ Isolated/local run options:
 
 Current Actions workflows include:
 
-- [`Vercel Deploy Test`](./.github/workflows/vercel-deploy-test-envs.yml) - manual web deploy to Vercel.
-- [`Electron Forge EXE Release`](./.github/workflows/electron-forge-exe-release.yml) - manual Windows release pipeline.
+- [`Vercel Deploy Test`](./.github/workflows/vercel-deploy-test-envs.yml) - **the** automatic production web deploy (`push` to `main`, one at a time; extra `gh workflow run` after push is a duplicate).
+- [`Electron Forge EXE Release`](./.github/workflows/electron-forge-exe-release.yml) - **manual** Windows release only (not on git push).
 - [`Electron EXE Release`](./.github/workflows/electron-exe-release.yml) - manual Windows release pipeline.
 - [`Lint errors check`](./.github/workflows/lint-errors-check.yml) - manual lint check.
 - [`EXPO Publish`](./.github/workflows/expo-publish.yml) - manual OTA publish with EAS CLI.

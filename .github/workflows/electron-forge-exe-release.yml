@@ -1,9 +1,13 @@
 # Build Windows installer with Electron Forge on CI, publish GitHub Release, notify /api/releases.
+# Manual only — do not run on every git push (that doubled production with the Vercel web deploy).
 name: Electron Forge EXE Release
 
 on:
-  push:
   workflow_dispatch:
+
+concurrency:
+  group: electron-forge-exe
+  cancel-in-progress: true
 
 permissions:
   contents: write

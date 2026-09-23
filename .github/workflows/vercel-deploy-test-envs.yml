@@ -1,7 +1,15 @@
 name: Vercel Deploy (Test Envs)
 
+# One production web deploy per commit. Do not also `gh workflow run` this after push,
+# and do not pair it with Electron Forge (Forge is manual-only).
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: vercel-prod
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
