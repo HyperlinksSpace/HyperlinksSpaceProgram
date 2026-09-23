@@ -54,6 +54,7 @@ import {
   HEADER_ACTION_MENU_CLEARANCE_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
   HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
+  HEADER_IDENTITY_ROW_SAFE_GAP_PX,
   pickHeaderDisplayName,
   shouldUseHeaderIdentityOverflow,
 } from "../wallet/headerRowFit";
@@ -137,7 +138,8 @@ function HeaderBandSlots({
           flexShrink: 1,
           flexBasis: leftGrows ? 0 : "auto",
           minWidth: leftGrows ? 0 : undefined,
-          overflow: leftGrows ? "hidden" : "visible",
+          // Always clip — compact left must not paint over the identity / safe gap.
+          overflow: "hidden",
           height: HEADER_CONTROL_ROW_PX,
           justifyContent: "center",
           alignItems: "flex-start",
@@ -162,7 +164,8 @@ function HeaderBandSlots({
           style={{
             flexGrow: 1,
             flexShrink: 1,
-            minWidth: 0,
+            // Keep air between amount and identity; never collapse to an overlay.
+            minWidth: HEADER_IDENTITY_ROW_SAFE_GAP_PX,
             height: HEADER_CONTROL_ROW_PX,
             alignSelf: "center",
           }}
@@ -684,24 +687,22 @@ export function HomeAuthenticatedHeaderRow({
     trimmed,
     WALLET_ADDRESS_HEADER_TAIL_MIN_LENGTH,
   );
-  // Overflow gate: address (+ explorer) only — a name letter must not hide the whole cluster
-  // when the right band still has room for the snippet (screenshot empty-space case).
+  // Overflow gate: address (+ explorer) only — name shrinks via pickHeaderDisplayName.
+  // Collapse to the more chip only when even this minimized cluster cannot fit with the safe gap.
   const minIdentityClusterPx =
     (trimmed ? minSnippet.length * monoCharWidthPx : 0) + explorerChromePx;
-  // Amount reservation still leaves room for a one-letter name when present.
+  // Amount reservation still leaves room for a one-letter name when present + safe gap.
   const identityReservePx =
     minIdentityClusterPx +
     (nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0);
   // Compact: reserve amount width at the font size that still leaves room for the
-  // minimized identity (or the overflow chip), so overflow detection is not stuck
-  // on the unscaled 30px amount width.
+  // minimized identity (or the overflow chip) plus the safe gap to the right cluster.
   const compactAmountBudgetPx = Math.max(
     0,
     innerContentW -
       chipClusterWidthPx -
-      HEADER_IDENTITY_GAP_PX -
-      Math.max(identityReservePx, HEADER_CONTROL_ROW_PX) -
-      HEADER_IDENTITY_GAP_PX,
+      HEADER_IDENTITY_ROW_SAFE_GAP_PX -
+      Math.max(identityReservePx, HEADER_CONTROL_ROW_PX),
   );
   const compactAmountFontPx = fitHeaderAmountFontSize(
     naturalAmountWidthPx,
@@ -721,8 +722,11 @@ export function HomeAuthenticatedHeaderRow({
     : Math.max(
         0,
         leftSlotWidthPx > 0
-          ? innerContentW - leftSlotWidthPx
-          : innerContentW - chipClusterWidthPx - HEADER_IDENTITY_GAP_PX - compactAmountWidthPx,
+          ? innerContentW - leftSlotWidthPx - HEADER_IDENTITY_ROW_SAFE_GAP_PX
+          : innerContentW -
+              chipClusterWidthPx -
+              compactAmountWidthPx -
+              HEADER_IDENTITY_ROW_SAFE_GAP_PX,
       );
   // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
   const addressTailLength = trimmed
@@ -774,7 +778,10 @@ export function HomeAuthenticatedHeaderRow({
     ? Math.max(0, leftSlotWidthPx - chipClusterWidthPx)
     : Math.max(
         0,
-        innerContentW - chipClusterWidthPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
+        innerContentW -
+          chipClusterWidthPx -
+          identityChromePx -
+          HEADER_IDENTITY_ROW_SAFE_GAP_PX,
       );
   const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
   const actionIconsAvailablePx = Math.max(

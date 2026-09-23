@@ -173,6 +173,27 @@ describe("shouldUseHeaderIdentityOverflow", () => {
       true,
     );
   });
+
+  it("collapses with zero slack when the min cluster exceeds the slot", () => {
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 99,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+        collapseSlackPx: 0,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldUseHeaderIdentityOverflow({
+        identitySlotPx: 100,
+        minClusterPx: 100,
+        overflowChipPx: 30,
+        collapseSlackPx: 0,
+      }),
+      false,
+    );
+  });
 });
 
 describe("shouldStickCompactFirstHeaderRow", () => {

@@ -111,8 +111,13 @@ export const HEADER_ACTION_ICON_MIN_PX = 12;
 export const HEADER_ACTION_ICON_GAP_MAX_PX = 10;
 /** Horizontal air between the wide Get/Swap strip and the copy/edit/… cluster. */
 export const HEADER_ACTION_MENU_CLEARANCE_PX = 20;
-/** Soften overflow so address stays visible when the slot is only slightly tight. */
-export const HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX = 12;
+/**
+ * Minimum gap between the balance cluster and the identity cluster on the first header row.
+ * If minimized identity still cannot fit with this gap, collapse to the more chip.
+ */
+export const HEADER_IDENTITY_ROW_SAFE_GAP_PX = 16;
+/** Tiny slack only — do not keep identity when it would violate the safe gap. */
+export const HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX = 0;
 
 /** Shrink copy/edit/key/language/exit together so they track width instead of clipping. */
 export function fitHeaderActionIconSize(
