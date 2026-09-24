@@ -722,7 +722,7 @@ function HomeAuthenticatedScreenMain() {
       const prevY = compactHeaderScrollYRef.current;
       compactHeaderScrollYRef.current = metrics.scrollY;
       setCompactHeaderScrollY(metrics.scrollY);
-      // Scrolling the list down tucks the solid plate back to the collapsed first row.
+      // List down (scrollY up) tucks a manually opened plate. List up must not.
       if (
         !compactHeaderGestureRef.current &&
         metrics.scrollY > prevY + 2 &&
@@ -789,9 +789,13 @@ function HomeAuthenticatedScreenMain() {
   compactHeaderPullFullPxRef.current = compactHeaderPullFullPx;
   const compactHeaderPullCollapsedPx = stickCompactFirstHeaderRow ? compactStickyHeightPx : 0;
   compactHeaderPullCollapsedPxRef.current = compactHeaderPullCollapsedPx;
+  /** Torn-open plate: keep it until the list scrolls down, even if scrollY dips below the lock. */
+  const compactHeaderHeldOpen = compactHeaderPullPx > compactHeaderPullCollapsedPx;
   /** List is past the natural collapse range — solid-plate tear drawer is used instead of scroll. */
   const compactHeaderUsePullDrawer =
-    !isWideHome && compactHeaderScrollY >= compactNavLockAfterPx && compactNavLockAfterPx > 0;
+    !isWideHome &&
+    compactNavLockAfterPx > 0 &&
+    (compactHeaderScrollY >= compactNavLockAfterPx || compactHeaderHeldOpen);
   // Past lock: always drive the solid plate (collapsed = first row when camera-band stick).
   const compactHeaderPullActive = compactHeaderUsePullDrawer;
   /**

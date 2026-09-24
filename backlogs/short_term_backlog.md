@@ -1,3 +1,13 @@
+1. Owner > side car > sign in
+2. swp cfe
+3. collections > stars > dllrs
+
+on width changement fix msg reload
+
+Down scroll on header expanded
+Stories
+wallet, switch wallet
+Bugs on msg loading
 Header on mobile
 Rocket sticker
 Screen time health
@@ -244,3 +254,17 @@ Abandoned:<br>
 Placeholder refactor<br>
 Logo bar visibility<br>
 Overlay on screen expansion from mobile<br>
+
+
+
+
+
+
+
+User arrives through Telegram or web.
+Creates or connects a wallet safely.
+Sees understandable portfolio information.
+Asks the AI about assets or transactions.
+Receives verifiable answers with sources.
+Performs a swap or transfer with clear risk warnings.
+Can recover from mistakes or contact support.
