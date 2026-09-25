@@ -2170,9 +2170,13 @@ function HomeAuthenticatedScreenMain() {
           scrollbarRightInsetPx={isWideHome ? 0 : layout.scrollIndicatorRightInsetPx}
           indicatorColor={colors.scrollIndicator}
         >
+          {/*
+            Compact chrome (header + sticky nav) is optional siblings — Feed/Messages stay under
+            one stable parent so 1↔2↔3 column resizes do not remount the chat list.
+          */}
           {!isWideHome ? (
             <View
-              key="authenticated-home-compact-scroll-stack"
+              key="authenticated-home-compact-scroll-chrome"
               style={{ width: "100%", overflow: "visible" }}
             >
               <View
@@ -2265,11 +2269,14 @@ function HomeAuthenticatedScreenMain() {
                   onVerticalWheel={onCompactHeaderVerticalWheel}
                 />
               </View>
-              <View style={homeMainColumnInsetStyle}>{homeMainColumnBlocks}</View>
             </View>
-          ) : (
-            <View style={undefined}>{homeMainColumnBlocks}</View>
-          )}
+          ) : null}
+          <View
+            key="authenticated-home-main-column-blocks"
+            style={isWideHome ? undefined : homeMainColumnInsetStyle}
+          >
+            {homeMainColumnBlocks}
+          </View>
         </HspScrollColumn>,
       )}
     </>
