@@ -45,8 +45,14 @@ import {
   demoteQueuedNetworkFetches,
 } from "./messages/networkFetchQueue";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
+import { MessageChatListArchiveFolderRow } from "./messages/MessageChatListArchiveFolderRow";
 import { MessageChatListContextMenu } from "./messages/MessageChatListContextMenu";
 import { useMessagesChatListSearch, markChatListSearchRowPressPending } from "../messages/MessagesChatListSearchContext";
+import {
+  getMessagesArchiveOpen,
+  setMessagesArchiveOpen,
+  useMessagesArchiveOpen,
+} from "../messages/messagesArchiveOpen";
 import { ChatListBottomSentinel } from "./messages/ChatListBottomSentinel";
 import { useChatListViewport } from "../hooks/useChatListViewport";
 import {
@@ -179,6 +185,12 @@ function resolveSearchHitRow(
 
 type ChatListDisplayItem =
   | { kind: "chat"; key: string; row: MessageChatRowData }
+  | {
+      kind: "archiveFolder";
+      key: string;
+      previewTitle: string | null;
+      unreadCount: number;
+    }
   | { kind: "sectionHeader"; key: string; sectionId: string; title: string }
   | { kind: "messagesFooter"; key: string; count: number }
   | { kind: "recentsFooter"; key: string };
@@ -346,6 +358,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     })(),
     is_pinned: Boolean(row.is_pinned),
     pin_order: typeof row.pin_order === "string" ? row.pin_order : "0",
+    in_archive: Boolean(row.in_archive),
     list_tier:
       row.list_tier === "pinned" ||
       row.list_tier === "positioned" ||
@@ -428,6 +441,7 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.last_message_sender_user_id !== b.last_message_sender_user_id ||
       Boolean(a.is_pinned) !== Boolean(b.is_pinned) ||
       a.pin_order !== b.pin_order ||
+      Boolean(a.in_archive) !== Boolean(b.in_archive) ||
       a.list_tier !== b.list_tier ||
       Boolean(a.has_active_voice_chat) !== Boolean(b.has_active_voice_chat) ||
       a.voice_chat_group_call_id !== b.voice_chat_group_call_id ||
@@ -654,9 +668,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const recoverChatsInFlightRef = useRef(false);
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
 
-  // Push total unread count to the global store whenever chat rows change.
+  // Push main-list unread only (archived chats stay out of the Messages nav badge).
   useEffect(() => {
-    const total = chats.reduce((sum, row) => sum + (row.unread_count > 0 ? row.unread_count : 0), 0);
+    const total = chats.reduce((sum, row) => {
+      if (row.in_archive) return sum;
+      return sum + (row.unread_count > 0 ? row.unread_count : 0);
+    }, 0);
     setTelegramTotalUnread(total);
   }, [chats]);
 
@@ -1816,7 +1833,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       return;
     }
     pinnedCommitPendingRef.current = true;
-    void reorderTelegramPinnedChats(current).then((result) => {
+    void reorderTelegramPinnedChats(current, { archive: getMessagesArchiveOpen() }).then((result) => {
       pinnedCommitPendingRef.current = false;
       if (result.ok) return;
       applyOptimisticPinnedOrder(before);
@@ -1867,22 +1884,46 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   );
 
   const sortedChats = useMemo(() => sortChatRowsTierAware(chats), [chats]);
+  const archiveOpen = useMessagesArchiveOpen();
+  const mainSortedChats = useMemo(
+    () => sortedChats.filter((row) => !row.in_archive),
+    [sortedChats],
+  );
+  const archiveSortedChats = useMemo(
+    () => sortedChats.filter((row) => Boolean(row.in_archive)),
+    [sortedChats],
+  );
+  const listModeChats = archiveOpen ? archiveSortedChats : mainSortedChats;
+  const archiveFolderUnread = useMemo(
+    () =>
+      archiveSortedChats.reduce(
+        (sum, row) => sum + (row.unread_count > 0 ? row.unread_count : 0),
+        0,
+      ),
+    [archiveSortedChats],
+  );
+  const archiveFolderPreviewTitle = archiveSortedChats[0]?.title ?? null;
   const pinnedIndexByChatId = useMemo(() => {
     const map = new Map<number, number>();
     let pinnedIndex = 0;
-    for (const row of sortedChats) {
+    for (const row of listModeChats) {
       if (resolveChatListTier(row) !== "pinned") continue;
       map.set(row.telegram_chat_id, pinnedIndex);
       pinnedIndex += 1;
     }
     return map;
-  }, [sortedChats]);
+  }, [listModeChats]);
   const searchNeedle = useMemo(
     () => normalizeSearchNeedle(chatListSearchQuery),
     [chatListSearchQuery],
   );
   const recentsMode = chatListSearchFocused && !searchNeedle;
   const listSearchActive = Boolean(searchNeedle) || recentsMode;
+  useEffect(() => {
+    if (listSearchActive && archiveOpen) {
+      setMessagesArchiveOpen(false);
+    }
+  }, [archiveOpen, listSearchActive]);
   useEffect(() => {
     if (!searchNeedle) {
       setCollapsedSearchSections({});
@@ -1996,11 +2037,30 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       return items;
     }
     if (!searchNeedle) {
-      return sortedChats.map((row) => ({
-        kind: "chat" as const,
-        key: `chat-${row.telegram_chat_id}`,
-        row,
-      }));
+      if (archiveOpen) {
+        return archiveSortedChats.map((row) => ({
+          kind: "chat" as const,
+          key: `chat-${row.telegram_chat_id}`,
+          row,
+        }));
+      }
+      const items: ChatListDisplayItem[] = [];
+      if (archiveSortedChats.length > 0) {
+        items.push({
+          kind: "archiveFolder",
+          key: "archive-folder",
+          previewTitle: archiveFolderPreviewTitle,
+          unreadCount: archiveFolderUnread,
+        });
+      }
+      for (const row of mainSortedChats) {
+        items.push({
+          kind: "chat",
+          key: `chat-${row.telegram_chat_id}`,
+          row,
+        });
+      }
+      return items;
     }
 
     const liveById = new Map(sortedChats.map((row) => [row.telegram_chat_id, row]));
@@ -2097,7 +2157,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     return items;
   }, [
+    archiveFolderPreviewTitle,
+    archiveFolderUnread,
+    archiveOpen,
+    archiveSortedChats,
     collapsedSearchSections,
+    mainSortedChats,
     recentsMode,
     recentSearchHits,
     recentSearchLoaded,
@@ -2117,7 +2182,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     viewportCount: chatListRevealCount,
     expandViewport: expandChatListReveal,
     canExpandViewport: canExpandChatListReveal,
-  } = useChatListViewport(listSearchActive ? 0 : sortedChats.length, {
+  } = useChatListViewport(listSearchActive ? 0 : displayListItems.length, {
     autoReveal: !listSearchActive,
   });
 
@@ -2152,9 +2217,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListScrollMetrics = getChatListScrollMetrics();
   const chatListEffectiveLayoutH =
     chatListScrollMetrics.layoutH > 0 ? chatListScrollMetrics.layoutH : 480;
-  const chatListVirtualTotalCount = listSearchActive
-    ? revealedDisplayListItems.length
-    : displayChats.length;
+  const chatListVirtualTotalCount = revealedDisplayListItems.length;
   const chatListVirtualWindow = useMemo(() => {
     if (listSearchActive) {
       return {
@@ -2224,7 +2287,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       bottomSpacerPx: chatListVirtualWindow.bottomSpacerPx,
       scrollY: chatListScrollMetrics.scrollY,
       layoutH: chatListEffectiveLayoutH,
-      totalCount: listSearchActive ? revealedDisplayListItems.length : sortedChats.length,
+      totalCount: listSearchActive ? revealedDisplayListItems.length : displayListItems.length,
       loadedCount: displayChats.length,
       revealCount: chatListRevealCount,
       rowStridePx: chatListRowStride,
@@ -2440,6 +2503,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         const isVisualBottomEdge = listSearchActive
           ? absoluteIndex === 0
           : absoluteIndex === revealedDisplayListItems.length - 1 && !showBottomLoader;
+        if (item.kind === "archiveFolder") {
+          return (
+            <MessageChatListArchiveFolderRow
+              key={item.key}
+              previewTitle={item.previewTitle}
+              unreadCount={item.unreadCount}
+              colors={colors}
+              isLast={isVisualBottomEdge}
+              onPress={() => setMessagesArchiveOpen(true)}
+            />
+          );
+        }
         if (item.kind === "sectionHeader") {
           const sectionOpen = collapsedSearchSections[item.sectionId] !== true;
           // 1px between closed section dividers; slightly more when open.
@@ -2597,7 +2672,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                     pinnedDragFromRef.current = idx;
                     pinnedDragStartYRef.current = e.clientY;
                     pinnedDragMovedRef.current = false;
-                    pinnedOrderBeforeDragRef.current = sortedChats
+                    pinnedOrderBeforeDragRef.current = listModeChats
                       .filter((row) => resolveChatListTier(row) === "pinned")
                       .map((row) => row.telegram_chat_id);
                     pinnedOrderLiveRef.current = pinnedOrderBeforeDragRef.current;
@@ -2644,7 +2719,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       ) : null}
       {!listSearchActive ? (
         <ChatListBottomSentinel
-          enabled={sortedChats.length > 0 && !listSearchActive}
+          enabled={listModeChats.length > 0 && !listSearchActive}
           onNearBottom={handleChatListNearBottom}
         />
       ) : null}

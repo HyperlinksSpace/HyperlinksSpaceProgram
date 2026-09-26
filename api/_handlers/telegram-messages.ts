@@ -234,6 +234,7 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     chat_action_expires_at: row.chat_action_expires_at ?? null,
     is_pinned: Boolean(row.is_pinned),
     pin_order: typeof row.pin_order === "string" ? row.pin_order : "0",
+    in_archive: Boolean(row.in_archive),
     list_tier:
       row.list_tier === "pinned" ||
       row.list_tier === "positioned" ||
@@ -2953,6 +2954,7 @@ function mapResolvedChatRow(row: Record<string, unknown>) {
     chat_action_expires_at: null,
     is_pinned: false,
     pin_order: "0",
+    in_archive: false,
     last_read_outbox_message_id: null,
   };
 }

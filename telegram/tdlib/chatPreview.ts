@@ -134,6 +134,20 @@ export function isChatPinnedInMainList(chat: TdChat): boolean {
   return positions.some((row) => row.list?._ === "chatListMain" && row.is_pinned === true);
 }
 
+/** True when the chat is pinned on the archive list. */
+export function isChatPinnedInArchiveList(chat: TdChat): boolean {
+  const positions = chat.positions;
+  if (!Array.isArray(positions)) return false;
+  return positions.some((row) => row.list?._ === "chatListArchive" && row.is_pinned === true);
+}
+
+/**
+ * Archive-only dialogs (not also on main). Folder-only / main chats are not archive-only.
+ */
+export function isArchiveOnlyChat(chat: TdChat): boolean {
+  return isChatInArchiveList(chat) && !isChatInMainList(chat);
+}
+
 /** True when TDLib places the chat on the main chat list (not archive-only / search-only). */
 export function isChatInMainList(chat: TdChat): boolean {
   const positions = chat.positions;

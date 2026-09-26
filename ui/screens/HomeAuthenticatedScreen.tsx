@@ -37,6 +37,11 @@ import {
 } from "../wallet/headerRowFit";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
 import { AuthenticatedHomeLeftNavStrip } from "../components/AuthenticatedHomeLeftNavStrip";
+import { MessagesArchiveListHeader } from "../components/messages/MessagesArchiveListHeader";
+import {
+  setMessagesArchiveOpen,
+  useMessagesArchiveOpen,
+} from "../messages/messagesArchiveOpen";
 import { AuthenticatedHomeFeedPanel } from "../components/AuthenticatedHomeFeedPanel";
 import {
   getFeedUnreadCount,
@@ -615,6 +620,7 @@ function HomeAuthenticatedScreenMain() {
   const router = useRouter();
   const { t, tf, translateFlowError } = useAppStrings();
   const homeNavIndex = useAuthenticatedHomeLeftNavIndex();
+  const messagesArchiveOpen = useMessagesArchiveOpen();
   const feedUnreadCount = useSyncExternalStore(
     subscribeFeedUnreadCount,
     getFeedUnreadCount,
@@ -628,6 +634,11 @@ function HomeAuthenticatedScreenMain() {
       setAuthenticatedHomeLeftNavIndex(1);
     }
   }, [homeNavIndex, listSearchActive]);
+  useEffect(() => {
+    if (homeNavIndex !== 1 && messagesArchiveOpen) {
+      setMessagesArchiveOpen(false);
+    }
+  }, [homeNavIndex, messagesArchiveOpen]);
   const chatListBottomLoaderActive = useSyncExternalStore(
     subscribeChatListBottomLoaderActive,
     isChatListBottomLoaderActive,
@@ -2148,13 +2159,17 @@ function HomeAuthenticatedScreenMain() {
   const homeLeftColumn = (
     <>
       {isWideHome ? (
-        <AuthenticatedHomeLeftNavStrip
-          key="authenticated-home-left-nav"
-          colors={colors}
-          selectedIndex={leftNavSelectedIndex}
-          onSelectIndex={setAuthenticatedHomeLeftNavIndex}
-          feedUnreadCount={feedUnreadCount}
-        />
+        homeNavIndex === 1 && messagesArchiveOpen ? (
+          <MessagesArchiveListHeader key="authenticated-home-archive-header" />
+        ) : (
+          <AuthenticatedHomeLeftNavStrip
+            key="authenticated-home-left-nav"
+            colors={colors}
+            selectedIndex={leftNavSelectedIndex}
+            onSelectIndex={setAuthenticatedHomeLeftNavIndex}
+            feedUnreadCount={feedUnreadCount}
+          />
+        )
       ) : null}
       {homeLeftScrollShell(
         <HspScrollColumn
@@ -2256,18 +2271,22 @@ function HomeAuthenticatedScreenMain() {
                       }),
                 }}
               >
-                <AuthenticatedHomeLeftNavStrip
-                  key="authenticated-home-left-nav"
-                  colors={colors}
-                  selectedIndex={leftNavSelectedIndex}
-                  onSelectIndex={setAuthenticatedHomeLeftNavIndex}
-                  feedUnreadCount={feedUnreadCount}
-                  marginTopPx={0}
-                  passVerticalScroll
-                  tone="background"
-                  verticalDrag={compactHeaderVerticalDrag}
-                  onVerticalWheel={onCompactHeaderVerticalWheel}
-                />
+                {homeNavIndex === 1 && messagesArchiveOpen ? (
+                  <MessagesArchiveListHeader key="authenticated-home-archive-header" />
+                ) : (
+                  <AuthenticatedHomeLeftNavStrip
+                    key="authenticated-home-left-nav"
+                    colors={colors}
+                    selectedIndex={leftNavSelectedIndex}
+                    onSelectIndex={setAuthenticatedHomeLeftNavIndex}
+                    feedUnreadCount={feedUnreadCount}
+                    marginTopPx={0}
+                    passVerticalScroll
+                    tone="background"
+                    verticalDrag={compactHeaderVerticalDrag}
+                    onVerticalWheel={onCompactHeaderVerticalWheel}
+                  />
+                )}
               </View>
             </View>
           ) : null}

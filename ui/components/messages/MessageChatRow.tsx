@@ -91,6 +91,8 @@ export type MessageChatRowData = {
   last_message_sender_user_id?: number | null;
   is_pinned?: boolean;
   pin_order?: string | null;
+  /** Dialog lives only on Telegram's archive list. */
+  in_archive?: boolean;
   list_tier?: "pinned" | "positioned" | "unpositioned" | null;
   /** Active Telegram voice/video chat on this chat. */
   has_active_voice_chat?: boolean;

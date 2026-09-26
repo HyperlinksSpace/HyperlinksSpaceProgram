@@ -5,7 +5,10 @@ import {
 } from "./liveChatDeletedMessages.js";
 import {
   CHAT_ACTION_TTL_MS,
+  archiveListOrderKey,
   chatTitle,
+  isArchiveOnlyChat,
+  isChatPinnedInArchiveList,
   isChatPinnedInMainList,
   isPrivateTdChat,
   lastMessageAtIso,
@@ -68,6 +71,8 @@ export type LiveChatRow = {
   last_message_sender_user_id: number | null;
   is_pinned: boolean;
   pin_order: string;
+  /** True when this dialog lives only on chatListArchive (not main). */
+  in_archive: boolean;
   list_tier: ChatListTier;
   /** True when TDLib reports an active voice/video chat on this chat. */
   has_active_voice_chat: boolean;
@@ -80,6 +85,21 @@ export type LiveChatRow = {
   /** Monotonic version bumped on each update (for client diffing). */
   revision: number;
 };
+
+function listPlacementFromTdChat(chat: TdChat): {
+  in_archive: boolean;
+  is_pinned: boolean;
+  pin_order: string;
+} {
+  const inArchive = isArchiveOnlyChat(chat);
+  return {
+    in_archive: inArchive,
+    is_pinned: inArchive ? isChatPinnedInArchiveList(chat) : isChatPinnedInMainList(chat),
+    pin_order: resolvePinOrder({
+      chatOrder: inArchive ? archiveListOrderKey(chat) : mainListOrderKey(chat),
+    }),
+  };
+}
 
 function comparePinOrderDesc(a: string, b: string): number {
   try {
@@ -388,12 +408,18 @@ export function patchLiveChatFromTdlib(
     last_read_inbox_message_id:
       lastReadInboxMessageIdFromChat(chat) ?? existing?.last_read_inbox_message_id ?? null,
     ...lastMessageListRowMetaFromChat(chat, getLiveChatSelfUserId(telegramUsername)),
-      is_pinned: isChatPinnedInMainList(chat),
-      // Never clobber a seeded order with "0" from a partial getChat.
-      pin_order: resolvePinOrder({
-        chatOrder: mainListOrderKey(chat),
-        previousOrder: existing?.pin_order,
-      }),
+      ...(() => {
+        const placement = listPlacementFromTdChat(chat);
+        return {
+          in_archive: placement.in_archive,
+          is_pinned: placement.is_pinned,
+          // Never clobber a seeded order with "0" from a partial getChat.
+          pin_order: resolvePinOrder({
+            chatOrder: placement.pin_order,
+            previousOrder: existing?.pin_order,
+          }),
+        };
+      })(),
       ...(() => {
         // Metadata never paints live (see voiceChatFromTdChat). Preserve a
         // previously verified live/joined flag for the same bound call across
@@ -500,6 +526,7 @@ export function patchLiveChatReadInbox(
     last_message_sender_user_id: existing.last_message_sender_user_id,
     is_pinned: existing.is_pinned,
     pin_order: existing.pin_order,
+    in_archive: existing.in_archive ?? false,
     has_active_voice_chat: existing.has_active_voice_chat ?? false,
     voice_chat_group_call_id: existing.voice_chat_group_call_id ?? null,
     voice_chat_is_joined: existing.voice_chat_is_joined ?? false,
@@ -554,6 +581,7 @@ export function patchLiveChatAction(
     last_message_sender_user_id: existing.last_message_sender_user_id,
     is_pinned: existing.is_pinned,
     pin_order: existing.pin_order,
+    in_archive: existing.in_archive ?? false,
     has_active_voice_chat: existing.has_active_voice_chat ?? false,
     voice_chat_group_call_id: existing.voice_chat_group_call_id ?? null,
     voice_chat_is_joined: existing.voice_chat_is_joined ?? false,
@@ -600,6 +628,7 @@ export function patchLiveChatPresence(
       last_message_sender_user_id: row.last_message_sender_user_id,
       is_pinned: row.is_pinned,
       pin_order: row.pin_order,
+      in_archive: row.in_archive ?? false,
       has_active_voice_chat: row.has_active_voice_chat ?? false,
       voice_chat_group_call_id: row.voice_chat_group_call_id ?? null,
       voice_chat_is_joined: row.voice_chat_is_joined ?? false,
@@ -650,6 +679,7 @@ export function patchLiveChatEmojiStatus(
       last_message_sender_user_id: row.last_message_sender_user_id,
       is_pinned: row.is_pinned,
       pin_order: row.pin_order,
+      in_archive: row.in_archive ?? false,
       has_active_voice_chat: row.has_active_voice_chat ?? false,
       voice_chat_group_call_id: row.voice_chat_group_call_id ?? null,
       voice_chat_is_joined: row.voice_chat_is_joined ?? false,
@@ -698,6 +728,7 @@ export function patchLiveChatChatEmojiStatus(
     last_message_sender_user_id: existing.last_message_sender_user_id,
     is_pinned: existing.is_pinned,
     pin_order: existing.pin_order,
+    in_archive: existing.in_archive ?? false,
     has_active_voice_chat: existing.has_active_voice_chat ?? false,
     voice_chat_group_call_id: existing.voice_chat_group_call_id ?? null,
     voice_chat_is_joined: existing.voice_chat_is_joined ?? false,
@@ -752,6 +783,7 @@ export function applyLiveMessageUpdate(
     ),
     is_pinned: existing?.is_pinned ?? false,
     pin_order: existing?.pin_order ?? "0",
+    in_archive: existing?.in_archive ?? false,
     has_active_voice_chat: existing?.has_active_voice_chat ?? false,
     voice_chat_group_call_id: existing?.voice_chat_group_call_id ?? null,
     voice_chat_is_joined: existing?.voice_chat_is_joined ?? false,
@@ -803,6 +835,7 @@ export function patchLiveChatMemberMeta(
     last_message_sender_user_id: existing.last_message_sender_user_id,
     is_pinned: existing.is_pinned,
     pin_order: existing.pin_order,
+    in_archive: existing.in_archive ?? false,
     has_active_voice_chat: existing.has_active_voice_chat ?? false,
     voice_chat_group_call_id: existing.voice_chat_group_call_id ?? null,
     voice_chat_is_joined: existing.voice_chat_is_joined ?? false,
@@ -864,6 +897,7 @@ export function patchLiveChatVideoChat(
     last_message_sender_user_id: existing.last_message_sender_user_id,
     is_pinned: existing.is_pinned,
     pin_order: existing.pin_order,
+    in_archive: existing.in_archive ?? false,
     has_active_voice_chat: input.has_active_voice_chat,
     voice_chat_group_call_id: input.voice_chat_group_call_id,
     voice_chat_is_joined: nextJoined,

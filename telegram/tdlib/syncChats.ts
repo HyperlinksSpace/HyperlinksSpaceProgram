@@ -5,8 +5,11 @@ import { touchMtprotoSync, upsertMtprotoSession } from "../../database/telegramM
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import { getTdlibUserDir } from "./env.js";
 import {
+  archiveListOrderKey,
   chatTitle,
   chatUsernameFromChat,
+  isArchiveOnlyChat,
+  isChatPinnedInArchiveList,
   isChatPinnedInMainList,
   lastMessageAtIso,
   mainListOrderKey,
@@ -1184,11 +1187,17 @@ function buildSkeletonLiveRows(chats: TdChat[]): Omit<LiveChatRow, "revision">[]
       last_read_outbox_message_id: lastReadOutboxMessageIdFromChat(chat),
       last_read_inbox_message_id: lastReadInboxMessageIdFromChat(chat),
       ...lastMessageListRowMetaFromChat(chat, null),
-      is_pinned: isChatPinnedInMainList(chat),
-      pin_order: resolvePinOrder({
-        chatOrder: mainListOrderKey(chat),
-        listIndex: i,
-      }),
+      ...(() => {
+        const inArchive = isArchiveOnlyChat(chat);
+        return {
+          in_archive: inArchive,
+          is_pinned: inArchive ? isChatPinnedInArchiveList(chat) : isChatPinnedInMainList(chat),
+          pin_order: resolvePinOrder({
+            chatOrder: inArchive ? archiveListOrderKey(chat) : mainListOrderKey(chat),
+            listIndex: i,
+          }),
+        };
+      })(),
       ...voiceChatFromTdChat(chat),
       list_tier: tier,
     });
@@ -1268,11 +1277,17 @@ async function buildLiveRowsForChats(
       last_read_outbox_message_id: lastReadOutboxMessageIdFromChat(chat),
       last_read_inbox_message_id: lastReadInboxMessageIdFromChat(chat),
       ...lastMessageListRowMetaFromChat(chat, myUserId),
-      is_pinned: isChatPinnedInMainList(chat),
-      pin_order: resolvePinOrder({
-        chatOrder: mainListOrderKey(chat),
-        listIndex: preserveListIndexOrder ? i : null,
-      }),
+      ...(() => {
+        const inArchive = isArchiveOnlyChat(chat);
+        return {
+          in_archive: inArchive,
+          is_pinned: inArchive ? isChatPinnedInArchiveList(chat) : isChatPinnedInMainList(chat),
+          pin_order: resolvePinOrder({
+            chatOrder: inArchive ? archiveListOrderKey(chat) : mainListOrderKey(chat),
+            listIndex: preserveListIndexOrder ? i : null,
+          }),
+        };
+      })(),
       // Bound id only from metadata; live paint via verify pass below.
       ...voiceChatFromTdChat(chat),
       list_tier: chatListTier(chat),
