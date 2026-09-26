@@ -522,6 +522,8 @@ export type ChatListSyncStatus = {
   cachedCount: number;
   positionedComplete?: boolean;
   stableTopReady?: boolean;
+  archiveListReady?: boolean;
+  archiveListInProgress?: boolean;
   tier3Available?: boolean;
   tier3InProgress?: boolean;
 };
@@ -622,11 +624,14 @@ export async function gatewayFetchLiveChats(
 export async function gatewayLoadMoreChats(
   telegramUsername: string,
   tier: "positioned" | "unpositioned" = "positioned",
+  options?: { archive?: boolean },
 ): Promise<{
   ok: boolean;
   started?: boolean;
   warming?: boolean;
   tier?: "positioned" | "unpositioned";
+  archive?: boolean;
+  ready?: boolean;
   chatListSync?: ChatListSyncStatus;
   error?: string;
 }> {
@@ -640,12 +645,17 @@ export async function gatewayLoadMoreChats(
         "Content-Type": "application/json",
         "X-Gateway-Secret": secret,
       },
-      body: JSON.stringify({ telegramUsername, tier }),
+      body: JSON.stringify({
+        telegramUsername,
+        ...(options?.archive ? { archive: true } : { tier }),
+      }),
     });
     const json = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       started?: boolean;
       warming?: boolean;
+      archive?: boolean;
+      ready?: boolean;
       chatListSync?: ChatListSyncStatus;
       error?: string;
     };
@@ -661,6 +671,8 @@ export async function gatewayLoadMoreChats(
       ok: json.ok === true,
       started: json.started,
       warming: json.warming === true,
+      archive: json.archive === true || options?.archive === true,
+      ready: json.ready,
       chatListSync: json.chatListSync,
       error: json.error,
     };

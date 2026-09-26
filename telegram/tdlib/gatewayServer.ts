@@ -43,6 +43,7 @@ import {
   getLiveChatListRevision,
   getUserConnectSnapshot,
   resyncUserChats,
+  requestArchiveChatSync,
   requestBackgroundChatSync,
   restorePersistedGatewaySessions,
   resumeExistingSession,
@@ -646,7 +647,11 @@ export function startTdlibGatewayServer(): http.Server {
           // Telegram Desktop/Web: never serve live-arrival partials. Only the ordered
           // TDLib top seed (stableTopReady) may paint — not positionedComplete alone
           // (that flag can flip before seedLiveChatList finishes).
-          const serveChats = chatListSync.stableTopReady ? (chats ?? []) : [];
+          const seeded = chatListSync.stableTopReady ? (chats ?? []) : [];
+          // Archive dialogs stay hidden until the client scrolls up and requests them.
+          const serveChats = chatListSync.archiveListReady
+            ? seeded
+            : seeded.filter((row) => !row.in_archive);
           const currentRevision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = serveChats.filter(
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
@@ -684,10 +689,23 @@ export function startTdlibGatewayServer(): http.Server {
           const body = (await readJson(req)) as {
             telegramUsername?: string;
             tier?: "positioned" | "unpositioned";
+            archive?: boolean;
           };
           const telegramUsername = (body.telegramUsername || "").trim();
           if (!telegramUsername) {
             sendJson(res, 400, { ok: false, error: "username_required" });
+            return;
+          }
+          if (body.archive === true) {
+            const result = requestArchiveChatSync(telegramUsername);
+            sendJson(res, 200, {
+              ok: true,
+              started: result.started,
+              warming: result.warming === true,
+              archive: true,
+              ready: result.ready,
+              chatListSync: buildChatListSyncStatus(telegramUsername),
+            });
             return;
           }
           const tier = body.tier === "unpositioned" ? "unpositioned" : "positioned";

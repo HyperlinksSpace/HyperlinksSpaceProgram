@@ -38,6 +38,7 @@ import {
   patchLiveChatMemberMeta,
   seedLiveChatList,
   mergeLiveChatRows,
+  bumpLiveChatRevision,
   getLiveChatList,
   setLiveChatSelfUserId,
   type LiveChatRow,
@@ -48,16 +49,21 @@ import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
 import { filterChatsForList, chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
 import { omitHiddenPrivateChats } from "./chatListVisibility.js";
 import {
+  markArchiveChatSyncEnd,
+  markArchiveChatSyncStart,
   markBackgroundChatSyncEnd,
   markBackgroundChatSyncStart,
   markTier3ChatSyncEnd,
   markTier3ChatSyncStart,
   resetChatListSyncMeta,
   resetTier3ListCursor,
+  setArchiveListReady,
   setPositionedComplete,
   setStableTopReady,
   setTier3Available,
   getTier3ListCursor,
+  isArchiveChatSyncInProgress,
+  isArchiveListReady,
   isPositionedComplete,
   isTier3Available,
 } from "./chatListSyncState.js";
@@ -1135,6 +1141,9 @@ export async function syncChatThreads(
   if (liveRows.length > 0 || positionedComplete) {
     setStableTopReady(telegramUsername, true);
   }
+  if (options?.includeArchive !== false) {
+    setArchiveListReady(telegramUsername, true);
+  }
   // Full main/archive/folder sync: allow one supplementary (tier-3) pass, then
   // syncUnpositionedChatBatch clears the flag when exhausted.
   if (positionedComplete) {
@@ -1366,7 +1375,7 @@ export async function syncRemainingChatsInBackground(
   };
 
   await syncChatList({ _: "chatListMain" });
-  await syncChatList({ _: "chatListArchive" });
+  // Archive is deferred until the client scrolls up and requests it explicitly.
   const folderIds = await resolveChatFolderIdsForSync(client, telegramUsername);
   for (const folderId of folderIds) {
     await syncChatList({ _: "chatListFolder", chat_folder_id: folderId });
@@ -1503,10 +1512,59 @@ export async function syncChatsFromTdlib(
   await persistMtprotoConnection(client, telegramUsername);
   const count = await syncChatThreads(client, telegramUsername, {
     maxMainChats: null,
-    includeArchive: true,
+    includeArchive: false,
     includeSupplementarySearch: false,
     skipMemberCounts: true,
     replaceCache: true,
   });
   return count;
+}
+
+/**
+ * Scroll-up reveal: load chatListArchive into the live cache and mark archive ready.
+ * Idempotent while already ready / in flight.
+ */
+export async function syncArchiveChatList(
+  client: Client,
+  telegramUsername: string,
+): Promise<number> {
+  if (isArchiveListReady(telegramUsername)) return 0;
+  if (!markArchiveChatSyncStart(telegramUsername)) return 0;
+  try {
+    const archiveChats = await loadChatsFromList(client, { _: "chatListArchive" });
+    const visible = await omitHiddenPrivateChats(client, archiveChats);
+    const rows = await buildLiveRowsForChats(client, visible, {
+      skipMemberCounts: true,
+    });
+    if (rows.length > 0) {
+      mergeLiveChatRows(telegramUsername, rows);
+    } else {
+      // Empty archive still needs a revision bump so clients refetch chatListSync.
+      bumpLiveChatRevision(telegramUsername);
+    }
+    setArchiveListReady(telegramUsername, true);
+    logGateway("sync_chat_archive_done", {
+      telegramUsername,
+      archiveCount: rows.length,
+    });
+    return rows.length;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logGateway("sync_chat_archive_error", { telegramUsername, message });
+    // Still mark ready so the UI does not spin forever on empty/failed archive.
+    setArchiveListReady(telegramUsername, true);
+    throw err;
+  } finally {
+    markArchiveChatSyncEnd(telegramUsername);
+  }
+}
+
+/** Fire-and-forget archive sync for scroll-up reveal. Returns whether a run was started. */
+export function scheduleArchiveChatSync(client: Client, telegramUsername: string): boolean {
+  if (isArchiveListReady(telegramUsername)) return false;
+  if (isArchiveChatSyncInProgress(telegramUsername)) return false;
+  void syncArchiveChatList(client, telegramUsername).catch(() => {
+    /* logged inside syncArchiveChatList */
+  });
+  return true;
 }

@@ -4,6 +4,10 @@ export type ChatListSyncStatus = {
   positionedComplete?: boolean;
   /** First TDLib-ordered top page seeded (not live-arrival upserts). */
   stableTopReady?: boolean;
+  /** Archive list synced after scroll-up reveal. */
+  archiveListReady?: boolean;
+  /** Scroll-triggered archive sync running. */
+  archiveListInProgress?: boolean;
   tier3Available?: boolean;
   tier3InProgress?: boolean;
 };

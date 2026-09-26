@@ -54,6 +54,7 @@ import {
   useMessagesArchiveOpen,
 } from "../messages/messagesArchiveOpen";
 import { ChatListBottomSentinel } from "./messages/ChatListBottomSentinel";
+import { ChatListTopSentinel } from "./messages/ChatListTopSentinel";
 import { useChatListViewport } from "../hooks/useChatListViewport";
 import {
   getChatListSyncStatus,
@@ -63,6 +64,7 @@ import {
 import { setTelegramTotalUnread } from "../messages/telegramUnreadStore";
 import { setChatListBottomLoaderActive } from "./messages/chatListBottomLoaderStatus";
 import { setChatListNearBottomHandler } from "./messages/chatListNearBottom";
+import { setChatListNearTopHandler } from "./messages/chatListNearTop";
 import {
   invokeChatListSearchScrollToEnd,
   setChatListSearchScrollToEndHandler,
@@ -190,6 +192,7 @@ type ChatListDisplayItem =
       key: string;
       previewTitle: string | null;
       unreadCount: number;
+      loading?: boolean;
     }
   | { kind: "sectionHeader"; key: string; sectionId: string; title: string }
   | { kind: "messagesFooter"; key: string; count: number }
@@ -791,6 +794,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListStreamHealthyRef = useRef(false);
   const chatListAtBottomRef = useRef(false);
   const loadMoreTierRef = useRef<"positioned" | "unpositioned">("positioned");
+  /** User scrolled the list away from the top — allow archive reveal (not on first paint). */
+  const [archiveRevealRequested, setArchiveRevealRequested] = useState(false);
+  const [archiveScrollArmed, setArchiveScrollArmed] = useState(false);
+  const archiveScrollArmedRef = useRef(false);
   /** Chat-list rows fetched while the voice dialog was open — apply on close. */
   const deferredVoiceChatListRef = useRef<{
     rows: MessageChatRowData[];
@@ -818,9 +825,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const applyChatListSync = useCallback((status: ChatListSyncStatus | null | undefined) => {
     if (!status) return;
     setChatListSync((prev) => {
+      const merged: ChatListSyncStatus = prev ? { ...prev, ...status } : status;
       const holdingOrderedReseed =
         prev?.stableTopReady === true &&
-        status.stableTopReady !== true &&
+        merged.stableTopReady !== true &&
         initialChatListRevealedRef.current;
       if (holdingOrderedReseed) {
         // Schedule outside this updater — do not set other state synchronously here.
@@ -830,7 +838,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           setChats([]);
         });
       }
-      return status;
+      return merged;
     });
     setChatListSyncStatus(status);
   }, []);
@@ -861,6 +869,37 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }
     } catch {
       /* poll / SSE will pick up background pages */
+    }
+  }, [applyChatListSync]);
+
+  const requestArchiveChats = useCallback(async () => {
+    try {
+      const response = await fetch(buildApiUrl("/api/telegram-messages-chats-load-more"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archive: true }),
+      });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        started?: boolean;
+        ready?: boolean;
+        chatListSync?: ChatListSyncStatus;
+      };
+      if (json.chatListSync) {
+        applyChatListSync(json.chatListSync);
+      }
+      const ready =
+        json.ready === true || json.chatListSync?.archiveListReady === true;
+      const stillLoading =
+        json.chatListSync?.archiveListInProgress === true || json.started === true;
+      if ((!ready || stillLoading) && !isVoiceDialogUiOpen()) {
+        void loadChatsRef.current({ silent: true, forceFull: true });
+      } else if (ready && !isVoiceDialogUiOpen()) {
+        void loadChatsRef.current({ silent: true, forceFull: true });
+      }
+    } catch {
+      /* poll / SSE will pick up archive rows */
     }
   }, [applyChatListSync]);
 
@@ -1890,8 +1929,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [sortedChats],
   );
   const archiveSortedChats = useMemo(
-    () => sortedChats.filter((row) => Boolean(row.in_archive)),
-    [sortedChats],
+    () =>
+      chatListSync?.archiveListReady === true
+        ? sortedChats.filter((row) => Boolean(row.in_archive))
+        : [],
+    [chatListSync?.archiveListReady, sortedChats],
   );
   const listModeChats = archiveOpen ? archiveSortedChats : mainSortedChats;
   const archiveFolderUnread = useMemo(
@@ -2052,6 +2094,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           previewTitle: archiveFolderPreviewTitle,
           unreadCount: archiveFolderUnread,
         });
+      } else if (
+        // Only after the user scrolls up — never on first paint.
+        archiveRevealRequested &&
+        chatListSync?.archiveListReady !== true
+      ) {
+        items.push({
+          kind: "archiveFolder",
+          key: "archive-folder",
+          previewTitle: null,
+          unreadCount: 0,
+          loading: true,
+        });
       }
       for (const row of mainSortedChats) {
         items.push({
@@ -2160,7 +2214,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveFolderPreviewTitle,
     archiveFolderUnread,
     archiveOpen,
+    archiveRevealRequested,
     archiveSortedChats,
+    chatListSync?.archiveListReady,
     collapsedSearchSections,
     mainSortedChats,
     recentsMode,
@@ -2473,6 +2529,92 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     };
   }, [handleChatListNearBottom]);
 
+  const handleChatListNearTop = useCallback(() => {
+    if (listSearchActive || archiveOpen) return;
+    if (isVoiceDialogUiOpen()) return;
+    if (chatListSync?.archiveListReady === true) return;
+    archiveScrollArmedRef.current = true;
+    setArchiveScrollArmed(true);
+    setArchiveRevealRequested(true);
+    void requestArchiveChats();
+  }, [
+    archiveOpen,
+    chatListSync?.archiveListReady,
+    listSearchActive,
+    requestArchiveChats,
+  ]);
+
+  useEffect(() => {
+    if (chatListVirtualWindow.startIndex > 0) {
+      archiveScrollArmedRef.current = true;
+      setArchiveScrollArmed(true);
+    }
+  }, [chatListVirtualWindow.startIndex]);
+
+  useEffect(() => {
+    const armFromMetrics = () => {
+      const metrics = getChatListScrollMetrics();
+      if (metrics.scrollY > 64) {
+        archiveScrollArmedRef.current = true;
+        setArchiveScrollArmed(true);
+      }
+    };
+    armFromMetrics();
+    return subscribeChatListScrollMetrics(armFromMetrics);
+  }, []);
+
+  useEffect(() => {
+    setChatListNearTopHandler(handleChatListNearTop);
+    return () => {
+      setChatListNearTopHandler(null);
+    };
+  }, [handleChatListNearTop]);
+  // Keep polling while the scroll-up archive reveal is in flight.
+  useEffect(() => {
+    if (!archiveRevealRequested) return;
+    if (chatListSync?.archiveListReady === true) return;
+    if (listSearchActive || archiveOpen) return;
+    const id = setInterval(() => {
+      void requestArchiveChats();
+    }, 1200);
+    // Don't leave the reserved loading row forever if the gateway ignores archive.
+    const failSafe = setTimeout(() => {
+      setChatListSync((prev) =>
+        prev?.archiveListReady === true
+          ? prev
+          : {
+              inProgress: prev?.inProgress ?? false,
+              cachedCount: prev?.cachedCount ?? chatsCountRef.current,
+              positionedComplete: prev?.positionedComplete,
+              stableTopReady: prev?.stableTopReady ?? true,
+              archiveListReady: true,
+              archiveListInProgress: false,
+              tier3Available: prev?.tier3Available,
+              tier3InProgress: prev?.tier3InProgress,
+            },
+      );
+    }, 12_000);
+    return () => {
+      clearInterval(id);
+      clearTimeout(failSafe);
+    };
+  }, [
+    archiveOpen,
+    archiveRevealRequested,
+    chatListSync?.archiveListReady,
+    listSearchActive,
+    requestArchiveChats,
+  ]);
+
+  // Ordered reseed (stable top dropped) — hide folder until the next scroll-up.
+  useEffect(() => {
+    if (chatListSync != null && chatListSync.stableTopReady === false) {
+      setArchiveRevealRequested(false);
+      archiveScrollArmedRef.current = false;
+      setArchiveScrollArmed(false);
+    }
+  }, [chatListSync?.stableTopReady]);
+
   useEffect(() => {
     if (!listSearchActive) return;
     let innerFrame = 0;
@@ -2497,6 +2639,17 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       {chatListVirtualWindow.enabled && chatListVirtualWindow.topSpacerPx > 0 ? (
         <View style={{ height: chatListVirtualWindow.topSpacerPx }} />
       ) : null}
+      {!listSearchActive && startIndex === 0 ? (
+        <ChatListTopSentinel
+          enabled={
+            archiveScrollArmed &&
+            !archiveOpen &&
+            chatListSync?.archiveListReady !== true &&
+            listModeChats.length > 0
+          }
+          onNearTop={handleChatListNearTop}
+        />
+      ) : null}
       {items.map((item, index) => {
         const absoluteIndex = startIndex + index;
         // column-reverse: first item is nearest the search field (visual bottom).
@@ -2511,6 +2664,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               unreadCount={item.unreadCount}
               colors={colors}
               isLast={isVisualBottomEdge}
+              loading={item.loading === true}
               onPress={() => setMessagesArchiveOpen(true)}
             />
           );
@@ -2727,6 +2881,20 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   );
 
   const listShellStyle = homeListShellStyle(wideListChrome);
+
+  // Session says linked (or still unknown) — never flash the connect CTA before status settles.
+  const connectionStatusPending =
+    !authReady ||
+    sessionTelegramMessagesConnected === null ||
+    (sessionTelegramMessagesConnected === true && !isTelegramMessagesConnected);
+
+  if (connectionStatusPending) {
+    return (
+      <View style={[listShellStyle, { paddingVertical: 24, alignItems: "center" }]}>
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
+  }
 
   if (!isTelegramMessagesConnected) {
     return (

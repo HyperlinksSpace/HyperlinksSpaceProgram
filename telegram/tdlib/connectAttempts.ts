@@ -23,6 +23,7 @@ import {
   readUserAvatarBytes,
   refreshLiveChats,
   syncChatThreads,
+  scheduleArchiveChatSync,
   scheduleBackgroundChatSync,
   scheduleTier3ChatSync,
   isBackgroundChatSyncInProgress,
@@ -33,7 +34,11 @@ import { fetchChatHistory, fetchChatHistoryAroundMessage, fetchChatHistoryAround
 import { readUserAvatarAnimationBytes } from "./chatPhoto.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { ingestChatFoldersUpdate } from "./chatFolderCache.js";
-import { isPositionedComplete } from "./chatListSyncState.js";
+import {
+  isArchiveChatSyncInProgress,
+  isArchiveListReady,
+  isPositionedComplete,
+} from "./chatListSyncState.js";
 import { getLiveChatList, getLiveChatListRevision, patchLiveChatMemberMeta, patchLiveChatVideoChat } from "./liveChatCache.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
 import { type TdChat } from "./chatPreview.js";
@@ -421,7 +426,7 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
   try {
     record.chatCount = await syncChatThreads(client, record.telegramUsername, {
       maxMainChats: null,
-      includeArchive: true,
+      includeArchive: false,
       includeSupplementarySearch: false,
       skipMemberCounts: true,
       replaceCache: true,
@@ -1704,7 +1709,7 @@ export async function resyncUserChats(
       try {
         const count = await syncChatThreads(client, telegramUsername, {
           maxMainChats: null,
-          includeArchive: true,
+          includeArchive: false,
           includeSupplementarySearch: false,
           skipMemberCounts: true,
           replaceCache: true,
@@ -1775,6 +1780,36 @@ export function requestBackgroundChatSync(
   return { started: !wasInProgress, inProgress: true };
 }
 
+/** Scroll-up: load Telegram archive list on demand (not during initial connect). */
+export function requestArchiveChatSync(telegramUsername: string): {
+  started: boolean;
+  inProgress: boolean;
+  ready: boolean;
+  warming?: boolean;
+} {
+  if (isArchiveListReady(telegramUsername)) {
+    return { started: false, inProgress: false, ready: true };
+  }
+  const record = getActiveRecord(telegramUsername);
+  const already = isArchiveChatSyncInProgress(telegramUsername);
+  if (!record?.client || record.authState !== "ready") {
+    if (!already) {
+      void ensureGatewayUserSession(telegramUsername, 20_000).then((restored) => {
+        if (restored?.client && restored.authState === "ready") {
+          scheduleArchiveChatSync(restored.client, telegramUsername);
+        }
+      });
+    }
+    return { started: false, inProgress: already, ready: false, warming: true };
+  }
+  const started = scheduleArchiveChatSync(record.client, telegramUsername);
+  return {
+    started,
+    inProgress: started || isArchiveChatSyncInProgress(telegramUsername),
+    ready: isArchiveListReady(telegramUsername),
+  };
+}
+
 /** After gateway restart: lazy = remember disks only; eager = open every session now. */
 export function restorePersistedGatewaySessions(): void {
   const usernames = listPersistedSessionUsernames();
@@ -1838,7 +1873,7 @@ export function restorePersistedGatewaySessions(): void {
         }
         const chatCount = await syncChatThreads(record.client, telegramUsername, {
           maxMainChats: null,
-          includeArchive: true,
+          includeArchive: false,
           includeSupplementarySearch: false,
           skipMemberCounts: true,
           replaceCache: true,

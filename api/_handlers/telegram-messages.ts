@@ -509,7 +509,27 @@ export async function telegramMessagesChatsLoadMoreHandler(
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
 
-  const body = await parseRequestBody<{ tier?: string }>(request);
+  const body = await parseRequestBody<{ tier?: string; archive?: boolean }>(request);
+  if (body.archive === true) {
+    const result = await gatewayLoadMoreChats(userOrRes, "positioned", { archive: true });
+    const warming =
+      result.warming === true || isGatewaySessionWarmingError(result.error);
+    return finishJson(
+      request,
+      res,
+      {
+        ok: result.ok || warming || result.chatListSync?.archiveListInProgress === true,
+        connected: true,
+        started: result.started ?? false,
+        warming,
+        archive: true,
+        ready: result.ready === true || result.chatListSync?.archiveListReady === true,
+        chatListSync: result.chatListSync,
+        error: result.error,
+      },
+      200,
+    );
+  }
   const tier = body.tier === "unpositioned" ? "unpositioned" : "positioned";
   const result = await gatewayLoadMoreChats(userOrRes, tier);
   const warming =

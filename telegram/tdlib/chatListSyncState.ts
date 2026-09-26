@@ -6,6 +6,13 @@ export type ChatListSyncStatusPayload = {
   positionedComplete: boolean;
   /** True after the first TDLib-ordered seed (top of main list), not live-arrival upserts. */
   stableTopReady: boolean;
+  /**
+   * True after an explicit archive-list sync finished (scroll-up reveal).
+   * Until then archived dialogs are withheld from served chat lists.
+   */
+  archiveListReady: boolean;
+  /** True while a scroll-triggered archive sync is running. */
+  archiveListInProgress: boolean;
   tier3Available: boolean;
   tier3InProgress: boolean;
 };
@@ -13,6 +20,7 @@ export type ChatListSyncStatusPayload = {
 type UserSyncMeta = {
   positionedComplete: boolean;
   stableTopReady: boolean;
+  archiveListReady: boolean;
   tier3Available: boolean;
 };
 
@@ -52,7 +60,12 @@ export function getTier3ListCursor(telegramUsername: string): Tier3ListCursor {
 function metaFor(telegramUsername: string): UserSyncMeta {
   let meta = syncMeta.get(telegramUsername);
   if (!meta) {
-    meta = { positionedComplete: false, stableTopReady: false, tier3Available: false };
+    meta = {
+      positionedComplete: false,
+      stableTopReady: false,
+      archiveListReady: false,
+      tier3Available: false,
+    };
     syncMeta.set(telegramUsername, meta);
   }
   return meta;
@@ -70,6 +83,10 @@ export function resetChatListSyncMeta(
       patch != null && Object.prototype.hasOwnProperty.call(patch, "stableTopReady")
         ? Boolean(patch.stableTopReady)
         : (prev?.stableTopReady ?? false),
+    archiveListReady:
+      patch != null && Object.prototype.hasOwnProperty.call(patch, "archiveListReady")
+        ? Boolean(patch.archiveListReady)
+        : (prev?.archiveListReady ?? false),
     tier3Available: patch?.tier3Available ?? false,
   };
   syncMeta.set(telegramUsername, next);
@@ -83,6 +100,7 @@ export function beginOrderedChatListSeed(telegramUsername: string): void {
   resetChatListSyncMeta(telegramUsername, {
     positionedComplete: false,
     stableTopReady: false,
+    archiveListReady: false,
     tier3Available: false,
   });
 }
@@ -97,6 +115,30 @@ export function setStableTopReady(telegramUsername: string, ready: boolean): voi
 
 export function isStableTopReady(telegramUsername: string): boolean {
   return metaFor(telegramUsername).stableTopReady;
+}
+
+export function setArchiveListReady(telegramUsername: string, ready: boolean): void {
+  metaFor(telegramUsername).archiveListReady = ready;
+}
+
+export function isArchiveListReady(telegramUsername: string): boolean {
+  return metaFor(telegramUsername).archiveListReady;
+}
+
+const archiveSyncInflight = new Set<string>();
+
+export function isArchiveChatSyncInProgress(telegramUsername: string): boolean {
+  return archiveSyncInflight.has(telegramUsername);
+}
+
+export function markArchiveChatSyncStart(telegramUsername: string): boolean {
+  if (archiveSyncInflight.has(telegramUsername)) return false;
+  archiveSyncInflight.add(telegramUsername);
+  return true;
+}
+
+export function markArchiveChatSyncEnd(telegramUsername: string): void {
+  archiveSyncInflight.delete(telegramUsername);
 }
 
 export function setTier3Available(telegramUsername: string, available: boolean): void {
@@ -143,11 +185,14 @@ export function buildChatListSyncStatus(telegramUsername: string): ChatListSyncS
   const meta = metaFor(telegramUsername);
   const positionedInProgress = isBackgroundChatSyncInProgress(telegramUsername);
   const tier3InProgress = isTier3ChatSyncInProgress(telegramUsername);
+  const archiveListInProgress = isArchiveChatSyncInProgress(telegramUsername);
   return {
-    inProgress: positionedInProgress || tier3InProgress,
+    inProgress: positionedInProgress || tier3InProgress || archiveListInProgress,
     cachedCount: getLiveChatList(telegramUsername)?.length ?? 0,
     positionedComplete: meta.positionedComplete,
     stableTopReady: meta.stableTopReady,
+    archiveListReady: meta.archiveListReady,
+    archiveListInProgress,
     tier3Available: meta.tier3Available,
     tier3InProgress,
   };

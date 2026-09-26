@@ -1,4 +1,4 @@
-import { Platform, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import type { ThemeColors } from "../../theme";
 import { HomeListRowShell } from "../HomeListRowShell";
@@ -19,6 +19,8 @@ type Props = {
   unreadCount: number;
   colors: ThemeColors;
   isLast: boolean;
+  /** Reserve the row while the archive list is still syncing. */
+  loading?: boolean;
   onPress: () => void;
 };
 
@@ -28,16 +30,23 @@ export function MessageChatListArchiveFolderRow({
   unreadCount,
   colors,
   isLast,
+  loading = false,
   onPress,
 }: Props) {
   const { t } = useAppStrings();
   const title = t("messages.archive.title");
-  const subtitle = previewTitle?.trim() || t("messages.archive.emptyPreview");
+  const subtitle = loading
+    ? t("common.loading")
+    : previewTitle?.trim() || t("messages.archive.emptyPreview");
   const unreadLabel =
-    unreadCount > 0 ? formatMessageUnreadCountLabel(unreadCount) : null;
+    !loading && unreadCount > 0 ? formatMessageUnreadCountLabel(unreadCount) : null;
 
   return (
-    <HomeListRowShell isLast={isLast} colors={colors} onPress={onPress}>
+    <HomeListRowShell
+      isLast={isLast}
+      colors={colors}
+      onPress={loading ? undefined : onPress}
+    >
       <View
         style={{
           flexDirection: "row",
@@ -45,6 +54,7 @@ export function MessageChatListArchiveFolderRow({
           gap: MESSAGE_ICON_TEXT_GAP_PX,
           minHeight: MESSAGE_AVATAR_PX,
         }}
+        accessibilityState={loading ? { busy: true } : undefined}
       >
         <View
           style={{
@@ -58,7 +68,14 @@ export function MessageChatListArchiveFolderRow({
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
         >
-          <ChatMenuArchiveIcon color={colors.primary} size={Math.round(MESSAGE_AVATAR_PX * 0.42)} />
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <ChatMenuArchiveIcon
+              color={colors.primary}
+              size={Math.round(MESSAGE_AVATAR_PX * 0.42)}
+            />
+          )}
         </View>
         <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
           <View

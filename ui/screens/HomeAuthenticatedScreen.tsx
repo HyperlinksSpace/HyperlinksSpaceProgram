@@ -55,6 +55,7 @@ import {
   subscribeChatListBottomLoaderActive,
 } from "../components/messages/chatListBottomLoaderStatus";
 import { invokeChatListNearBottom } from "../components/messages/chatListNearBottom";
+import { invokeChatListNearTop } from "../components/messages/chatListNearTop";
 import { setChatListScrollMetrics } from "../components/messages/chatListScrollMetrics";
 import { setChatListSearchScrollToEndHandler } from "../components/messages/chatListSearchScrollAnchor";
 import { MessageChatWriteBottomBar } from "../components/messages/MessageChatWriteBottomBar";
@@ -692,6 +693,20 @@ function HomeAuthenticatedScreenMain() {
       homeLeftScrollRef.current?.clearNearBottomLatch();
     });
   }, [homeNavIndex, listSearchActive]);
+  const chatListArchiveScrollArmedRef = useRef(false);
+  const handleHomeLeftScrollNearTop = useCallback(() => {
+    if (homeNavIndex !== 1) return;
+    if (listSearchActive) return;
+    if (!chatListArchiveScrollArmedRef.current) return;
+    invokeChatListNearTop();
+    requestAnimationFrame(() => {
+      homeLeftScrollRef.current?.clearNearTopLatch();
+    });
+  }, [homeNavIndex, listSearchActive]);
+  const handleHomeLeftUserScrollIntent = useCallback(() => {
+    // Any real user scroll arms archive reveal; initial mount near-top stays ignored.
+    chatListArchiveScrollArmedRef.current = true;
+  }, []);
   const [compactStickyHeightPx, setCompactStickyHeightPx] = useState(
     () =>
       layout.authenticatedHome.contentInsetTop +
@@ -742,6 +757,9 @@ function HomeAuthenticatedScreenMain() {
         setCompactHeaderPullPx(compactHeaderPullCollapsedPxRef.current);
       }
       if (homeNavIndex !== 1) return;
+      if (metrics.scrollY > 48) {
+        chatListArchiveScrollArmedRef.current = true;
+      }
       setChatListScrollMetrics({
         scrollY: metrics.scrollY,
         layoutH: metrics.layoutH,
@@ -2179,6 +2197,8 @@ function HomeAuthenticatedScreenMain() {
           stickToBottomOnResize={messagesSearchScrollMode}
           nearBottomThresholdPx={240}
           onNearBottom={handleHomeLeftScrollNearBottom}
+          onNearTop={handleHomeLeftScrollNearTop}
+          onUserScrollIntent={handleHomeLeftUserScrollIntent}
           onScrollPositionChange={handleHomeLeftScrollPositionChange}
           scrollControllerRef={homeLeftScrollRef}
           // Wide: thumb overlays the column seam divider (portaled above the stroke on web).

@@ -1,8 +1,12 @@
+Music interrupting
+
 1. Owner > side car > sign in
 2. swp cfe
 3. collections > stars > dllrs
 
 on width changement fix msg reload
+Stories
+Light theme colors
 
 Down scroll on header expanded
 Stories
