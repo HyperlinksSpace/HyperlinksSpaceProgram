@@ -1006,6 +1006,8 @@ export async function syncChatThreads(
   setLiveChatSelfUserId(telegramUsername, await resolveMyUserId(client));
 
   const maxPositioned = options?.maxMainChats ?? null;
+  /** First Telegram-style page: pins + top of main list only (no archive/folders). */
+  const isStableTopPage = maxPositioned === STABLE_TOP_CHAT_PAGE_LIMIT;
   let chats: TdChat[];
   let positionedComplete = false;
 
@@ -1013,7 +1015,9 @@ export async function syncChatThreads(
     const loaded = await loadPinnedAndPositionedChats(client, maxPositioned);
     chats = loaded.chats;
     positionedComplete = loaded.positionedComplete;
-    if (options?.includeArchive !== false) {
+    // Archive/folders belong on the full sync pass — mixing them into the first
+    // page lets non-top dialogs paint before the main-list head (unlike Desktop/Web).
+    if (!isStableTopPage && options?.includeArchive !== false) {
       const archiveChats = await loadChatsFromList(client, { _: "chatListArchive" });
       const seen = new Set(chats.map((c) => c.id));
       for (const chat of archiveChats) {
@@ -1023,9 +1027,9 @@ export async function syncChatThreads(
         }
       }
     }
-    // Folder-only dialogs are absent from chatListMain — merge them so the flat
-    // list / unread total match tdesktop (folders + archive + main).
-    {
+    if (!isStableTopPage) {
+      // Folder-only dialogs are absent from chatListMain — merge them so the flat
+      // list / unread total match tdesktop (folders + archive + main).
       const folderIds = await resolveChatFolderIdsForSync(client, telegramUsername);
       const seen = new Set(chats.map((c) => c.id));
       for (const folderId of folderIds) {
@@ -1043,7 +1047,9 @@ export async function syncChatThreads(
     }
     resetChatListSyncMeta(telegramUsername, {
       positionedComplete,
-      tier3Available: true,
+      tier3Available: !isStableTopPage,
+      // First page only: hold HTTP serve until seedLiveChatList below.
+      ...(isStableTopPage ? { stableTopReady: false as const } : {}),
     });
   } else {
     chats = await loadAllChats(client, {
@@ -1053,6 +1059,7 @@ export async function syncChatThreads(
       telegramUsername,
     });
     positionedComplete = true;
+    // Keep a prior ordered-top ready flag so the painted list does not blank mid full sync.
     resetChatListSyncMeta(telegramUsername, {
       positionedComplete: true,
       tier3Available: true,
@@ -1065,6 +1072,9 @@ export async function syncChatThreads(
 
   if (options?.replaceCache === false) {
     mergeLiveChatRows(telegramUsername, liveRows);
+  } else if (isStableTopPage) {
+    // Always replace for the ordered top page — never shrink-merge live-arrival leftovers.
+    seedLiveChatList(telegramUsername, liveRows);
   } else {
     const existingCount = getLiveChatList(telegramUsername)?.length ?? 0;
     if (existingCount === 0 || liveRows.length >= existingCount) {

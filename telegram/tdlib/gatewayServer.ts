@@ -643,11 +643,10 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           const chatListSync = buildChatListSyncStatus(telegramUsername);
-          // Do not serve live-arrival partial lists before the first ordered TDLib seed.
-          const serveChats =
-            chatListSync.stableTopReady || chatListSync.positionedComplete
-              ? (chats ?? [])
-              : [];
+          // Telegram Desktop/Web: never serve live-arrival partials. Only the ordered
+          // TDLib top seed (stableTopReady) may paint — not positionedComplete alone
+          // (that flag can flip before seedLiveChatList finishes).
+          const serveChats = chatListSync.stableTopReady ? (chats ?? []) : [];
           const currentRevision = getLiveChatListRevision(telegramUsername);
           const missingPreviewCount = serveChats.filter(
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
@@ -676,7 +675,7 @@ export function startTdlibGatewayServer(): http.Server {
             chatListSync,
             warming:
               (needsWake && serveChats.length === 0) ||
-              (!chatListSync.stableTopReady && !chatListSync.positionedComplete),
+              !chatListSync.stableTopReady,
           });
           return;
         }

@@ -65,14 +65,26 @@ export function resetChatListSyncMeta(
   const prev = syncMeta.get(telegramUsername);
   const next: UserSyncMeta = {
     positionedComplete: patch?.positionedComplete ?? false,
-    // Keep a prior ordered top across full-sync resets unless explicitly cleared.
-    stableTopReady: patch?.stableTopReady ?? prev?.stableTopReady ?? false,
+    // Explicit patch wins; otherwise keep prior ordered-top across full-sync resets.
+    stableTopReady:
+      patch != null && Object.prototype.hasOwnProperty.call(patch, "stableTopReady")
+        ? Boolean(patch.stableTopReady)
+        : (prev?.stableTopReady ?? false),
     tier3Available: patch?.tier3Available ?? false,
   };
   syncMeta.set(telegramUsername, next);
   if (patch?.tier3Available === false) {
     resetTier3ListCursor(telegramUsername);
   }
+}
+
+/** Hold HTTP chat-list responses until the ordered TDLib top page is seeded. */
+export function beginOrderedChatListSeed(telegramUsername: string): void {
+  resetChatListSyncMeta(telegramUsername, {
+    positionedComplete: false,
+    stableTopReady: false,
+    tier3Available: false,
+  });
 }
 
 export function setPositionedComplete(telegramUsername: string, complete: boolean): void {

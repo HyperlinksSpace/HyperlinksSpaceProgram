@@ -1145,21 +1145,38 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             });
             return prev;
           }
+          const syncReady = json.chatListSync?.stableTopReady === true;
+          // First ordered paint: replace, never merge — merge can keep a wrong-order skeleton.
+          if (rows.length > 0 && syncReady && !initialChatListRevealedRef.current) {
+            const firstPaint = applyOpenChatUnreadToRows(sortChatRowsTierAware(rows));
+            queueMicrotask(() => syncAuthenticatedHomeSelectedChat(firstPaint));
+            setInitialChatListRevealed(true);
+            setGatewayWarming(false);
+            setEmptyListConfirmed(false);
+            if (options?.silent) {
+              logPageDisplay("messages_chats_poll_updated", {
+                count: firstPaint.length,
+                ...firstChatListLogFields(firstPaint),
+                poll: pollCountRef.current,
+                source: json.source ?? null,
+                revision: json.revision ?? null,
+                elapsedMs: Date.now() - started,
+                missingPreviewCount,
+                missingAvatarFieldCount,
+                firstPaint: true,
+              });
+            }
+            return firstPaint;
+          }
+          // Hold UI empty until the ordered top page is ready (gateway also serves []).
+          if (!syncReady && !initialChatListRevealedRef.current) {
+            return prev;
+          }
           const next = mergeChatRows(prev, rows);
           const changed = chatsChanged(prev, next);
           queueMicrotask(() => syncAuthenticatedHomeSelectedChat(next));
           if (rows.length > 0) {
-            // Only reveal after an ordered TDLib top page — not mid-arrival live upserts.
-            const syncReady =
-              json.chatListSync?.stableTopReady === true ||
-              (json.chatListSync?.positionedComplete === true &&
-                json.chatListSync?.inProgress !== true);
-            if (syncReady && !initialChatListRevealedRef.current) {
-              setInitialChatListRevealed(true);
-              setGatewayWarming(false);
-            } else if (syncReady) {
-              setGatewayWarming(false);
-            }
+            if (syncReady) setGatewayWarming(false);
             setEmptyListConfirmed(false);
           } else if (prev.length === 0) {
             setEmptyListConfirmed(true);
@@ -1465,10 +1482,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (initialChatListRevealed) return;
-    if (
-      chatListSync?.stableTopReady === true ||
-      (chatListSync?.positionedComplete === true && chatListSync.inProgress !== true)
-    ) {
+    if (chatListSync?.stableTopReady === true && chatsCountRef.current > 0) {
       setInitialChatListRevealed(true);
       setGatewayWarming(false);
     }
@@ -1478,14 +1492,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (!authReady || !isTelegramMessagesConnected || initialChatListRevealed) return;
     // Safety valve only — prefer stableTopReady from the gateway.
     const id = setTimeout(() => {
-      if (chatsCountRef.current > 0) {
+      if (chatsCountRef.current > 0 && getChatListSyncStatus()?.stableTopReady === true) {
         setInitialChatListRevealed(true);
         setGatewayWarming(false);
         logPageDisplay("messages_chats_initial_reveal_timeout", {
           count: chatsCountRef.current,
         });
       }
-    }, 20_000);
+    }, 8_000);
     return () => clearTimeout(id);
   }, [authReady, initialChatListRevealed, isTelegramMessagesConnected]);
 
@@ -1512,10 +1526,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }
       await loadChats({ silent: true, forceFull: true });
       const sync = getChatListSyncStatus();
-      if (
-        sync?.stableTopReady === true ||
-        (sync?.positionedComplete === true && sync.inProgress !== true)
-      ) {
+      if (sync?.stableTopReady === true && chatsCountRef.current > 0) {
         setInitialChatListRevealed(true);
         setGatewayWarming(false);
       }
