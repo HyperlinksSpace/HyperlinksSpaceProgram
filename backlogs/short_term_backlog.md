@@ -4,6 +4,8 @@ Music interrupting
 2. swp cfe
 3. collections > stars > dllrs
 
+AI Sidecar
+
 on width changement fix msg reload
 Stories
 Light theme colors
