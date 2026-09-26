@@ -113,7 +113,12 @@ export function resolveChatListVirtualWindow(
   let endIndex = Math.min(totalCount - 1, Math.ceil(viewportBottom / rowStridePx) - 1);
 
   const sticky = options.stickyWindow;
-  if (sticky) {
+  // Large scrollbar jumps must not keep a stale sticky band — that leaves empty spacers.
+  const stickyJumpPx =
+    sticky != null
+      ? Math.abs(startIndex - sticky.startIndex) * rowStridePx
+      : 0;
+  if (sticky && stickyJumpPx <= overscanPx) {
     const hysteresisPx = rowStridePx * 0.35;
     if (startIndex > sticky.startIndex) {
       const advanceAt = (sticky.startIndex + 1) * rowStridePx - hysteresisPx;

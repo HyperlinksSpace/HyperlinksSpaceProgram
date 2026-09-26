@@ -785,27 +785,92 @@ export function HspScrollColumn({
         } | null;
         const el = instance?.getScrollableNode?.();
         if (el) {
-          const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+          const layoutH = el.clientHeight;
+          const contentH = el.scrollHeight;
+          const maxScroll = Math.max(0, contentH - layoutH);
           clamped = Math.min(maxScroll, clamped);
           el.scrollTop = clamped;
           commitScrollMetrics({
-            layoutH: el.clientHeight,
-            contentH: el.scrollHeight,
+            layoutH,
+            contentH,
             scrollY: clamped,
           });
+          // Same as scrollToEnd: programmatic scrub must notify parents (chat-list
+          // virtualization). Native onScroll can batch with commitScrollMetrics and
+          // skip emit — leaving empty virtual spacers under the thumb.
+          emitScrollPosition({ layoutH, contentH, scrollY: clamped });
+          if (onNearTop) {
+            if (clamped <= nearTopThresholdPx) {
+              if (!nearTopFiredRef.current) {
+                nearTopFiredRef.current = true;
+                onNearTop();
+              }
+            } else {
+              nearTopFiredRef.current = false;
+            }
+          }
+          if (onNearBottom && layoutH > 0 && contentH > layoutH + 0.5) {
+            if (clamped >= maxScroll - nearBottomThresholdPx) {
+              if (!nearBottomFiredRef.current) {
+                nearBottomFiredRef.current = true;
+                onNearBottom();
+              }
+            } else {
+              nearBottomFiredRef.current = false;
+            }
+          }
           syncNearTopLatch(clamped);
-          syncNearBottomLatch(clamped, el.clientHeight, el.scrollHeight);
+          syncNearBottomLatch(clamped, layoutH, contentH);
           recordStableAnchor();
           return;
         }
       }
       scrollRef.current?.scrollTo({ y: clamped, animated: false });
-      syncNearTopLatch(clamped);
-      syncNearBottomLatch(clamped, scrollMetricsRef.current.layoutH, scrollMetricsRef.current.contentH);
+      const metrics = scrollMetricsRef.current;
+      const layoutH = metrics.layoutH;
+      const contentH = metrics.contentH;
       commitScrollMetrics({ scrollY: clamped });
+      emitScrollPosition({
+        layoutH,
+        contentH,
+        scrollY: clamped,
+      });
+      if (onNearTop) {
+        if (clamped <= nearTopThresholdPx) {
+          if (!nearTopFiredRef.current) {
+            nearTopFiredRef.current = true;
+            onNearTop();
+          }
+        } else {
+          nearTopFiredRef.current = false;
+        }
+      }
+      if (onNearBottom && layoutH > 0 && contentH > layoutH + 0.5) {
+        const maxScroll = Math.max(0, contentH - layoutH);
+        if (clamped >= maxScroll - nearBottomThresholdPx) {
+          if (!nearBottomFiredRef.current) {
+            nearBottomFiredRef.current = true;
+            onNearBottom();
+          }
+        } else {
+          nearBottomFiredRef.current = false;
+        }
+      }
+      syncNearTopLatch(clamped);
+      syncNearBottomLatch(clamped, layoutH, contentH);
       recordStableAnchor();
     },
-    [commitScrollMetrics, recordStableAnchor, syncNearBottomLatch, syncNearTopLatch],
+    [
+      commitScrollMetrics,
+      emitScrollPosition,
+      nearBottomThresholdPx,
+      nearTopThresholdPx,
+      onNearBottom,
+      onNearTop,
+      recordStableAnchor,
+      syncNearBottomLatch,
+      syncNearTopLatch,
+    ],
   );
 
   const scrollToEnd = useCallback(() => {
