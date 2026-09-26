@@ -166,6 +166,32 @@ export function mainListOrderKey(chat: TdChat): string {
   return typeof main?.order === "string" ? main.order : "0";
 }
 
+/**
+ * Descending TDLib-style order from a getChats snapshot index (0 = top of list).
+ * Used when positions are not hydrated yet so first paint never falls back to
+ * last_message_at (which looks like a random shuffle vs Desktop/Web).
+ */
+export function pinOrderFromListIndex(index: number): string {
+  const i = Number.isFinite(index) && index >= 0 ? Math.trunc(index) : 0;
+  return String(BigInt("0x7fffffffffffffff") - BigInt(i));
+}
+
+/** Prefer a real main-list order; otherwise keep prior; otherwise synthetic index. */
+export function resolvePinOrder(input: {
+  chatOrder: string;
+  previousOrder?: string | null;
+  listIndex?: number | null;
+}): string {
+  const chatOrder = input.chatOrder?.trim() || "0";
+  if (chatOrder !== "0") return chatOrder;
+  const previous = input.previousOrder?.trim() || "";
+  if (previous && previous !== "0") return previous;
+  if (input.listIndex != null && Number.isFinite(input.listIndex)) {
+    return pinOrderFromListIndex(input.listIndex);
+  }
+  return "0";
+}
+
 /** Order key for archive list pagination (same shape as main-list order). */
 export function archiveListOrderKey(chat: TdChat): string {
   const positions = chat.positions;

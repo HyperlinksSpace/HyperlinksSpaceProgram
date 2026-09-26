@@ -21,6 +21,7 @@ import {
   presenceFromTdlibStatus,
   resolveLastMessagePreview,
   resolveLastMessagePreviewPayload,
+  resolvePinOrder,
   usernameFromTdUser,
   type TdChat,
   type TdChatListRef,
@@ -41,7 +42,7 @@ import {
 import { resolveMyUserId } from "./chatHistory.js";
 import { logGateway } from "./gatewayLog.js";
 import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
-import { filterChatsForList, chatListTier, type ChatListTier } from "./chatListFilter.js";
+import { filterChatsForList, chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
 import {
   markBackgroundChatSyncEnd,
   markBackgroundChatSyncStart,
@@ -286,6 +287,35 @@ async function loadPinnedAndPositionedChats(
   maxPositioned: number,
 ): Promise<{ chats: TdChat[]; positionedComplete: boolean }> {
   const chatList = { _: "chatListMain" } as const;
+
+  const orderedFromSnap = async (
+    snap: { chatIds: number[] },
+    positionedComplete: boolean,
+  ): Promise<{ chats: TdChat[]; positionedComplete: boolean }> => {
+    const hydrated = await hydrateChatsByIds(client, snap.chatIds);
+    const byId = new Map<number, TdChat>();
+    for (const chat of hydrated) byId.set(chat.id, chat);
+
+    // Walk getChats ids in order — that order is authoritative (Telegram Desktop/Web).
+    const ordered: TdChat[] = [];
+    let positionedKept = 0;
+    for (const chatId of snap.chatIds) {
+      const chat = byId.get(chatId);
+      if (!chat) continue;
+      if (!shouldIncludeChatInList(chat)) continue;
+      const pinned = isChatPinnedInMainList(chat);
+      if (!pinned) {
+        if (positionedKept >= maxPositioned) continue;
+        positionedKept += 1;
+      }
+      ordered.push(chat);
+    }
+    return {
+      chats: ordered,
+      positionedComplete: positionedComplete || positionedKept >= maxPositioned,
+    };
+  };
+
   // Load enough into TDLib memory, then snapshot from the start (no offsets).
   for (let round = 0; round < 80; round += 1) {
     const snap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
@@ -304,25 +334,14 @@ async function loadPinnedAndPositionedChats(
       await sleep(40);
     } catch (err) {
       if (isTdlibListExhaustedError(err)) {
-        const chats = await hydrateChatsByIds(client, snap.chatIds, {
-          maxChats: maxPositioned + 50,
-        });
-        return { chats, positionedComplete: true };
+        return orderedFromSnap(snap, true);
       }
       break;
     }
   }
 
   const finalSnap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
-  const chats = await hydrateChatsByIds(client, finalSnap.chatIds);
-  const positioned = chats.filter((c) => !isChatPinnedInMainList(c));
-  const positionedComplete = positioned.length >= maxPositioned;
-  // Keep pins + first N positioned.
-  const pins = chats.filter((c) => isChatPinnedInMainList(c));
-  const rest = positioned.slice(0, maxPositioned);
-  const byId = new Map<number, TdChat>();
-  for (const chat of [...pins, ...rest]) byId.set(chat.id, chat);
-  return { chats: [...byId.values()], positionedComplete };
+  return orderedFromSnap(finalSnap, false);
 }
 
 /**
@@ -1066,8 +1085,16 @@ export async function syncChatThreads(
     });
   }
 
+  // Telegram Desktop/Web: paint ordered titles ASAP, then fill previews/avatars.
+  if (isStableTopPage && chats.length > 0) {
+    seedLiveChatList(telegramUsername, buildSkeletonLiveRows(chats));
+    setStableTopReady(telegramUsername, true);
+  }
+
   const liveRows = await buildLiveRowsForChats(client, chats, {
     skipMemberCounts: options?.skipMemberCounts === true,
+    // Top page: stamp getChats index when TDLib order is still "0".
+    preserveListIndexOrder: isStableTopPage,
   });
 
   if (options?.replaceCache === false) {
@@ -1114,14 +1141,58 @@ export async function syncChatThreads(
   return chats.length;
 }
 
+function buildSkeletonLiveRows(chats: TdChat[]): Omit<LiveChatRow, "revision">[] {
+  const rows: Omit<LiveChatRow, "revision">[] = [];
+  for (let i = 0; i < chats.length; i++) {
+    const chat = chats[i];
+    const tier = chatListTier(chat);
+    if (tier === "excluded") continue;
+    rows.push({
+      telegram_chat_id: chat.id,
+      title: chatTitle(chat),
+      subtitle: "",
+      avatar_url: null,
+      last_message_at: lastMessageAtIso(chat),
+      unread_count: normalizeUnreadCount(chat),
+      peer_user_id: peerUserIdFromChat(chat),
+      peer_username: peerUsernameFromChat(chat),
+      chat_username: chatUsernameFromChat(chat),
+      chat_kind: chatKindFromTdChat(chat),
+      member_count: null,
+      peer_emoji_status_custom_emoji_id: null,
+      peer_accent_color_light: null,
+      peer_accent_color_dark: null,
+      peer_is_bot: null,
+      presence_kind: null,
+      presence_at: null,
+      chat_action: null,
+      chat_action_user_id: null,
+      chat_action_user_name: null,
+      chat_action_expires_at: null,
+      last_read_outbox_message_id: lastReadOutboxMessageIdFromChat(chat),
+      last_read_inbox_message_id: lastReadInboxMessageIdFromChat(chat),
+      ...lastMessageListRowMetaFromChat(chat, null),
+      is_pinned: isChatPinnedInMainList(chat),
+      pin_order: resolvePinOrder({
+        chatOrder: mainListOrderKey(chat),
+        listIndex: i,
+      }),
+      ...voiceChatFromTdChat(chat),
+      list_tier: tier,
+    });
+  }
+  return rows;
+}
+
 async function buildLiveRowsForChats(
   client: Client,
   chats: TdChat[],
-  options?: { skipMemberCounts?: boolean },
+  options?: { skipMemberCounts?: boolean; preserveListIndexOrder?: boolean },
 ): Promise<Omit<LiveChatRow, "revision">[]> {
   if (chats.length === 0) return [];
 
   const myUserId = await resolveMyUserId(client);
+  const preserveListIndexOrder = options?.preserveListIndexOrder === true;
 
   let previewPayloads = await mapWithConcurrency(chats, PREVIEW_SYNC_CONCURRENCY, (chat) =>
     resolveLastMessagePreviewPayload(client, chat),
@@ -1186,7 +1257,10 @@ async function buildLiveRowsForChats(
       last_read_inbox_message_id: lastReadInboxMessageIdFromChat(chat),
       ...lastMessageListRowMetaFromChat(chat, myUserId),
       is_pinned: isChatPinnedInMainList(chat),
-      pin_order: mainListOrderKey(chat),
+      pin_order: resolvePinOrder({
+        chatOrder: mainListOrderKey(chat),
+        listIndex: preserveListIndexOrder ? i : null,
+      }),
       // Bound id only from metadata; live paint via verify pass below.
       ...voiceChatFromTdChat(chat),
       list_tier: chatListTier(chat),

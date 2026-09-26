@@ -800,7 +800,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   const applyChatListSync = useCallback((status: ChatListSyncStatus | null | undefined) => {
     if (!status) return;
-    setChatListSync(status);
+    setChatListSync((prev) => {
+      const holdingOrderedReseed =
+        prev?.stableTopReady === true &&
+        status.stableTopReady !== true &&
+        initialChatListRevealedRef.current;
+      if (holdingOrderedReseed) {
+        // Schedule outside this updater — do not set other state synchronously here.
+        queueMicrotask(() => {
+          setInitialChatListRevealed(false);
+          setGatewayWarming(true);
+          setChats([]);
+        });
+      }
+      return status;
+    });
     setChatListSyncStatus(status);
   }, []);
 
@@ -1169,8 +1183,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             return firstPaint;
           }
           // Hold UI empty until the ordered top page is ready (gateway also serves []).
-          if (!syncReady && !initialChatListRevealedRef.current) {
-            return prev;
+          if (!syncReady) {
+            if (!initialChatListRevealedRef.current) return prev;
+            // Resync hold after a prior paint: clear immediately (do not keep stale order).
+            setInitialChatListRevealed(false);
+            setGatewayWarming(true);
+            return [];
           }
           const next = mergeChatRows(prev, rows);
           const changed = chatsChanged(prev, next);

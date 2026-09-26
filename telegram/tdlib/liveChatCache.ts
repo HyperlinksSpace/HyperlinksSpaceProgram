@@ -17,6 +17,7 @@ import {
   previewFromMessage,
   peerUsernameFromChat,
   chatUsernameFromChat,
+  resolvePinOrder,
   type ChatActionKind,
   type ChatPresenceKind,
   type TdChat,
@@ -359,7 +360,11 @@ export function patchLiveChatFromTdlib(
       lastReadInboxMessageIdFromChat(chat) ?? existing?.last_read_inbox_message_id ?? null,
     ...lastMessageListRowMetaFromChat(chat, getLiveChatSelfUserId(telegramUsername)),
       is_pinned: isChatPinnedInMainList(chat),
-      pin_order: mainListOrderKey(chat),
+      // Never clobber a seeded order with "0" from a partial getChat.
+      pin_order: resolvePinOrder({
+        chatOrder: mainListOrderKey(chat),
+        previousOrder: existing?.pin_order,
+      }),
       ...(() => {
         // Metadata never paints live (see voiceChatFromTdChat). Preserve a
         // previously verified live/joined flag for the same bound call across

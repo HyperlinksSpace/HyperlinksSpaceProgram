@@ -6,6 +6,7 @@ import { bumpLiveChatMessageRevision, clearLiveChatMessageRevisions } from "./li
 import { noteLiveChatMessageDeletes } from "./liveChatDeletedMessages.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, voiceChatFromTdChat, type TdChat, type TdMessage } from "./chatPreview.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
+import { beginOrderedChatListSeed, isStableTopReady } from "./chatListSyncState.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
 import { userProfileFromTdUser } from "./tdUserProfile.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
@@ -120,6 +121,7 @@ function chatIdFromUpdate(update: Record<string, unknown>): number | null {
   if (
     type === "updateChatLastMessage" ||
     type === "updateChatReadInbox" ||
+    type === "updateChatReadOutbox" ||
     type === "updateChatTitle" ||
     type === "updateChatPhoto" ||
     type === "updateChatPosition" ||
@@ -143,6 +145,32 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
   if (!client || record.authState !== "ready") return;
 
   const type = update._;
+  const topReady = isStableTopReady(record.telegramUsername);
+
+  // During ordered-top hold: never insert new list rows (live-arrival order flash).
+  // Updates to chats already seeded are fine once the skeleton/top page exists.
+  const chatIdForUpdate = chatIdFromUpdate(update);
+  if (!topReady && chatIdForUpdate != null) {
+    const existing = getLiveChatList(record.telegramUsername)?.some(
+      (row) => row.telegram_chat_id === chatIdForUpdate,
+    );
+    if (!existing) {
+      // Allow folder metadata / presence that do not invent chat rows.
+      if (
+        type === "updateNewChat" ||
+        type === "updateNewMessage" ||
+        type === "updateChatLastMessage" ||
+        type === "updateChatPosition" ||
+        type === "updateChatAddedToList" ||
+        type === "updateChatTitle" ||
+        type === "updateChatPhoto" ||
+        type === "updateChatReadInbox" ||
+        type === "updateChatReadOutbox"
+      ) {
+        return;
+      }
+    }
+  }
 
   if (type === "updateNewMessage") {
     const message = update.message as TdMessage & { chat_id?: number };
@@ -609,4 +637,6 @@ export function detachLiveChatSync(telegramUsername: string): void {
   }
   clearLiveChatCache(telegramUsername);
   clearLiveChatMessageRevisions(telegramUsername);
+  // Next attach must re-seed ordered top before HTTP can serve again.
+  beginOrderedChatListSeed(telegramUsername);
 }

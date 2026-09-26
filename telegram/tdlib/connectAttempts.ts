@@ -1664,21 +1664,22 @@ export async function resyncUserChats(
     return { chatCount: 0, backfillCount: 0, error };
   }
 
-  attachLiveChatSync(record);
   try {
     if (options?.chatIds?.length) {
+      attachLiveChatSync(record);
       const backfillCount = await refreshLiveChats(record.client, telegramUsername, options.chatIds);
       logConnectEvent(record, "connect_backfill_ok", { backfillCount });
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
     }
 
-    // Hold serve + wipe prior list before ordered top seed so resync cannot flash wrong order.
+    // Hold serve + wipe prior list BEFORE attach so live upserts cannot race the seed.
     {
       const { clearLiveChatCache } = await import("./liveChatCache.js");
       const { beginOrderedChatListSeed } = await import("./chatListSyncState.js");
       clearLiveChatCache(telegramUsername);
       beginOrderedChatListSeed(telegramUsername);
     }
+    attachLiveChatSync(record);
 
     // Ordered top page first — same as connect — so clients paint Desktop order.
     try {
@@ -1696,17 +1697,31 @@ export async function resyncUserChats(
       logConnectEvent(record, "connect_resync_top_page_warning", { message });
     }
 
-    const count = await syncChatThreads(record.client, telegramUsername, {
-      maxMainChats: null,
-      includeArchive: true,
-      includeSupplementarySearch: false,
-      skipMemberCounts: true,
-      replaceCache: true,
-    });
-    record.chatCount = count;
-    scheduleBackgroundChatSync(record.client, telegramUsername);
-    logConnectEvent(record, "connect_resync_ok", { chatCount: count });
-    return { chatCount: count, backfillCount: 0, error: null };
+    // Full main/archive/folder sync in background — do not block HTTP on it.
+    // Telegram Desktop/Web paints the visible top page immediately.
+    const client = record.client;
+    void (async () => {
+      try {
+        const count = await syncChatThreads(client, telegramUsername, {
+          maxMainChats: null,
+          includeArchive: true,
+          includeSupplementarySearch: false,
+          skipMemberCounts: true,
+          replaceCache: true,
+        });
+        const active = getActiveRecord(telegramUsername);
+        if (active?.client === client) {
+          active.chatCount = count;
+          scheduleBackgroundChatSync(client, telegramUsername);
+        }
+        logConnectEvent(record, "connect_resync_ok", { chatCount: count });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "sync_failed";
+        logConnectEvent(record, "connect_resync_full_warning", { message });
+      }
+    })();
+
+    return { chatCount: record.chatCount ?? 0, backfillCount: 0, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_resync_failed", { message });
@@ -1799,15 +1814,16 @@ export function restorePersistedGatewaySessions(): void {
           });
           return;
         }
-        attachLiveChatSync(record);
-        // Ordered top page first (same as connect/resync) so cold restore never
-        // paints live-arrival order before the main-list head is ready.
+        // Hold before attach — same race fix as resyncUserChats.
         {
           const { clearLiveChatCache } = await import("./liveChatCache.js");
           const { beginOrderedChatListSeed } = await import("./chatListSyncState.js");
           clearLiveChatCache(telegramUsername);
           beginOrderedChatListSeed(telegramUsername);
         }
+        attachLiveChatSync(record);
+        // Ordered top page first (same as connect/resync) so cold restore never
+        // paints live-arrival order before the main-list head is ready.
         try {
           await syncChatThreads(record.client, telegramUsername, {
             maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
