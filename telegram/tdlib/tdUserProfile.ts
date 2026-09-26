@@ -50,6 +50,16 @@ export function isBotFromTdUser(user: unknown): boolean {
   return row.type === "bot" || row.is_bot === true;
 }
 
+/** Telegram deleted / deactivated account (`userTypeDeleted`). */
+export function isDeletedTdUser(user: unknown): boolean {
+  if (!user || typeof user !== "object") return false;
+  const type = (user as { type?: { _?: string } | string }).type;
+  if (type && typeof type === "object") {
+    return type._ === "userTypeDeleted";
+  }
+  return type === "deleted";
+}
+
 export function userProfileFromTdUser(user: unknown): TdUserProfileCache {
   if (!user || typeof user !== "object") return FALLBACK_PROFILE;
   const row = user as Record<string, unknown>;

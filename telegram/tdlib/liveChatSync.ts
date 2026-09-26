@@ -1,14 +1,15 @@
 import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
-import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatChatEmojiStatus, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence, patchLiveChatVideoChat, bumpLiveChatRevision } from "./liveChatCache.js";
+import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatChatEmojiStatus, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence, patchLiveChatVideoChat, bumpLiveChatRevision, removeLiveChatRow, removeLiveChatsByPeerUserId } from "./liveChatCache.js";
 import { bumpLiveChatMessageRevision, clearLiveChatMessageRevisions } from "./liveChatMessageRevisionNotify.js";
 import { noteLiveChatMessageDeletes } from "./liveChatDeletedMessages.js";
-import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, voiceChatFromTdChat, type TdChat, type TdMessage } from "./chatPreview.js";
+import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, isPrivateTdChat, peerUserIdFromChat, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, voiceChatFromTdChat, type TdChat, type TdMessage } from "./chatPreview.js";
 import { shouldIncludeChatInList } from "./chatListFilter.js";
+import { isHiddenPrivatePeer } from "./chatListVisibility.js";
 import { beginOrderedChatListSeed, isStableTopReady } from "./chatListSyncState.js";
 import { emojiStatusCustomIdFromUser, parseEmojiStatusCustomId } from "./emojiStatus.js";
-import { userProfileFromTdUser } from "./tdUserProfile.js";
+import { isDeletedTdUser, userProfileFromTdUser } from "./tdUserProfile.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
 import {
   groupCallLooksLive,
@@ -82,6 +83,7 @@ const LIVE_UPDATE_TYPES = new Set([
   "updateChatPhoto",
   "updateChatPosition",
   "updateChatAddedToList",
+  "updateChatBlockList",
   "updateMessageEdited",
   "updateMessageContent",
   "updateDeleteMessages",
@@ -125,7 +127,8 @@ function chatIdFromUpdate(update: Record<string, unknown>): number | null {
     type === "updateChatTitle" ||
     type === "updateChatPhoto" ||
     type === "updateChatPosition" ||
-    type === "updateChatAddedToList"
+    type === "updateChatAddedToList" ||
+    type === "updateChatBlockList"
   ) {
     return typeof update.chat_id === "number" ? update.chat_id : null;
   }
@@ -299,7 +302,26 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     const chat = update.chat as TdChat | undefined;
     if (!chat?.id) return;
     if (!shouldIncludeChatInList(chat)) return;
+    if (isPrivateTdChat(chat)) {
+      const peerId = peerUserIdFromChat(chat);
+      if (peerId != null && (await isHiddenPrivatePeer(client, peerId))) return;
+    }
     patchLiveChatFromTdlib(record.telegramUsername, chat, {});
+    return;
+  }
+
+  if (type === "updateChatBlockList") {
+    const chatId = update.chat_id;
+    if (typeof chatId !== "number") return;
+    const blockList = update.block_list as { _?: string } | null | undefined;
+    const blocked =
+      blockList != null &&
+      typeof blockList === "object" &&
+      (blockList._ === "blockListMain" || blockList._ === "blockListStories");
+    if (blocked) {
+      removeLiveChatRow(record.telegramUsername, chatId);
+      logLiveSync(record, "live_chat_blocked_removed", { chatId });
+    }
     return;
   }
 
@@ -323,6 +345,11 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
     if (!user || typeof user !== "object") return;
     const userId = (user as { id?: number }).id;
     if (typeof userId !== "number") return;
+    if (isDeletedTdUser(user)) {
+      removeLiveChatsByPeerUserId(record.telegramUsername, userId);
+      logLiveSync(record, "live_chat_deleted_user_removed", { peerUserId: userId });
+      return;
+    }
     const profile = userProfileFromTdUser(user);
     patchLiveChatEmojiStatus(
       record.telegramUsername,

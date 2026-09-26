@@ -265,6 +265,35 @@ export function pruneLiveChatRows(
   return bumpRevision(cache, telegramUsername);
 }
 
+/** Remove one chat from the live list (blocked / deleted account). */
+export function removeLiveChatRow(
+  telegramUsername: string,
+  chatId: number,
+): number {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return 0;
+  if (!cache.chats.has(chatId)) return cache.revision;
+  cache.chats.delete(chatId);
+  return bumpRevision(cache, telegramUsername);
+}
+
+/** Remove private chat rows for a peer (after block or account deletion). */
+export function removeLiveChatsByPeerUserId(
+  telegramUsername: string,
+  peerUserId: number,
+): number {
+  const cache = caches.get(telegramUsername);
+  if (!cache || cache.chats.size === 0) return cache?.revision ?? 0;
+  let removed = 0;
+  for (const [chatId, row] of cache.chats) {
+    if (row.peer_user_id !== peerUserId) continue;
+    cache.chats.delete(chatId);
+    removed += 1;
+  }
+  if (removed === 0) return cache.revision;
+  return bumpRevision(cache, telegramUsername);
+}
+
 /** Merge rows into the live cache with a single revision bump (background paging). */
 export function mergeLiveChatRows(
   telegramUsername: string,

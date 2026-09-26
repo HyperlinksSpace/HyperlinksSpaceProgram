@@ -43,6 +43,7 @@ import { resolveMyUserId } from "./chatHistory.js";
 import { logGateway } from "./gatewayLog.js";
 import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
 import { filterChatsForList, chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
+import { omitHiddenPrivateChats } from "./chatListVisibility.js";
 import {
   markBackgroundChatSyncEnd,
   markBackgroundChatSyncStart,
@@ -317,6 +318,7 @@ async function loadPinnedAndPositionedChats(
   };
 
   // Load enough into TDLib memory, then snapshot from the start (no offsets).
+  let loaded: { chats: TdChat[]; positionedComplete: boolean } | null = null;
   for (let round = 0; round < 80; round += 1) {
     const snap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
     let positionedCount = 0;
@@ -334,14 +336,23 @@ async function loadPinnedAndPositionedChats(
       await sleep(40);
     } catch (err) {
       if (isTdlibListExhaustedError(err)) {
-        return orderedFromSnap(snap, true);
+        loaded = await orderedFromSnap(snap, true);
+        break;
       }
       break;
     }
   }
 
-  const finalSnap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
-  return orderedFromSnap(finalSnap, false);
+  if (!loaded) {
+    const finalSnap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
+    loaded = await orderedFromSnap(finalSnap, false);
+  }
+
+  const visible = await omitHiddenPrivateChats(client, loaded.chats);
+  return {
+    chats: visible,
+    positionedComplete: loaded.positionedComplete,
+  };
 }
 
 /**
@@ -537,10 +548,11 @@ async function loadAllChats(client: Client, options?: LoadAllChatsOptions): Prom
   }
 
   const allowSupplementaryPrivate = options?.includeSupplementarySearch !== false;
-  return filterChatsForList([...collected.values()], {
+  const listed = filterChatsForList([...collected.values()], {
     allowSupplementaryPrivate,
     includeUnpositioned: allowSupplementaryPrivate,
   });
+  return omitHiddenPrivateChats(client, listed);
 }
 
 function mimeFromPath(filePath: string): string {
@@ -1327,7 +1339,9 @@ export async function syncRemainingChatsInBackground(
     for (let offset = 0; offset < pageChats.length; offset += BACKGROUND_CHAT_SYNC_PAGE_SIZE) {
       const slice = pageChats.slice(offset, offset + BACKGROUND_CHAT_SYNC_PAGE_SIZE);
       if (slice.length === 0) continue;
-      const rows = await buildLiveRowsForChats(client, slice);
+      const visible = await omitHiddenPrivateChats(client, slice);
+      if (visible.length === 0) continue;
+      const rows = await buildLiveRowsForChats(client, visible);
       mergeLiveChatRows(telegramUsername, rows);
       merged += rows.length;
       if (offset + BACKGROUND_CHAT_SYNC_PAGE_SIZE < pageChats.length) {
@@ -1407,7 +1421,7 @@ export async function syncUnpositionedChatBatch(
     cursor.exhausted = true;
   }
 
-  const batch = candidates.slice(0, limit);
+  const batch = await omitHiddenPrivateChats(client, candidates.slice(0, limit));
   if (batch.length === 0) {
     if (cursor.exhausted) {
       setTier3Available(telegramUsername, false);

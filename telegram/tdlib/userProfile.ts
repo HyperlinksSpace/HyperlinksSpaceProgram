@@ -676,8 +676,19 @@ async function isUserBlocked(client: Client, userId: number): Promise<boolean> {
     // fall through to blocked senders scan
   }
   try {
+    const blocked = await loadBlockedUserIdSet(client);
+    return blocked.has(Math.trunc(userId));
+  } catch {
+    return false;
+  }
+}
+
+/** All user ids currently on the main block list (paginated). */
+export async function loadBlockedUserIdSet(client: Client): Promise<Set<number>> {
+  const ids = new Set<number>();
+  try {
     let offset = 0;
-    for (let page = 0; page < 5; page += 1) {
+    for (let page = 0; page < 50; page += 1) {
       const result = (await client.invoke({
         _: "getBlockedMessageSenders",
         block_list: { _: "blockListMain" },
@@ -688,21 +699,20 @@ async function isUserBlocked(client: Client, userId: number): Promise<boolean> {
         total_count?: number;
       };
       const senders = Array.isArray(result.senders) ? result.senders : [];
-      if (
-        senders.some(
-          (s) => s._ === "messageSenderUser" && Number(s.user_id) === userId,
-        )
-      ) {
-        return true;
+      for (const sender of senders) {
+        if (sender._ === "messageSenderUser" && typeof sender.user_id === "number") {
+          const id = Math.trunc(sender.user_id);
+          if (id > 0) ids.add(id);
+        }
       }
       if (senders.length === 0) break;
       offset += senders.length;
       if (offset >= Number(result.total_count ?? 0)) break;
     }
   } catch {
-    return false;
+    /* empty set on failure — prefer showing a chat over false-hiding all */
   }
-  return false;
+  return ids;
 }
 
 export type ProfileMediaKind = "marked" | "images" | "photos" | "links" | "gifs";

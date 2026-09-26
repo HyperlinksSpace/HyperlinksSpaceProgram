@@ -2003,7 +2003,12 @@ export async function blockUserForUser(
     return { ok: false, error: "session_not_ready" };
   }
   const { blockTelegramUser } = await import("./userProfile.js");
-  return blockTelegramUser(record.client, userId);
+  const result = await blockTelegramUser(record.client, userId);
+  if (result.ok) {
+    const { removeLiveChatsByPeerUserId } = await import("./liveChatCache.js");
+    removeLiveChatsByPeerUserId(telegramUsername, userId);
+  }
+  return result;
 }
 
 export async function unblockUserForUser(
