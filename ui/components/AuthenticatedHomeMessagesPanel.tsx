@@ -1973,10 +1973,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   );
   const archiveSortedChats = useMemo(
     () =>
-      chatListSync?.archiveListReady === true
+      // Session scroll-up only — ignore gateway archiveListReady left over from a
+      // prior reveal so archived dialogs stay hidden on fresh page load.
+      archiveRevealRequested && chatListSync?.archiveListReady === true
         ? sortedChats.filter((row) => Boolean(row.in_archive))
         : [],
-    [chatListSync?.archiveListReady, sortedChats],
+    [archiveRevealRequested, chatListSync?.archiveListReady, sortedChats],
   );
   const archiveChatsPainted = archiveSortedChats.length > 0;
   const listModeChats = archiveOpen ? archiveSortedChats : mainSortedChats;
@@ -2580,12 +2582,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const handleChatListNearTop = useCallback(() => {
     if (listSearchActive || archiveOpen) return;
     if (isVoiceDialogUiOpen()) return;
-    if (chatListSync?.archiveListReady === true) return;
     archiveScrollArmedRef.current = true;
     setArchiveScrollArmed(true);
     archiveRevealPendingRef.current = true;
-    archivePaintFetchStartedRef.current = false;
     setArchiveRevealRequested(true);
+    // Gateway may already be ready from an earlier reveal in this process —
+    // still open the folder this session; only skip the network sync.
+    if (chatListSync?.archiveListReady === true) {
+      archivePaintFetchStartedRef.current = false;
+      if (!chatsHaveArchiveRef.current) {
+        setArchiveEmptyConfirmed(true);
+      } else {
+        archiveRevealPendingRef.current = false;
+      }
+      return;
+    }
+    archivePaintFetchStartedRef.current = false;
     void requestArchiveChats();
   }, [
     archiveOpen,
@@ -2731,7 +2743,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           enabled={
             archiveScrollArmed &&
             !archiveOpen &&
-            chatListSync?.archiveListReady !== true &&
+            !archiveRevealRequested &&
             listModeChats.length > 0
           }
           onNearTop={handleChatListNearTop}

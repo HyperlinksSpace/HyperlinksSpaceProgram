@@ -693,20 +693,9 @@ function HomeAuthenticatedScreenMain() {
       homeLeftScrollRef.current?.clearNearBottomLatch();
     });
   }, [homeNavIndex, listSearchActive]);
+  /** After the user scrolls the list away from the top, allow one archive reveal on return. */
   const chatListArchiveScrollArmedRef = useRef(false);
-  const handleHomeLeftScrollNearTop = useCallback(() => {
-    if (homeNavIndex !== 1) return;
-    if (listSearchActive) return;
-    if (!chatListArchiveScrollArmedRef.current) return;
-    invokeChatListNearTop();
-    requestAnimationFrame(() => {
-      homeLeftScrollRef.current?.clearNearTopLatch();
-    });
-  }, [homeNavIndex, listSearchActive]);
-  const handleHomeLeftUserScrollIntent = useCallback(() => {
-    // Any real user scroll arms archive reveal; initial mount near-top stays ignored.
-    chatListArchiveScrollArmedRef.current = true;
-  }, []);
+  const chatListArchiveRevealLatchedRef = useRef(false);
   const [compactStickyHeightPx, setCompactStickyHeightPx] = useState(
     () =>
       layout.authenticatedHome.contentInsetTop +
@@ -757,8 +746,19 @@ function HomeAuthenticatedScreenMain() {
         setCompactHeaderPullPx(compactHeaderPullCollapsedPxRef.current);
       }
       if (homeNavIndex !== 1) return;
+      // Archive reveal without HspScrollColumn onNearTop / onUserScrollIntent —
+      // those wheel hooks preventDefault at the top edge and break Feed/Messages sticky.
       if (metrics.scrollY > 48) {
         chatListArchiveScrollArmedRef.current = true;
+        chatListArchiveRevealLatchedRef.current = false;
+      } else if (
+        chatListArchiveScrollArmedRef.current &&
+        !chatListArchiveRevealLatchedRef.current &&
+        !listSearchActive &&
+        metrics.scrollY <= 48
+      ) {
+        chatListArchiveRevealLatchedRef.current = true;
+        invokeChatListNearTop();
       }
       setChatListScrollMetrics({
         scrollY: metrics.scrollY,
@@ -766,7 +766,7 @@ function HomeAuthenticatedScreenMain() {
         contentTopInsetPx: compactChromeHeightPx,
       });
     },
-    [homeNavIndex, compactChromeHeightPx, compactHeaderPullPx],
+    [homeNavIndex, compactChromeHeightPx, compactHeaderPullPx, listSearchActive],
   );
   const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
@@ -2197,8 +2197,6 @@ function HomeAuthenticatedScreenMain() {
           stickToBottomOnResize={messagesSearchScrollMode}
           nearBottomThresholdPx={240}
           onNearBottom={handleHomeLeftScrollNearBottom}
-          onNearTop={handleHomeLeftScrollNearTop}
-          onUserScrollIntent={handleHomeLeftUserScrollIntent}
           onScrollPositionChange={handleHomeLeftScrollPositionChange}
           scrollControllerRef={homeLeftScrollRef}
           // Wide: thumb overlays the column seam divider (portaled above the stroke on web).
