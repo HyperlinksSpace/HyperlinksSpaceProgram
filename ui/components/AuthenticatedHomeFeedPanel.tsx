@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentRef, type ReactNode } from "react";
-import { Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { buildApiUrl } from "../../api/_base";
 import {
   AUTHENTICATED_FEED_FETCH_TIMEOUT_MS,
@@ -429,8 +429,8 @@ export function AuthenticatedHomeFeedPanel({
   const [items, setItems] = useState<FeedRow[]>(welcomePlaceholderFeedItems);
   const [error, setError] = useState<string | null>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
-  const { width: windowWidth } = useWindowDimensions();
-  const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
+  // Match Messages list undercover rhythm on compact and wide.
+  const wideListChrome = true;
   const feedScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const feedLoadSeqRef = useRef(0);
   const lastRenderSnapshotIdRef = useRef<number | null>(null);

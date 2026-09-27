@@ -23,6 +23,9 @@ type Props = {
   colors: ThemeColors;
   /** Chat pane is the on-screen focus — used for strip vs global dock placement. */
   visible?: boolean;
+  /** Compact / mobile: oval back control in the sticky chat header. */
+  onBack?: () => void;
+  backAccessibilityLabel?: string;
 };
 
 function isLiveVoiceChat(chat: MessageChatRowData): boolean {
@@ -53,8 +56,14 @@ function resolveGroupCallId(
   return started ?? fromChat;
 }
 
-/** Wide-layout chat pane (middle column). */
-export function MessageChatPanel({ chat, colors, visible = true }: Props) {
+/** Chat pane (wide middle column, or compact full-screen overlay). */
+export function MessageChatPanel({
+  chat,
+  colors,
+  visible = true,
+  onBack,
+  backAccessibilityLabel,
+}: Props) {
   const columnBleedPx = layout.contentSideInsetPx;
   const { openProfileSheet } = useProfileSheet();
   const liveVoiceAvailable = isLiveVoiceChat(chat);
@@ -460,6 +469,8 @@ export function MessageChatPanel({ chat, colors, visible = true }: Props) {
         onStartVoice={() => void startVoice()}
         startVoicePending={startPending}
         onOpenProfile={() => openProfileSheet(chat)}
+        onBack={onBack}
+        backAccessibilityLabel={backAccessibilityLabel}
       />
       <MessageSubtreeErrorBoundary resetKey={chat.telegram_chat_id}>
         <MessageChatMessageList key={chat.telegram_chat_id} chat={chat} colors={colors} />

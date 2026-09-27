@@ -1,22 +1,13 @@
-import { useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import {
-  layout,
-  typographyFixedRow30Label,
-  useColors,
-  welcomeAuthButtonActiveBackground,
-  welcomeAuthButtonHoverBackground,
-} from "../../theme";
-import { useTelegram } from "../Telegram";
+import { layout, useColors } from "../../theme";
 import { setMessagesArchiveOpen } from "../../messages/messagesArchiveOpen";
+import { MessageChatOvalBackButton } from "./MessageChatOvalBackButton";
 
 /** Matches {@link AuthenticatedHomeLeftNavStrip} height. */
 export const MESSAGES_ARCHIVE_LIST_HEADER_HEIGHT_PX = 55;
 const STRIP_PADDING_PX = layout.contentSideInsetPx;
-const BACK_BUTTON_HEIGHT_PX = 30;
-const BACK_BUTTON_HORIZONTAL_PADDING_PX = 15;
 
 type Props = {
   /** Optional unread/count badge next to the back control (Telegram Desktop). */
@@ -27,8 +18,6 @@ type Props = {
 export function MessagesArchiveListHeader({ backBadgeLabel = null }: Props) {
   const { t } = useAppStrings();
   const colors = useColors();
-  const { colorScheme } = useTelegram();
-  const [hoverBack, setHoverBack] = useState(false);
   const title = t("messages.archive.title");
 
   return (
@@ -38,42 +27,20 @@ export function MessagesArchiveListHeader({ backBadgeLabel = null }: Props) {
         paddingHorizontal: STRIP_PADDING_PX,
         paddingVertical: STRIP_PADDING_PX,
         justifyContent: "center",
-        borderBottomWidth: Platform.OS === "web" ? 1 / (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1) : 1,
+        borderBottomWidth:
+          Platform.OS === "web"
+            ? 1 / (typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1)
+            : 1,
         borderBottomColor: colors.highlight,
         backgroundColor: colors.background,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: BACK_BUTTON_HEIGHT_PX }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, minHeight: 30 }}>
         <View style={{ position: "relative" }}>
-          <Pressable
+          <MessageChatOvalBackButton
             onPress={() => setMessagesArchiveOpen(false)}
-            accessibilityRole="button"
             accessibilityLabel={t("messages.archive.back")}
-            onHoverIn={Platform.OS === "web" ? () => setHoverBack(true) : undefined}
-            onHoverOut={Platform.OS === "web" ? () => setHoverBack(false) : undefined}
-            style={({ pressed }) => {
-              const webHover = Platform.OS === "web" && hoverBack;
-              let backgroundColor = colors.undercover;
-              if (pressed) {
-                backgroundColor = welcomeAuthButtonActiveBackground(colors, colorScheme);
-              } else if (webHover) {
-                backgroundColor = welcomeAuthButtonHoverBackground(colors, colorScheme);
-              }
-              return {
-                height: BACK_BUTTON_HEIGHT_PX,
-                paddingHorizontal: BACK_BUTTON_HORIZONTAL_PADDING_PX,
-                borderRadius: BACK_BUTTON_HEIGHT_PX / 2,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor,
-                opacity: pressed ? 0.92 : 1,
-              };
-            }}
-          >
-            <Text style={[typographyFixedRow30Label, { color: colors.primary }]} numberOfLines={1}>
-              ←
-            </Text>
-          </Pressable>
+          />
           {backBadgeLabel ? (
             <View
               pointerEvents="none"

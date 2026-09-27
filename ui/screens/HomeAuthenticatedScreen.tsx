@@ -9,7 +9,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { ActivityIndicator, Button, Platform, Text, View, useWindowDimensions } from "react-native";
+import {
+  ActivityIndicator,
+  Button,
+  Platform,
+  Text,
+  View,
+  useWindowDimensions,
+  type ViewStyle,
+} from "react-native";
 import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
@@ -102,6 +110,7 @@ import {
   useAuthenticatedHomeMiddleColumnFocus,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
+import { useTelegramWebAppBackButton } from "../telegram/useTelegramWebAppBackButton";
 import { useRouter } from "expo-router";
 import {
   openSwapCurrenciesBrowse,
@@ -1104,17 +1113,26 @@ function HomeAuthenticatedScreenMain() {
   const getActiveOnWide = isWideHome && rightPanel === "get";
   const headerPanelVisibleOnWide = isWideHome && middleColumnFocus === "headerPanel";
   const messagesChatOpen =
-    isWideHome && selectedMessageChat != null && middleColumnFocus === "chat";
+    selectedMessageChat != null && middleColumnFocus === "chat";
+  const wideMessagesChatOpen = isWideHome && messagesChatOpen;
+  const compactMessagesChatOpen = !isWideHome && messagesChatOpen;
   const tradePanelActive =
-    !messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "trade";
+    !wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "trade";
   // Left nav only switches the first column; chat pane is independent until header menu is used.
   const leftNavSelectedIndex = homeNavIndex;
 
+  const closeCompactMessagesChat = useCallback(() => {
+    clearAuthenticatedHomeSelectedChat();
+  }, []);
+
+  useTelegramWebAppBackButton(closeCompactMessagesChat, compactMessagesChatOpen);
+
+  // Leaving Messages on compact closes the open chat overlay.
   useEffect(() => {
-    if (!isWideHome) {
-      clearAuthenticatedHomeSelectedChat();
-    }
-  }, [isWideHome]);
+    if (!compactMessagesChatOpen) return;
+    if (homeNavIndex === 1) return;
+    clearAuthenticatedHomeSelectedChat();
+  }, [compactMessagesChatOpen, homeNavIndex]);
 
   useEffect(() => {
     // Wide home (2- or 3-column): ensure a right pane is open (defaults to Swap).
@@ -2331,12 +2349,16 @@ function HomeAuthenticatedScreenMain() {
         minHeight: 0,
       }}
     >
-      <AuthenticatedHomePersistedPanelSlot active={messagesChatOpen}>
+      <AuthenticatedHomePersistedPanelSlot active={wideMessagesChatOpen}>
         {selectedMessageChat ? (
-          <MessageChatPanel chat={selectedMessageChat} colors={colors} visible={messagesChatOpen} />
+          <MessageChatPanel
+            chat={selectedMessageChat}
+            colors={colors}
+            visible={wideMessagesChatOpen}
+          />
         ) : null}
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "swap"}>
+      <AuthenticatedHomePersistedPanelSlot active={!wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "swap"}>
         <View
           style={{
             flex: 1,
@@ -2365,7 +2387,7 @@ function HomeAuthenticatedScreenMain() {
           <TradePanelContent isActive={tradePanelActive} />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "smart"}>
+      <AuthenticatedHomePersistedPanelSlot active={!wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "smart"}>
         <View
           style={{
             flex: 1,
@@ -2377,7 +2399,7 @@ function HomeAuthenticatedScreenMain() {
           <SmartPanelContent />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "send"}>
+      <AuthenticatedHomePersistedPanelSlot active={!wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "send"}>
         <View
           style={{
             flex: 1,
@@ -2388,11 +2410,11 @@ function HomeAuthenticatedScreenMain() {
         >
           <SendPanelContent
             walletAddress={effectiveWalletAddress ?? ""}
-            isActive={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "send"}
+            isActive={!wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "send"}
           />
         </View>
       </AuthenticatedHomePersistedPanelSlot>
-      <AuthenticatedHomePersistedPanelSlot active={!messagesChatOpen && headerPanelVisibleOnWide && rightPanel === "get"}>
+      <AuthenticatedHomePersistedPanelSlot active={!wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "get"}>
         <View
           style={{
             flex: 1,
@@ -2425,7 +2447,7 @@ function HomeAuthenticatedScreenMain() {
           left={homeLeftColumn}
           right={homeWideRightColumn}
           middleColumnFooter={
-            messagesChatOpen
+            wideMessagesChatOpen
               ? isTripleColumn && selectedMessageChat?.chat_kind !== "channel"
                 ? <MessageChatWriteBottomBar />
                 : !isTripleColumn
@@ -2458,7 +2480,7 @@ function HomeAuthenticatedScreenMain() {
           thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
         />
       </AuthenticatedHomeChrome>
-      {!isWideHome ? (
+      {!isWideHome && !compactMessagesChatOpen ? (
         <View
           pointerEvents="box-none"
           style={{
@@ -2474,6 +2496,50 @@ function HomeAuthenticatedScreenMain() {
           }}
         >
           {mainColumnFooter}
+        </View>
+      ) : null}
+      {compactMessagesChatOpen && selectedMessageChat ? (
+        <View
+          style={{
+            position: Platform.OS === "web" ? ("fixed" as unknown as "absolute") : "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: "100%",
+            zIndex: 1000,
+            backgroundColor: colors.background,
+            flexDirection: "column",
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              minHeight: 0,
+              alignSelf: "stretch",
+              paddingHorizontal: layout.contentSideInsetPx,
+              overflow: "visible",
+            }}
+          >
+            <MessageChatPanel
+              chat={selectedMessageChat}
+              colors={colors}
+              visible={compactMessagesChatOpen}
+              onBack={closeCompactMessagesChat}
+              backAccessibilityLabel={t("messages.archive.back")}
+            />
+          </View>
+          {selectedMessageChat.chat_kind !== "channel" ? (
+            <View
+              style={
+                (Platform.OS === "web"
+                  ? { position: "sticky", bottom: 0, zIndex: 2, alignSelf: "stretch" }
+                  : { alignSelf: "stretch" }) as ViewStyle
+              }
+            >
+              <MessageChatWriteBottomBar />
+            </View>
+          ) : null}
         </View>
       ) : null}
       {walletCurrenciesOpen ? (

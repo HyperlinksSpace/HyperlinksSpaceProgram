@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  useWindowDimensions,
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -774,9 +773,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     });
   }, []);
 
-  const { width: windowWidth } = useWindowDimensions();
-  const wideListChrome = windowWidth > layout.authenticatedHome.firstBreakpoint;
-  const chatSelectionEnabled = wideListChrome;
+  // Same undercover row geometry + chat open on compact and wide.
+  const wideListChrome = true;
+  const chatSelectionEnabled = true;
   const lastGatewayResyncRef = useRef(0);
   const pollCountRef = useRef(0);
   const lastLiveRevisionRef = useRef<number | null>(null);

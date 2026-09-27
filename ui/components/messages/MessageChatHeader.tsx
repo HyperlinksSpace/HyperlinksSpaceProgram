@@ -20,11 +20,13 @@ import {
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { resolveTelegramUserAccentColorForDisplay } from "./resolveTelegramUserAccentColor";
 import { MessageChatStartVoiceIcon } from "./MessageChatVoiceIcons";
+import { MessageChatOvalBackButton } from "./MessageChatOvalBackButton";
 
 const START_VOICE_ICON_HIT_PX = 36;
 const START_VOICE_ICON_SIZE_PX = 22;
 /** Compact header avatar — opens profile on press. */
 const HEADER_AVATAR_PX = 36;
+const BACK_TO_IDENTITY_GAP_PX = 10;
 
 type Props = {
   chat: MessageChatRowData;
@@ -34,6 +36,9 @@ type Props = {
   onStartVoice?: () => void;
   startVoicePending?: boolean;
   onOpenProfile?: () => void;
+  /** Compact / mobile: oval undercover back control before title block. */
+  onBack?: () => void;
+  backAccessibilityLabel?: string;
 };
 
 function menuStripRuleThickness(): number {
@@ -54,12 +59,15 @@ export function MessageChatHeader({
   onStartVoice,
   startVoicePending,
   onOpenProfile,
+  onBack,
+  backAccessibilityLabel,
 }: Props) {
   const { locale, t } = useAppStrings();
   const { colorScheme } = useTelegram();
   const lineT = menuStripRuleThickness();
   const stripPaddingX = layout.contentSideInsetPx;
   const title = chat.title.trim();
+  const showBack = typeof onBack === "function";
   const titleColor =
     resolveTelegramUserAccentColorForDisplay(
       chat.peer_accent_color_light,
@@ -165,7 +173,15 @@ export function MessageChatHeader({
       <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{nameBlock}</View>
     </ProfileOpenHitTarget>
   ) : (
-    <>
+    <View
+      style={{
+        flex: 1,
+        minWidth: 0,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "flex-start",
+      }}
+    >
       <View
         style={{
           width: HEADER_AVATAR_PX,
@@ -187,7 +203,7 @@ export function MessageChatHeader({
       </View>
       <View style={{ width: MESSAGE_ICON_TEXT_GAP_PX }} />
       <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{nameBlock}</View>
-    </>
+    </View>
   );
 
   return (
@@ -206,11 +222,18 @@ export function MessageChatHeader({
             web: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0 },
           }),
           flexDirection: "row",
-          justifyContent: "center",
+          justifyContent: "flex-start",
           alignItems: "center",
           paddingHorizontal: stripPaddingX,
+          gap: showBack ? BACK_TO_IDENTITY_GAP_PX : 0,
         }}
       >
+        {showBack ? (
+          <MessageChatOvalBackButton
+            onPress={onBack!}
+            accessibilityLabel={backAccessibilityLabel ?? t("messages.archive.back")}
+          />
+        ) : null}
         {identity}
         {showStart ? (
           <Pressable

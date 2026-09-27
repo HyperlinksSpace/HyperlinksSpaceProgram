@@ -2,7 +2,6 @@ import { type ReactNode } from "react";
 import {
   Platform,
   Pressable,
-  useWindowDimensions,
   type GestureResponderEvent,
 } from "react-native";
 import {
@@ -13,10 +12,7 @@ import {
   aiPromptButtonHoverBackground,
 } from "../theme";
 import { useTelegram } from "./Telegram";
-import {
-  LIST_ROW_GAP_PX,
-  LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX,
-} from "./messages/messageListLayout";
+import { LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX } from "./messages/messageListLayout";
 
 type Props = {
   isLast: boolean;
@@ -43,12 +39,12 @@ function rowShellBackground(
 }
 
 /**
- * Feed / Messages row chrome. Narrow: 15px gaps between rows. Wide (`> firstBreakpoint`):
- * 7.5px vertical pad per row (adjacent pads = 15px gap), no inter-row margin;
- * list shell top/bottom inset is also 7.5px so the first/last row match inter-row rhythm.
+ * Feed / Messages row chrome. Same undercover geometry on compact and wide:
+ * 7.5px vertical pad per row (adjacent pads = 15px gap), side-bleed to the column
+ * edge; list shell top/bottom inset is also 7.5px so first/last rows match.
  */
 export function HomeListRowShell({
-  isLast,
+  isLast: _isLast,
   isActive = false,
   colors,
   onPress,
@@ -58,9 +54,7 @@ export function HomeListRowShell({
   onContextMenu,
   children,
 }: Props) {
-  const { width: windowWidth } = useWindowDimensions();
   const { colorScheme } = useTelegram();
-  const widePressHighlight = windowWidth > layout.authenticatedHome.firstBreakpoint;
   const columnBleedPx = layout.contentSideInsetPx;
 
   const webContextMenuProps =
@@ -83,33 +77,19 @@ export function HomeListRowShell({
       delayLongPress={450}
       onHoverIn={onHoverIn}
       {...webContextMenuProps}
-      style={({ pressed, hovered }) =>
-        widePressHighlight
-          ? {
-              marginHorizontal: -columnBleedPx,
-              paddingHorizontal: columnBleedPx,
-              paddingVertical: LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX,
-              marginBottom: 0,
-              alignSelf: "stretch",
-              backgroundColor: rowShellBackground(
-                colors,
-                colorScheme,
-                { pressed, hovered: hovered ?? false },
-                isActive,
-              ),
-            }
-          : {
-              width: "100%",
-              alignSelf: "stretch",
-              marginBottom: isLast ? 0 : LIST_ROW_GAP_PX,
-              backgroundColor: rowShellBackground(
-                colors,
-                colorScheme,
-                { pressed, hovered: hovered ?? false },
-                isActive,
-              ),
-            }
-      }
+      style={({ pressed, hovered }) => ({
+        marginHorizontal: -columnBleedPx,
+        paddingHorizontal: columnBleedPx,
+        paddingVertical: LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX,
+        marginBottom: 0,
+        alignSelf: "stretch",
+        backgroundColor: rowShellBackground(
+          colors,
+          colorScheme,
+          { pressed, hovered: hovered ?? false },
+          isActive,
+        ),
+      })}
     >
       {children}
     </Pressable>
