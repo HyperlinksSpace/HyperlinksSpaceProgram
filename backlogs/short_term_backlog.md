@@ -1,10 +1,17 @@
 Music interrupting
+no hsp 
 
 1. Owner > side car > sign in
 2. swp cfe
 3. collections > stars > dllrs
 
-AI Sidecar
+safe zone to the left
+min scrolling ind height
+
+frozen DLLR should remain frozen
+
+AI Sidecar sharing
+scrolling vs movement, header/footer
 
 on width changement fix msg reload
 Stories

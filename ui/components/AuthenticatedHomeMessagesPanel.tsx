@@ -802,6 +802,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
    * until a ready snapshot with zero archive dialogs has actually been applied.
    */
   const [archiveEmptyConfirmed, setArchiveEmptyConfirmed] = useState(false);
+  const archiveRevealPendingRef = useRef(false);
+  const chatsHaveArchiveRef = useRef(false);
+  const archivePaintFetchStartedRef = useRef(false);
   const [archiveScrollArmed, setArchiveScrollArmed] = useState(false);
   const archiveScrollArmedRef = useRef(false);
   /** Chat-list rows fetched while the voice dialog was open — apply on close. */
@@ -1103,6 +1106,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           queueMicrotask(() => {
             void loadChatsRef.current({ silent: false, forceFull: true });
           });
+        } else if (
+          archiveRevealPendingRef.current &&
+          json.chatListSync?.archiveListReady === true &&
+          json.chatListSync.archiveListInProgress !== true &&
+          !chatsHaveArchiveRef.current
+        ) {
+          // Same revision already painted without archive dialogs — stop loading.
+          queueMicrotask(() => setArchiveEmptyConfirmed(true));
         }
         unchangedPollStreakRef.current += 1;
         if (options?.silent && pollCountRef.current % 10 === 0) {
@@ -1222,19 +1233,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             return prev;
           }
           const syncReady = json.chatListSync?.stableTopReady === true;
-          // Ready-without-rows must be recorded in this same chats commit. An
-          // earlier chatListSync update would drop the loading row before paint.
-          const confirmArchiveEmptyIfPainted = () => {
-            if (!syncReady) return;
-            if (json.chatListSync?.archiveListReady !== true) return;
-            if (json.chatListSync.archiveListInProgress === true) return;
-            if (rows.some((row) => row.in_archive)) return;
-            setArchiveEmptyConfirmed(true);
-          };
+          // Ready-without-rows must be recorded with this chats commit. An earlier
+          // chatListSync update would drop the loading row before paint.
+          const archiveSnapshotEmpty =
+            syncReady &&
+            json.chatListSync?.archiveListReady === true &&
+            json.chatListSync.archiveListInProgress !== true &&
+            !rows.some((row) => row.in_archive);
+          if (archiveSnapshotEmpty) {
+            queueMicrotask(() => setArchiveEmptyConfirmed(true));
+          }
           // First ordered paint: replace, never merge — merge can keep a wrong-order skeleton.
           if (rows.length > 0 && syncReady && !initialChatListRevealedRef.current) {
-            confirmArchiveEmptyIfPainted();
             const firstPaint = applyOpenChatUnreadToRows(sortChatRowsTierAware(rows));
+            const hasArchive = firstPaint.some((row) => Boolean(row.in_archive));
+            chatsHaveArchiveRef.current = hasArchive;
+            if (hasArchive) {
+              archiveRevealPendingRef.current = false;
+            }
             queueMicrotask(() => syncAuthenticatedHomeSelectedChat(firstPaint));
             setInitialChatListRevealed(true);
             setGatewayWarming(false);
@@ -1262,8 +1278,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             setGatewayWarming(true);
             return [];
           }
-          confirmArchiveEmptyIfPainted();
           const next = mergeChatRows(prev, rows);
+          const hasArchive = next.some((row) => Boolean(row.in_archive));
+          chatsHaveArchiveRef.current = hasArchive;
+          if (hasArchive) {
+            archiveRevealPendingRef.current = false;
+          }
           const changed = chatsChanged(prev, next);
           queueMicrotask(() => syncAuthenticatedHomeSelectedChat(next));
           if (rows.length > 0) {
@@ -1306,7 +1326,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       // First paint must stay urgent — startTransition deferred the empty→rows
       // apply for seconds behind history/voice work (long "No chats yet" / spinner).
       // Large silent refreshes stay interruptible once the list already has rows.
-      if (chatsCountRef.current === 0) {
+      // Archive reveal: apply urgently so the loading row swaps to the folder in the
+      // same turn (deferred apply left sticky chrome thrashing on repeat forceFull).
+      const archiveRevealNeedsUrgentPaint =
+        archiveRevealPendingRef.current &&
+        (json.chatListSync?.archiveListReady === true ||
+          rows.some((row) => Boolean(row.in_archive)));
+      if (chatsCountRef.current === 0 || archiveRevealNeedsUrgentPaint) {
         applyChats();
       } else if (
         initialChatListRevealedRef.current &&
@@ -2557,6 +2583,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (chatListSync?.archiveListReady === true) return;
     archiveScrollArmedRef.current = true;
     setArchiveScrollArmed(true);
+    archiveRevealPendingRef.current = true;
+    archivePaintFetchStartedRef.current = false;
     setArchiveRevealRequested(true);
     void requestArchiveChats();
   }, [
@@ -2591,18 +2619,19 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setChatListNearTopHandler(null);
     };
   }, [handleChatListNearTop]);
-  // Keep polling until archived dialogs are painted (or the archive is confirmed
-  // empty). archiveListReady flips before that payload, and stopping there drops
-  // the loading row while the list is still short.
+  // Poll only while the gateway archive sync is in flight. Once ready, a single
+  // urgent loadChats paints the folder — keep polling past ready forceFull-thrashes
+  // the list and unsticks Feed/Messages + Archived chrome.
   useEffect(() => {
     if (!archiveRevealRequested) return;
-    if (archiveEmptyConfirmed || archiveChatsPainted) return;
+    if (chatListSync?.archiveListReady === true) return;
     if (listSearchActive || archiveOpen) return;
     const id = setInterval(() => {
       void requestArchiveChats();
     }, 1200);
     // Don't leave the reserved loading row forever if the gateway ignores archive.
     const failSafe = setTimeout(() => {
+      archiveRevealPendingRef.current = false;
       setArchiveEmptyConfirmed(true);
       setChatListSync((prev) =>
         prev?.archiveListReady === true
@@ -2624,17 +2653,48 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       clearTimeout(failSafe);
     };
   }, [
+    archiveOpen,
+    archiveRevealRequested,
+    chatListSync?.archiveListReady,
+    listSearchActive,
+    requestArchiveChats,
+  ]);
+
+  // Ready arrived (SSE / load-more) before the chat payload — one paint fetch, not a loop.
+  useEffect(() => {
+    if (!archiveRevealRequested) return;
+    if (chatListSync?.archiveListReady !== true) return;
+    if (archiveEmptyConfirmed || archiveChatsPainted) {
+      archiveRevealPendingRef.current = false;
+      archivePaintFetchStartedRef.current = false;
+      return;
+    }
+    if (listSearchActive || archiveOpen) return;
+    if (isVoiceDialogUiOpen()) return;
+    if (!archivePaintFetchStartedRef.current) {
+      archivePaintFetchStartedRef.current = true;
+      void loadChatsRef.current({ silent: true, forceFull: true });
+    }
+    // If the paint fetch never lands, drop the loading row — do not restart forceFull.
+    const failSafe = setTimeout(() => {
+      archiveRevealPendingRef.current = false;
+      setArchiveEmptyConfirmed(true);
+    }, 8_000);
+    return () => clearTimeout(failSafe);
+  }, [
     archiveChatsPainted,
     archiveEmptyConfirmed,
     archiveOpen,
     archiveRevealRequested,
+    chatListSync?.archiveListReady,
     listSearchActive,
-    requestArchiveChats,
   ]);
 
   // Ordered reseed (stable top dropped) — hide folder until the next scroll-up.
   useEffect(() => {
     if (chatListSync != null && chatListSync.stableTopReady === false) {
+      archiveRevealPendingRef.current = false;
+      archivePaintFetchStartedRef.current = false;
       setArchiveRevealRequested(false);
       setArchiveEmptyConfirmed(false);
       archiveScrollArmedRef.current = false;
