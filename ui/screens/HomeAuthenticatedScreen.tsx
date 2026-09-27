@@ -2204,108 +2204,111 @@ function HomeAuthenticatedScreenMain() {
           indicatorColor={colors.scrollIndicator}
         >
           {/*
-            Compact chrome (header + sticky nav) is optional siblings — Feed/Messages stay under
-            one stable parent so 1↔2↔3 column resizes do not remount the chat list.
+            Compact chrome + list are siblings under the scroll content (not nested in a
+            short wrapper). CSS sticky on the nav must see the full scroll height as its
+            containing block — wrapping header+nav alone made the menu unstick as soon as
+            that short parent left the viewport (regression vs 4d955ca-era pin-while-scrub).
+            List keeps a stable key so 1↔2↔3 column resizes do not remount chats.
           */}
           {!isWideHome ? (
             <View
-              key="authenticated-home-compact-scroll-chrome"
-              style={{ width: "100%", overflow: "visible" }}
+              key="authenticated-home-compact-scroll-header"
+              onLayout={(e) => {
+                commitCompactChromeHeightPx("header", Math.round(e.nativeEvent.layout.height));
+              }}
+              style={{
+                width: "100%",
+                overflow: "visible",
+                // Above the sticky undercover plate so controls stay visible; undercover stays above the list.
+                ...(compactHeaderPullActive
+                  ? { zIndex: 8, position: "relative" as const }
+                  : null),
+              }}
             >
-              <View
-                onLayout={(e) => {
-                  commitCompactChromeHeightPx("header", Math.round(e.nativeEvent.layout.height));
-                }}
-                style={{
-                  width: "100%",
-                  overflow: "visible",
-                  // Above the sticky undercover plate so controls stay visible; undercover stays above the list.
-                  ...(compactHeaderPullActive
-                    ? { zIndex: 8, position: "relative" as const }
-                    : null),
-                }}
-              >
-                {homeHeaderRow}
-              </View>
-              {compactHeaderPullActive && compactHeaderPullPx > 0 ? (
-                <View
-                  pointerEvents="none"
-                  style={{
-                    width: "100%",
-                    height: compactHeaderPullPx,
-                    marginBottom: -compactHeaderPullPx,
-                    backgroundColor: colors.background,
-                    zIndex: 6,
-                    ...(Platform.OS === "web"
-                      ? ({
-                          position: "sticky",
-                          // Solid plate includes the first row — undercover from the top.
-                          top: 0,
-                        } as object)
-                      : {
-                          transform: [{ translateY: compactHeaderPlateScrollYPx }],
-                        }),
-                  }}
-                />
-              ) : null}
-              <View
-                onLayout={(e) => {
-                  commitCompactChromeHeightPx("nav", Math.round(e.nativeEvent.layout.height));
-                }}
-                onTouchStart={onCompactHeaderTouchStart}
-                onTouchMove={onCompactHeaderTouchMove}
-                onTouchEnd={onCompactHeaderTouchEnd}
-                onTouchCancel={onCompactHeaderTouchEnd}
-                {...(Platform.OS === "web"
+              {homeHeaderRow}
+            </View>
+          ) : null}
+          {!isWideHome && compactHeaderPullActive && compactHeaderPullPx > 0 ? (
+            <View
+              key="authenticated-home-compact-scroll-plate"
+              pointerEvents="none"
+              style={{
+                width: "100%",
+                height: compactHeaderPullPx,
+                marginBottom: -compactHeaderPullPx,
+                backgroundColor: colors.background,
+                zIndex: 6,
+                ...(Platform.OS === "web"
                   ? ({
-                      onWheel: onCompactHeaderWheel,
-                      onPointerDown: onCompactHeaderPointerDown,
-                      onPointerMove: onCompactHeaderPointerMove,
-                      onPointerUp: onCompactHeaderTouchEnd,
-                      onPointerCancel: onCompactHeaderTouchEnd,
+                      position: "sticky",
+                      // Solid plate includes the first row — undercover from the top.
+                      top: 0,
                     } as object)
-                  : {})}
-                style={{
-                  zIndex: 5,
-                  width: "100%",
-                  backgroundColor: colors.background,
-                  overflow: "visible",
-                  ...(Platform.OS === "web"
-                    ? ({
-                        position: "sticky",
-                        top: compactNavStickyTopPx,
-                        // pan-x: Feed/Messages strip can scroll when labels overflow.
-                        // Vertical tear is claimed in JS after axis lock (not via touch-action).
-                        touchAction: "pan-x",
-                      } as object)
-                    : {
-                        transform: [
-                          {
-                            translateY: compactHeaderPullActive
-                              ? compactHeaderScrollY
-                              : Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
-                          },
-                        ],
-                      }),
-                }}
-              >
-                {homeNavIndex === 1 && messagesArchiveOpen ? (
-                  <MessagesArchiveListHeader key="authenticated-home-archive-header" />
-                ) : (
-                  <AuthenticatedHomeLeftNavStrip
-                    key="authenticated-home-left-nav"
-                    colors={colors}
-                    selectedIndex={leftNavSelectedIndex}
-                    onSelectIndex={setAuthenticatedHomeLeftNavIndex}
-                    feedUnreadCount={feedUnreadCount}
-                    marginTopPx={0}
-                    passVerticalScroll
-                    tone="background"
-                    verticalDrag={compactHeaderVerticalDrag}
-                    onVerticalWheel={onCompactHeaderVerticalWheel}
-                  />
-                )}
-              </View>
+                  : {
+                      transform: [{ translateY: compactHeaderPlateScrollYPx }],
+                    }),
+              }}
+            />
+          ) : null}
+          {!isWideHome ? (
+            <View
+              key="authenticated-home-compact-scroll-nav"
+              onLayout={(e) => {
+                commitCompactChromeHeightPx("nav", Math.round(e.nativeEvent.layout.height));
+              }}
+              onTouchStart={onCompactHeaderTouchStart}
+              onTouchMove={onCompactHeaderTouchMove}
+              onTouchEnd={onCompactHeaderTouchEnd}
+              onTouchCancel={onCompactHeaderTouchEnd}
+              {...(Platform.OS === "web"
+                ? ({
+                    onWheel: onCompactHeaderWheel,
+                    onPointerDown: onCompactHeaderPointerDown,
+                    onPointerMove: onCompactHeaderPointerMove,
+                    onPointerUp: onCompactHeaderTouchEnd,
+                    onPointerCancel: onCompactHeaderTouchEnd,
+                  } as object)
+                : {})}
+              style={{
+                zIndex: 5,
+                width: "100%",
+                backgroundColor: colors.background,
+                overflow: "visible",
+                ...(Platform.OS === "web"
+                  ? ({
+                      position: "sticky",
+                      top: compactNavStickyTopPx,
+                      // pan-x: Feed/Messages strip can scroll when labels overflow.
+                      // Vertical tear is claimed in JS after axis lock (not via touch-action).
+                      touchAction: "pan-x",
+                    } as object)
+                  : {
+                      transform: [
+                        {
+                          translateY: compactHeaderPullActive
+                            ? compactHeaderScrollY
+                            : Math.max(0, compactHeaderScrollY - compactNavLockAfterPx),
+                        },
+                      ],
+                    }),
+              }}
+            >
+              {homeNavIndex === 1 && messagesArchiveOpen ? (
+                <MessagesArchiveListHeader key="authenticated-home-archive-header" />
+              ) : (
+                <AuthenticatedHomeLeftNavStrip
+                  key="authenticated-home-left-nav"
+                  colors={colors}
+                  selectedIndex={leftNavSelectedIndex}
+                  onSelectIndex={setAuthenticatedHomeLeftNavIndex}
+                  feedUnreadCount={feedUnreadCount}
+                  marginTopPx={0}
+                  passVerticalScroll
+                  tone="background"
+                  verticalDrag={compactHeaderVerticalDrag}
+                  onVerticalWheel={onCompactHeaderVerticalWheel}
+                />
+              )}
             </View>
           ) : null}
           <View

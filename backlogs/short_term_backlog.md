@@ -5,7 +5,7 @@ no hsp
 2. swp cfe
 3. collections > stars > dllrs
 
-safe zone to the left
+safe zone to the left to click-scroll
 min scrolling ind height
 
 frozen DLLR should remain frozen
