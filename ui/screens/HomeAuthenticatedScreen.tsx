@@ -2350,7 +2350,7 @@ function HomeAuthenticatedScreenMain() {
       }}
     >
       <AuthenticatedHomePersistedPanelSlot active={wideMessagesChatOpen}>
-        {selectedMessageChat ? (
+        {isWideHome && selectedMessageChat ? (
           <MessageChatPanel
             chat={selectedMessageChat}
             colors={colors}
