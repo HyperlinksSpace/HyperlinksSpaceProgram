@@ -189,7 +189,7 @@ const MESSAGE_TAIL_EVICT_BUFFER_ROWS = 15;
 const MESSAGE_CHAT_LIVE_POLL_MS = 3_000;
 const MESSAGE_CHAT_LIVE_POLL_STREAM_FALLBACK_MS = 45_000;
 /** User must scroll up this far before older history loads after reopen. */
-const LOAD_OLDER_PAGE_COOLDOWN_MS = 500;
+const LOAD_OLDER_PAGE_COOLDOWN_MS = 120;
 /** Empty older pages may be TDLib warmup; soft-fail before permanent EOF. */
 const OLDER_EMPTY_SOFT_FAIL_BUDGET = 3;
 const OLDER_EMPTY_SOFT_FAIL_COOLDOWN_MS = 1200;
@@ -275,6 +275,13 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const [prependAnchorRestorePending, setPrependAnchorRestorePending] = useState(false);
   /** Sync mirror of prependAnchorRestorePending — state alone lags one tick and races scroll triggers. */
   const prependAnchorRestorePendingRef = useRef(false);
+  /**
+   * api_load must not run item-anchor restore until the older page is merged —
+   * arming restore at fetch-start made the layout loop release in ~2 frames
+   * (content unchanged), so the user hit scrollY=0 while the gateway was still
+   * fetching (logs: prepend_keep_release loadingOlder=true → wall at top).
+   */
+  const olderApiMergeRestoreArmedRef = useRef(false);
   const setPrependAnchorRestorePendingSynced = useCallback((pending: boolean) => {
     prependAnchorRestorePendingRef.current = pending;
     setPrependAnchorRestorePending(pending);
@@ -293,6 +300,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
   const releaseOlderLoadViewportLock = useCallback(() => {
     olderPrependInProgressRef.current = false;
     olderPrependKindRef.current = null;
+    olderApiMergeRestoreArmedRef.current = false;
     displayExpandAnchorIdRef.current = 0;
     olderPrependSettleUntilRef.current = 0;
     if (prependKeepRafRef.current != null) {
@@ -835,6 +843,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       olderLoadDisplayHeadBeforeRef.current = 0;
       olderPrependInProgressRef.current = false;
       olderPrependKindRef.current = null;
+      olderApiMergeRestoreArmedRef.current = false;
       displayExpandAnchorIdRef.current = 0;
       olderPrependSettleUntilRef.current = 0;
       prevChatTailForOpeningUnreadRef.current = chat.last_message_telegram_id ?? 0;
@@ -4111,6 +4120,15 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       return;
     }
 
+    // Hold the api_load lock until the older page merges and arms restore.
+    if (
+      loadingOlderRef.current &&
+      olderPrependKindRef.current === "api_load" &&
+      !olderApiMergeRestoreArmedRef.current
+    ) {
+      return;
+    }
+
     const rememberedAnchor =
       chatScrollStateRef.current.remembered?.itemAnchor ?? null;
     const itemAnchor = pendingItemAnchorRef.current ?? rememberedAnchor;
@@ -4287,9 +4305,8 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       scheduleVirtualScrollWindowUpdate();
       endPrependPhase(chatScrollStateRef.current, scrollControllerRef.current);
       scrollControllerRef.current?.clearNearTopLatch();
-      // Chain the next portion only while still on the hard older edge after
-      // scrollTopItem restore (tdesktop). Prefetch-distance chaining caused
-      // mid-list display_expand jumps (logs: 1034 → 24812).
+      // Chain next expand/load while still near the older edge or within the
+      // prefetch band after a scroll-up-armed restore (telegram desktop).
       const canExpandOlderFromBuffer =
         displaySliceBoundsRef.current.startIndex > 0;
       const shouldContinueOlderEdge =
@@ -4306,11 +4323,30 @@ export function MessageChatMessageList({ chat, colors }: Props) {
             chainMetrics.scrollY,
             MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX,
           );
-        if (nearHardTopNow && loadOlderAdvanceChainRef.current) {
+        const nearPrefetchNow =
+          chainMetrics != null &&
+          chainMetrics.layoutH > 0 &&
+          isNearChatTop(
+            chainMetrics.scrollY,
+            chatEdgePrefetchPx(
+              chainMetrics.layoutH,
+              MESSAGE_CHAT_EDGE_PREFETCH_SCREENS,
+              MESSAGE_CHAT_LOAD_OLDER_PREFETCH_PX,
+            ),
+          );
+        const shouldChain =
+          loadOlderAdvanceChainRef.current &&
+          (nearHardTopNow ||
+            (canExpandOlderFromBuffer && nearPrefetchNow) ||
+            (releasedKind === "api_load" &&
+              !canExpandOlderFromBuffer &&
+              nearPrefetchNow &&
+              hasMoreOlderRef.current));
+        if (shouldChain) {
           requestAnimationFrame(() => {
             runOlderEdgeActionRef.current();
           });
-        } else if (!nearHardTopNow) {
+        } else if (!nearHardTopNow && !nearPrefetchNow) {
           loadOlderAdvanceChainRef.current = false;
         }
       }
@@ -5483,17 +5519,23 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     );
     olderPrependKindRef.current = "api_load";
     olderPrependInProgressRef.current = true;
-    // Same as display_expand: arm settle so finally/layout stale probes do not
-    // clear restore while merge is still painting (settleUntil=0 ⇒ expired).
+    olderApiMergeRestoreArmedRef.current = false;
+    // Keep settle armed so layout stale probes do not clear the lock mid-fetch.
+    // Do NOT set prependAnchorRestorePending yet — that starts the item-anchor
+    // restore loop; with unchanged content it releases in ~2 frames while the
+    // gateway fetch is still in flight (user hits the top wall mid-wait).
     olderPrependSettleUntilRef.current = Date.now() + 900;
     programmaticScrollRef.current = true;
-    setPrependAnchorRestorePendingSynced(true);
     olderLoadDisplayHeadBeforeRef.current = headBeforeLoad;
     const atLoadedTopForPrepend =
       viewportAtLoadedTopRef.current ||
       displaySliceBoundsRef.current.startIndex === 0;
     if (anchorId > 0 && !atLoadedTopForPrepend) {
       scrollAnchorMessageIdRef.current = anchorId;
+    }
+    // Prefetch-zone scroll-up should keep chaining after restore (tdesktop).
+    if (userScrollingUpRef.current || atLoadedTopForPrepend) {
+      loadOlderAdvanceChainRef.current = true;
     }
     logMessagesScrollAction("prepend_lock", {
       anchorMessageId: anchorId,
@@ -5561,6 +5603,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         scrollAnchorMessageIdRef.current = lockedId;
       }
       programmaticScrollRef.current = true;
+      olderApiMergeRestoreArmedRef.current = true;
       setPrependAnchorRestorePendingSynced(true);
       // Re-arm after possibly long API wait — start-of-load settle would already
       // be expired and load_older_finally would force-release mid-keep.
@@ -5918,6 +5961,35 @@ export function MessageChatMessageList({ chat, colors }: Props) {
         hasMoreOlder: result.hasMoreOlder,
         nextBeforeMessageId: result.nextBeforeMessageId,
       });
+      // Warm the next older page into session cache so the following scroll-up
+      // hydrates instantly (telegram desktop / web preload-ahead).
+      const warmBeforeId =
+        result.nextBeforeMessageId ??
+        (nextHeadAfter > 0 ? nextHeadAfter : null);
+      if (hasMore && warmBeforeId != null && warmBeforeId > 0) {
+        const warmChatId = chat.telegram_chat_id;
+        const warmPeerId = chat.peer_user_id;
+        const warmTitle = chat.title;
+        void fetchOlderHistoryCharBudget(
+          warmChatId,
+          warmPeerId,
+          warmBeforeId,
+          MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
+        ).then((warm) => {
+          if (warm.error || warm.messages.length === 0) return;
+          mergeCachedChatHistoryTail(warmChatId, warm);
+          logPageDisplay("messages_history_load_older_prefetch_ok", {
+            ...chatLogFields({
+              chatId: warmChatId,
+              peerUserId: warmPeerId,
+              title: warmTitle,
+            }),
+            beforeMessageId: warmBeforeId,
+            fetchedCount: warm.messages.length,
+            hasMoreOlder: warm.hasMoreOlder,
+          });
+        });
+      }
       const loadedTailId =
         displayMessagesRef.current[displayMessagesRef.current.length - 1]
           ?.telegram_message_id ?? 0;
