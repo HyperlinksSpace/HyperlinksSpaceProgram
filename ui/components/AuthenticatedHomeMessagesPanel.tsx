@@ -696,6 +696,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const initialChatListRevealedRef = useRef(false);
   initialChatListRevealedRef.current = initialChatListRevealed;
   /**
+   * True while the gateway briefly clears stableTopReady during an ordered reseed.
+   * Keep painted rows on screen; replace (don't merge) when the new seed arrives.
+   */
+  const awaitingOrderedReseedRef = useRef(false);
+  /**
    * True after a successful chat-list fetch returned 0 rows while connected.
    * Avoids flashing `messages.empty` when chats wipe during reconnect races.
    */
@@ -839,11 +844,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         merged.stableTopReady !== true &&
         initialChatListRevealedRef.current;
       if (holdingOrderedReseed) {
-        // Schedule outside this updater — do not set other state synchronously here.
+        // Keep the already-painted ordered rows visible while the gateway
+        // reseeds — clearing here forced a long spinner over the whole list.
+        awaitingOrderedReseedRef.current = true;
         queueMicrotask(() => {
-          setInitialChatListRevealed(false);
           setGatewayWarming(true);
-          setChats([]);
         });
       }
       return merged;
@@ -1242,8 +1247,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (archiveSnapshotEmpty) {
             queueMicrotask(() => setArchiveEmptyConfirmed(true));
           }
-          // First ordered paint: replace, never merge — merge can keep a wrong-order skeleton.
-          if (rows.length > 0 && syncReady && !initialChatListRevealedRef.current) {
+          // First ordered paint / reseed: replace, never merge — merge can keep a wrong-order skeleton.
+          if (
+            rows.length > 0 &&
+            syncReady &&
+            (!initialChatListRevealedRef.current || awaitingOrderedReseedRef.current)
+          ) {
             const firstPaint = applyOpenChatUnreadToRows(sortChatRowsTierAware(rows));
             const hasArchive = firstPaint.some((row) => Boolean(row.in_archive));
             chatsHaveArchiveRef.current = hasArchive;
@@ -1251,6 +1260,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               archiveRevealPendingRef.current = false;
             }
             queueMicrotask(() => syncAuthenticatedHomeSelectedChat(firstPaint));
+            awaitingOrderedReseedRef.current = false;
             setInitialChatListRevealed(true);
             setGatewayWarming(false);
             setEmptyListConfirmed(false);
@@ -1269,13 +1279,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             }
             return firstPaint;
           }
-          // Hold UI empty until the ordered top page is ready (gateway also serves []).
+          // Hold UI empty only before the first ordered paint. After paint, keep
+          // the previous ordered rows while the gateway reseeds (no full-list spinner).
           if (!syncReady) {
             if (!initialChatListRevealedRef.current) return prev;
-            // Resync hold after a prior paint: clear immediately (do not keep stale order).
-            setInitialChatListRevealed(false);
-            setGatewayWarming(true);
-            return [];
+            awaitingOrderedReseedRef.current = true;
+            return prev;
           }
           const next = mergeChatRows(prev, rows);
           const hasArchive = next.some((row) => Boolean(row.in_archive));
@@ -1627,26 +1636,53 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setGatewayWarming(true);
       setListBootstrapPending(true);
       setInitialChatListRevealed(false);
+      awaitingOrderedReseedRef.current = false;
     } else {
       setListBootstrapPending(false);
       setGatewayWarming(false);
       setInitialChatListRevealed(false);
+      awaitingOrderedReseedRef.current = false;
     }
-    void (async () => {
-      // Wait for gateway resync so the first paint is the ordered top page, not
-      // a partial live-arrival batch.
-      await triggerGatewayResync("initial_mount");
+    let cancelled = false;
+    let paintPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const paintPoll = async () => {
+      if (cancelled || !isTelegramMessagesConnected) return;
       if (isVoiceDialogUiOpen()) {
         deferredSilentChatLoadRef.current = true;
         return;
       }
       await loadChats({ silent: true, forceFull: true });
+      if (cancelled) return;
+      if (initialChatListRevealedRef.current) {
+        setListBootstrapPending(false);
+        return;
+      }
+      // Keep pulling until the ordered top page is ready — do not wait for
+      // gateway resync to finish enriching the whole list.
+      paintPollTimer = setTimeout(() => {
+        void paintPoll();
+      }, 250);
+    };
+
+    void (async () => {
+      // Kick resync and first paint poll in parallel. Resync seeds the ordered
+      // top page; paint poll reveals it as soon as stableTopReady flips.
+      void triggerGatewayResync("initial_mount");
+      await paintPoll();
+      if (cancelled) return;
       const sync = getChatListSyncStatus();
       if (sync?.stableTopReady === true && chatsCountRef.current > 0) {
         setInitialChatListRevealed(true);
         setGatewayWarming(false);
+        setListBootstrapPending(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+      if (paintPollTimer != null) clearTimeout(paintPollTimer);
+    };
   }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
 
   useEffect(() => {

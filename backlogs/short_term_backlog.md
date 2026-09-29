@@ -281,3 +281,6 @@ Asks the AI about assets or transactions.
 Receives verifiable answers with sources.
 Performs a swap or transfer with clear risk warnings.
 Can recover from mistakes or contact support.
+
+reddit
+product hunt

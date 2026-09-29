@@ -423,22 +423,34 @@ async function finalizeReady(record: AttemptRecord): Promise<void> {
     logConnectEvent(record, "connect_sync_top_page_warning", { message });
   }
 
-  try {
-    record.chatCount = await syncChatThreads(client, record.telegramUsername, {
-      maxMainChats: null,
-      includeArchive: false,
-      includeSupplementarySearch: false,
-      skipMemberCounts: true,
-      replaceCache: true,
-    });
-    logConnectEvent(record, "connect_initial_sync_done", { chatCount: record.chatCount ?? 0 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "sync_failed";
-    logConnectEvent(record, "connect_sync_warning", { message });
-    if (!record.chatCount) record.chatCount = 0;
-  }
-
-  scheduleBackgroundChatSync(client, record.telegramUsername);
+  // Full main/archive/folder sync in background — visible ordered edge already painted.
+  const fullSyncClient = client;
+  const fullSyncUsername = record.telegramUsername;
+  void (async () => {
+    try {
+      const count = await syncChatThreads(fullSyncClient, fullSyncUsername, {
+        maxMainChats: null,
+        includeArchive: false,
+        includeSupplementarySearch: false,
+        skipMemberCounts: true,
+        replaceCache: true,
+      });
+      const active = getActiveRecord(fullSyncUsername);
+      if (active?.client === fullSyncClient) {
+        active.chatCount = count;
+        scheduleBackgroundChatSync(fullSyncClient, fullSyncUsername);
+      }
+      logConnectEvent(record, "connect_initial_sync_done", { chatCount: count });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "sync_failed";
+      logConnectEvent(record, "connect_sync_warning", { message });
+      const active = getActiveRecord(fullSyncUsername);
+      if (active?.client === fullSyncClient && !active.chatCount) {
+        active.chatCount = 0;
+      }
+      scheduleBackgroundChatSync(fullSyncClient, fullSyncUsername);
+    }
+  })();
 }
 
 async function waitForAuthState(
@@ -1859,8 +1871,9 @@ export function restorePersistedGatewaySessions(): void {
         attachLiveChatSync(record);
         // Ordered top page first (same as connect/resync) so cold restore never
         // paints live-arrival order before the main-list head is ready.
+        let topCount = 0;
         try {
-          await syncChatThreads(record.client, telegramUsername, {
+          topCount = await syncChatThreads(record.client, telegramUsername, {
             maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
             includeArchive: false,
             includeSupplementarySearch: false,
@@ -1871,19 +1884,37 @@ export function restorePersistedGatewaySessions(): void {
           const message = topErr instanceof Error ? topErr.message : "restore_top_page_failed";
           logGateway("connect_restore_top_page_warning", { telegramUsername, message });
         }
-        const chatCount = await syncChatThreads(record.client, telegramUsername, {
-          maxMainChats: null,
-          includeArchive: false,
-          includeSupplementarySearch: false,
-          skipMemberCounts: true,
-          replaceCache: true,
-        });
-        scheduleBackgroundChatSync(record.client, telegramUsername);
         logGateway("connect_restore_session_done", {
           telegramUsername,
-          chatCount,
+          chatCount: topCount,
           error: null,
+          stableTopOnly: true,
         });
+        const restoreClient = record.client;
+        void (async () => {
+          try {
+            const chatCount = await syncChatThreads(restoreClient, telegramUsername, {
+              maxMainChats: null,
+              includeArchive: false,
+              includeSupplementarySearch: false,
+              skipMemberCounts: true,
+              replaceCache: true,
+            });
+            const active = getActiveRecord(telegramUsername);
+            if (active?.client === restoreClient) {
+              active.chatCount = chatCount;
+              scheduleBackgroundChatSync(restoreClient, telegramUsername);
+            }
+            logGateway("connect_restore_full_sync_done", {
+              telegramUsername,
+              chatCount,
+            });
+          } catch (fullErr) {
+            const message = fullErr instanceof Error ? fullErr.message : String(fullErr);
+            logGateway("connect_restore_full_sync_warning", { telegramUsername, message });
+            scheduleBackgroundChatSync(restoreClient, telegramUsername);
+          }
+        })();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         logGateway("connect_restore_session_error", { telegramUsername, message });

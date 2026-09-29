@@ -95,6 +95,11 @@ const MEMBER_COUNT_SYNC_CONCURRENCY = 6;
 export const INITIAL_POSITIONED_SYNC_LIMIT = 2000;
 /** First ordered page seeded before full sync so the UI paints top-of-list, not live-arrival order. */
 export const STABLE_TOP_CHAT_PAGE_LIMIT = 50;
+/**
+ * Enrich this many top rows before returning from the stable-top sync so the
+ * visible edge has titles+previews while the rest of the page fills in background.
+ */
+export const STABLE_TOP_VISIBLE_ENRICH = 24;
 /** @deprecated Use INITIAL_POSITIONED_SYNC_LIMIT — kept for client constant parity. */
 export const INITIAL_MAIN_CHAT_SYNC_LIMIT = INITIAL_POSITIONED_SYNC_LIMIT;
 /** Each deferred page after the initial snapshot. */
@@ -1112,17 +1117,67 @@ export async function syncChatThreads(
     setStableTopReady(telegramUsername, true);
   }
 
+  // Stable top page: return as soon as the ordered skeleton is seeded so the
+  // client can paint the visible edge. Enrichment (previews/avatars) runs in
+  // background — visible rows first — and merges by id so a concurrent full
+  // sync that grew the list is never shrunk back to the top page.
+  if (isStableTopPage) {
+    setPositionedComplete(telegramUsername, positionedComplete);
+    setStableTopReady(telegramUsername, chats.length > 0 || positionedComplete);
+    setTier3Available(telegramUsername, true);
+    await touchMtprotoSync(telegramUsername);
+    logGateway("sync_chat_threads_done", {
+      telegramUsername,
+      chatCount: chats.length,
+      rowCount: chats.length,
+      maxMainChats: options?.maxMainChats ?? null,
+      positionedComplete,
+      includeArchive: false,
+      replaceCache: options?.replaceCache !== false,
+      stableTopSkeletonOnly: true,
+      stableTopVisibleEnrich: Math.min(STABLE_TOP_VISIBLE_ENRICH, chats.length),
+    });
+    if (chats.length > 0) {
+      const enrichClient = client;
+      const enrichUsername = telegramUsername;
+      const enrichAll = chats;
+      const skipMembers = options?.skipMemberCounts === true;
+      void (async () => {
+        try {
+          const visibleChats = enrichAll.slice(0, STABLE_TOP_VISIBLE_ENRICH);
+          const restChats = enrichAll.slice(STABLE_TOP_VISIBLE_ENRICH);
+          if (visibleChats.length > 0) {
+            const visibleRows = await buildLiveRowsForChats(enrichClient, visibleChats, {
+              skipMemberCounts: skipMembers,
+              preserveListIndexOrder: true,
+            });
+            mergeLiveChatRows(enrichUsername, visibleRows);
+          }
+          if (restChats.length > 0) {
+            const restRows = await buildLiveRowsForChats(enrichClient, restChats, {
+              skipMemberCounts: skipMembers,
+              preserveListIndexOrder: true,
+            });
+            mergeLiveChatRows(enrichUsername, restRows);
+          }
+        } catch (err) {
+          logGateway("sync_chat_threads_deferred_enrich_warning", {
+            telegramUsername: enrichUsername,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      })();
+    }
+    return chats.length;
+  }
+
   const liveRows = await buildLiveRowsForChats(client, chats, {
     skipMemberCounts: options?.skipMemberCounts === true,
-    // Top page: stamp getChats index when TDLib order is still "0".
-    preserveListIndexOrder: isStableTopPage,
+    preserveListIndexOrder: false,
   });
 
   if (options?.replaceCache === false) {
     mergeLiveChatRows(telegramUsername, liveRows);
-  } else if (isStableTopPage) {
-    // Always replace for the ordered top page — never shrink-merge live-arrival leftovers.
-    seedLiveChatList(telegramUsername, liveRows);
   } else {
     const existingCount = getLiveChatList(telegramUsername)?.length ?? 0;
     if (existingCount === 0 || liveRows.length >= existingCount) {
