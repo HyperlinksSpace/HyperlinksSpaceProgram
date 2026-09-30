@@ -22,7 +22,7 @@ import { resolveFloatingDialogDefaultSize } from "../floatingDialogGeometry";
 import { HspScrollColumn } from "../HspScrollColumn";
 import { SCROLL_INDICATOR_OVERLAY_CHROME_BORDER_INSET_PX } from "../../scrollIndicatorPx";
 import {
-  fetchTelegramUserProfile,
+  fetchTelegramUserProfileExtras,
   telegramProfileAudioCoverUrl,
   type TelegramProfileAudioTrack,
 } from "../../telegram/fetchTelegramUserProfile";
@@ -56,12 +56,18 @@ const PROFILE_OVERLAY_Z = 10150;
 const COVER_PX = 40;
 const PLAY_BTN_PX = 28;
 const ROW_GAP_PX = 10;
-/** Approximate row height for viewport-based cover fetch window. */
+/** Approximate row height for viewport-based cover fetch / row virtualization. */
 const PLAYLIST_ROW_STRIDE_PX = 56;
-/** Prefetch covers well ahead of the viewport so rows rarely paint blank. */
-const PLAYLIST_COVER_PREFETCH_ROWS = 12;
-/** Always warm the first N covers on open (before scroll metrics settle). */
-const PLAYLIST_COVER_OPEN_PREFETCH = 24;
+/**
+ * Playlist covers are 40×40 — prefer embedded minithumbnail (`cover_data_url`).
+ * Only fetch the TDLib album_cover_thumbnail proxy when mini is missing, and only
+ * for rows near the viewport (never full album art).
+ */
+const PLAYLIST_COVER_PREFETCH_ROWS = 4;
+/** Warm a short first screen of API-cover fallbacks before scroll metrics settle. */
+const PLAYLIST_COVER_OPEN_PREFETCH = 8;
+/** Extra rows kept mounted above/below the viewport (DOM virtualization). */
+const PLAYLIST_ROW_OVERSCAN = 8;
 
 type Props = {
   visible: boolean;
@@ -95,12 +101,22 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+/**
+ * Playlist list covers: minithumbnail first (tiny, already in profile payload).
+ * Fall back to authenticated thumbnail proxy only when mini is absent.
+ */
 function trackCoverUri(track: TelegramProfileAudioTrack): string | null {
-  if (track.cover_data_url) return track.cover_data_url;
+  if (typeof track.cover_data_url === "string" && track.cover_data_url.trim()) {
+    return track.cover_data_url.trim();
+  }
   if (track.cover_file_id != null) {
     return telegramProfileAudioCoverUrl(track.user_id, track.cover_file_id);
   }
   return null;
+}
+
+function trackCoverNeedsNetworkFetch(uri: string): boolean {
+  return uri.includes("/api/telegram-messages-profile-audio-cover");
 }
 
 function samePlaylist(tracks: TelegramProfileAudioTrack[]): boolean {
@@ -160,9 +176,9 @@ export function MessageChatProfilePlaylistSheet({
     playlistRefreshGenRef.current = refreshGen;
     let cancelled = false;
 
-    void fetchTelegramUserProfile(0, userId, undefined, { priority: "high" }).then((result) => {
+    void fetchTelegramUserProfileExtras(0, userId, undefined, { priority: "high" }).then((result) => {
       if (cancelled || refreshGen !== playlistRefreshGenRef.current || !result.ok) return;
-      const full = result.profile.playlist;
+      const full = result.extras.playlist;
       if (!Array.isArray(full) || full.length === 0) return;
       setLocalTracks(full);
     });
@@ -190,17 +206,28 @@ export function MessageChatProfilePlaylistSheet({
     return { start, end };
   }, [localTracks.length, scrollLayoutH, scrollY]);
 
+  const rowWindow = useMemo(() => {
+    const layoutH = scrollLayoutH > 0 ? scrollLayoutH : 480;
+    const start = Math.max(0, Math.floor(scrollY / PLAYLIST_ROW_STRIDE_PX) - PLAYLIST_ROW_OVERSCAN);
+    const end = Math.min(
+      localTracks.length - 1,
+      Math.ceil((scrollY + layoutH) / PLAYLIST_ROW_STRIDE_PX) + PLAYLIST_ROW_OVERSCAN,
+    );
+    return { start, end };
+  }, [localTracks.length, scrollLayoutH, scrollY]);
+
   useEffect(() => {
     if (!visible) return;
+    // Only network-prefetch thumbnail proxies missing a minithumbnail — never
+    // upgrade 40px rows to full cover art, and never queue off-screen rows.
     for (let i = coverFetchWindow.start; i <= coverFetchWindow.end; i += 1) {
       const track = localTracks[i];
       if (!track) continue;
       const cover = trackCoverUri(track);
-      if (!cover) continue;
-      // First screen: critical so covers beat chat-media background work.
-      const priority =
-        i < PLAYLIST_COVER_OPEN_PREFETCH ? "critical" : "high";
-      prefetchMessageChatProfileAudioCover(cover, { priority });
+      if (!cover || !trackCoverNeedsNetworkFetch(cover)) continue;
+      prefetchMessageChatProfileAudioCover(cover, {
+        priority: i < PLAYLIST_COVER_OPEN_PREFETCH ? "high" : "normal",
+      });
     }
   }, [coverFetchWindow.end, coverFetchWindow.start, localTracks, visible]);
 
@@ -326,126 +353,142 @@ export function MessageChatProfilePlaylistSheet({
             {t("messages.profile.playlistEmpty")}
           </Text>
         ) : (
-          localTracks.map((track, index) => {
-            const active =
-              activeTrack != null &&
-              activeTrack.file_id === track.file_id &&
-              activeTrack.user_id === track.user_id;
-            const meta = [formatClock(track.duration_sec), formatSize(track.size_bytes)]
-              .filter(Boolean)
-              .join(", ");
-            const cover = trackCoverUri(track);
-            const coverLoadEnabled =
-              index >= coverFetchWindow.start && index <= coverFetchWindow.end;
-            return (
-              <View
-                key={`${track.user_id}:${track.file_id}`}
-                {...(Platform.OS === "web"
-                  ? ({ "data-playlist-index": String(index) } as object)
-                  : {})}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 8,
-                  gap: ROW_GAP_PX,
-                }}
-              >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t("messages.music.reorder")}
-                  onPressIn={() => {
-                    dragFromRef.current = index;
+          <>
+            {rowWindow.start > 0 ? (
+              <View style={{ height: rowWindow.start * PLAYLIST_ROW_STRIDE_PX }} />
+            ) : null}
+            {localTracks.slice(rowWindow.start, rowWindow.end + 1).map((track, sliceIndex) => {
+              const index = rowWindow.start + sliceIndex;
+              const active =
+                activeTrack != null &&
+                activeTrack.file_id === track.file_id &&
+                activeTrack.user_id === track.user_id;
+              const meta = [formatClock(track.duration_sec), formatSize(track.size_bytes)]
+                .filter(Boolean)
+                .join(", ");
+              const cover = trackCoverUri(track);
+              const coverNeedsNetwork = cover != null && trackCoverNeedsNetworkFetch(cover);
+              const coverLoadEnabled =
+                !coverNeedsNetwork ||
+                (index >= coverFetchWindow.start && index <= coverFetchWindow.end);
+              return (
+                <View
+                  key={`${track.user_id}:${track.file_id}`}
+                  {...(Platform.OS === "web"
+                    ? ({ "data-playlist-index": String(index) } as object)
+                    : {})}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    height: PLAYLIST_ROW_STRIDE_PX,
+                    paddingVertical: 8,
+                    gap: ROW_GAP_PX,
                   }}
-                  style={({ pressed }) => ({
-                    width: 22,
-                    height: 30,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: pressed ? 0.6 : 1,
-                    cursor: Platform.OS === "web" ? ("grab" as never) : undefined,
-                  })}
-                  {...(Platform.OS === "web"
-                    ? ({ "data-floating-no-drag": "1" } as object)
-                    : {})}
                 >
-                  <MusicReorderIcon color={colors.primary} size={16} />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    active && player.playing
-                      ? t("messages.music.pause")
-                      : t("messages.music.play")
-                  }
-                  onPress={() => playTrack(index)}
-                  style={({ pressed }) => ({
-                    width: PLAY_BTN_PX,
-                    height: PLAY_BTN_PX,
-                    borderRadius: PLAY_BTN_PX / 2,
-                    backgroundColor: colors.undercover,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    opacity: pressed ? 0.75 : 1,
-                  })}
-                  {...(Platform.OS === "web"
-                    ? ({ "data-floating-no-drag": "1" } as object)
-                    : {})}
-                >
-                  {active && player.playing ? (
-                    <MusicPauseIcon color={colors.primary} size={12} />
-                  ) : (
-                    <MusicPlayIcon color={colors.primary} size={12} />
-                  )}
-                </Pressable>
-                <Pressable
-                  onPress={() => playTrack(index)}
-                  style={{ flex: 1, minWidth: 0 }}
-                  {...(Platform.OS === "web"
-                    ? ({ "data-floating-no-drag": "1" } as object)
-                    : {})}
-                >
-                  <Text numberOfLines={1} style={textBase(colors.primary)}>
-                    {track.artist}
-                    {track.title ? (
-                      <Text style={{ color: colors.secondary }}>{` – ${track.title}`}</Text>
-                    ) : null}
-                  </Text>
-                  {meta ? (
-                    <Text
-                      numberOfLines={1}
-                      style={textBase(colors.secondary, {
-                        fontSize: 12,
-                        lineHeight: 15,
-                        marginTop: 2,
-                      })}
-                    >
-                      {meta}
-                    </Text>
-                  ) : null}
-                </Pressable>
-                {cover ? (
-                  <View
-                    style={{
-                      width: COVER_PX,
-                      height: COVER_PX,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      backgroundColor: colors.undercover,
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={t("messages.music.reorder")}
+                    onPressIn={() => {
+                      dragFromRef.current = index;
                     }}
+                    style={({ pressed }) => ({
+                      width: 22,
+                      height: 30,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: pressed ? 0.6 : 1,
+                      cursor: Platform.OS === "web" ? ("grab" as never) : undefined,
+                    })}
+                    {...(Platform.OS === "web"
+                      ? ({ "data-floating-no-drag": "1" } as object)
+                      : {})}
                   >
-                    <MessageChatProfileAudioCoverImage
-                      uri={cover}
-                      sizePx={COVER_PX}
-                      loadEnabled={coverLoadEnabled}
-                      fetchPriority={
-                        index < PLAYLIST_COVER_OPEN_PREFETCH ? "critical" : "high"
-                      }
-                    />
-                  </View>
-                ) : null}
-              </View>
-            );
-          })
+                    <MusicReorderIcon color={colors.primary} size={16} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      active && player.playing
+                        ? t("messages.music.pause")
+                        : t("messages.music.play")
+                    }
+                    onPress={() => playTrack(index)}
+                    style={({ pressed }) => ({
+                      width: PLAY_BTN_PX,
+                      height: PLAY_BTN_PX,
+                      borderRadius: PLAY_BTN_PX / 2,
+                      backgroundColor: colors.undercover,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: pressed ? 0.75 : 1,
+                    })}
+                    {...(Platform.OS === "web"
+                      ? ({ "data-floating-no-drag": "1" } as object)
+                      : {})}
+                  >
+                    {active && player.playing ? (
+                      <MusicPauseIcon color={colors.primary} size={12} />
+                    ) : (
+                      <MusicPlayIcon color={colors.primary} size={12} />
+                    )}
+                  </Pressable>
+                  <Pressable
+                    onPress={() => playTrack(index)}
+                    style={{ flex: 1, minWidth: 0 }}
+                    {...(Platform.OS === "web"
+                      ? ({ "data-floating-no-drag": "1" } as object)
+                      : {})}
+                  >
+                    <Text numberOfLines={1} style={textBase(colors.primary)}>
+                      {track.artist}
+                      {track.title ? (
+                        <Text style={{ color: colors.secondary }}>{` – ${track.title}`}</Text>
+                      ) : null}
+                    </Text>
+                    {meta ? (
+                      <Text
+                        numberOfLines={1}
+                        style={textBase(colors.secondary, {
+                          fontSize: 12,
+                          lineHeight: 15,
+                          marginTop: 2,
+                        })}
+                      >
+                        {meta}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                  {cover ? (
+                    <View
+                      style={{
+                        width: COVER_PX,
+                        height: COVER_PX,
+                        borderRadius: 4,
+                        overflow: "hidden",
+                        backgroundColor: colors.undercover,
+                      }}
+                    >
+                      <MessageChatProfileAudioCoverImage
+                        uri={cover}
+                        sizePx={COVER_PX}
+                        loadEnabled={coverLoadEnabled}
+                        fetchPriority={
+                          index < PLAYLIST_COVER_OPEN_PREFETCH ? "high" : "normal"
+                        }
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+            {rowWindow.end < localTracks.length - 1 ? (
+              <View
+                style={{
+                  height: (localTracks.length - 1 - rowWindow.end) * PLAYLIST_ROW_STRIDE_PX,
+                }}
+              />
+            ) : null}
+          </>
         )}
       </HspScrollColumn>
       </View>

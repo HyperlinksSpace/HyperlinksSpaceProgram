@@ -438,15 +438,6 @@ export async function fetchTelegramUserProfile(
     media: emptyMedia,
   };
 
-  const mediaPromise =
-    resolvedChatId !== 0
-      ? loadMediaCounts(client, resolvedChatId)
-      : Promise.resolve(emptyMedia);
-  const playlistPromise =
-    resolvedUserId != null
-      ? listUserProfileAudios(client, resolvedUserId)
-      : Promise.resolve([] as TelegramProfileAudioTrack[]);
-
   if (resolvedUserId != null) {
     let userRow: Record<string, unknown> | null = null;
     try {
@@ -611,14 +602,55 @@ export async function fetchTelegramUserProfile(
     }
   }
 
-  const [media, playlist] = await Promise.all([mediaPromise, playlistPromise]);
-  base.media = media;
-  if (playlist.length > 0) {
-    base.playlist = playlist;
-    const first = playlist[0]!;
-    base.music = { artist: first.artist, title: first.title };
-  }
+  // Media counts + full playlist are slow TDLib work (5× getChatMessageCount +
+  // paged getUserProfileAudios). Return the core profile now so the sheet can
+  // paint; clients load extras via fetchTelegramUserProfileExtras.
   return base;
+}
+
+/** Slow profile sections (media counts + full audio list) for progressive enrich. */
+export async function fetchTelegramUserProfileExtras(
+  client: Client,
+  chatId: number,
+  peerUserId: number | null,
+): Promise<{
+  media: TelegramUserProfilePayload["media"];
+  playlist: TelegramProfileAudioTrack[];
+}> {
+  const emptyMedia = { marked: 0, images: 0, photos: 0, links: 0, gifs: 0 };
+  let resolvedChatId =
+    Number.isFinite(chatId) && chatId !== 0 ? Math.trunc(chatId) : 0;
+  let resolvedUserId =
+    peerUserId != null && Number.isFinite(peerUserId) && peerUserId !== 0
+      ? Math.trunc(peerUserId)
+      : null;
+
+  if (resolvedUserId == null && resolvedChatId !== 0) {
+    resolvedUserId = await resolveUserIdFromChat(client, resolvedChatId);
+  }
+  if (resolvedUserId != null && resolvedChatId === 0) {
+    try {
+      const privateChat = (await client.invoke({
+        _: "createPrivateChat",
+        user_id: resolvedUserId,
+        force: false,
+      })) as { id?: number };
+      const id = Number(privateChat.id);
+      if (Number.isFinite(id) && id !== 0) resolvedChatId = Math.trunc(id);
+    } catch {
+      /* keep 0 */
+    }
+  }
+
+  const [media, playlist] = await Promise.all([
+    resolvedChatId !== 0
+      ? loadMediaCounts(client, resolvedChatId)
+      : Promise.resolve(emptyMedia),
+    resolvedUserId != null
+      ? listUserProfileAudios(client, resolvedUserId)
+      : Promise.resolve([] as TelegramProfileAudioTrack[]),
+  ]);
+  return { media, playlist };
 }
 
 export async function blockTelegramUser(

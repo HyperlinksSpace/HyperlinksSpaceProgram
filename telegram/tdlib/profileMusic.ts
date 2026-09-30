@@ -402,9 +402,8 @@ export async function readProfileAudioCoverBytes(
 ): Promise<{ data: Buffer; mime: string } | null> {
   if (!Number.isFinite(userId) || userId === 0) return null;
   if (!Number.isFinite(fileId) || fileId <= 0) return null;
-  const tracks = await listUserProfileAudios(client, Math.trunc(userId));
-  const allowed = tracks.some((row) => row.cover_file_id === Math.trunc(fileId));
-  if (!allowed) return null;
+  // album_cover_thumbnail file ids are already small JPEG thumbs — download that
+  // file only (do not re-list the full profile playlist on every cover hit).
   const bytes = await readLocalFileBytes(client, Math.trunc(fileId), COVER_DOWNLOAD_TIMEOUT_MS);
   if (!bytes) return null;
   return { data: bytes.data, mime: "image/jpeg" };

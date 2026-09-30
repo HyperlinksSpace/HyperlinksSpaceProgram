@@ -10,7 +10,7 @@ import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
-import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayOpenMessageMediaStream, gatewayFetchUserAvatar, gatewayFetchUserProfile, gatewayOpenProfileAudioStream, gatewayFetchProfileAudioCover, gatewayBlockUser, gatewayUnblockUser, gatewaySearchChatLinks, gatewaySearchChatMedia, gatewayCreatePrivateCall, gatewayGetPrivateCall, gatewayDiscardPrivateCall, gatewayFocusChat, gatewayLoadMoreChats, gatewayOpenLiveChatsStream, gatewayOpenChatMessagesStream, gatewayOpenVoiceParticipantsStream, gatewayOpenVoiceCallMessagesStream, gatewayResyncChats, gatewaySendChatMessage, gatewaySendChatPhoto, gatewayEditChatMessage, gatewayDeleteChatMessages,   gatewayJoinChatVoice, gatewaySetChatVoiceMicMuted, gatewaySetChatVoiceParticipantVolume, gatewaySetChatVoiceParticipantSpeaking, gatewayStartChatVoice, gatewayLeaveChatVoice, gatewayStartChatVoiceScreenShare, gatewayEndChatVoiceScreenShare, gatewaySendChatVoiceCallMessage, gatewayFetchChatVoiceParticipants, gatewayResolvePublicChat, gatewaySearchChats, gatewaySearchRecentChats, gatewayAddRecentlyFoundChat, gatewayRemoveRecentlyFoundChat, gatewayClearRecentlyFoundChats, gatewayUserHasPersistedSession, gatewayWarmupSession, gatewayViewChatInboxMessages, gatewayToggleChatPinned, gatewaySetPinnedChatsOrder, gatewayListContacts, gatewayAddContact, gatewayCreateGroup, gatewayCreateChannel, gatewayFetchCallsOverview } from "../_lib/tdlib-gateway-client.js";
+import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayOpenMessageMediaStream, gatewayFetchUserAvatar, gatewayFetchUserProfile, gatewayFetchUserProfileExtras, gatewayOpenProfileAudioStream, gatewayFetchProfileAudioCover, gatewayBlockUser, gatewayUnblockUser, gatewaySearchChatLinks, gatewaySearchChatMedia, gatewayCreatePrivateCall, gatewayGetPrivateCall, gatewayDiscardPrivateCall, gatewayFocusChat, gatewayLoadMoreChats, gatewayOpenLiveChatsStream, gatewayOpenChatMessagesStream, gatewayOpenVoiceParticipantsStream, gatewayOpenVoiceCallMessagesStream, gatewayResyncChats, gatewaySendChatMessage, gatewaySendChatPhoto, gatewayEditChatMessage, gatewayDeleteChatMessages, gatewaySaveChatMessageAudio,   gatewayJoinChatVoice, gatewaySetChatVoiceMicMuted, gatewaySetChatVoiceParticipantVolume, gatewaySetChatVoiceParticipantSpeaking, gatewayStartChatVoice, gatewayLeaveChatVoice, gatewayStartChatVoiceScreenShare, gatewayEndChatVoiceScreenShare, gatewaySendChatVoiceCallMessage, gatewayFetchChatVoiceParticipants, gatewayResolvePublicChat, gatewaySearchChats, gatewaySearchRecentChats, gatewayAddRecentlyFoundChat, gatewayRemoveRecentlyFoundChat, gatewayClearRecentlyFoundChats, gatewayUserHasPersistedSession, gatewayWarmupSession, gatewayViewChatInboxMessages, gatewayToggleChatPinned, gatewaySetPinnedChatsOrder, gatewayListContacts, gatewayAddContact, gatewayCreateGroup, gatewayCreateChannel, gatewayFetchCallsOverview } from "../_lib/tdlib-gateway-client.js";
 import { getGatewayPublicBaseUrl } from "../../telegram/tdlib/env.js";
 import {
   gatewayHttpToWebSocketUrl,
@@ -1106,6 +1106,47 @@ export async function telegramMessagesProfileHandler(
     return finishJson(request, res, { ok: false, error: result.error }, status);
   }
   return finishJson(request, res, { ok: true, profile: result.profile });
+}
+
+export async function telegramMessagesProfileExtrasHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "GET") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected" }, 403);
+  }
+
+  const url = requestUrl(request);
+  const chatId = parseOptionalIdParam(url, "chat_id");
+  const userId = parseOptionalIdParam(url, "user_id");
+  if (chatId == null && userId == null) {
+    return finishJson(request, res, { ok: false, error: "chat_id_or_user_id_required" }, 400);
+  }
+
+  const result = await gatewayFetchUserProfileExtras(userOrRes, chatId ?? 0, userId);
+  if (!result.ok) {
+    const status = result.error === "session_not_ready" ? 503 : 400;
+    return finishJson(request, res, { ok: false, error: result.error }, status);
+  }
+  return finishJson(request, res, { ok: true, extras: result.extras });
 }
 
 function requestHeader(request: AnyRequest, name: string): string | null {
@@ -3430,6 +3471,87 @@ export async function telegramMessagesDeleteHandler(
     { ok: true, deleted_message_ids: result.deleted_message_ids },
     200,
   );
+}
+
+export async function telegramMessagesSaveAudioHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  if (!connected) {
+    return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
+  }
+
+  const body = await parseRequestBody<{
+    chat_id?: unknown;
+    message_id?: unknown;
+    target?: unknown;
+  }>(request);
+
+  const chatId = Number(body.chat_id);
+  const messageId = Number(body.message_id);
+  const targetRaw = typeof body.target === "string" ? body.target.trim() : "";
+  const target =
+    targetRaw === "profile" ||
+    targetRaw === "saved_messages" ||
+    targetRaw === "downloads"
+      ? targetRaw
+      : null;
+
+  if (!Number.isFinite(chatId) || chatId === 0) {
+    return finishJson(request, res, { ok: false, error: "chat_id_required" }, 400);
+  }
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return finishJson(request, res, { ok: false, error: "message_id_required" }, 400);
+  }
+  if (!target) {
+    return finishJson(request, res, { ok: false, error: "invalid_target" }, 400);
+  }
+
+  const started = Date.now();
+  const result = await gatewaySaveChatMessageAudio(
+    userOrRes,
+    chatId,
+    messageId,
+    target,
+  );
+  logTelegramMessagesApi("messages_save_audio", {
+    telegramUsername: userOrRes,
+    chatId,
+    messageId,
+    target,
+    ok: result.ok,
+    error: result.ok ? null : result.error,
+    elapsedMs: Date.now() - started,
+  });
+
+  if (!result.ok) {
+    return finishJson(
+      request,
+      res,
+      { ok: false, error: result.error },
+      result.error === "session_not_ready" ? 503 : 400,
+    );
+  }
+
+  return finishJson(request, res, { ok: true, file_name: result.file_name }, 200);
 }
 
 export async function telegramMessagesWarmupHandler(

@@ -1711,6 +1711,28 @@ export async function gatewayDeleteChatMessages(
   return { deleted_message_ids: deleted, error: null };
 }
 
+export async function gatewaySaveChatMessageAudio(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  target: "profile" | "saved_messages" | "downloads",
+): Promise<{ ok: true; file_name: string } | { ok: false; error: string }> {
+  const { response, json } = await gatewayFetch("/v1/chat/message/save-audio", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername, chatId, messageId, target }),
+  });
+  if (!response.ok || json.ok === false) {
+    return {
+      ok: false,
+      error: typeof json.error === "string" ? json.error : "save_failed",
+    };
+  }
+  return {
+    ok: true,
+    file_name: typeof json.file_name === "string" ? json.file_name : "",
+  };
+}
+
 export async function gatewayFetchMessageMedia(
   telegramUsername: string,
   chatId: number,
@@ -1947,6 +1969,55 @@ export async function gatewayFetchUserProfile(
       return { ok: false, error: "profile_unavailable" };
     }
     return { ok: true, profile: profile as GatewayUserProfile };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "gateway_unreachable" };
+  }
+}
+
+export async function gatewayFetchUserProfileExtras(
+  telegramUsername: string,
+  chatId: number,
+  peerUserId: number | null,
+): Promise<
+  | {
+      ok: true;
+      extras: {
+        media: GatewayUserProfile["media"];
+        playlist: GatewayUserProfile["playlist"];
+      };
+    }
+  | { ok: false; error: string }
+> {
+  const params = new URLSearchParams({ telegramUsername });
+  if (Number.isFinite(chatId) && chatId !== 0) {
+    params.set("chatId", String(Math.trunc(chatId)));
+  }
+  if (peerUserId != null && Number.isFinite(peerUserId) && peerUserId !== 0) {
+    params.set("userId", String(Math.trunc(peerUserId)));
+  }
+  try {
+    const { response, json } = await gatewayFetch(
+      `/v1/user/profile-extras?${params.toString()}`,
+      { method: "GET" },
+    );
+    if (!response.ok || json.ok === false) {
+      return {
+        ok: false,
+        error: typeof json.error === "string" ? json.error : "profile_extras_unavailable",
+      };
+    }
+    const extras = json.extras;
+    if (!extras || typeof extras !== "object") {
+      return { ok: false, error: "profile_extras_unavailable" };
+    }
+    const media =
+      extras.media && typeof extras.media === "object"
+        ? (extras.media as GatewayUserProfile["media"])
+        : { marked: 0, images: 0, photos: 0, links: 0, gifs: 0 };
+    const playlist = Array.isArray(extras.playlist)
+      ? (extras.playlist as GatewayUserProfile["playlist"])
+      : [];
+    return { ok: true, extras: { media, playlist } };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "gateway_unreachable" };
   }

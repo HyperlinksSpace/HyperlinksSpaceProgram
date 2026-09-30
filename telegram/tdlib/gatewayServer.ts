@@ -27,6 +27,7 @@ import {
   getUserAvatarImageForUser,
   getUserAvatarAnimationForUser,
   getUserProfileForUser,
+  getUserProfileExtrasForUser,
   streamProfileAudioForUser,
   getProfileAudioCoverForUser,
   blockUserForUser,
@@ -85,6 +86,7 @@ import {
   getChatVoiceParticipantsForUser,
   editChatMessageForUser,
   deleteChatMessagesForUser,
+  saveChatMessageAudioForUser,
   resolvePublicChatForUser,
 } from "./connectAttempts.js";
 import {
@@ -1694,6 +1696,55 @@ export function startTdlibGatewayServer(): http.Server {
           return;
         }
 
+        if (req.method === "POST" && pathname === "/v1/chat/message/save-audio") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            messageId?: number;
+            target?: string;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const messageId = Number(body.messageId);
+          const target = (body.target || "").trim();
+          if (
+            !telegramUsername ||
+            !Number.isFinite(chatId) ||
+            !Number.isFinite(messageId) ||
+            (target !== "profile" &&
+              target !== "saved_messages" &&
+              target !== "downloads")
+          ) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await saveChatMessageAudioForUser(
+            telegramUsername,
+            chatId,
+            messageId,
+            target,
+          );
+          logGateway("chat_message_save_audio", {
+            telegramUsername,
+            chatId,
+            messageId,
+            target,
+            ok: result.ok,
+            error: result.ok ? null : result.error,
+            ms: Date.now() - started,
+          });
+          if (!result.ok) {
+            sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
+              ok: false,
+              error: result.error,
+            });
+            return;
+          }
+          sendJson(res, 200, { ok: true, file_name: result.file_name });
+          return;
+        }
+
         if (req.method === "GET" && pathname === "/v1/chat/message-media") {
           const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
           const chatId = Number(url.searchParams.get("chatId"));
@@ -1922,6 +1973,47 @@ export function startTdlibGatewayServer(): http.Server {
             ms: Date.now() - started,
           });
           sendJson(res, 200, { ok: true, profile: result.profile });
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/v1/user/profile-extras") {
+          const telegramUsername = (url.searchParams.get("telegramUsername") || "").trim();
+          const chatIdRaw = url.searchParams.get("chatId");
+          const chatId =
+            chatIdRaw != null && chatIdRaw.trim() !== "" ? Number(chatIdRaw) : 0;
+          const peerUserIdRaw = url.searchParams.get("userId");
+          const peerUserId =
+            peerUserIdRaw != null && peerUserIdRaw.trim() !== ""
+              ? Number(peerUserIdRaw)
+              : null;
+          const hasChat = Number.isFinite(chatId) && chatId !== 0;
+          const hasUser =
+            peerUserId != null && Number.isFinite(peerUserId) && peerUserId !== 0;
+          if (!telegramUsername || (!hasChat && !hasUser)) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await getUserProfileExtrasForUser(
+            telegramUsername,
+            hasChat ? chatId : 0,
+            hasUser ? peerUserId : null,
+          );
+          if (!result.ok) {
+            sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
+              ok: false,
+              error: result.error,
+            });
+            return;
+          }
+          logGateway("user_profile_extras_ok", {
+            telegramUsername,
+            chatId,
+            userId: safeTelegramUserIdForLog(peerUserId) ?? null,
+            playlistCount: result.extras.playlist.length,
+            ms: Date.now() - started,
+          });
+          sendJson(res, 200, { ok: true, extras: result.extras });
           return;
         }
 

@@ -2013,6 +2013,37 @@ export async function getUserProfileForUser(
   return { ok: true, profile };
 }
 
+export async function getUserProfileExtrasForUser(
+  telegramUsername: string,
+  chatId: number,
+  peerUserId: number | null,
+): Promise<
+  | {
+      ok: true;
+      extras: Awaited<
+        ReturnType<typeof import("./userProfile.js").fetchTelegramUserProfileExtras>
+      >;
+    }
+  | { ok: false; error: string }
+> {
+  if (!Number.isFinite(chatId) || chatId === 0) {
+    if (peerUserId == null || !Number.isFinite(peerUserId) || peerUserId === 0) {
+      return { ok: false, error: "chat_id_or_user_id_required" };
+    }
+  }
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { ok: false, error: "session_not_ready" };
+  }
+  const { fetchTelegramUserProfileExtras } = await import("./userProfile.js");
+  const extras = await fetchTelegramUserProfileExtras(
+    record.client,
+    Math.trunc(chatId),
+    peerUserId != null && Number.isFinite(peerUserId) ? Math.trunc(peerUserId) : null,
+  );
+  return { ok: true, extras };
+}
+
 export async function getProfileAudioFileForUser(
   telegramUsername: string,
   userId: number,
@@ -2540,6 +2571,29 @@ export async function deleteChatMessagesForUser(
     const message = err instanceof Error ? err.message : "delete_failed";
     return { deleted_message_ids: [], error: message };
   }
+}
+
+export async function saveChatMessageAudioForUser(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  target: "profile" | "saved_messages" | "downloads",
+): Promise<{ ok: true; file_name: string } | { ok: false; error: string }> {
+  if (!Number.isFinite(chatId) || chatId === 0) {
+    return { ok: false, error: "chat_id_required" };
+  }
+  if (!Number.isFinite(messageId) || messageId <= 0) {
+    return { ok: false, error: "message_id_required" };
+  }
+  if (target !== "profile" && target !== "saved_messages" && target !== "downloads") {
+    return { ok: false, error: "invalid_target" };
+  }
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { ok: false, error: "session_not_ready" };
+  }
+  const { saveMessageAudio } = await import("./messageSaveAudio.js");
+  return saveMessageAudio(record.client, Math.trunc(chatId), Math.trunc(messageId), target);
 }
 
 export async function focusChatForUser(

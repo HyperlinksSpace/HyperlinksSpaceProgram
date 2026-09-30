@@ -88,6 +88,103 @@ export type TelegramChatMediaItem = {
 
 export type TelegramChatLinkItem = TelegramChatMediaItem;
 
+const profileInflight = new Map<string, Promise<FetchTelegramUserProfileResult>>();
+
+function profileRequestKey(chatId: number, peerUserId?: number | null): string {
+  const chat = Number.isFinite(chatId) && chatId !== 0 ? Math.trunc(chatId) : 0;
+  const user =
+    peerUserId != null && Number.isFinite(peerUserId) && peerUserId !== 0
+      ? Math.trunc(peerUserId)
+      : 0;
+  return `${chat}:${user}`;
+}
+
+function normalizeProfilePayload(profile: TelegramUserProfile): TelegramUserProfile {
+  return {
+    ...profile,
+    is_blocked: Boolean(profile.is_blocked),
+    usernames: Array.isArray(profile.usernames)
+      ? profile.usernames.filter(
+          (u): u is string => typeof u === "string" && Boolean(u.trim()),
+        )
+      : profile.username
+        ? [profile.username]
+        : [],
+    gift_count: Math.max(0, Math.trunc(Number(profile.gift_count) || 0)),
+    group_in_common_count: Math.max(
+      0,
+      Math.trunc(Number(profile.group_in_common_count) || 0),
+    ),
+    playlist: Array.isArray(profile.playlist) ? profile.playlist : [],
+    profile_photo: normalizeTelegramProfilePhotoMarkup(profile.profile_photo),
+    membership:
+      profile.membership && typeof profile.membership === "object"
+        ? profile.membership
+        : null,
+  };
+}
+
+/** Immediate sheet paint from chat-list row while the gateway profile loads. */
+export function seedTelegramUserProfileFromChat(input: {
+  telegram_chat_id: number;
+  title: string;
+  peer_user_id?: number | null;
+  peer_username?: string | null;
+  chat_username?: string | null;
+  chat_kind?: string | null;
+  peer_emoji_status_custom_emoji_id?: string | null;
+  peer_is_bot?: boolean | null;
+  member_count?: number | null;
+  presence_kind?: string | null;
+  presence_at?: string | null;
+  status_text?: string | null;
+}): TelegramUserProfile {
+  const username = (input.peer_username ?? input.chat_username ?? "")
+    .trim()
+    .replace(/^@+/, "");
+  const isChannel = input.chat_kind === "channel";
+  const memberCount =
+    input.member_count != null && Number.isFinite(input.member_count)
+      ? Math.trunc(input.member_count)
+      : null;
+  return {
+    user_id:
+      input.peer_user_id != null && Number.isFinite(input.peer_user_id) && input.peer_user_id !== 0
+        ? Math.trunc(input.peer_user_id)
+        : null,
+    chat_id: Math.trunc(input.telegram_chat_id),
+    title: input.title?.trim() || "",
+    username: username || null,
+    usernames: username ? [username] : [],
+    bio: null,
+    phone_number: null,
+    status_text: input.status_text?.trim() || null,
+    is_bot: Boolean(input.peer_is_bot),
+    is_blocked: false,
+    emoji_status_custom_emoji_id: input.peer_emoji_status_custom_emoji_id ?? null,
+    profile_photo: null,
+    music: null,
+    playlist: [],
+    channel: null,
+    membership: isChannel
+      ? {
+          status: null,
+          role: "member",
+          is_channel: true,
+          member_count: memberCount,
+          administrator_count: null,
+          linked_chat_id: null,
+          invite_link: null,
+          joined_date: null,
+          can_be_edited: false,
+        }
+      : null,
+    gift_count: 0,
+    group_in_common_count: 0,
+    media: { marked: 0, images: 0, photos: 0, links: 0, gifs: 0 },
+  };
+}
+
 export async function fetchTelegramUserProfile(
   chatId: number,
   peerUserId?: number | null,
@@ -104,7 +201,11 @@ export async function fetchTelegramUserProfile(
   if (hasChat) params.set("chat_id", String(Math.trunc(chatId)));
   if (hasUser) params.set("user_id", String(Math.trunc(peerUserId!)));
   const priority = options?.priority ?? "high";
-  return runQueuedNetworkFetch(async () => {
+  const key = profileRequestKey(chatId, peerUserId);
+  const existing = profileInflight.get(key);
+  if (existing && !signal) return existing;
+
+  const request = runQueuedNetworkFetch(async () => {
     try {
       const response = await fetch(
         buildApiUrl(`/api/telegram-messages-profile?${params.toString()}`),
@@ -118,27 +219,81 @@ export async function fetchTelegramUserProfile(
       }
       return {
         ok: true,
-        profile: {
-          ...json.profile,
-          is_blocked: Boolean(json.profile.is_blocked),
-          usernames: Array.isArray(json.profile.usernames)
-            ? json.profile.usernames.filter(
-                (u): u is string => typeof u === "string" && Boolean(u.trim()),
-              )
-            : json.profile.username
-              ? [json.profile.username]
-              : [],
-          gift_count: Math.max(0, Math.trunc(Number(json.profile.gift_count) || 0)),
-          group_in_common_count: Math.max(
-            0,
-            Math.trunc(Number(json.profile.group_in_common_count) || 0),
-          ),
-          playlist: Array.isArray(json.profile.playlist) ? json.profile.playlist : [],
-          profile_photo: normalizeTelegramProfilePhotoMarkup(json.profile.profile_photo),
-          membership:
-            json.profile.membership && typeof json.profile.membership === "object"
-              ? json.profile.membership
-              : null,
+        profile: normalizeProfilePayload(json.profile),
+      };
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return { ok: false, error: "aborted" };
+      }
+      return { ok: false, error: err instanceof Error ? err.message : "fetch_failed" };
+    }
+  }, { priority });
+
+  if (!signal) {
+    profileInflight.set(key, request);
+    void request.finally(() => {
+      if (profileInflight.get(key) === request) profileInflight.delete(key);
+    });
+  }
+  return request;
+}
+
+/** Media counts + full playlist — loaded after the core profile paints. */
+export async function fetchTelegramUserProfileExtras(
+  chatId: number,
+  peerUserId?: number | null,
+  signal?: AbortSignal,
+  options?: { priority?: NetworkFetchPriority },
+): Promise<
+  | {
+      ok: true;
+      extras: {
+        media: TelegramUserProfile["media"];
+        playlist: TelegramProfileAudioTrack[];
+      };
+    }
+  | { ok: false; error: string }
+> {
+  const hasChat = Number.isFinite(chatId) && chatId !== 0;
+  const hasUser =
+    peerUserId != null && Number.isFinite(peerUserId) && peerUserId !== 0;
+  if (!hasChat && !hasUser) {
+    return { ok: false, error: "chat_id_or_user_id_required" };
+  }
+  const params = new URLSearchParams();
+  if (hasChat) params.set("chat_id", String(Math.trunc(chatId)));
+  if (hasUser) params.set("user_id", String(Math.trunc(peerUserId!)));
+  const priority = options?.priority ?? "high";
+  return runQueuedNetworkFetch(async () => {
+    try {
+      const response = await fetch(
+        buildApiUrl(`/api/telegram-messages-profile-extras?${params.toString()}`),
+        { method: "GET", credentials: "include", signal },
+      );
+      const json = (await response.json().catch(() => null)) as
+        | {
+            ok?: boolean;
+            extras?: {
+              media?: TelegramUserProfile["media"];
+              playlist?: TelegramProfileAudioTrack[];
+            };
+            error?: string;
+          }
+        | null;
+      if (!response.ok || !json?.ok || !json.extras) {
+        return { ok: false, error: json?.error ?? "profile_extras_unavailable" };
+      }
+      return {
+        ok: true,
+        extras: {
+          media: json.extras.media ?? {
+            marked: 0,
+            images: 0,
+            photos: 0,
+            links: 0,
+            gifs: 0,
+          },
+          playlist: Array.isArray(json.extras.playlist) ? json.extras.playlist : [],
         },
       };
     } catch (err) {

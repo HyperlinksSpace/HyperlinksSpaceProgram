@@ -61,6 +61,7 @@ import {
 import {
   MessageChatMessageContextMenu,
   type MessageContextMenuAnchor,
+  type MessageSaveAudioTarget,
 } from "./MessageChatMessageContextMenu";
 import {
   setMessageChatComposeEdit,
@@ -68,6 +69,10 @@ import {
 } from "../../messageChatCompose";
 import { removeOutgoingChatMessage } from "../../messageChatOutgoing";
 import { deleteTelegramChatMessages } from "../../telegram/deleteTelegramChatMessages";
+import { saveTelegramChatMessageAudio } from "../../telegram/saveTelegramChatMessageAudio";
+import { buildApiUrl } from "../../../api/_base";
+import * as Clipboard from "expo-clipboard";
+import { messageChatAudioDisplayLabel } from "./messageChatHistoryTypes";
 import { appWarn } from "../../../shared/appLog";
 import { useElementVisible } from "./useElementVisible";
 
@@ -461,7 +466,8 @@ export function MessageChatMessageRow({
   const canReply = canReplyToMessage(item);
   const canEdit = canEditMessage(item, selfUserId, chat.peer_user_id);
   const canDelete = canDeleteMessage(item, selfUserId, chat.peer_user_id);
-  const showActionSheet = canReply || canEdit || canDelete;
+  const canSaveAudio = isAudio;
+  const showActionSheet = canReply || canEdit || canDelete || canSaveAudio;
 
   const openActionSheet = useCallback(
     (anchor?: MessageContextMenuAnchor | null) => {
@@ -550,6 +556,51 @@ export function MessageChatMessageRow({
       }
     });
   }, [chat.telegram_chat_id, item.telegram_message_id]);
+
+  const onCopyFilename = useCallback(() => {
+    setActionSheetVisible(false);
+    setMenuAnchor(null);
+    if (!item.audio) return;
+    const label = messageChatAudioDisplayLabel(item.audio);
+    if (!label.trim()) return;
+    void Clipboard.setStringAsync(label).catch(() => undefined);
+  }, [item.audio]);
+
+  const onSaveAudio = useCallback(
+    (target: MessageSaveAudioTarget) => {
+      setActionSheetVisible(false);
+      setMenuAnchor(null);
+      const messageId = Number(item.telegram_message_id);
+      if (!Number.isFinite(messageId) || messageId <= 0) return;
+      void saveTelegramChatMessageAudio(chat.telegram_chat_id, messageId, target).then(
+        (result) => {
+          if (!result.ok) {
+            appWarn("[message-save-audio]", result.error, {
+              chatId: chat.telegram_chat_id,
+              messageId,
+              target,
+            });
+            return;
+          }
+          // Web: also trigger a browser download for the Downloads target
+          // (tdesktop writes to the OS download folder via addFileToDownloads).
+          if (target === "downloads" && Platform.OS === "web" && typeof document !== "undefined") {
+            const url = buildApiUrl(
+              `/api/telegram-messages-media?chat_id=${encodeURIComponent(String(chat.telegram_chat_id))}&message_id=${encodeURIComponent(String(messageId))}`,
+            );
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = result.file_name || "audio";
+            a.rel = "noopener";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
+        },
+      );
+    },
+    [chat.telegram_chat_id, item.telegram_message_id],
+  );
 
   if (columnWidthPx <= 0) {
     return (
@@ -750,6 +801,7 @@ export function MessageChatMessageRow({
         colors={colors}
         canEdit={canEdit}
         canDelete={canDelete}
+        canSaveAudio={canSaveAudio}
         onClose={() => {
           setActionSheetVisible(false);
           setMenuAnchor(null);
@@ -757,6 +809,8 @@ export function MessageChatMessageRow({
         onReply={onReply}
         onEdit={onEdit}
         onDelete={onDelete}
+        onCopyFilename={onCopyFilename}
+        onSaveAudio={onSaveAudio}
       />
     </View>
   );

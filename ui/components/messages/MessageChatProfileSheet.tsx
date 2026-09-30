@@ -27,6 +27,8 @@ import { buildApiUrl } from "../../../api/_base";
 import {
   blockTelegramUser,
   fetchTelegramUserProfile,
+  fetchTelegramUserProfileExtras,
+  seedTelegramUserProfileFromChat,
   unblockTelegramUser,
   type TelegramChannelProfileRole,
   type TelegramUserProfile,
@@ -369,6 +371,23 @@ export function MessageChatProfileSheet({
       setPhotoViewerOpen(false);
       return;
     }
+    // Paint from the chat row immediately — do not wait on gateway media counts /
+    // full playlist (those arrive via profile-extras).
+    setProfile(
+      seedTelegramUserProfileFromChat({
+        telegram_chat_id: chat.telegram_chat_id,
+        title: chat.title,
+        peer_user_id: chat.peer_user_id,
+        peer_username: chat.peer_username,
+        chat_username: chat.chat_username,
+        chat_kind: chat.chat_kind,
+        peer_emoji_status_custom_emoji_id: chat.peer_emoji_status_custom_emoji_id,
+        peer_is_bot: chat.peer_is_bot,
+        member_count: chat.member_count,
+        presence_kind: chat.presence_kind,
+        presence_at: chat.presence_at,
+      }),
+    );
     const controller = new AbortController();
     void fetchTelegramUserProfile(
       chat.telegram_chat_id,
@@ -376,11 +395,49 @@ export function MessageChatProfileSheet({
       controller.signal,
       { priority: "critical" },
     ).then((result) => {
-      if (controller.signal.aborted) return;
-      if (result.ok) {
-        setProfile(result.profile);
-        setIsBlocked(Boolean(result.profile.is_blocked));
-      }
+      if (controller.signal.aborted || !result.ok) return;
+      setIsBlocked(Boolean(result.profile.is_blocked));
+      // Preserve extras if they landed first (media counts / full playlist).
+      setProfile((prev) => {
+        const next = result.profile;
+        if (!prev) return next;
+        const prevPlaylistLen = Array.isArray(prev.playlist) ? prev.playlist.length : 0;
+        const nextPlaylistLen = Array.isArray(next.playlist) ? next.playlist.length : 0;
+        const keepPlaylist = prevPlaylistLen > nextPlaylistLen;
+        const mediaSum = (m: TelegramUserProfile["media"] | undefined) =>
+          (m?.marked ?? 0) +
+          (m?.images ?? 0) +
+          (m?.photos ?? 0) +
+          (m?.links ?? 0) +
+          (m?.gifs ?? 0);
+        const keepMedia = mediaSum(prev.media) > mediaSum(next.media);
+        return {
+          ...next,
+          media: keepMedia ? prev.media : next.media,
+          playlist: keepPlaylist ? prev.playlist : next.playlist,
+          music: keepPlaylist && prev.music ? prev.music : next.music,
+        };
+      });
+    });
+    void fetchTelegramUserProfileExtras(
+      chat.telegram_chat_id,
+      chat.peer_user_id ?? null,
+      controller.signal,
+      { priority: "high" },
+    ).then((result) => {
+      if (controller.signal.aborted || !result.ok) return;
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const playlist =
+          result.extras.playlist.length > 0 ? result.extras.playlist : prev.playlist;
+        const first = playlist[0];
+        return {
+          ...prev,
+          media: result.extras.media,
+          playlist,
+          music: prev.music ?? (first ? { artist: first.artist, title: first.title } : null),
+        };
+      });
     });
     return () => controller.abort();
   }, [visible, chat]);
