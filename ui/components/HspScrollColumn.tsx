@@ -463,6 +463,22 @@ export function HspScrollColumn({
 
     let scrollEl: HTMLElement | null = null;
     let onWheel: ((e: WheelEvent) => void) | null = null;
+    let onPointerDown: ((e: PointerEvent) => void) | null = null;
+    let onPointerMove: ((e: PointerEvent) => void) | null = null;
+    let onPointerUp: (() => void) | null = null;
+    let edgePullStartY: number | null = null;
+    let edgePullFired = false;
+
+    const unbind = () => {
+      if (!scrollEl) return;
+      if (onWheel) scrollEl.removeEventListener("wheel", onWheel);
+      if (onPointerDown) scrollEl.removeEventListener("pointerdown", onPointerDown);
+      if (onPointerMove) scrollEl.removeEventListener("pointermove", onPointerMove);
+      if (onPointerUp) {
+        scrollEl.removeEventListener("pointerup", onPointerUp);
+        scrollEl.removeEventListener("pointercancel", onPointerUp);
+      }
+    };
 
     const bind = () => {
       const instance = scrollRef.current as unknown as {
@@ -471,9 +487,7 @@ export function HspScrollColumn({
       const el = instance?.getScrollableNode?.();
       if (!el || el === scrollEl) return;
 
-      if (scrollEl && onWheel) {
-        scrollEl.removeEventListener("wheel", onWheel);
-      }
+      unbind();
 
       scrollEl = el;
       onWheel = (e: WheelEvent) => {
@@ -513,7 +527,37 @@ export function HspScrollColumn({
           return;
         }
       };
+      // Touch/pen pull at the top edge cannot move scrollTop — report scroll-up intent
+      // so chat-list archive reveal works without a prior scroll-down arm.
+      onPointerDown = (e: PointerEvent) => {
+        if (e.pointerType === "mouse") return;
+        const atTop = el.scrollTop <= SCROLL_INDICATOR_SCROLL_EPS;
+        edgePullStartY = atTop ? e.clientY : null;
+        edgePullFired = false;
+      };
+      onPointerMove = (e: PointerEvent) => {
+        if (edgePullStartY == null || edgePullFired) return;
+        if (el.scrollTop > SCROLL_INDICATOR_SCROLL_EPS) {
+          edgePullStartY = null;
+          return;
+        }
+        // Finger down → content wants to scroll up (Telegram archive pull).
+        if (e.clientY - edgePullStartY >= 28) {
+          edgePullFired = true;
+          onUserScrollIntent?.("up");
+          nearTopFiredRef.current = false;
+          onNearTop?.();
+        }
+      };
+      onPointerUp = () => {
+        edgePullStartY = null;
+        edgePullFired = false;
+      };
       el.addEventListener("wheel", onWheel, { passive: false });
+      el.addEventListener("pointerdown", onPointerDown, { passive: true });
+      el.addEventListener("pointermove", onPointerMove, { passive: true });
+      el.addEventListener("pointerup", onPointerUp, { passive: true });
+      el.addEventListener("pointercancel", onPointerUp, { passive: true });
     };
 
     bind();
@@ -524,9 +568,7 @@ export function HspScrollColumn({
 
     return () => {
       cancelAnimationFrame(id);
-      if (scrollEl && onWheel) {
-        scrollEl.removeEventListener("wheel", onWheel);
-      }
+      unbind();
     };
   }, [
     children,

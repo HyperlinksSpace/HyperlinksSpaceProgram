@@ -34,6 +34,8 @@ export type MusicPlayerSnapshot = {
   playing: boolean;
   currentTime: number;
   duration: number;
+  /** Furthest buffered/download edge as a 0–1 ratio of duration (YouTube-style). */
+  bufferedRatio: number;
   volume: number;
   muted: boolean;
   shuffle: boolean;
@@ -55,6 +57,7 @@ let snapshot: MusicPlayerSnapshot = {
   playing: false,
   currentTime: 0,
   duration: 0,
+  bufferedRatio: 0,
   volume: 1,
   muted: false,
   shuffle: false,
@@ -140,6 +143,7 @@ export function startMusicPlaylist(
     playing: true,
     currentTime: 0,
     duration: tracks[index]?.duration_sec ?? 0,
+    bufferedRatio: 0,
     order,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
@@ -201,6 +205,7 @@ export function playMusicIndex(index: number): void {
     playing: true,
     currentTime: 0,
     duration: snapshot.tracks[next]?.duration_sec ?? 0,
+    bufferedRatio: 0,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
   });
@@ -225,6 +230,7 @@ function stepTrack(delta: number): void {
     playing: true,
     currentTime: 0,
     duration: tracks[nextIndex]?.duration_sec ?? 0,
+    bufferedRatio: 0,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
   });
@@ -341,6 +347,25 @@ export function reportMusicTime(currentTime: number, duration: number): void {
     return;
   }
   setSnapshot({ currentTime, duration: nextDuration });
+}
+
+/** Report how far the media element has buffered (download progress). */
+export function reportMusicBuffered(bufferedEndSec: number, durationSec: number): void {
+  const duration =
+    Number.isFinite(durationSec) && durationSec > 0
+      ? durationSec
+      : snapshot.duration > 0
+        ? snapshot.duration
+        : 0;
+  const end = Number.isFinite(bufferedEndSec) ? Math.max(0, bufferedEndSec) : 0;
+  const ratio = duration > 0 ? Math.max(0, Math.min(1, end / duration)) : 0;
+  if (Math.abs(ratio - snapshot.bufferedRatio) < 0.008) return;
+  setSnapshot({
+    bufferedRatio: ratio,
+    ...(duration > 0 && Math.abs(duration - snapshot.duration) >= 0.2
+      ? { duration }
+      : {}),
+  });
 }
 
 export function consumeMusicSeek(): void {

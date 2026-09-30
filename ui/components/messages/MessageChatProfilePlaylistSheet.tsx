@@ -58,7 +58,10 @@ const PLAY_BTN_PX = 28;
 const ROW_GAP_PX = 10;
 /** Approximate row height for viewport-based cover fetch window. */
 const PLAYLIST_ROW_STRIDE_PX = 56;
-const PLAYLIST_COVER_PREFETCH_ROWS = 4;
+/** Prefetch covers well ahead of the viewport so rows rarely paint blank. */
+const PLAYLIST_COVER_PREFETCH_ROWS = 12;
+/** Always warm the first N covers on open (before scroll metrics settle). */
+const PLAYLIST_COVER_OPEN_PREFETCH = 24;
 
 type Props = {
   visible: boolean;
@@ -179,7 +182,10 @@ export function MessageChatProfilePlaylistSheet({
     );
     const end = Math.min(
       localTracks.length - 1,
-      Math.ceil((scrollY + layoutH) / PLAYLIST_ROW_STRIDE_PX) + PLAYLIST_COVER_PREFETCH_ROWS,
+      Math.max(
+        PLAYLIST_COVER_OPEN_PREFETCH - 1,
+        Math.ceil((scrollY + layoutH) / PLAYLIST_ROW_STRIDE_PX) + PLAYLIST_COVER_PREFETCH_ROWS,
+      ),
     );
     return { start, end };
   }, [localTracks.length, scrollLayoutH, scrollY]);
@@ -190,7 +196,11 @@ export function MessageChatProfilePlaylistSheet({
       const track = localTracks[i];
       if (!track) continue;
       const cover = trackCoverUri(track);
-      if (cover) prefetchMessageChatProfileAudioCover(cover, { priority: "high" });
+      if (!cover) continue;
+      // First screen: critical so covers beat chat-media background work.
+      const priority =
+        i < PLAYLIST_COVER_OPEN_PREFETCH ? "critical" : "high";
+      prefetchMessageChatProfileAudioCover(cover, { priority });
     }
   }, [coverFetchWindow.end, coverFetchWindow.start, localTracks, visible]);
 
@@ -427,7 +437,9 @@ export function MessageChatProfilePlaylistSheet({
                       uri={cover}
                       sizePx={COVER_PX}
                       loadEnabled={coverLoadEnabled}
-                      fetchPriority="high"
+                      fetchPriority={
+                        index < PLAYLIST_COVER_OPEN_PREFETCH ? "critical" : "high"
+                      }
                     />
                   </View>
                 ) : null}

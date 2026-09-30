@@ -10,6 +10,7 @@ import {
   consumeMusicSeek,
   getMusicPlayer,
   handleMusicEnded,
+  reportMusicBuffered,
   reportMusicTime,
   seekMusicSeconds,
   setMusicPlaying,
@@ -96,7 +97,16 @@ export function MusicPlayerEngine(): null {
     const onTime = () => {
       const t = audio.currentTime || 0;
       if (Number.isFinite(t) && t > 0) lastGoodTimeRef.current = t;
-      reportMusicTime(t, audio.duration || 0);
+      reportMusicTime(t, mediaDurationSec(audio, getMusicPlayer().duration));
+    };
+    const reportBuffer = () => {
+      try {
+        if (!audio.buffered || audio.buffered.length === 0) return;
+        const end = audio.buffered.end(audio.buffered.length - 1);
+        reportMusicBuffered(end, mediaDurationSec(audio, getMusicPlayer().duration));
+      } catch {
+        // ignore
+      }
     };
     const onEnded = () => {
       handleMusicEnded();
@@ -202,18 +212,9 @@ export function MusicPlayerEngine(): null {
       try {
         audio.pause();
         revokeBlobUrl();
-        // Prefer a full blob remount after decode/network failure so progressive
-        // range/buffer corruption cannot stick on the same HTMLMediaElement pipeline.
-        const response = await fetch(baseSrc, {
-          credentials: "include",
-          cache: "reload",
-        });
-        if (!response.ok) throw new Error(`recover_http_${response.status}`);
-        const blob = await response.blob();
-        if (seq !== loadSeqRef.current) return false;
-        const objectUrl = URL.createObjectURL(blob);
-        blobUrlRef.current = objectUrl;
-        audio.src = objectUrl;
+        // Prefer progressive stream reload — waiting for a full blob download
+        // pauses playback until the entire file arrives (unlike YouTube).
+        audio.src = withCacheBust(baseSrc, attempt);
         audio.load();
         attachReadyOnce(seq, () => {
           logPageDisplay("music_track_canplay", {
@@ -228,24 +229,17 @@ export function MusicPlayerEngine(): null {
           recoveringRef.current = false;
           applyPlayback();
         });
+        tryPlay();
         return true;
       } catch (err) {
         if (seq !== loadSeqRef.current) return false;
-        logPageDisplay("music_playback_recover_fallback", {
+        logPageDisplay("music_playback_recover_failed", {
           key,
           attempt,
           message: err instanceof Error ? err.message : String(err),
         });
-        // Stream reload with cache-bust if blob fetch failed (timeout / size).
-        audio.src = withCacheBust(baseSrc, attempt);
-        audio.load();
-        attachReadyOnce(seq, () => {
-          seekMusicSeconds(resumeAt, true);
-          applyCurrentTime(audio, resumeAt);
-          recoveringRef.current = false;
-          applyPlayback();
-        });
-        return true;
+        recoveringRef.current = false;
+        return false;
       }
     };
 
@@ -289,6 +283,8 @@ export function MusicPlayerEngine(): null {
 
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("durationchange", onTime);
+    audio.addEventListener("progress", reportBuffer);
+    audio.addEventListener("loadedmetadata", reportBuffer);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
     audio.addEventListener("seeked", onSeeked);
@@ -335,6 +331,7 @@ export function MusicPlayerEngine(): null {
         });
         audio.pause();
         // Always assign + load so a prior unlock/silent src cannot stick.
+        // Progressive HTTP stream — play as soon as canplay (do not wait for full file).
         audio.src = src;
         audio.load();
         attachReadyOnce(seq, () => {
@@ -343,6 +340,7 @@ export function MusicPlayerEngine(): null {
             elapsedMs: Date.now() - loadStartedAtRef.current,
             readyState: audio.readyState,
           });
+          reportBuffer();
           applyPlayback();
         });
         // Optimistic play — browsers start as soon as enough bytes arrive.
@@ -353,7 +351,6 @@ export function MusicPlayerEngine(): null {
       if (!recoveringRef.current) applyPlayback();
     };
 
-    audio.addEventListener("progress", applyPlayback);
     audio.addEventListener("canplay", applyPlayback);
     audio.addEventListener("canplaythrough", applyPlayback);
 
@@ -365,11 +362,12 @@ export function MusicPlayerEngine(): null {
       unsubscribe();
       audio.removeEventListener("timeupdate", onTime);
       audio.removeEventListener("durationchange", onTime);
+      audio.removeEventListener("progress", reportBuffer);
+      audio.removeEventListener("loadedmetadata", reportBuffer);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
       audio.removeEventListener("seeked", onSeeked);
       audio.removeEventListener("playing", onPlaying);
-      audio.removeEventListener("progress", applyPlayback);
       audio.removeEventListener("canplay", applyPlayback);
       audio.removeEventListener("canplaythrough", applyPlayback);
       audio.pause();

@@ -63,7 +63,10 @@ import {
 import { setTelegramTotalUnread } from "../messages/telegramUnreadStore";
 import { setChatListBottomLoaderActive } from "./messages/chatListBottomLoaderStatus";
 import { setChatListNearBottomHandler } from "./messages/chatListNearBottom";
-import { setChatListNearTopHandler } from "./messages/chatListNearTop";
+import {
+  resetChatListArchiveRevealLatch,
+  setChatListNearTopHandler,
+} from "./messages/chatListNearTop";
 import {
   invokeChatListSearchScrollToEnd,
   setChatListSearchScrollToEndHandler,
@@ -2746,6 +2749,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setArchiveEmptyConfirmed(false);
       archiveScrollArmedRef.current = false;
       setArchiveScrollArmed(false);
+      resetChatListArchiveRevealLatch();
     }
   }, [chatListSync?.stableTopReady]);
 

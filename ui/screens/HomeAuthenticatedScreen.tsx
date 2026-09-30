@@ -63,7 +63,10 @@ import {
   subscribeChatListBottomLoaderActive,
 } from "../components/messages/chatListBottomLoaderStatus";
 import { invokeChatListNearBottom } from "../components/messages/chatListNearBottom";
-import { invokeChatListNearTop } from "../components/messages/chatListNearTop";
+import {
+  invokeChatListNearTop,
+  setChatListArchiveRevealLatchResetHandler,
+} from "../components/messages/chatListNearTop";
 import { setChatListScrollMetrics } from "../components/messages/chatListScrollMetrics";
 import { setChatListSearchScrollToEndHandler } from "../components/messages/chatListSearchScrollAnchor";
 import { MessageChatWriteBottomBar } from "../components/messages/MessageChatWriteBottomBar";
@@ -702,9 +705,39 @@ function HomeAuthenticatedScreenMain() {
       homeLeftScrollRef.current?.clearNearBottomLatch();
     });
   }, [homeNavIndex, listSearchActive]);
-  /** After the user scrolls the list away from the top, allow one archive reveal on return. */
+  /**
+   * Archive reveal:
+   * - scroll down then back to the top edge (touch / trackpad when scrollY moves), or
+   * - scroll-up intent while already at the top after the list has loaded (wheel / pull).
+   */
   const chatListArchiveScrollArmedRef = useRef(false);
   const chatListArchiveRevealLatchedRef = useRef(false);
+  const tryRevealChatListArchive = useCallback(() => {
+    if (homeNavIndex !== 1) return;
+    if (listSearchActive || messagesArchiveOpen) return;
+    if (chatListArchiveRevealLatchedRef.current) return;
+    chatListArchiveRevealLatchedRef.current = true;
+    chatListArchiveScrollArmedRef.current = true;
+    invokeChatListNearTop();
+  }, [homeNavIndex, listSearchActive, messagesArchiveOpen]);
+  useEffect(() => {
+    setChatListArchiveRevealLatchResetHandler(() => {
+      chatListArchiveRevealLatchedRef.current = false;
+      chatListArchiveScrollArmedRef.current = false;
+    });
+    return () => setChatListArchiveRevealLatchResetHandler(null);
+  }, []);
+  const handleHomeLeftUserScrollIntent = useCallback(
+    (direction?: "up" | "down") => {
+      if (direction !== "up") return;
+      const y = homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+      // Already parked at the top — wheel/pull-up cannot move scrollY, so the
+      // down-then-up arm path never runs. Reveal archive on explicit up intent.
+      if (y > 48) return;
+      tryRevealChatListArchive();
+    },
+    [tryRevealChatListArchive],
+  );
   const [compactStickyHeightPx, setCompactStickyHeightPx] = useState(
     () =>
       layout.authenticatedHome.contentInsetTop +
@@ -755,19 +788,13 @@ function HomeAuthenticatedScreenMain() {
         setCompactHeaderPullPx(compactHeaderPullCollapsedPxRef.current);
       }
       if (homeNavIndex !== 1) return;
-      // Archive reveal without HspScrollColumn onNearTop / onUserScrollIntent —
-      // those wheel hooks preventDefault at the top edge and break Feed/Messages sticky.
+      // Scroll-position path: arm after leaving the top, reveal on return.
+      // Wheel/pull at scrollY≈0 uses onUserScrollIntent instead (scrollY never moves).
       if (metrics.scrollY > 48) {
         chatListArchiveScrollArmedRef.current = true;
         chatListArchiveRevealLatchedRef.current = false;
-      } else if (
-        chatListArchiveScrollArmedRef.current &&
-        !chatListArchiveRevealLatchedRef.current &&
-        !listSearchActive &&
-        metrics.scrollY <= 48
-      ) {
-        chatListArchiveRevealLatchedRef.current = true;
-        invokeChatListNearTop();
+      } else if (chatListArchiveScrollArmedRef.current && metrics.scrollY <= 48) {
+        tryRevealChatListArchive();
       }
       setChatListScrollMetrics({
         scrollY: metrics.scrollY,
@@ -775,7 +802,12 @@ function HomeAuthenticatedScreenMain() {
         contentTopInsetPx: compactChromeHeightPx,
       });
     },
-    [homeNavIndex, compactChromeHeightPx, compactHeaderPullPx, listSearchActive],
+    [
+      homeNavIndex,
+      compactChromeHeightPx,
+      compactHeaderPullPx,
+      tryRevealChatListArchive,
+    ],
   );
   const selectedMessageChat = useAuthenticatedHomeSelectedChat();
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
@@ -2216,6 +2248,7 @@ function HomeAuthenticatedScreenMain() {
           nearBottomThresholdPx={240}
           onNearBottom={handleHomeLeftScrollNearBottom}
           onScrollPositionChange={handleHomeLeftScrollPositionChange}
+          onUserScrollIntent={handleHomeLeftUserScrollIntent}
           scrollControllerRef={homeLeftScrollRef}
           // Wide: thumb overlays the column seam divider (portaled above the stroke on web).
           scrollbarRightInsetPx={isWideHome ? 0 : layout.scrollIndicatorRightInsetPx}

@@ -74,6 +74,10 @@ export function GlobalMusicControlBar({ colors }: Props) {
     snap.duration > 0 ? snap.duration : Number(track?.duration_sec) > 0 ? Number(track?.duration_sec) : 0;
   const progress =
     progressDuration > 0 ? Math.max(0, Math.min(1, snap.currentTime / progressDuration)) : 0;
+  const buffered =
+    progressDuration > 0
+      ? Math.max(progress, Math.max(0, Math.min(1, snap.bufferedRatio || 0)))
+      : 0;
 
   const applySeekFromClientX = useCallback((clientX: number) => {
     const node = seekRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
@@ -114,18 +118,41 @@ export function GlobalMusicControlBar({ colors }: Props) {
   }, [applySeekFromClientX]);
 
   const openVolume = useCallback(() => {
+    if (volumeOpen) {
+      setVolumeOpen(false);
+      return;
+    }
+    const placeAndOpen = (right: number, top: number) => {
+      setVolumeBox({ right, top });
+      setVolumeOpen(true);
+    };
     const node = volumeAnchorRef.current as unknown as {
+      measureInWindow?: (
+        cb: (x: number, y: number, width: number, height: number) => void,
+      ) => void;
       getBoundingClientRect?: () => DOMRect;
     } | null;
+    // RN-web View refs often lack getBoundingClientRect — measureInWindow first.
+    if (node && typeof node.measureInWindow === "function") {
+      node.measureInWindow((x, y, width, height) => {
+        placeAndOpen(
+          Math.max(8, window.innerWidth - (x + width)),
+          Math.round(y + height + 6),
+        );
+      });
+      return;
+    }
     const rect = node?.getBoundingClientRect?.();
     if (rect) {
-      setVolumeBox({
-        right: Math.max(8, window.innerWidth - rect.right),
-        top: rect.bottom + 6,
-      });
+      placeAndOpen(
+        Math.max(8, window.innerWidth - rect.right),
+        Math.round(rect.bottom + 6),
+      );
+      return;
     }
-    setVolumeOpen((open) => !open);
-  }, []);
+    // Still open with a safe fallback so the control is never a no-op.
+    placeAndOpen(16, 48);
+  }, [volumeOpen]);
 
   if (!snap.visible || !track) return null;
 
@@ -353,17 +380,28 @@ export function GlobalMusicControlBar({ colors }: Props) {
           ...(Platform.OS === "web" ? ({ touchAction: "none" } as object) : {}),
         }}
       >
-        <View pointerEvents="none" style={{ height: 1, backgroundColor: colors.highlight, width: "100%" }}>
-          <View
-            style={{
-              height: 1,
-              width: `${progress * 100}%`,
-              backgroundColor: colors.primary,
-            }}
-          />
+        <View pointerEvents="none" style={{ width: "100%", gap: 1 }}>
+          <View style={{ height: 1, backgroundColor: colors.highlight, width: "100%" }}>
+            <View
+              style={{
+                height: 1,
+                width: `${progress * 100}%`,
+                backgroundColor: colors.primary,
+              }}
+            />
+          </View>
+          <View style={{ height: 1, backgroundColor: colors.highlight, width: "100%" }}>
+            <View
+              style={{
+                height: 1,
+                width: `${buffered * 100}%`,
+                backgroundColor: colors.secondary,
+              }}
+            />
+          </View>
         </View>
       </Pressable>
-      {volumeOpen && volumeBox && Platform.OS === "web" && typeof document !== "undefined"
+      {volumeOpen && Platform.OS === "web" && typeof document !== "undefined"
         ? createPortal(
             <View
               pointerEvents="box-none"
@@ -373,7 +411,7 @@ export function GlobalMusicControlBar({ colors }: Props) {
                 top: 0,
                 right: 0,
                 bottom: 0,
-                zIndex: 11100,
+                zIndex: 12000,
               }}
             >
               <Pressable
@@ -383,8 +421,8 @@ export function GlobalMusicControlBar({ colors }: Props) {
               <View
                 style={{
                   position: "absolute" as unknown as "relative",
-                  top: volumeBox.top,
-                  right: volumeBox.right,
+                  top: volumeBox?.top ?? 48,
+                  right: volumeBox?.right ?? 16,
                   width: 36,
                   height: 120,
                   borderRadius: 8,
