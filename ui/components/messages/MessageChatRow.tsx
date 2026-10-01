@@ -1,6 +1,6 @@
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Platform, Text, View, type GestureResponderEvent } from "react-native";
+import { Platform, Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../../shared/telegramThreadConstants";
 import { resolveTelegramDisplayName } from "../../../shared/telegramDisplayName";
