@@ -4,6 +4,9 @@ import {
   preferRicherTextSegments,
   resolveMessageDisplaySegments,
 } from "./resolveMessageDisplaySegments";
+import type { MappedReplyMarkup } from "../../../telegram/tdlib/replyMarkupMap";
+
+export type { MappedReplyMarkup };
 
 export type MessageChatContentKind =
   | "text"
@@ -171,6 +174,8 @@ export type MessageChatHistoryItem = {
   audio?: MessageChatAudioPayload | null;
   /** Centered join/leave notice (content_kind service). */
   service_notice?: MessageChatServiceNotice | null;
+  /** Bot inline keyboard (`replyMarkupInlineKeyboard`). */
+  reply_markup?: MappedReplyMarkup | null;
 };
 
 export type HistoryMessageContext = {
@@ -646,5 +651,7 @@ export function mergeHistoryMessageRow(
     audio: incomingEnriched.audio ?? prevEnriched.audio ?? null,
     service_notice:
       incomingEnriched.service_notice ?? prevEnriched.service_notice ?? null,
+    reply_markup:
+      incomingEnriched.reply_markup ?? prevEnriched.reply_markup ?? null,
   });
 }

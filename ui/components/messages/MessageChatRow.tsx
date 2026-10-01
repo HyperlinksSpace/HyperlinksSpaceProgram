@@ -101,6 +101,8 @@ export type MessageChatRowData = {
   voice_chat_is_joined?: boolean;
   /** Private peer is a Telegram bot (userTypeBot). */
   peer_is_bot?: boolean;
+  /** Bot Main Mini App available — show Open App on the chat list. */
+  peer_has_main_web_app?: boolean;
   /** Message ids recently deleted — open chat should drop them immediately. */
   pending_deleted_message_ids?: number[] | null;
 };
@@ -131,6 +133,7 @@ export function MessageChatRow({
   onAvatarPress,
   onPrefetch,
   onOpenContextMenu,
+  onOpenApp,
 }: {
   item: MessageChatRowData;
   isLast: boolean;
@@ -147,6 +150,8 @@ export function MessageChatRow({
   /** Opens peer/chat profile without selecting the row when provided. */
   onAvatarPress?: () => void;
   onPrefetch?: () => void;
+  /** Opens the bot Main Mini App from the chat list (Telegram OPEN). */
+  onOpenApp?: (item: MessageChatRowData) => void;
 }) {
   const { locale, t } = useAppStrings();
   const title = item.title.trim();
@@ -469,7 +474,41 @@ export function MessageChatRow({
               }}
             />
           </View>
-          {showPin || trailing ? <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} /> : null}
+          {showPin || trailing || item.peer_has_main_web_app ? (
+            <View style={{ width: MESSAGE_NAME_TIME_GAP_PX }} />
+          ) : null}
+          {item.peer_has_main_web_app ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t("messages.chatList.openApp")}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onOpenApp?.(item);
+              }}
+              style={({ pressed }) => ({
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.highlight,
+                backgroundColor: colors.undercover,
+                opacity: pressed ? 0.7 : 1,
+                marginRight: trailing || showPin ? 6 : 0,
+              })}
+            >
+              <Text
+                style={{
+                  ...textBase,
+                  color: colors.primary,
+                  fontSize: 11,
+                  lineHeight: 14,
+                  fontWeight: "600",
+                }}
+              >
+                {t("messages.chatList.openApp")}
+              </Text>
+            </Pressable>
+          ) : null}
           {showPin ? <MessageChatPinIcon size={20} color={colors.accent} /> : null}
           {trailing ? <MessageUnreadCountBadge label={trailing} colors={colors} /> : null}
         </View>

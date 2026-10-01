@@ -33,6 +33,8 @@ import {
   type TelegramChannelProfileRole,
   type TelegramUserProfile,
 } from "../../telegram/fetchTelegramUserProfile";
+import { openTelegramBotWebApp } from "../../telegram/openTelegramBotWebApp";
+import { useMessageChatBotWebApp } from "./MessageChatBotWebAppContext";
 import { HYPERLINKS_SPACE_LOGO_GREEN } from "../HyperlinksSpaceLogo";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
@@ -346,6 +348,7 @@ export function MessageChatProfileSheet({
   const colors = useColors();
   const { t, tf, locale } = useAppStrings();
   const { colorScheme } = useTelegram();
+  const botWebApp = useMessageChatBotWebApp();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const defaultSize = useMemo(
     () => resolveFloatingDialogDefaultSize(windowWidth, windowHeight, "profile"),
@@ -606,6 +609,45 @@ export function MessageChatProfileSheet({
   const handleCall = () => {
     onCall?.();
   };
+
+  const handleOpenApp = () => {
+    if (!chat) return;
+    const botUserId = profile?.user_id ?? chat.peer_user_id ?? null;
+    const menu = profile?.bot_menu_button;
+    const source =
+      menu?.url
+        ? "menu_button"
+        : profile?.has_main_web_app || chat.peer_has_main_web_app
+          ? "main_web_app"
+          : "profile";
+    void openTelegramBotWebApp({
+      chatId: chat.telegram_chat_id,
+      botUserId,
+      url: menu?.url ?? "",
+      source,
+    }).then((result) => {
+      if (!result.ok) return;
+      if (botWebApp) {
+        botWebApp.open({
+          url: result.url,
+          title: menu?.text || profile?.title || chat.title || t("messages.profile.actions.openApp"),
+          launchId: result.launch_id,
+        });
+        return;
+      }
+      if (typeof window !== "undefined") {
+        window.open(result.url, "_blank", "noopener,noreferrer");
+      }
+    });
+  };
+
+  const showOpenApp =
+    Boolean(profile?.is_bot || chat?.peer_is_bot) &&
+    Boolean(
+      profile?.has_main_web_app ||
+        chat?.peer_has_main_web_app ||
+        profile?.bot_menu_button?.url,
+    );
 
   const handleChannelPress = () => {
     if (!channel) return;
@@ -876,13 +918,23 @@ export function MessageChatProfileSheet({
           >
             <ProfileMessagesIcon color={colors.primary} size={ACTION_BTN_PX} />
           </ProfileActionButton>
-          <ProfileActionButton
-            label={t("messages.profile.actions.call")}
-            onPress={handleCall}
-            colors={colors}
-          >
-            <ProfilePhoneIcon color={colors.primary} size={ACTION_BTN_PX} />
-          </ProfileActionButton>
+          {showOpenApp ? (
+            <ProfileActionButton
+              label={t("messages.profile.actions.openApp")}
+              onPress={handleOpenApp}
+              colors={colors}
+            >
+              <ProfileMessagesIcon color={colors.primary} size={ACTION_BTN_PX} />
+            </ProfileActionButton>
+          ) : (
+            <ProfileActionButton
+              label={t("messages.profile.actions.call")}
+              onPress={handleCall}
+              colors={colors}
+            >
+              <ProfilePhoneIcon color={colors.primary} size={ACTION_BTN_PX} />
+            </ProfileActionButton>
+          )}
           <ProfileActionButton
             label={t("messages.profile.actions.gift")}
             onPress={() => undefined}

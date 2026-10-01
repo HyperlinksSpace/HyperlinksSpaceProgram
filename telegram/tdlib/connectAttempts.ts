@@ -31,6 +31,10 @@ import {
   STABLE_TOP_CHAT_PAGE_LIMIT,
 } from "./syncChats.js";
 import { fetchChatHistory, fetchChatHistoryAroundMessage, fetchChatHistoryAroundUnread, fetchChatHistorySince, sendChatTextMessage, sendChatPhotoMessage, editChatTextMessage, deleteChatMessages, viewChatInboxMessagesUpTo } from "./chatHistory.js";
+import {
+  getCallbackQueryAnswerForChat,
+  openBotWebAppForChat,
+} from "./botInteractions.js";
 import { readUserAvatarAnimationBytes } from "./chatPhoto.js";
 import { attachLiveChatSync, detachLiveChatSync } from "./liveChatSync.js";
 import { ingestChatFoldersUpdate } from "./chatFolderCache.js";
@@ -2392,6 +2396,59 @@ export async function sendChatMessageForUser(
     return { message, error: null };
   } catch (err) {
     return { message: null, error: classifyTdlibSendError(err, chatId) };
+  }
+}
+
+export async function getChatCallbackQueryAnswerForUser(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  options?: { data?: string; game?: boolean },
+): Promise<{
+  answer: { text: string; show_alert: boolean; url: string } | null;
+  error: string | null;
+}> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { answer: null, error: "session_not_ready" };
+  }
+  try {
+    const answer = await getCallbackQueryAnswerForChat(
+      record.client,
+      chatId,
+      messageId,
+      options,
+    );
+    return { answer, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { answer: null, error: message || "callback_failed" };
+  }
+}
+
+export async function openChatBotWebAppForUser(
+  telegramUsername: string,
+  params: {
+    chatId: number;
+    botUserId: number;
+    url?: string | null;
+    source?: string | null;
+    startParameter?: string | null;
+  },
+): Promise<{
+  webApp: { url: string; launch_id: string | null } | null;
+  error: string | null;
+}> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) {
+    return { webApp: null, error: "session_not_ready" };
+  }
+  try {
+    const webApp = await openBotWebAppForChat(record.client, params);
+    return { webApp, error: null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { webApp: null, error: message || "web_app_open_failed" };
   }
 }
 

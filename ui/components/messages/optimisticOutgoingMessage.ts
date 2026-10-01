@@ -16,8 +16,10 @@ const OUTGOING_ECHO_WINDOW_MS = 60_000;
 
 /**
  * Collapse a local pending bubble into the confirmed server row.
- * Never match two real Telegram ids — consecutive outgoing stickers/photos
- * share empty captions and would otherwise paint as a single message.
+ * Also collapses TDLib temp-id (still `pending`) into the final id once
+ * `updateMessageSendSucceeded` / history poll delivers the permanent message.
+ * Never match two delivered/read real ids — consecutive stickers/photos share
+ * empty captions and would otherwise paint as a single message.
  */
 export function shouldCollapseOutgoingEchoDuplicate(
   row: {
@@ -25,20 +27,33 @@ export function shouldCollapseOutgoingEchoDuplicate(
     is_outgoing?: boolean;
     text?: string;
     sent_at?: string;
+    outgoing_status?: string | null;
+    content_kind?: string | null;
   },
   item: {
     telegram_message_id: number;
     is_outgoing?: boolean;
     text?: string;
     sent_at?: string;
+    outgoing_status?: string | null;
+    content_kind?: string | null;
   },
 ): boolean {
   if (!row.is_outgoing || !item.is_outgoing) return false;
   if (row.telegram_message_id === item.telegram_message_id) return false;
   const rowOptimistic = isOptimisticOutgoingMessageId(row.telegram_message_id);
   const itemOptimistic = isOptimisticOutgoingMessageId(item.telegram_message_id);
-  if (rowOptimistic === itemOptimistic) return false;
+  const rowPending = row.outgoing_status === "pending" || row.outgoing_status === "failed";
+  const itemPending = item.outgoing_status === "pending" || item.outgoing_status === "failed";
+  if (rowOptimistic === itemOptimistic) {
+    // Two real ids: only collapse temp(pending) → final(delivered/read).
+    if (rowOptimistic) return false;
+    if (!(rowPending !== itemPending)) return false;
+  }
   if ((row.text ?? "").trim() !== (item.text ?? "").trim()) return false;
+  const rowKind = row.content_kind ?? "text";
+  const itemKind = item.content_kind ?? "text";
+  if (rowKind !== itemKind) return false;
   const sentAt = Date.parse(item.sent_at ?? "");
   const rowSent = Date.parse(row.sent_at ?? "");
   if (!Number.isFinite(sentAt) || !Number.isFinite(rowSent)) return true;
@@ -82,19 +97,21 @@ export function buildOptimisticOutgoingMessage(params: {
   };
 }
 
-/** Drop local pending rows replaced by the confirmed server message. */
+/** Drop local optimistic rows replaced by the confirmed server message. */
 export function stripMatchingPendingOutgoingMessages(
   messages: readonly MessageChatHistoryItem[],
   confirmed: MessageChatHistoryItem,
 ): MessageChatHistoryItem[] {
   if (!confirmed.is_outgoing) return [...messages];
+  if (isOptimisticOutgoingMessageId(confirmed.telegram_message_id)) return [...messages];
   const confirmedText = confirmed.text.trim();
   const confirmedIsPhoto =
     confirmed.content_kind === "photo" || Boolean(confirmed.has_media);
   let removedPhotoPending = false;
   return messages.filter((row) => {
     if (!isOptimisticOutgoingMessageId(row.telegram_message_id)) return true;
-    if (row.outgoing_status !== "pending") return true;
+    // Always strip matching optimistic rows (even if status was rewritten).
+    if (row.outgoing_status === "failed") return true;
     const rowIsPhoto = row.content_kind === "photo" || Boolean(row.has_media);
     if (confirmedIsPhoto && rowIsPhoto) {
       if (row.text.trim() !== confirmedText) return true;

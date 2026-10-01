@@ -30,6 +30,7 @@ export type TdMessage = {
     };
     content?: Record<string, unknown>;
   };
+  reply_markup?: Record<string, unknown>;
   content?: Record<string, unknown>;
 };
 

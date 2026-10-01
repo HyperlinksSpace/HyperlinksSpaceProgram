@@ -9,6 +9,7 @@ import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { MessageChatBubbleBody } from "./MessageChatBubbleBody";
+import { MessageChatInlineKeyboard } from "./MessageChatInlineKeyboard";
 import { formatMessageChatBubbleTime } from "./formatMessageChatBubbleTime";
 import type { MessageChatHistoryItem, MessageChatKind } from "./messageChatHistoryTypes";
 import {
@@ -794,6 +795,20 @@ export function MessageChatMessageRow({
             />
           </View>
           </Pressable>
+          {item.reply_markup?.kind === "inline" && item.reply_markup.rows.length > 0 ? (
+            <MessageChatInlineKeyboard
+              chatId={chat.telegram_chat_id}
+              messageId={item.telegram_message_id}
+              botUserId={
+                item.is_outgoing
+                  ? chat.peer_user_id
+                  : (item.sender_user_id ?? chat.peer_user_id)
+              }
+              markup={item.reply_markup}
+              colors={colors}
+              maxWidthPx={bubbleMaxWidth}
+            />
+          ) : null}
         </View>
       <MessageChatMessageContextMenu
         visible={actionSheetVisible}

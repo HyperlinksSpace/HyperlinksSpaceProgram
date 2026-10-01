@@ -19,6 +19,12 @@ import { largestPhotoDimensions } from "./photoParse.js";
 import { resolveTdUserProfile, type TdUserProfileCache } from "./tdUserProfile.js";
 import { parseTdAudioMeta } from "./audioMeta.js";
 import { parseTdWebPagePreview, type MappedWebPagePreview } from "./webPageMeta.js";
+import {
+  mapReplyMarkupFromTdMessage,
+  type MappedReplyMarkup,
+} from "./replyMarkupMap.js";
+
+export type { MappedReplyMarkup };
 
 export type ChatKind = "private" | "group" | "supergroup" | "channel";
 
@@ -86,6 +92,8 @@ export type MappedChatHistoryMessage = {
     actor_user_id: number | null;
     actor_name: string;
   } | null;
+  /** Bot inline keyboard attached to the message (`replyMarkupInlineKeyboard`). */
+  reply_markup?: MappedReplyMarkup | null;
 };
 
 type UserProfileCache = Map<number, TdUserProfileCache>;
@@ -893,6 +901,7 @@ export async function mapHistoryMessage(
     senderProfile = await resolveTdUserProfile(client, resolvedSenderUserId, userCache);
   }
   const webPage = isService ? null : parseTdWebPagePreview(resolved.content);
+  const replyMarkup = isService ? null : mapReplyMarkupFromTdMessage(resolved);
 
   return {
     telegram_message_id: telegramMessageId,
@@ -919,6 +928,7 @@ export async function mapHistoryMessage(
     reply_to: isService ? null : replyTo,
     reply_to_message_id: isService ? null : replyToMessageId,
     ...(webPage ? { web_page: webPage } : {}),
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
     ...(isCall ? { call_success: parseCallSuccess(resolved) } : {}),
     ...(audioMeta
       ? {

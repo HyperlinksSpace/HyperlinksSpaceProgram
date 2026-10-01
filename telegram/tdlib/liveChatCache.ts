@@ -57,6 +57,8 @@ export type LiveChatRow = {
   peer_accent_color_dark?: string | null;
   /** Private peer is a Telegram bot. */
   peer_is_bot?: boolean | null;
+  /** Bot Main Mini App available — show Open App on the chat list. */
+  peer_has_main_web_app?: boolean | null;
   presence_kind: ChatPresenceKind | null;
   presence_at: string | null;
   chat_action: ChatActionKind | null;
@@ -397,6 +399,7 @@ export function patchLiveChatFromTdlib(
     peer_accent_color_light: existing?.peer_accent_color_light ?? null,
     peer_accent_color_dark: existing?.peer_accent_color_dark ?? null,
     peer_is_bot: existing?.peer_is_bot ?? null,
+    peer_has_main_web_app: existing?.peer_has_main_web_app ?? null,
     presence_kind: existing?.presence_kind ?? null,
     presence_at: existing?.presence_at ?? null,
     chat_action: existing?.chat_action ?? null,

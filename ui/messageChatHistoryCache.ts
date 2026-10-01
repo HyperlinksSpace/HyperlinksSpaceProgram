@@ -1,8 +1,5 @@
 import { MESSAGE_CHAT_CACHE_MESSAGES_MAX } from "./components/messages/messageChatLayout";
-import {
-  enrichHistoryMessageDisplay,
-  mergeHistoryMessageRow,
-} from "./components/messages/messageChatHistoryTypes";
+import { mergeHistoryMessages } from "./components/messages/chatHistoryMerge";
 import type { ChatHistoryPageResult } from "./telegram/fetchTelegramChatHistoryPage";
 
 export type CachedChatHistoryPage = ChatHistoryPageResult & {
@@ -323,21 +320,9 @@ export function mergeCachedChatHistoryTail(
     setCachedChatHistory(chatId, tail);
     return;
   }
-  const byId = new Map(existing.messages.map((row) => [row.telegram_message_id, row]));
-  for (const row of tail.messages) {
-    const prev = byId.get(row.telegram_message_id);
-    byId.set(
-      row.telegram_message_id,
-      prev
-        ? mergeHistoryMessageRow(prev, row)
-        : enrichHistoryMessageDisplay(row),
-    );
-  }
-  let messages = [...byId.values()].sort((a, b) => {
-    const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
-    if (byTime !== 0) return byTime;
-    return a.telegram_message_id - b.telegram_message_id;
-  });
+  // mergeHistoryMessages collapses optimistic/temp outgoing echoes globally so
+  // cache listeners cannot re-paint a duplicate beside the confirmed id.
+  let messages = mergeHistoryMessages(existing.messages, tail.messages);
   const trimmedFromOlder =
     messages.length > MESSAGE_CHAT_CACHE_MESSAGES_MAX
       ? messages.length - MESSAGE_CHAT_CACHE_MESSAGES_MAX

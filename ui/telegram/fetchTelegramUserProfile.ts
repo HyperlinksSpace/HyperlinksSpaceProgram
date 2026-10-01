@@ -49,6 +49,9 @@ export type TelegramUserProfile = {
   phone_number: string | null;
   status_text: string | null;
   is_bot: boolean;
+  has_main_web_app: boolean;
+  /** Bot menu button that opens a Web App (text + url). */
+  bot_menu_button: { text: string; url: string } | null;
   is_blocked: boolean;
   emoji_status_custom_emoji_id: string | null;
   profile_photo: TelegramProfilePhotoMarkup | null;
@@ -100,8 +103,23 @@ function profileRequestKey(chatId: number, peerUserId?: number | null): string {
 }
 
 function normalizeProfilePayload(profile: TelegramUserProfile): TelegramUserProfile {
+  const menu =
+    profile.bot_menu_button &&
+    typeof profile.bot_menu_button === "object" &&
+    typeof profile.bot_menu_button.text === "string" &&
+    profile.bot_menu_button.text.trim() &&
+    typeof profile.bot_menu_button.url === "string" &&
+    profile.bot_menu_button.url.trim()
+      ? {
+          text: profile.bot_menu_button.text.trim(),
+          url: profile.bot_menu_button.url.trim(),
+        }
+      : null;
   return {
     ...profile,
+    is_bot: Boolean(profile.is_bot),
+    has_main_web_app: Boolean(profile.has_main_web_app),
+    bot_menu_button: menu,
     is_blocked: Boolean(profile.is_blocked),
     usernames: Array.isArray(profile.usernames)
       ? profile.usernames.filter(
@@ -134,6 +152,7 @@ export function seedTelegramUserProfileFromChat(input: {
   chat_kind?: string | null;
   peer_emoji_status_custom_emoji_id?: string | null;
   peer_is_bot?: boolean | null;
+  peer_has_main_web_app?: boolean | null;
   member_count?: number | null;
   presence_kind?: string | null;
   presence_at?: string | null;
@@ -160,6 +179,8 @@ export function seedTelegramUserProfileFromChat(input: {
     phone_number: null,
     status_text: input.status_text?.trim() || null,
     is_bot: Boolean(input.peer_is_bot),
+    has_main_web_app: Boolean(input.peer_has_main_web_app),
+    bot_menu_button: null,
     is_blocked: false,
     emoji_status_custom_emoji_id: input.peer_emoji_status_custom_emoji_id ?? null,
     profile_photo: null,

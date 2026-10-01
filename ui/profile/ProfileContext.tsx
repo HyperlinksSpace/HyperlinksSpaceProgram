@@ -11,6 +11,7 @@ import {
 import { View } from "react-native";
 import type { MessageChatRowData } from "../components/messages/MessageChatRow";
 import { MessageChatProfileSheet } from "../components/messages/MessageChatProfileSheet";
+import { MessageChatBotWebAppProvider } from "../components/messages/MessageChatBotWebAppContext";
 import { MessageChatProfilePlaylistSheet } from "../components/messages/MessageChatProfilePlaylistSheet";
 import { ActiveVoiceCallDock } from "../components/messages/ActiveVoiceCallDock";
 import { GlobalMusicControlBar } from "../components/music/GlobalMusicControlBar";
@@ -50,6 +51,7 @@ export type ProfileSheetTarget = {
   presence_kind?: MessageChatRowData["presence_kind"];
   presence_at?: string | null;
   peer_is_bot?: boolean;
+  peer_has_main_web_app?: boolean;
   member_count?: number | null;
 };
 
@@ -76,6 +78,7 @@ function toProfileChat(target: ProfileSheetTarget | MessageChatRowData): Message
     presence_kind: t.presence_kind ?? null,
     presence_at: t.presence_at ?? null,
     peer_is_bot: t.peer_is_bot ?? false,
+    peer_has_main_web_app: t.peer_has_main_web_app ?? false,
     member_count: t.member_count ?? null,
   };
 }
@@ -199,48 +202,50 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const colors = useColors();
 
   return (
-    <ProfileContext.Provider value={value}>
-      <View style={{ flex: 1, minHeight: 0, width: "100%", alignSelf: "stretch" }}>
-        <GlobalMusicControlBar colors={colors} />
-        <ActiveVoiceCallDock colors={colors} inline />
+    <MessageChatBotWebAppProvider>
+      <ProfileContext.Provider value={value}>
         <View style={{ flex: 1, minHeight: 0, width: "100%", alignSelf: "stretch" }}>
-          {children}
+          <GlobalMusicControlBar colors={colors} />
+          <ActiveVoiceCallDock colors={colors} inline />
+          <View style={{ flex: 1, minHeight: 0, width: "100%", alignSelf: "stretch" }}>
+            {children}
+          </View>
         </View>
-      </View>
-      <MusicPlayerEngine />
-      <MessageChatProfileSheet
-        visible={profileSheetVisible}
-        chat={profileChat}
-        onClose={closeProfileSheet}
-        onCall={() => {
-          if (profileChat) startPrivateCall(profileChat);
-        }}
-      />
-      <MessageChatProfilePlaylistSheet
-        visible={musicPlaylistSheetVisible && playlistSheetTracks.length > 0}
-        tracks={playlistSheetTracks}
-        onBack={closeMusicPlaylistSheet}
-        onClose={closeMusicPlaylistSheet}
-      />
-      {privateCallAlive && privateCallChat ? (
-        <Suspense
-          fallback={
-            privateCallVisible ? (
-              <PrivateCallLoadingShell chat={privateCallChat} onClose={minimizePrivateCall} />
-            ) : null
-          }
-        >
-          <MessageChatPrivateCallHost
-            peer={{ chat: privateCallChat }}
-            visible={privateCallVisible}
-            openSeq={privateCallOpenSeq}
-            onClose={minimizePrivateCall}
-            onHangUp={endPrivateCall}
-            onReopen={reopenPrivateCall}
-          />
-        </Suspense>
-      ) : null}
-    </ProfileContext.Provider>
+        <MusicPlayerEngine />
+        <MessageChatProfileSheet
+          visible={profileSheetVisible}
+          chat={profileChat}
+          onClose={closeProfileSheet}
+          onCall={() => {
+            if (profileChat) startPrivateCall(profileChat);
+          }}
+        />
+        <MessageChatProfilePlaylistSheet
+          visible={musicPlaylistSheetVisible && playlistSheetTracks.length > 0}
+          tracks={playlistSheetTracks}
+          onBack={closeMusicPlaylistSheet}
+          onClose={closeMusicPlaylistSheet}
+        />
+        {privateCallAlive && privateCallChat ? (
+          <Suspense
+            fallback={
+              privateCallVisible ? (
+                <PrivateCallLoadingShell chat={privateCallChat} onClose={minimizePrivateCall} />
+              ) : null
+            }
+          >
+            <MessageChatPrivateCallHost
+              peer={{ chat: privateCallChat }}
+              visible={privateCallVisible}
+              openSeq={privateCallOpenSeq}
+              onClose={minimizePrivateCall}
+              onHangUp={endPrivateCall}
+              onReopen={reopenPrivateCall}
+            />
+          </Suspense>
+        ) : null}
+      </ProfileContext.Provider>
+    </MessageChatBotWebAppProvider>
   );
 }
 

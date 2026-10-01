@@ -1604,6 +1604,81 @@ export async function gatewaySendChatMessage(
   return { message, error: null };
 }
 
+export async function gatewayAnswerCallbackQuery(
+  telegramUsername: string,
+  chatId: number,
+  messageId: number,
+  options?: { data?: string; game?: boolean },
+): Promise<{
+  text: string;
+  show_alert: boolean;
+  url: string;
+  error: string | null;
+}> {
+  const { response, json } = await gatewayFetch("/v1/chat/messages/callback", {
+    method: "POST",
+    body: JSON.stringify({
+      telegramUsername,
+      chatId,
+      messageId,
+      data: options?.data ?? "",
+      game: Boolean(options?.game),
+    }),
+  });
+  if (!response.ok || !json.ok) {
+    return {
+      text: "",
+      show_alert: false,
+      url: "",
+      error: typeof json.error === "string" ? json.error : "callback_failed",
+    };
+  }
+  return {
+    text: typeof json.text === "string" ? json.text : "",
+    show_alert: Boolean(json.show_alert),
+    url: typeof json.url === "string" ? json.url : "",
+    error: null,
+  };
+}
+
+export async function gatewayOpenBotWebApp(
+  telegramUsername: string,
+  params: {
+    chatId: number;
+    botUserId: number;
+    url?: string | null;
+    source?: string | null;
+    startParameter?: string | null;
+  },
+): Promise<{ url: string; launch_id: string | null; error: string | null }> {
+  const { response, json } = await gatewayFetch("/v1/chat/web-app/open", {
+    method: "POST",
+    body: JSON.stringify({
+      telegramUsername,
+      chatId: params.chatId,
+      botUserId: params.botUserId,
+      url: params.url ?? "",
+      source: params.source ?? "inline_button",
+      startParameter: params.startParameter ?? "",
+    }),
+  });
+  if (!response.ok || !json.ok) {
+    return {
+      url: "",
+      launch_id: null,
+      error: typeof json.error === "string" ? json.error : "web_app_open_failed",
+    };
+  }
+  return {
+    url: typeof json.url === "string" ? json.url : "",
+    launch_id:
+      json.launch_id != null && String(json.launch_id).trim()
+        ? String(json.launch_id)
+        : null,
+    error: null,
+  };
+}
+
 export async function gatewaySendChatPhoto(
   telegramUsername: string,
   chatId: number,

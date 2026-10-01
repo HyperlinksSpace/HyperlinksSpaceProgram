@@ -1,6 +1,7 @@
 import { buildApiUrl } from "../../api/_base";
 import { normalizeFormattedTextSegments } from "../../shared/formattedTextSegments";
 import { safeTelegramUserIdForLog } from "../../shared/appLog";
+import { normalizeMappedReplyMarkup } from "../../telegram/tdlib/replyMarkupMap";
 import type {
   MessageChatAudioPayload,
   MessageChatContentKind,
@@ -229,6 +230,7 @@ export function normalizeHistoryMessage(
     web_page: parseHistoryWebPage(row.web_page ?? row.webPage),
     call_success: isCall ? Boolean(row.call_success ?? row.callSuccess) : undefined,
     audio: parseHistoryAudio(row.audio),
+    reply_markup: normalizeMappedReplyMarkup(row.reply_markup ?? row.replyMarkup),
     service_notice: (() => {
       const rawNotice = row.service_notice ?? row.serviceNotice;
       if (!rawNotice || typeof rawNotice !== "object" || Array.isArray(rawNotice)) {

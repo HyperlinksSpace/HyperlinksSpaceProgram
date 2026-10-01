@@ -38,6 +38,8 @@ import {
 } from "../messageChatHistoryPrefetch";
 import { unlockVoiceAutoplay } from "../telegram/unlockVoiceAutoplay";
 import { publishTelegramChatDirectory } from "../telegram/telegramChatDirectory";
+import { openTelegramBotWebApp } from "../telegram/openTelegramBotWebApp";
+import { useMessageChatBotWebApp } from "./messages/MessageChatBotWebAppContext";
 import { getCachedChatHistory } from "../messageChatHistoryCache";
 import {
   clearQueuedNormalNetworkFetches,
@@ -374,6 +376,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
     voice_chat_group_call_id: normalizeTelegramGroupCallId(row.voice_chat_group_call_id),
     voice_chat_is_joined: Boolean(row.voice_chat_is_joined),
     peer_is_bot: Boolean(row.peer_is_bot),
+    peer_has_main_web_app: Boolean(row.peer_has_main_web_app),
     pending_deleted_message_ids: (() => {
       if (!Array.isArray(row.pending_deleted_message_ids)) return null;
       const ids = row.pending_deleted_message_ids
@@ -451,7 +454,8 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       Boolean(a.has_active_voice_chat) !== Boolean(b.has_active_voice_chat) ||
       a.voice_chat_group_call_id !== b.voice_chat_group_call_id ||
       Boolean(a.voice_chat_is_joined) !== Boolean(b.voice_chat_is_joined) ||
-      Boolean(a.peer_is_bot) !== Boolean(b.peer_is_bot)
+      Boolean(a.peer_is_bot) !== Boolean(b.peer_is_bot) ||
+      Boolean(a.peer_has_main_web_app) !== Boolean(b.peer_has_main_web_app)
     ) {
       return true;
     }
@@ -495,7 +499,8 @@ function reuseChatRowIfEqual(
     Boolean(prev.has_active_voice_chat) === Boolean(next.has_active_voice_chat) &&
     prev.voice_chat_group_call_id === next.voice_chat_group_call_id &&
     Boolean(prev.voice_chat_is_joined) === Boolean(next.voice_chat_is_joined) &&
-    Boolean(prev.peer_is_bot) === Boolean(next.peer_is_bot)
+    Boolean(prev.peer_is_bot) === Boolean(next.peer_is_bot) &&
+    Boolean(prev.peer_has_main_web_app) === Boolean(next.peer_has_main_web_app)
   ) {
     return prev;
   }
@@ -667,11 +672,36 @@ const CHAT_LIST_AUTO_LOAD_MORE_MS = 1_800;
 export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Props) {
   const { t, tf } = useAppStrings();
   const { openProfileSheet } = useProfileSheet();
+  const botWebApp = useMessageChatBotWebApp();
   const { authReady, isAuthenticated, sessionTelegramMessagesConnected } = useAuth();
   const { isTelegramMessagesConnected, refreshStatus, recoverTelegramMessagesSession } =
     useTelegramMessagesConnection();
   const recoverChatsInFlightRef = useRef(false);
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
+
+  const handleChatListOpenApp = useCallback(
+    (row: MessageChatRowData) => {
+      void openTelegramBotWebApp({
+        chatId: row.telegram_chat_id,
+        botUserId: row.peer_user_id,
+        source: "chat_list",
+      }).then((result) => {
+        if (!result.ok) return;
+        if (botWebApp) {
+          botWebApp.open({
+            url: result.url,
+            title: row.title || t("messages.profile.actions.openApp"),
+            launchId: result.launch_id,
+          });
+          return;
+        }
+        if (typeof window !== "undefined") {
+          window.open(result.url, "_blank", "noopener,noreferrer");
+        }
+      });
+    },
+    [botWebApp, t],
+  );
 
   // Push main-list unread only (archived chats stay out of the Messages nav badge).
   useEffect(() => {
@@ -3002,6 +3032,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               onOpenContextMenu={(anchor) => handleOpenChatListMenu(item.row, anchor)}
               onAvatarPress={() => openProfileSheet(item.row)}
               onPrefetch={() => handleRowPrefetch(item.row)}
+              onOpenApp={handleChatListOpenApp}
             />
           </View>
         );

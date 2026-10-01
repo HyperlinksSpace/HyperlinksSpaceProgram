@@ -40,6 +40,10 @@ export type TelegramUserProfilePayload = {
   phone_number: string | null;
   status_text: string | null;
   is_bot: boolean;
+  /** True when the bot exposes a Main Mini App (Open App). */
+  has_main_web_app: boolean;
+  /** Bot menu button that opens a Web App (replaces commands menu). */
+  bot_menu_button: { text: string; url: string } | null;
   is_blocked: boolean;
   emoji_status_custom_emoji_id: string | null;
   profile_photo: TelegramProfilePhotoMarkup | null;
@@ -426,6 +430,8 @@ export async function fetchTelegramUserProfile(
     phone_number: null,
     status_text: null,
     is_bot: false,
+    has_main_web_app: false,
+    bot_menu_button: null,
     is_blocked: false,
     emoji_status_custom_emoji_id: null,
     profile_photo: null,
@@ -452,6 +458,10 @@ export async function fetchTelegramUserProfile(
       base.phone_number = formatPhoneDisplay(phoneFromTdUser(user));
       base.status_text = statusTextFromTdUser(user);
       base.is_bot = isBotFromTdUser(user);
+      const userType = asRecord(user.type);
+      if (userType?._ === "userTypeBot") {
+        base.has_main_web_app = Boolean(userType.has_main_web_app);
+      }
       base.emoji_status_custom_emoji_id = emojiStatusCustomIdFromUser(user);
       base.music = musicFromTdUser(user);
     } catch {
@@ -464,7 +474,10 @@ export async function fetchTelegramUserProfile(
         user_id: resolvedUserId,
       })) as {
         bio?: unknown;
-        bot_info?: { description?: string };
+        bot_info?: {
+          description?: string;
+          menu_button?: { text?: string; url?: string };
+        };
         personal_chat_id?: number;
         personalChatId?: number;
         first_profile_audio?: unknown;
@@ -484,6 +497,19 @@ export async function fetchTelegramUserProfile(
       if (bio) base.bio = bio;
       else if (typeof full.bot_info?.description === "string" && full.bot_info.description.trim()) {
         base.bio = full.bot_info.description.trim();
+      }
+      const menuButton = full.bot_info?.menu_button;
+      if (
+        menuButton &&
+        typeof menuButton.text === "string" &&
+        menuButton.text.trim() &&
+        typeof menuButton.url === "string" &&
+        menuButton.url.trim()
+      ) {
+        base.bot_menu_button = {
+          text: menuButton.text.trim(),
+          url: menuButton.url.trim(),
+        };
       }
       const giftCount = Number(full.gift_count ?? full.giftCount ?? 0);
       if (Number.isFinite(giftCount) && giftCount > 0) {

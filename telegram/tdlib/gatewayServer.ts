@@ -74,6 +74,8 @@ import {
   submitConnectPhoneNumber,
   sendChatMessageForUser,
   sendChatPhotoForUser,
+  getChatCallbackQueryAnswerForUser,
+  openChatBotWebAppForUser,
   leaveChatVoiceForUser,
   joinChatVoiceForUser,
   startChatVoiceScreenShareForUser,
@@ -1031,6 +1033,104 @@ export function startTdlibGatewayServer(): http.Server {
           sendJson(res, result.error ? 503 : 200, {
             ok: !result.error,
             message: result.message,
+            error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/chat/messages/callback") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            messageId?: number;
+            data?: string;
+            game?: boolean;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const messageId = Number(body.messageId);
+          if (
+            !telegramUsername ||
+            !Number.isFinite(chatId) ||
+            !Number.isFinite(messageId) ||
+            messageId <= 0
+          ) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await getChatCallbackQueryAnswerForUser(
+            telegramUsername,
+            chatId,
+            messageId,
+            {
+              data: typeof body.data === "string" ? body.data : "",
+              game: Boolean(body.game),
+            },
+          );
+          logGateway("chat_callback_answer", {
+            telegramUsername,
+            chatId,
+            messageId,
+            ok: !result.error,
+            hasText: Boolean(result.answer?.text),
+            hasUrl: Boolean(result.answer?.url),
+            error: result.error,
+            ms: Date.now() - started,
+          });
+          sendJson(res, result.error ? 503 : 200, {
+            ok: !result.error,
+            text: result.answer?.text ?? "",
+            show_alert: result.answer?.show_alert ?? false,
+            url: result.answer?.url ?? "",
+            error: result.error,
+          });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/chat/web-app/open") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            botUserId?: number;
+            url?: string;
+            source?: string;
+            startParameter?: string;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const botUserId = Number(body.botUserId);
+          if (
+            !telegramUsername ||
+            !Number.isFinite(chatId) ||
+            !Number.isFinite(botUserId) ||
+            botUserId <= 0
+          ) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const started = Date.now();
+          const result = await openChatBotWebAppForUser(telegramUsername, {
+            chatId,
+            botUserId,
+            url: typeof body.url === "string" ? body.url : "",
+            source: typeof body.source === "string" ? body.source : "inline_button",
+            startParameter:
+              typeof body.startParameter === "string" ? body.startParameter : "",
+          });
+          logGateway("chat_web_app_open", {
+            telegramUsername,
+            chatId,
+            botUserId,
+            ok: !result.error,
+            source: typeof body.source === "string" ? body.source : "inline_button",
+            error: result.error,
+            ms: Date.now() - started,
+          });
+          sendJson(res, result.error ? 503 : 200, {
+            ok: !result.error,
+            url: result.webApp?.url ?? "",
+            launch_id: result.webApp?.launch_id ?? null,
             error: result.error,
           });
           return;

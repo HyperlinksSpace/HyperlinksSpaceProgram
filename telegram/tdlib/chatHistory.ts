@@ -22,6 +22,83 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * TDLib `sendMessage` returns a temporary id while `sending_state` is pending.
+ * Wait for `updateMessageSendSucceeded` so the API/cache only ever see the
+ * permanent id — otherwise history polls paint a second bubble for the final id.
+ */
+function waitForOutgoingMessageSendResult(
+  client: Client,
+  chatId: number,
+  tempMessageId: number,
+  timeoutMs = 20_000,
+): Promise<TdMessage | null> {
+  if (!(Number.isFinite(tempMessageId) && tempMessageId > 0)) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (message: TdMessage | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        client.removeListener("update", onUpdate);
+      } catch {
+        /* ignore */
+      }
+      resolve(message);
+    };
+    const onUpdate = (update: Record<string, unknown>) => {
+      const type = update._;
+      if (type === "updateMessageSendSucceeded") {
+        const oldId = Number(update.old_message_id);
+        const message = update.message as TdMessage | undefined;
+        const messageChatId = Number(message?.chat_id);
+        if (
+          oldId === tempMessageId &&
+          message &&
+          (!Number.isFinite(messageChatId) || messageChatId === chatId)
+        ) {
+          finish(message);
+        }
+        return;
+      }
+      if (type === "updateMessageSendFailed") {
+        const oldId = Number(update.old_message_id);
+        if (oldId === tempMessageId) finish(null);
+      }
+    };
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    client.on("update", onUpdate);
+  });
+}
+
+async function mapOutgoingSendResult(
+  client: Client,
+  chatId: number,
+  sent: TdMessage,
+): Promise<MappedChatHistoryMessage | null> {
+  const tempId = Number(sent.id);
+  let resolved = sent;
+  let sendCompleted = !sent.sending_state;
+  if (sent.sending_state?._ === "messageSendingStatePending") {
+    const finalMessage = await waitForOutgoingMessageSendResult(client, chatId, tempId);
+    if (finalMessage) {
+      resolved = finalMessage;
+      sendCompleted = true;
+    }
+  }
+  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const myUserId = await resolveMyUserId(client);
+  const mapped = await mapHistoryMessage(client, resolved, chat, new Map(), new Map(), myUserId);
+  if (!mapped || !mapped.is_outgoing) return mapped;
+  if (sendCompleted && mapped.outgoing_status === "pending") {
+    return { ...mapped, outgoing_status: "delivered" };
+  }
+  return mapped;
+}
+
 function sortHistoryMessages(rows: MappedChatHistoryMessage[]): MappedChatHistoryMessage[] {
   return [...rows].sort((a, b) => {
     const byTime = Date.parse(a.sent_at) - Date.parse(b.sent_at);
@@ -683,14 +760,7 @@ export async function sendChatTextMessage(
     },
   })) as TdMessage;
 
-  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-  const myUserId = await resolveMyUserId(client);
-  const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map(), myUserId);
-  if (!mapped || !mapped.is_outgoing) return mapped;
-  if (mapped.outgoing_status === "pending") {
-    return { ...mapped, outgoing_status: "delivered" };
-  }
-  return mapped;
+  return mapOutgoingSendResult(client, chatId, message);
 }
 
 const MAX_OUTGOING_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -760,14 +830,7 @@ export async function sendChatPhotoMessage(
       },
     })) as TdMessage;
 
-    const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
-    const myUserId = await resolveMyUserId(client);
-    const mapped = await mapHistoryMessage(client, message, chat, new Map(), new Map(), myUserId);
-    if (!mapped || !mapped.is_outgoing) return mapped;
-    if (mapped.outgoing_status === "pending") {
-      return { ...mapped, outgoing_status: "delivered" };
-    }
-    return mapped;
+    return mapOutgoingSendResult(client, chatId, message);
   } finally {
     await fs.promises.unlink(tempPath).catch(() => undefined);
   }
