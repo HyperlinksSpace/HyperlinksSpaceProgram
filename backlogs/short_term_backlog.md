@@ -1,3 +1,4 @@
+Messages lazy loading, fullscreen, on loading on tma
 Music interrupting
 no hsp 
 
