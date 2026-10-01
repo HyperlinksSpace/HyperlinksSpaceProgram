@@ -59,12 +59,12 @@ const ROW_GAP_PX = 10;
 /** Approximate row height for viewport-based cover fetch / row virtualization. */
 const PLAYLIST_ROW_STRIDE_PX = 56;
 /**
- * Playlist covers are 40×40 — prefer embedded minithumbnail (`cover_data_url`).
- * Only fetch the TDLib album_cover_thumbnail proxy when mini is missing, and only
- * for rows near the viewport (never full album art).
+ * Playlist covers are 40×40. Minithumbnails (~40px JPEG, often smaller) stay as
+ * instant placeholders; visible rows lazy-fetch album_cover_thumbnail (sharp
+ * enough at COVER_PX) via the auth proxy — never full album art.
  */
 const PLAYLIST_COVER_PREFETCH_ROWS = 4;
-/** Warm a short first screen of API-cover fallbacks before scroll metrics settle. */
+/** Warm a short first screen of thumbnail covers before scroll metrics settle. */
 const PLAYLIST_COVER_OPEN_PREFETCH = 8;
 /** Extra rows kept mounted above/below the viewport (DOM virtualization). */
 const PLAYLIST_ROW_OVERSCAN = 8;
@@ -101,16 +101,22 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-/**
- * Playlist list covers: minithumbnail first (tiny, already in profile payload).
- * Fall back to authenticated thumbnail proxy only when mini is absent.
- */
+/** Sharp album_cover_thumbnail proxy when available; else embedded minithumbnail. */
 function trackCoverUri(track: TelegramProfileAudioTrack): string | null {
+  if (track.cover_file_id != null) {
+    return telegramProfileAudioCoverUrl(track.user_id, track.cover_file_id);
+  }
   if (typeof track.cover_data_url === "string" && track.cover_data_url.trim()) {
     return track.cover_data_url.trim();
   }
-  if (track.cover_file_id != null) {
-    return telegramProfileAudioCoverUrl(track.user_id, track.cover_file_id);
+  return null;
+}
+
+/** Instant blurry preview while the thumbnail proxy loads. */
+function trackCoverPlaceholder(track: TelegramProfileAudioTrack): string | null {
+  if (track.cover_file_id == null) return null;
+  if (typeof track.cover_data_url === "string" && track.cover_data_url.trim()) {
+    return track.cover_data_url.trim();
   }
   return null;
 }
@@ -218,8 +224,7 @@ export function MessageChatProfilePlaylistSheet({
 
   useEffect(() => {
     if (!visible) return;
-    // Only network-prefetch thumbnail proxies missing a minithumbnail — never
-    // upgrade 40px rows to full cover art, and never queue off-screen rows.
+    // Prefetch album_cover_thumbnail for near-viewport rows only (not full art).
     for (let i = coverFetchWindow.start; i <= coverFetchWindow.end; i += 1) {
       const track = localTracks[i];
       if (!track) continue;
@@ -367,6 +372,7 @@ export function MessageChatProfilePlaylistSheet({
                 .filter(Boolean)
                 .join(", ");
               const cover = trackCoverUri(track);
+              const coverPlaceholder = trackCoverPlaceholder(track);
               const coverNeedsNetwork = cover != null && trackCoverNeedsNetworkFetch(cover);
               const coverLoadEnabled =
                 !coverNeedsNetwork ||
@@ -470,6 +476,7 @@ export function MessageChatProfilePlaylistSheet({
                     >
                       <MessageChatProfileAudioCoverImage
                         uri={cover}
+                        placeholderUri={coverPlaceholder}
                         sizePx={COVER_PX}
                         loadEnabled={coverLoadEnabled}
                         fetchPriority={

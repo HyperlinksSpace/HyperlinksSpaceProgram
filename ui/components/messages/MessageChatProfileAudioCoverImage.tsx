@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
-import { Platform, StyleSheet } from "react-native";
+import { Platform } from "react-native";
 import { runQueuedNetworkFetch, type NetworkFetchPriority } from "./networkFetchQueue";
 
 function needsAuthenticatedFetch(uri: string): boolean {
@@ -106,6 +106,8 @@ async function fetchCoverBlob(uri: string): Promise<string | null> {
 
 type Props = {
   uri: string;
+  /** Instant low-res preview (e.g. minithumbnail) shown until `uri` loads. */
+  placeholderUri?: string | null;
   sizePx: number;
   style?: StyleProp<ImageStyle>;
   loadEnabled?: boolean;
@@ -117,6 +119,7 @@ type Props = {
 /** Profile playlist covers; API proxy URLs require session cookies on web. */
 export function MessageChatProfileAudioCoverImage({
   uri,
+  placeholderUri = null,
   sizePx,
   style,
   loadEnabled = true,
@@ -129,7 +132,13 @@ export function MessageChatProfileAudioCoverImage({
     getCoverCacheRevision,
     getCoverCacheRevision,
   );
-  const [displayUri, setDisplayUri] = useState<string | null>(() => readCachedDisplayUri(uri));
+  const [displayUri, setDisplayUri] = useState<string | null>(() => {
+    const cached = readCachedDisplayUri(uri);
+    if (cached) return cached;
+    if (placeholderUri && !needsAuthenticatedFetch(placeholderUri)) return placeholderUri;
+    return null;
+  });
+  const [sharpReady, setSharpReady] = useState(() => Boolean(readCachedDisplayUri(uri)));
   const onLoadRef = useRef(onLoad);
   const onErrorRef = useRef(onError);
 
@@ -140,8 +149,19 @@ export function MessageChatProfileAudioCoverImage({
 
   useEffect(() => {
     const cached = readCachedDisplayUri(uri);
-    if (cached) setDisplayUri(cached);
-  }, [uri, cacheRevision]);
+    if (cached) {
+      setDisplayUri(cached);
+      setSharpReady(true);
+      return;
+    }
+    if (placeholderUri && !needsAuthenticatedFetch(placeholderUri)) {
+      setDisplayUri(placeholderUri);
+      setSharpReady(false);
+      return;
+    }
+    setDisplayUri(null);
+    setSharpReady(false);
+  }, [uri, placeholderUri, cacheRevision]);
 
   useEffect(() => {
     if (!loadEnabled) return;
@@ -150,6 +170,7 @@ export function MessageChatProfileAudioCoverImage({
     const cached = readCachedDisplayUri(uri);
     if (cached) {
       setDisplayUri(cached);
+      setSharpReady(true);
       return;
     }
 
@@ -159,15 +180,19 @@ export function MessageChatProfileAudioCoverImage({
       if (cancelled) return;
       const next = await fetchCoverBlob(uri);
       if (!cancelled) {
-        if (next) setDisplayUri(next);
-        else onErrorRef.current?.(new Error("cover_unavailable"));
+        if (next) {
+          setDisplayUri(next);
+          setSharpReady(true);
+        } else if (!placeholderUri) {
+          onErrorRef.current?.(new Error("cover_unavailable"));
+        }
       }
     }, { priority: fetchPriority });
 
     return () => {
       cancelled = true;
     };
-  }, [uri, loadEnabled, fetchPriority]);
+  }, [uri, placeholderUri, loadEnabled, fetchPriority]);
 
   if (!displayUri) return null;
 
@@ -175,7 +200,9 @@ export function MessageChatProfileAudioCoverImage({
     <Image
       source={{ uri: displayUri }}
       accessibilityIgnoresInvertColors
-      onLoad={() => onLoadRef.current?.()}
+      onLoad={() => {
+        if (sharpReady || !needsAuthenticatedFetch(uri)) onLoadRef.current?.();
+      }}
       onError={(event) => onErrorRef.current?.(event.error ?? "unknown_cover_error")}
       style={[
         { width: sizePx, height: sizePx, borderRadius: 0 },
