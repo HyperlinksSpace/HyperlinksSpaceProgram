@@ -1661,6 +1661,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     return () => clearTimeout(id);
   }, [authReady, initialChatListRevealed, isTelegramMessagesConnected]);
 
+  // Stable callbacks for bootstrap — do not re-run wipe/seed when loadChats
+  // identity changes (that fired dual initial_mount resyncs and blanked the list).
+  const triggerGatewayResyncRef = useRef(triggerGatewayResync);
+  triggerGatewayResyncRef.current = triggerGatewayResync;
+  const initialBootstrapEpochRef = useRef(0);
+
   useEffect(() => {
     if (!authReady) return;
     lastGatewayResyncRef.current = 0;
@@ -1678,6 +1684,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     let cancelled = false;
     let paintPollTimer: ReturnType<typeof setTimeout> | null = null;
+    const bootstrapEpoch = ++initialBootstrapEpochRef.current;
 
     const paintPoll = async () => {
       if (cancelled || !isTelegramMessagesConnected) return;
@@ -1685,7 +1692,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         deferredSilentChatLoadRef.current = true;
         return;
       }
-      await loadChats({ silent: true, forceFull: true });
+      await loadChatsRef.current({ silent: true, forceFull: true });
       if (cancelled) return;
       if (initialChatListRevealedRef.current) {
         setListBootstrapPending(false);
@@ -1701,7 +1708,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     void (async () => {
       // Kick resync and first paint poll in parallel. Resync seeds the ordered
       // top page; paint poll reveals it as soon as stableTopReady flips.
-      void triggerGatewayResync("initial_mount");
+      // One resync per connected epoch — gateway also coalesces concurrent calls.
+      if (bootstrapEpoch === initialBootstrapEpochRef.current) {
+        void triggerGatewayResyncRef.current("initial_mount");
+      }
       await paintPoll();
       if (cancelled) return;
       const sync = getChatListSyncStatus();
@@ -1716,7 +1726,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       cancelled = true;
       if (paintPollTimer != null) clearTimeout(paintPollTimer);
     };
-  }, [authReady, isTelegramMessagesConnected, loadChats, triggerGatewayResync]);
+  }, [authReady, isTelegramMessagesConnected]);
 
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected) return;

@@ -1653,11 +1653,45 @@ const RESYNC_RESTORE_SESSION_WAIT_MS = 90_000;
 
 export { RESYNC_HTTP_SESSION_WAIT_MS, RESYNC_RESTORE_SESSION_WAIT_MS };
 
+type ResyncUserChatsResult = {
+  chatCount: number;
+  backfillCount: number;
+  error: string | null;
+};
+
+/** Concurrent full-list resyncs for the same user join one promise (avoids wipe→wipe). */
+const fullResyncInflight = new Map<string, Promise<ResyncUserChatsResult>>();
+
 /** Re-sync chat list + avatars for an already-authorized user (no QR). */
 export async function resyncUserChats(
   telegramUsername: string,
   options?: { chatIds?: number[]; maxWaitMs?: number },
-): Promise<{ chatCount: number; backfillCount: number; error: string | null }> {
+): Promise<ResyncUserChatsResult> {
+  const backfillOnly = Boolean(options?.chatIds?.length);
+  if (!backfillOnly) {
+    const pending = fullResyncInflight.get(telegramUsername);
+    if (pending) {
+      logGateway("connect_resync_coalesce", { telegramUsername });
+      return pending;
+    }
+  }
+
+  const run = runResyncUserChats(telegramUsername, options);
+  if (!backfillOnly) {
+    fullResyncInflight.set(telegramUsername, run);
+    void run.finally(() => {
+      if (fullResyncInflight.get(telegramUsername) === run) {
+        fullResyncInflight.delete(telegramUsername);
+      }
+    });
+  }
+  return run;
+}
+
+async function runResyncUserChats(
+  telegramUsername: string,
+  options?: { chatIds?: number[]; maxWaitMs?: number },
+): Promise<ResyncUserChatsResult> {
   logGateway("connect_resync_start", {
     telegramUsername,
     hasActiveRecord: Boolean(getActiveRecord(telegramUsername)),
@@ -1691,6 +1725,44 @@ export async function resyncUserChats(
       const backfillCount = await refreshLiveChats(record.client, telegramUsername, options.chatIds);
       logConnectEvent(record, "connect_backfill_ok", { backfillCount });
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
+    }
+
+    // Session restore / a prior resync may already have seeded the ordered top.
+    // Wiping again blanks the client for another full TDLib round-trip (logs: dual
+    // initial_mount resync ~16–18s with empty list until the second seed finishes).
+    {
+      const { getLiveChatList } = await import("./liveChatCache.js");
+      const { isStableTopReady } = await import("./chatListSyncState.js");
+      const existing = getLiveChatList(telegramUsername);
+      if (isStableTopReady(telegramUsername) && (existing?.length ?? 0) > 0) {
+        attachLiveChatSync(record);
+        record.chatCount = existing!.length;
+        logConnectEvent(record, "connect_resync_reuse_stable_top", {
+          chatCount: existing!.length,
+        });
+        const client = record.client;
+        void (async () => {
+          try {
+            const count = await syncChatThreads(client, telegramUsername, {
+              maxMainChats: null,
+              includeArchive: false,
+              includeSupplementarySearch: false,
+              skipMemberCounts: true,
+              replaceCache: true,
+            });
+            const active = getActiveRecord(telegramUsername);
+            if (active?.client === client) {
+              active.chatCount = count;
+              scheduleBackgroundChatSync(client, telegramUsername);
+            }
+            logConnectEvent(record, "connect_resync_ok", { chatCount: count, reusedStableTop: true });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "sync_failed";
+            logConnectEvent(record, "connect_resync_full_warning", { message, reusedStableTop: true });
+          }
+        })();
+        return { chatCount: existing!.length, backfillCount: 0, error: null };
+      }
     }
 
     // Hold serve + wipe prior list BEFORE attach so live upserts cannot race the seed.
