@@ -9,7 +9,7 @@ no hsp
 safe zone to the left to click-scroll
 min scrolling ind height
 
-frozen DLLR should remain frozen
+frozen DLLR should remain frozen, hot/frozen transfers switch in send
 
 AI Sidecar sharing
 scrolling vs movement, header/footer
