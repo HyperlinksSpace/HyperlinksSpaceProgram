@@ -3,9 +3,14 @@
  * Keyed by users.telegram_username (same id as sessions / wallets).
  */
 import { Address } from "@ton/core";
+import type { DllrLedgerKind } from "../shared/dllrLedgerKind.js";
+import { applyDllrSameKindTransfer } from "../shared/dllrLedgerTransfer.js";
 import { sql } from "./start.js";
 import { normalizeUsername } from "./users.js";
 import { findUsernamesByWalletAddress } from "./wallets.js";
+
+export type { DllrLedgerKind };
+export { applyDllrSameKindTransfer };
 
 /** Registration gift — frozen until product rules change (must match ui/pro/dllrBalanceStore). */
 export const DLLR_REGISTRATION_FROZEN_USD = 1;
@@ -203,13 +208,15 @@ export type TransferDllrResult =
   | { ok: false; error: string };
 
 /**
- * Move DLLR between two built-in ledger accounts (hot first, then frozen on debit;
- * credit always lands in recipient hot).
+ * Move DLLR between two built-in ledger accounts.
+ * Debits the chosen leg and credits the same leg on the recipient
+ * (hot stays hot; frozen stays frozen).
  */
 export async function transferDllrBetweenUsernames(input: {
   fromUsername: string;
   toUsername: string;
   amountUsd: number;
+  ledgerKind: DllrLedgerKind;
 }): Promise<TransferDllrResult> {
   const fromUser = normalizeUsername(input.fromUsername);
   const toUser = normalizeUsername(input.toUsername);
@@ -218,38 +225,31 @@ export async function transferDllrBetweenUsernames(input: {
   if (!fromUser || !toUser) return { ok: false, error: "username_required" };
   if (fromUser === toUser) return { ok: false, error: "cannot_send_to_self" };
   if (!(amountUsd > 0)) return { ok: false, error: "invalid_amount" };
+  if (input.ledgerKind !== "hot" && input.ledgerKind !== "frozen") {
+    return { ok: false, error: "invalid_ledger_kind" };
+  }
 
   const fromLedger = (await getDllrLedgerForUsername(fromUser)) ?? {
     username: fromUser,
     hotUsd: 0,
     frozenUsd: 0,
   };
-  const total = roundUsd(fromLedger.hotUsd + fromLedger.frozenUsd);
-  if (total + 1e-9 < amountUsd) {
-    return { ok: false, error: "insufficient_dllr" };
-  }
-
-  let left = amountUsd;
-  const fromHotDebit = Math.min(fromLedger.hotUsd, left);
-  left = roundUsd(left - fromHotDebit);
-  const fromFrozenDebit = left > 0 ? Math.min(fromLedger.frozenUsd, left) : 0;
-
-  const nextFrom: DllrLedgerRow = {
-    username: fromUser,
-    hotUsd: roundUsd(fromLedger.hotUsd - fromHotDebit),
-    frozenUsd: roundUsd(fromLedger.frozenUsd - fromFrozenDebit),
-  };
-
   const toLedger = (await getDllrLedgerForUsername(toUser)) ?? {
     username: toUser,
     hotUsd: 0,
     frozenUsd: 0,
   };
-  const nextTo: DllrLedgerRow = {
-    username: toUser,
-    hotUsd: roundUsd(toLedger.hotUsd + amountUsd),
-    frozenUsd: toLedger.frozenUsd,
-  };
+
+  const applied = applyDllrSameKindTransfer({
+    from: fromLedger,
+    to: toLedger,
+    amountUsd,
+    ledgerKind: input.ledgerKind,
+  });
+  if (!applied.ok) return applied;
+
+  const nextFrom = applied.from;
+  const nextTo = applied.to;
 
   await sql.transaction([
     sql`
@@ -272,5 +272,5 @@ export async function transferDllrBetweenUsernames(input: {
     `,
   ]);
 
-  return { ok: true, from: nextFrom, to: nextTo, amountUsd };
+  return { ok: true, from: nextFrom, to: nextTo, amountUsd: applied.amountUsd };
 }
