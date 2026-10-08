@@ -23,6 +23,7 @@ import { sha256Hex } from "../_lib/telegram-oidc.js";
 import { unwrapMnemonicFromWalletRow } from "../_lib/unwrapWalletMnemonic.js";
 import { parseRequestJsonBody } from "../_lib/parse-request-body.js";
 import { appLog } from "../../shared/appLog.js";
+import { parseDllrLedgerKind } from "../../shared/dllrLedgerKind.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 const LOG_TAG = "[api/wallet-send]";
@@ -43,6 +44,9 @@ type PostBody = {
   jettonMasterAddress?: unknown;
   comment?: unknown;
   asset?: unknown;
+  /** DLLR only: which ledger leg to debit/credit (`hot` | `frozen`). */
+  ledgerKind?: unknown;
+  dllrLedgerKind?: unknown;
 };
 
 function sendJson(res: NodeRes | undefined, body: object, status: number): Response | void {
@@ -166,6 +170,13 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         return sendJson(res, { ok: false, error: "invalid_amount" }, 400);
       }
 
+      const ledgerKind = parseDllrLedgerKind(
+        postBody.ledgerKind ?? postBody.dllrLedgerKind,
+      );
+      if (!ledgerKind) {
+        return sendJson(res, { ok: false, error: "invalid_ledger_kind" }, 400);
+      }
+
       if (tonAddressesEqual(wallet.wallet_address, toAddress)) {
         return sendJson(res, { ok: false, error: "cannot_send_to_self" }, 400);
       }
@@ -179,6 +190,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         fromUsername: username,
         toUsername,
         amountUsd,
+        ledgerKind,
       });
 
       appLog(LOG_TAG, transfer.ok ? "dllr_send_ok" : "dllr_send_failed", {
@@ -187,6 +199,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         ok: transfer.ok,
         error: transfer.ok ? undefined : transfer.error,
         amountUsd,
+        ledgerKind,
         commentLen: comment.trim().length,
       });
 
@@ -224,6 +237,7 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
           ok: true,
           asset: DLLR_ASSET,
           amountUsd: transfer.amountUsd,
+          ledgerKind,
           fromAddress: wallet.wallet_address,
           toAddress,
           toUsername,
