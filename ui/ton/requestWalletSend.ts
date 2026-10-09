@@ -1,4 +1,5 @@
 import { buildApiUrl } from "../../api/_base";
+import type { DllrLedgerKind } from "../../shared/dllrLedgerKind";
 import {
   bumpWalletBalanceRefresh,
   scheduleWalletBalanceRefreshBurst,
@@ -13,6 +14,7 @@ export type WalletSendClientResult =
       toAddress?: string;
       asset?: "dllr" | "chain";
       amountUsd?: number;
+      ledgerKind?: DllrLedgerKind;
       comment?: string;
       dllrHotUsd?: number;
       dllrFrozenUsd?: number;
@@ -36,6 +38,8 @@ export async function requestWalletSend(opts: {
   jettonMasterAddress?: string | null;
   /** When true, server moves DLLR ledger balances (no chain tx). */
   dllr?: boolean;
+  /** Required when `dllr` — which ledger leg to move (hot stays hot, frozen stays frozen). */
+  dllrLedgerKind?: DllrLedgerKind;
   comment?: string;
   initDataRaw?: string | null;
 }): Promise<WalletSendClientResult> {
@@ -49,6 +53,9 @@ export async function requestWalletSend(opts: {
     body.asset = "dllr";
     // Backup signal if `asset` is stripped by a proxy — server also treats this as DLLR.
     body.jettonMasterAddress = "jetton:dllr";
+    if (opts.dllrLedgerKind === "hot" || opts.dllrLedgerKind === "frozen") {
+      body.ledgerKind = opts.dllrLedgerKind;
+    }
   } else if (opts.jettonMasterAddress?.trim()) {
     body.jettonMasterAddress = opts.jettonMasterAddress.trim();
   }
@@ -73,6 +80,7 @@ export async function requestWalletSend(opts: {
       toUsername?: string;
       asset?: string;
       amountUsd?: number;
+      ledgerKind?: string;
       comment?: string;
       error?: string;
       dllr_hot_usd?: number;
@@ -103,6 +111,10 @@ export async function requestWalletSend(opts: {
       }
       bumpWalletBalanceRefresh();
       scheduleWalletBalanceRefreshBurst([3_000, 12_000, 30_000]);
+      const ledgerKind =
+        data.ledgerKind === "hot" || data.ledgerKind === "frozen"
+          ? data.ledgerKind
+          : opts.dllrLedgerKind;
       return {
         ok: true,
         seqno: typeof data.seqno === "number" ? data.seqno : undefined,
@@ -110,6 +122,7 @@ export async function requestWalletSend(opts: {
         toAddress: typeof data.toAddress === "string" ? data.toAddress : opts.toAddress.trim(),
         asset: isDllr ? "dllr" : "chain",
         amountUsd: typeof data.amountUsd === "number" ? data.amountUsd : undefined,
+        ledgerKind,
         comment: typeof data.comment === "string" ? data.comment : undefined,
         dllrHotUsd: data.dllr_hot_usd,
         dllrFrozenUsd: data.dllr_frozen_usd,
