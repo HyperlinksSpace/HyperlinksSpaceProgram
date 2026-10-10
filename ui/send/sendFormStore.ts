@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import type { DllrLedgerKind } from "../../shared/dllrLedgerKind";
 import {
   SWAP_DLLR_TOKEN,
   type SwapPairToken,
@@ -17,6 +18,8 @@ export type SendFormState = {
   sourceKind: SendSourceKind;
   balancesLoading: boolean;
   sending: boolean;
+  /** When token is DLLR — which ledger leg the send uses. */
+  dllrLedgerKind: DllrLedgerKind;
 };
 
 let state: SendFormState = {
@@ -29,6 +32,7 @@ let state: SendFormState = {
   sourceKind: "builtin",
   balancesLoading: false,
   sending: false,
+  dllrLedgerKind: "hot",
 };
 
 let sendAction: (() => void) | null = null;
@@ -57,6 +61,12 @@ export function setSendFormAmount(amount: string) {
   emit();
 }
 
+export function setSendFormDllrLedgerKind(dllrLedgerKind: DllrLedgerKind) {
+  if (state.dllrLedgerKind === dllrLedgerKind) return;
+  state = { ...state, dllrLedgerKind };
+  emit();
+}
+
 export function setSendFormState(patch: Partial<SendFormState>) {
   const next: SendFormState = {
     address: patch.address ?? state.address,
@@ -68,6 +78,7 @@ export function setSendFormState(patch: Partial<SendFormState>) {
     sourceKind: patch.sourceKind ?? state.sourceKind,
     balancesLoading: patch.balancesLoading ?? state.balancesLoading,
     sending: patch.sending ?? state.sending,
+    dllrLedgerKind: patch.dllrLedgerKind ?? state.dllrLedgerKind,
   };
   if (
     next.address === state.address &&
@@ -78,7 +89,8 @@ export function setSendFormState(patch: Partial<SendFormState>) {
     next.priceUsd === state.priceUsd &&
     next.sourceKind === state.sourceKind &&
     next.balancesLoading === state.balancesLoading &&
-    next.sending === state.sending
+    next.sending === state.sending &&
+    next.dllrLedgerKind === state.dllrLedgerKind
   ) {
     return;
   }
