@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { parseLocaleAmount } from "../../format/localeAmountFormat";
-import { swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
+import { isDllrToken, swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
 import {
   runSendFormAction,
   useSendFormState,
@@ -37,8 +37,10 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
   const address = (addressProp ?? form.address).trim();
   const symbol = swapTokenDisplaySymbol(form.token);
   const amountNum = parseLocaleAmount(form.amount, locale);
-  // DLLR is cross-wallet (ledger); never freeze the CTA just because another wallet is selected.
-  const dllrFrozen = false;
+  // Empty selected DLLR leg (hot/frozen) disables send — not a global freeze notice.
+  const dllrLegEmpty = isDllrToken(form.token)
+    ? !(parseLocaleAmount(form.balanceText, locale) ?? 0)
+    : false;
   const balanceNum = parseLocaleAmount(form.balanceText, locale);
   const insufficient =
     !form.balancesLoading &&
@@ -47,7 +49,7 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
     amountNum > balanceNum;
   const hasAddress = Boolean(address);
   const buttonActive =
-    !dllrFrozen &&
+    !dllrLegEmpty &&
     !form.sending &&
     !form.balancesLoading &&
     hasAddress &&
@@ -73,8 +75,8 @@ export function SendActionRow({ density = "compact", address: addressProp }: Pro
         })
       : shortSummaryLabel;
 
-  const noticeFull = dllrFrozen ? t("send.action.dllrFrozen") : null;
-  const noticeShort = dllrFrozen ? t("send.action.dllrFrozenShort") : null;
+  const noticeFull = dllrLegEmpty ? t("send.action.dllrFrozen") : null;
+  const noticeShort = dllrLegEmpty ? t("send.action.dllrFrozenShort") : null;
   const hasNotice = noticeFull != null;
 
   const [rowWidth, setRowWidth] = useState(0);
