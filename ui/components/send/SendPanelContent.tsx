@@ -40,6 +40,7 @@ import {
   useColors,
 } from "../../theme";
 import { SendActionRow } from "./SendActionRow";
+import { SendDllrLedgerKindRow } from "./SendDllrLedgerKindRow";
 import {
   SendTransferSuccessDialog,
   type SendTransferSuccessDetails,
@@ -59,8 +60,11 @@ import {
 } from "../../wallet/walletBalanceRefresh";
 import {
   getBuiltinDllrBalanceUsd,
+  getBuiltinDllrFrozenUsd,
+  getBuiltinDllrHotUsd,
   subscribeBuiltinDllrBalance,
 } from "../../pro/dllrBalanceStore";
+import type { DllrLedgerKind } from "../../../shared/dllrLedgerKind";
 import {
   isDllrToken,
   isNativeTonToken,
@@ -207,6 +211,17 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     getBuiltinDllrBalanceUsd,
     getBuiltinDllrBalanceUsd,
   );
+  const dllrHotUsd = useSyncExternalStore(
+    subscribeBuiltinDllrBalance,
+    getBuiltinDllrHotUsd,
+    getBuiltinDllrHotUsd,
+  );
+  const dllrFrozenUsd = useSyncExternalStore(
+    subscribeBuiltinDllrBalance,
+    getBuiltinDllrFrozenUsd,
+    getBuiltinDllrFrozenUsd,
+  );
+  const [dllrLedgerKind, setDllrLedgerKind] = useState<DllrLedgerKind>("hot");
   const wasActiveRef = useRef(isActive);
 
   const builtin = walletAddress.trim();
@@ -359,14 +374,37 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     void refreshBalances();
   }, [dllrBalanceUsd, isActive, locale, refreshBalances]);
 
+  const sendingDllrSelected = isDllrToken(selected.token);
+
+  // Prefer a funded ledger leg when the current choice is empty.
+  useEffect(() => {
+    if (!sendingDllrSelected) return;
+    const hotOk = dllrHotUsd > 1e-9;
+    const frozenOk = dllrFrozenUsd > 1e-9;
+    if (dllrLedgerKind === "hot" && !hotOk && frozenOk) {
+      setDllrLedgerKind("frozen");
+      return;
+    }
+    if (dllrLedgerKind === "frozen" && !frozenOk && hotOk) {
+      setDllrLedgerKind("hot");
+    }
+  }, [dllrFrozenUsd, dllrHotUsd, dllrLedgerKind, sendingDllrSelected]);
+
+  const dllrLegBalanceUsd =
+    dllrLedgerKind === "frozen" ? dllrFrozenUsd : dllrHotUsd;
+  const effectiveBalanceText = sendingDllrSelected
+    ? formatLocaleDllrBalance(dllrLegBalanceUsd, locale)
+    : selected.balanceText;
+
   useEffect(() => {
     setSendFormState({
       token: selected.token,
-      balanceText: selected.balanceText,
+      balanceText: effectiveBalanceText,
       priceUsd: selected.priceUsd,
       sourceKind,
+      dllrLedgerKind,
     });
-  }, [selected, sourceKind]);
+  }, [dllrLedgerKind, effectiveBalanceText, selected.priceUsd, selected.token, sourceKind]);
 
   const selectedSymbol = swapTokenDisplaySymbol(selected.token);
   const enteredAmount = useMemo(
@@ -374,8 +412,8 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     [form.amount, locale],
   );
   const availableBalance = useMemo(
-    () => parseLocaleAmount(selected.balanceText, locale),
-    [locale, selected.balanceText],
+    () => parseLocaleAmount(effectiveBalanceText, locale),
+    [effectiveBalanceText, locale],
   );
   const insufficientBalance =
     !form.balancesLoading &&
@@ -401,23 +439,30 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
             trimFractionZeros: true,
           })}$`;
 
+  const dllrKindLabel =
+    dllrLedgerKind === "frozen" ? t("send.dllrLedger.frozen") : t("send.dllrLedger.hot");
   const havingLine = form.balancesLoading
     ? t("send.havingLoading")
-    : tf("send.havingLine", {
-        amount: selected.balanceText,
-        symbol: selectedSymbol,
-      });
+    : sendingDllrSelected
+      ? tf("send.havingLineDllr", {
+          amount: effectiveBalanceText,
+          kind: dllrKindLabel,
+        })
+      : tf("send.havingLine", {
+          amount: effectiveBalanceText,
+          symbol: selectedSymbol,
+        });
 
   const onMaxPress = useCallback(() => {
-    if (!selected.balanceText || selected.balanceText === "0" || selected.balanceText === "—") {
+    if (!effectiveBalanceText || effectiveBalanceText === "0" || effectiveBalanceText === "—") {
       return;
     }
-    const n = parseLocaleAmount(selected.balanceText, locale);
+    const n = parseLocaleAmount(effectiveBalanceText, locale);
     if (n == null) return;
     setSendFormAmount(
       n.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 18 }),
     );
-  }, [locale, selected.balanceText]);
+  }, [effectiveBalanceText, locale]);
 
   const onSend = useCallback(async () => {
     if (form.sending) return;
@@ -427,6 +472,11 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     const amountCanonical = toCanonicalAmount(form.amount, locale);
     if (!toAddress || !amountCanonical || enteredAmount == null || enteredAmount <= 0) return;
     if (insufficientBalance) return;
+    if (sendingDllr) {
+      const legOk =
+        dllrLedgerKind === "frozen" ? dllrFrozenUsd > 1e-9 : dllrHotUsd > 1e-9;
+      if (!legOk) return;
+    }
 
     setSendError(null);
     setSendFormState({ sending: true });
@@ -440,6 +490,7 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
           amount: amountCanonical,
           decimals: selected.token.decimals,
           dllr: true,
+          dllrLedgerKind,
           jettonMasterAddress: null,
           comment: form.comment,
           initDataRaw: initData,
@@ -450,14 +501,16 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
             err === "recipient_not_builtin_wallet"
               ? t("send.error.recipientNotBuiltin")
               : err === "insufficient_dllr"
-                ? t("send.error.insufficientDllr")
-                : err === "cannot_send_to_self"
-                  ? t("send.error.cannotSendToSelf")
-                  : err === "missing_to_address"
-                    ? t("send.error.missingAddress")
-                    : err === "invalid_amount" || err === "missing_amount"
-                      ? t("send.error.generic")
-                      : err,
+                ? tf("send.error.insufficientDllrLeg", { kind: dllrKindLabel })
+                : err === "invalid_ledger_kind"
+                  ? t("send.error.invalidLedgerKind")
+                  : err === "cannot_send_to_self"
+                    ? t("send.error.cannotSendToSelf")
+                    : err === "missing_to_address"
+                      ? t("send.error.missingAddress")
+                      : err === "invalid_amount" || err === "missing_amount"
+                        ? t("send.error.generic")
+                        : err,
           );
           return;
         }
@@ -572,6 +625,10 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     }
   }, [
     builtin,
+    dllrFrozenUsd,
+    dllrHotUsd,
+    dllrKindLabel,
+    dllrLedgerKind,
     enteredAmount,
     form.address,
     form.amount,
@@ -585,6 +642,7 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     sourceAddress,
     sourceKind,
     t,
+    tf,
     ton,
   ]);
 
@@ -718,6 +776,25 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
           <Text style={muted15}>{usdLabel}</Text>
           <Text style={muted15}>{havingLine}</Text>
         </View>
+
+        {sendingDllrSelected ? (
+          <>
+            <View style={{ height: SECTION_GAP_PX }} />
+            <Text
+              style={[label20, { color: colors.primary }]}
+              accessibilityLabel={t("send.dllrLedger.a11y")}
+            >
+              {t("send.dllrLedger.label")}
+            </Text>
+            <View style={{ height: SECTION_GAP_PX }} />
+            <SendDllrLedgerKindRow
+              kind={dllrLedgerKind}
+              onChange={setDllrLedgerKind}
+              hotUsd={dllrHotUsd}
+              frozenUsd={dllrFrozenUsd}
+            />
+          </>
+        ) : null}
 
         {sendError ? (
           <>
