@@ -949,68 +949,79 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
   }, [applyChatListSync]);
 
+  const gatewayResyncInflightRef = useRef<Promise<boolean> | null>(null);
   const triggerGatewayResync = useCallback(async (reason: string) => {
+    if (gatewayResyncInflightRef.current) {
+      logPageDisplay("messages_gateway_resync_coalesce", { reason });
+      return gatewayResyncInflightRef.current;
+    }
     const url = buildApiUrl("/api/telegram-messages-resync");
     const started = Date.now();
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const json = (await response.json().catch(() => ({}))) as {
-        ok?: boolean;
-        chatCount?: number;
-        error?: string;
-        needsReconnect?: boolean;
-        connected?: boolean;
-        warming?: boolean;
-      };
-      setGatewayWarming(Boolean(json.warming));
-      logPageDisplay("messages_gateway_resync", {
-        reason,
-        ok: json.ok ?? false,
-        warming: json.warming ?? false,
-        chatCount: json.chatCount ?? null,
-        error: json.error ?? null,
-        needsReconnect: json.needsReconnect ?? false,
-        elapsedMs: Date.now() - started,
-        status: response.status,
-      });
-      lastGatewayResyncRef.current = Date.now();
-      if (response.status >= 500) {
-        setGatewayWarming(false);
-        logPageDisplay("messages_gateway_resync_timeout", {
-          reason,
-          status: response.status,
-          elapsedMs: Date.now() - started,
+    const run = (async () => {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
         });
-        const recovered = await recoverTelegramMessagesSession();
-        if (!recovered) await refreshStatus();
+        const json = (await response.json().catch(() => ({}))) as {
+          ok?: boolean;
+          chatCount?: number;
+          error?: string;
+          needsReconnect?: boolean;
+          connected?: boolean;
+          warming?: boolean;
+        };
+        setGatewayWarming(Boolean(json.warming));
+        logPageDisplay("messages_gateway_resync", {
+          reason,
+          ok: json.ok ?? false,
+          warming: json.warming ?? false,
+          chatCount: json.chatCount ?? null,
+          error: json.error ?? null,
+          needsReconnect: json.needsReconnect ?? false,
+          elapsedMs: Date.now() - started,
+          status: response.status,
+        });
+        lastGatewayResyncRef.current = Date.now();
+        if (response.status >= 500) {
+          setGatewayWarming(false);
+          logPageDisplay("messages_gateway_resync_timeout", {
+            reason,
+            status: response.status,
+            elapsedMs: Date.now() - started,
+          });
+          const recovered = await recoverTelegramMessagesSession();
+          if (!recovered) await refreshStatus();
+          return false;
+        }
+        if (json.warming) {
+          return true;
+        }
+        if (json.needsReconnect || json.connected === false || response.status === 403) {
+          setGatewayWarming(false);
+          const recovered = await recoverTelegramMessagesSession();
+          if (!recovered) await refreshStatus();
+          return false;
+        }
+        // Do not clear warming while the list is still empty — resync often
+        // finishes before startTransition applies the first chat rows, which
+        // briefly showed "No chats yet." and raced a heavy sync apply.
+        if (json.ok && (json.chatCount ?? 0) > 0 && chatsCountRef.current > 0) {
+          setGatewayWarming(false);
+        }
+        return response.ok && json.ok !== false;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        logPageDisplay("messages_gateway_resync_error", { reason, message });
         return false;
+      } finally {
+        gatewayResyncInflightRef.current = null;
       }
-      if (json.warming) {
-        return true;
-      }
-      if (json.needsReconnect || json.connected === false || response.status === 403) {
-        setGatewayWarming(false);
-        const recovered = await recoverTelegramMessagesSession();
-        if (!recovered) await refreshStatus();
-        return false;
-      }
-      // Do not clear warming while the list is still empty — resync often
-      // finishes before startTransition applies the first chat rows, which
-      // briefly showed "No chats yet." and raced a heavy sync apply.
-      if (json.ok && (json.chatCount ?? 0) > 0 && chatsCountRef.current > 0) {
-        setGatewayWarming(false);
-      }
-      return response.ok && json.ok !== false;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      logPageDisplay("messages_gateway_resync_error", { reason, message });
-      return false;
-    }
+    })();
+    gatewayResyncInflightRef.current = run;
+    return run;
   }, [recoverTelegramMessagesSession, refreshStatus]);
 
   const loadChats = useCallback(async (options?: {

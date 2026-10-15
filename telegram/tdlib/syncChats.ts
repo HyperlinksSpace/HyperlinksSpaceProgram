@@ -96,10 +96,24 @@ export const INITIAL_POSITIONED_SYNC_LIMIT = 2000;
 /** First ordered page seeded before full sync so the UI paints top-of-list, not live-arrival order. */
 export const STABLE_TOP_CHAT_PAGE_LIMIT = 50;
 /**
- * Enrich this many top rows before returning from the stable-top sync so the
- * visible edge has titles+previews while the rest of the page fills in background.
+ * Seed + flip stableTopReady after this many ordered main-list rows so the
+ * visible viewport paints without waiting for the full top page (~27s cold).
+ */
+export const STABLE_TOP_FIRST_PAINT = 16;
+/**
+ * Enrich this many top rows after first paint so the visible edge gets
+ * titles+previews while the rest of the page fills in background.
  */
 export const STABLE_TOP_VISIBLE_ENRICH = 24;
+
+/** Join concurrent ordered-top syncs for the same user (restore vs resync race). */
+const stableTopSyncInflight = new Map<string, Promise<number>>();
+
+export function getStableTopSyncInflight(
+  telegramUsername: string,
+): Promise<number> | null {
+  return stableTopSyncInflight.get(telegramUsername) ?? null;
+}
 /** @deprecated Use INITIAL_POSITIONED_SYNC_LIMIT — kept for client constant parity. */
 export const INITIAL_MAIN_CHAT_SYNC_LIMIT = INITIAL_POSITIONED_SYNC_LIMIT;
 /** Each deferred page after the initial snapshot. */
@@ -297,17 +311,33 @@ async function hydrateChatsByIds(
   return result;
 }
 
+type OrderedMainBatch = {
+  chats: TdChat[];
+  positionedComplete: boolean;
+  positionedKept: number;
+};
+
 async function loadPinnedAndPositionedChats(
   client: Client,
   maxPositioned: number,
+  options?: {
+    /** Fire as soon as the ordered main-list head is long enough to paint. */
+    onFirstPaint?: (chats: TdChat[]) => void;
+    firstPaintCount?: number;
+  },
 ): Promise<{ chats: TdChat[]; positionedComplete: boolean }> {
   const chatList = { _: "chatListMain" } as const;
+  const firstPaintTarget = Math.max(8, options?.firstPaintCount ?? STABLE_TOP_FIRST_PAINT);
+  let firstPaintSent = false;
 
   const orderedFromSnap = async (
-    snap: { chatIds: number[] },
-    positionedComplete: boolean,
-  ): Promise<{ chats: TdChat[]; positionedComplete: boolean }> => {
-    const hydrated = await hydrateChatsByIds(client, snap.chatIds);
+    snap: { chatIds: number[]; totalCount: number },
+    listExhausted: boolean,
+  ): Promise<OrderedMainBatch> => {
+    // Hydrate only a buffer above the target — never walk every id with getChat.
+    const hydrated = await hydrateChatsByIds(client, snap.chatIds, {
+      maxChats: maxPositioned + 40,
+    });
     const byId = new Map<number, TdChat>();
     for (const chat of hydrated) byId.set(chat.id, chat);
 
@@ -327,30 +357,47 @@ async function loadPinnedAndPositionedChats(
     }
     return {
       chats: ordered,
-      positionedComplete: positionedComplete || positionedKept >= maxPositioned,
+      positionedKept,
+      positionedComplete:
+        listExhausted ||
+        positionedKept >= maxPositioned ||
+        (snap.totalCount > 0 && snap.chatIds.length >= snap.totalCount && positionedKept > 0),
     };
   };
 
+  const maybeFirstPaint = (visible: TdChat[]) => {
+    if (firstPaintSent || !options?.onFirstPaint || visible.length === 0) return;
+    // Viewport-sized ordered head is enough — do not wait for the full top page.
+    if (visible.length < Math.min(firstPaintTarget, 8)) return;
+    firstPaintSent = true;
+    options.onFirstPaint(visible.slice(0, Math.min(visible.length, firstPaintTarget)));
+  };
+
   // Load enough into TDLib memory, then snapshot from the start (no offsets).
-  let loaded: { chats: TdChat[]; positionedComplete: boolean } | null = null;
-  for (let round = 0; round < 80; round += 1) {
+  // Prior implementation hydrated every chat id every round just to count
+  // positioned rows — that alone could take 20–30s before any seed.
+  let loaded: OrderedMainBatch | null = null;
+  for (let round = 0; round < 24; round += 1) {
     const snap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
-    let positionedCount = 0;
-    for (const chatId of snap.chatIds) {
-      try {
-        const chat = await hydrateChatPositions(client, chatId);
-        if (chat && !isChatPinnedInMainList(chat)) positionedCount += 1;
-      } catch {
-        /* ignore */
+    if (snap.chatIds.length > 0) {
+      const batch = await orderedFromSnap(snap, false);
+      const visible = await omitHiddenPrivateChats(client, batch.chats);
+      maybeFirstPaint(visible);
+      if (batch.positionedKept >= maxPositioned || batch.positionedComplete) {
+        loaded = { ...batch, chats: visible };
+        break;
       }
     }
-    if (positionedCount >= maxPositioned) break;
     try {
       await client.invoke({ _: "loadChats", chat_list: chatList, limit: 100 });
       await sleep(40);
     } catch (err) {
       if (isTdlibListExhaustedError(err)) {
-        loaded = await orderedFromSnap(snap, true);
+        const exhaustedSnap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
+        const batch = await orderedFromSnap(exhaustedSnap, true);
+        const visible = await omitHiddenPrivateChats(client, batch.chats);
+        maybeFirstPaint(visible);
+        loaded = { ...batch, chats: visible };
         break;
       }
       break;
@@ -359,12 +406,14 @@ async function loadPinnedAndPositionedChats(
 
   if (!loaded) {
     const finalSnap = await getChatsSnapshot(client, chatList, maxPositioned + 100);
-    loaded = await orderedFromSnap(finalSnap, false);
+    const batch = await orderedFromSnap(finalSnap, false);
+    const visible = await omitHiddenPrivateChats(client, batch.chats);
+    maybeFirstPaint(visible);
+    loaded = { ...batch, chats: visible };
   }
 
-  const visible = await omitHiddenPrivateChats(client, loaded.chats);
   return {
-    chats: visible,
+    chats: loaded.chats,
     positionedComplete: loaded.positionedComplete,
   };
 }
@@ -1054,6 +1103,37 @@ export async function syncChatThreads(
   telegramUsername: string,
   options?: SyncChatThreadsOptions,
 ): Promise<number> {
+  const maxPositioned = options?.maxMainChats ?? null;
+  /** First Telegram-style page: pins + top of main list only (no archive/folders). */
+  const isStableTopPage = maxPositioned === STABLE_TOP_CHAT_PAGE_LIMIT;
+
+  // Restore + client resync often race; join so the second caller does not wipe
+  // a half-seeded ordered top and restart the slow TDLib walk.
+  if (isStableTopPage) {
+    const pending = stableTopSyncInflight.get(telegramUsername);
+    if (pending) {
+      logGateway("sync_chat_threads_stable_top_join", { telegramUsername });
+      return pending;
+    }
+  }
+
+  const run = runSyncChatThreads(client, telegramUsername, options);
+  if (isStableTopPage) {
+    stableTopSyncInflight.set(telegramUsername, run);
+    void run.finally(() => {
+      if (stableTopSyncInflight.get(telegramUsername) === run) {
+        stableTopSyncInflight.delete(telegramUsername);
+      }
+    });
+  }
+  return run;
+}
+
+async function runSyncChatThreads(
+  client: Client,
+  telegramUsername: string,
+  options?: SyncChatThreadsOptions,
+): Promise<number> {
   setLiveChatSelfUserId(telegramUsername, await resolveMyUserId(client));
 
   const maxPositioned = options?.maxMainChats ?? null;
@@ -1063,7 +1143,28 @@ export async function syncChatThreads(
   let positionedComplete = false;
 
   if (maxPositioned != null) {
-    const loaded = await loadPinnedAndPositionedChats(client, maxPositioned);
+    // Hold HTTP until we intentionally seed — first-paint callback flips ready early.
+    if (isStableTopPage) {
+      resetChatListSyncMeta(telegramUsername, {
+        positionedComplete: false,
+        tier3Available: false,
+        stableTopReady: false,
+      });
+    }
+    const loaded = await loadPinnedAndPositionedChats(client, maxPositioned, {
+      firstPaintCount: STABLE_TOP_FIRST_PAINT,
+      onFirstPaint: isStableTopPage
+        ? (partial) => {
+            seedLiveChatList(telegramUsername, buildSkeletonLiveRows(partial));
+            setStableTopReady(telegramUsername, true);
+            logGateway("sync_chat_threads_first_paint", {
+              telegramUsername,
+              chatCount: partial.length,
+              target: STABLE_TOP_FIRST_PAINT,
+            });
+          }
+        : undefined,
+    });
     chats = loaded.chats;
     positionedComplete = loaded.positionedComplete;
     // Archive/folders belong on the full sync pass — mixing them into the first
@@ -1096,11 +1197,10 @@ export async function syncChatThreads(
         }
       }
     }
+    // Stable-top first-paint may already have flipped ready — never clear it here.
     resetChatListSyncMeta(telegramUsername, {
       positionedComplete,
       tier3Available: !isStableTopPage,
-      // First page only: hold HTTP serve until seedLiveChatList below.
-      ...(isStableTopPage ? { stableTopReady: false as const } : {}),
     });
   } else {
     chats = await loadAllChats(client, {

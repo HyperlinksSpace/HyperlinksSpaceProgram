@@ -29,6 +29,7 @@ import {
   isBackgroundChatSyncInProgress,
   isTier3ChatSyncInProgress,
   STABLE_TOP_CHAT_PAGE_LIMIT,
+  getStableTopSyncInflight,
 } from "./syncChats.js";
 import { fetchChatHistory, fetchChatHistoryAroundMessage, fetchChatHistoryAroundUnread, fetchChatHistorySince, sendChatTextMessage, sendChatPhotoMessage, editChatTextMessage, deleteChatMessages, viewChatInboxMessagesUpTo } from "./chatHistory.js";
 import {
@@ -1727,13 +1728,41 @@ async function runResyncUserChats(
       return { chatCount: record.chatCount ?? 0, backfillCount, error: null };
     }
 
-    // Session restore / a prior resync may already have seeded the ordered top.
-    // Wiping again blanks the client for another full TDLib round-trip (logs: dual
-    // initial_mount resync ~16–18s with empty list until the second seed finishes).
+    // Session restore / a prior resync may already have seeded (or be seeding) the
+    // ordered top. Wiping again blanks the client for another full TDLib walk.
     {
       const { getLiveChatList } = await import("./liveChatCache.js");
       const { isStableTopReady } = await import("./chatListSyncState.js");
       const existing = getLiveChatList(telegramUsername);
+      const inflightTop = getStableTopSyncInflight(telegramUsername);
+      if (inflightTop) {
+        attachLiveChatSync(record);
+        logConnectEvent(record, "connect_resync_join_stable_top", {});
+        const chatCount = await inflightTop;
+        record.chatCount = chatCount;
+        const client = record.client;
+        void (async () => {
+          try {
+            const count = await syncChatThreads(client, telegramUsername, {
+              maxMainChats: null,
+              includeArchive: false,
+              includeSupplementarySearch: false,
+              skipMemberCounts: true,
+              replaceCache: true,
+            });
+            const active = getActiveRecord(telegramUsername);
+            if (active?.client === client) {
+              active.chatCount = count;
+              scheduleBackgroundChatSync(client, telegramUsername);
+            }
+            logConnectEvent(record, "connect_resync_ok", { chatCount: count, joinedStableTop: true });
+          } catch (err) {
+            const message = err instanceof Error ? err.message : "sync_failed";
+            logConnectEvent(record, "connect_resync_full_warning", { message, joinedStableTop: true });
+          }
+        })();
+        return { chatCount, backfillCount: 0, error: null };
+      }
       if (isStableTopReady(telegramUsername) && (existing?.length ?? 0) > 0) {
         attachLiveChatSync(record);
         record.chatCount = existing!.length;
@@ -1937,25 +1966,29 @@ export function restorePersistedGatewaySessions(): void {
           });
           return;
         }
-        // Hold before attach — same race fix as resyncUserChats.
-        {
-          const { clearLiveChatCache } = await import("./liveChatCache.js");
-          const { beginOrderedChatListSeed } = await import("./chatListSyncState.js");
-          clearLiveChatCache(telegramUsername);
-          beginOrderedChatListSeed(telegramUsername);
-        }
         attachLiveChatSync(record);
         // Ordered top page first (same as connect/resync) so cold restore never
         // paints live-arrival order before the main-list head is ready.
+        // Join an in-flight resync seed instead of wiping it mid-walk.
         let topCount = 0;
         try {
-          topCount = await syncChatThreads(record.client, telegramUsername, {
-            maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
-            includeArchive: false,
-            includeSupplementarySearch: false,
-            skipMemberCounts: true,
-            replaceCache: true,
-          });
+          const inflightTop = getStableTopSyncInflight(telegramUsername);
+          if (inflightTop) {
+            logGateway("connect_restore_join_stable_top", { telegramUsername });
+            topCount = await inflightTop;
+          } else {
+            const { clearLiveChatCache } = await import("./liveChatCache.js");
+            const { beginOrderedChatListSeed } = await import("./chatListSyncState.js");
+            clearLiveChatCache(telegramUsername);
+            beginOrderedChatListSeed(telegramUsername);
+            topCount = await syncChatThreads(record.client, telegramUsername, {
+              maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
+              includeArchive: false,
+              includeSupplementarySearch: false,
+              skipMemberCounts: true,
+              replaceCache: true,
+            });
+          }
         } catch (topErr) {
           const message = topErr instanceof Error ? topErr.message : "restore_top_page_failed";
           logGateway("connect_restore_top_page_warning", { telegramUsername, message });
