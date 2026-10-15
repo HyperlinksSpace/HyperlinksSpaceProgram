@@ -768,13 +768,25 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
         <View
           style={{
             flexDirection: "row",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "space-between",
             width: "100%",
+            gap: 12,
           }}
         >
-          <Text style={muted15}>{usdLabel}</Text>
-          <Text style={muted15}>{havingLine}</Text>
+          <Text style={[muted15, { flexShrink: 0 }]}>{usdLabel}</Text>
+          <Text
+            style={[
+              muted15,
+              {
+                flex: 1,
+                minWidth: 0,
+                textAlign: "right",
+              },
+            ]}
+          >
+            {havingLine}
+          </Text>
         </View>
 
         {sendingDllrSelected ? (
