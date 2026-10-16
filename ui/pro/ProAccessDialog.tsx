@@ -7,6 +7,7 @@ import {
   View,
   type LayoutChangeEvent,
 } from "react-native";
+import Svg, { Circle, Path } from "react-native-svg";
 
 import { useAppStrings } from "../../locales/AppStringsContext";
 import type { AppStringKey } from "../../locales/appStrings";
@@ -57,6 +58,16 @@ function planLabelKey(id: ProAccessPlanId): AppStringKey {
   return "pro.plan.month";
 }
 
+function ProFooterInfoIcon({ color, size = 16 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth={1.75} />
+      <Path d="M12 11v6" stroke={color} strokeWidth={1.75} strokeLinecap="round" />
+      <Circle cx="12" cy="8" r="1.15" fill={color} />
+    </Svg>
+  );
+}
+
 export function ProAccessDialog({ visible, onClose }: Props) {
   const colors = useColors();
   const { colorScheme } = useTelegram();
@@ -69,6 +80,7 @@ export function ProAccessDialog({ visible, onClose }: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [planId, setPlanId] = useState<ProAccessPlanId>("month");
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [footerInfoOpen, setFooterInfoOpen] = useState(false);
   const [headerExtendPx, setHeaderExtendPx] = useState(0);
   const [footerExtendPx, setFooterExtendPx] = useState(0);
   const plans = useSyncExternalStore(subscribeProCatalog, getProAccessPlans, getProAccessPlans);
@@ -89,8 +101,10 @@ export function ProAccessDialog({ visible, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!visible) setPaymentOpen(false);
-    else {
+    if (!visible) {
+      setPaymentOpen(false);
+      setFooterInfoOpen(false);
+    } else {
       void refreshProCatalogFromServer();
       void refreshAiFreeQuotaFromServer();
     }
@@ -503,9 +517,9 @@ export function ProAccessDialog({ visible, onClose }: Props) {
                 <View
                   style={{
                     paddingHorizontal: dialogInsets.padX,
-                    paddingTop: 14,
-                    paddingBottom: dialogInsets.headerPadBottom + 6,
-                    gap: 10,
+                    paddingTop: 12,
+                    paddingBottom: dialogInsets.headerPadBottom + 4,
+                    gap: 8,
                     alignItems: "center",
                   }}
                 >
@@ -523,30 +537,60 @@ export function ProAccessDialog({ visible, onClose }: Props) {
                         label={tf("pro.sale.subscribe", { price: formatUsd(selected.priceUsd) })}
                         onPress={onSubscribe}
                       />
-                      <Text
+                      <View
                         style={{
-                          color: muted,
-                          fontSize: 12,
-                          lineHeight: 17,
-                          textAlign: "center",
+                          flexDirection: "row",
+                          alignItems: "flex-start",
+                          justifyContent: "center",
+                          gap: 6,
                           alignSelf: "stretch",
-                          fontFamily: labelFont,
                         }}
                       >
-                        {t("pro.sale.soonFooter")}
-                      </Text>
-                      <Text
-                        style={{
-                          color: muted,
-                          fontSize: 12,
-                          lineHeight: 17,
-                          textAlign: "center",
-                          alignSelf: "stretch",
-                          fontFamily: labelFont,
-                        }}
-                      >
-                        {t("pro.sale.footer")}
-                      </Text>
+                        <Text
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            color: muted,
+                            fontSize: 12,
+                            lineHeight: 16,
+                            textAlign: "center",
+                            fontFamily: labelFont,
+                          }}
+                        >
+                          {t("pro.sale.footer")}
+                        </Text>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t("pro.sale.footerInfoA11y")}
+                          accessibilityState={{ expanded: footerInfoOpen }}
+                          hitSlop={8}
+                          onPress={() => setFooterInfoOpen((open) => !open)}
+                          style={{
+                            width: 20,
+                            height: 20,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginTop: 0,
+                            flexShrink: 0,
+                          }}
+                        >
+                          <ProFooterInfoIcon color={muted} size={16} />
+                        </Pressable>
+                      </View>
+                      {footerInfoOpen ? (
+                        <Text
+                          style={{
+                            color: muted,
+                            fontSize: 12,
+                            lineHeight: 16,
+                            textAlign: "center",
+                            alignSelf: "stretch",
+                            fontFamily: labelFont,
+                          }}
+                        >
+                          {t("pro.sale.footerDetails")}
+                        </Text>
+                      ) : null}
                     </>
                   )}
                 </View>

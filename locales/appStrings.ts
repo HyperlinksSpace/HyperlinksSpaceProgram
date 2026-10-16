@@ -311,7 +311,10 @@ const en = {
     "Cancellation scheduled. You keep Pro until {{date}} — no further period after that.",
   "pro.sale.resume": "Keep renewing",
   "pro.sale.footer":
-    "Pro includes all AI models, unlimited messenger accounts, VPN & Proxy, and VIP features. Your plan renews until you cancel — cancel anytime before the next billing date.",
+    "Renews until you cancel · SOON features unlock on the next payment after they ship.",
+  "pro.sale.footerDetails":
+    "Pro includes all AI models, unlimited messenger accounts, VPN & Proxy, and VIP features. Cancel anytime before the next billing date. Features marked SOON become active on your next payment after they are introduced in the app.",
+  "pro.sale.footerInfoA11y": "Subscription details",
   "pro.sale.soonFooter":
     "Features marked SOON become active on your next payment after they are introduced in the app.",
   "pro.pay.title": "Choose payment method",
@@ -1288,7 +1291,10 @@ const ru = {
     "Отмена запланирована. Pro остаётся до {{date}} — дальше период не продлевается.",
   "pro.sale.resume": "Продлевать",
   "pro.sale.footer":
-    "Pro включает все модели ИИ, безлимитные аккаунты мессенджера, VPN и Proxy и VIP-функции. Подписка продлевается, пока вы не отмените — отмена до следующего списания.",
+    "Продлевается до отмены · SOON — со следующей оплаты после выхода.",
+  "pro.sale.footerDetails":
+    "Pro включает все модели ИИ, безлимитные аккаунты мессенджера, VPN и Proxy и VIP-функции. Отмена в любой момент до следующего списания. Функции с меткой SOON станут активны при следующей оплате после их появления в приложении.",
+  "pro.sale.footerInfoA11y": "Подробности подписки",
   "pro.sale.soonFooter":
     "Функции с меткой SOON станут активны при следующей оплате после их появления в приложении.",
   "pro.pay.title": "Выберите способ оплаты",
@@ -2229,7 +2235,10 @@ const zh = {
     "已安排取消。Pro 保留至 {{date}}，之后不再续期。",
   "pro.sale.resume": "继续续费",
   "pro.sale.footer":
-    "Pro 包含全部 AI 模型、无限消息账户、VPN 与 Proxy 以及 VIP 功能。订阅会自动续费，可在下一计费日前随时取消。",
+    "自动续费至取消 · SOON 功能上线后于下次付款生效。",
+  "pro.sale.footerDetails":
+    "Pro 包含全部 AI 模型、无限消息账户、VPN 与 Proxy 以及 VIP 功能。可在下一计费日前随时取消。标有 SOON 的功能将在应用上线后、于下一次付款时生效。",
+  "pro.sale.footerInfoA11y": "订阅详情",
   "pro.sale.soonFooter":
     "标有 SOON 的功能将在应用上线后、于下一次付款时生效。",
   "pro.pay.title": "选择支付方式",
