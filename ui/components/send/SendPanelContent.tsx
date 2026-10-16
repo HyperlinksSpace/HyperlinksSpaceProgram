@@ -443,15 +443,10 @@ export function SendPanelContent({ walletAddress, isActive = true }: Props) {
     dllrLedgerKind === "frozen" ? t("send.dllrLedger.frozen") : t("send.dllrLedger.hot");
   const havingLine = form.balancesLoading
     ? t("send.havingLoading")
-    : sendingDllrSelected
-      ? tf("send.havingLineDllr", {
-          amount: effectiveBalanceText,
-          kind: dllrKindLabel,
-        })
-      : tf("send.havingLine", {
-          amount: effectiveBalanceText,
-          symbol: selectedSymbol,
-        });
+    : tf("send.havingLine", {
+        amount: effectiveBalanceText,
+        symbol: selectedSymbol,
+      });
 
   const onMaxPress = useCallback(() => {
     if (!effectiveBalanceText || effectiveBalanceText === "0" || effectiveBalanceText === "—") {
