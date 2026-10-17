@@ -824,6 +824,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     allowAvatarResync?: boolean;
     silent?: boolean;
     forceFull?: boolean;
+    /** Archive reveal paint — keep ahead of background list refreshes. */
+    priority?: boolean;
   } | null>(null);
   const unchangedPollStreakRef = useRef(0);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -865,7 +867,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListVirtualStickyRef = useRef({ startIndex: 0, endIndex: 0 });
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
   const loadChatsRef = useRef<
-    (options?: { allowAvatarResync?: boolean; silent?: boolean; forceFull?: boolean }) => Promise<void>
+    (options?: {
+      allowAvatarResync?: boolean;
+      silent?: boolean;
+      forceFull?: boolean;
+      priority?: boolean;
+    }) => Promise<void>
   >(async () => {});
 
   const applyChatListSync = useCallback((status: ChatListSyncStatus | null | undefined) => {
@@ -935,14 +942,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (json.chatListSync) {
         applyChatListSync(json.chatListSync);
       }
-      const ready =
-        json.ready === true || json.chatListSync?.archiveListReady === true;
-      const stillLoading =
-        json.chatListSync?.archiveListInProgress === true || json.started === true;
-      if ((!ready || stillLoading) && !isVoiceDialogUiOpen()) {
-        void loadChatsRef.current({ silent: true, forceFull: true });
-      } else if (ready && !isVoiceDialogUiOpen()) {
-        void loadChatsRef.current({ silent: true, forceFull: true });
+      if (!isVoiceDialogUiOpen()) {
+        // Always force-full after archive sync so the loading row is replaced by
+        // real archive dialogs in the same paint path (never drop on "unchanged").
+        void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
       }
     } catch {
       /* poll / SSE will pick up archive rows */
@@ -1028,6 +1031,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     allowAvatarResync?: boolean;
     silent?: boolean;
     forceFull?: boolean;
+    priority?: boolean;
   }) => {
     if (!isAuthenticated || !isTelegramMessagesConnected) {
       // Keep painted rows on brief disconnect — wiping flashed "No chats yet"
@@ -1058,13 +1062,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     // 3–4×170-row normalize/apply stacks freeze the shell and voice Close.
     if (chatListFetchBusyRef.current) {
       const prev = chatListFetchQueuedRef.current;
+      const priority = Boolean(prev?.priority || options?.priority);
       chatListFetchQueuedRef.current = {
         allowAvatarResync: Boolean(prev?.allowAvatarResync || options?.allowAvatarResync),
-        forceFull: Boolean(prev?.forceFull || options?.forceFull),
+        // Archive priority always force-full so we do not land on a stale revision.
+        forceFull: Boolean(prev?.forceFull || options?.forceFull || priority),
         // Non-silent wins so the visible first paint is never dropped.
         silent: prev != null
           ? prev.silent === true && options?.silent === true
           : options?.silent === true,
+        priority,
       };
       return;
     }
@@ -1160,8 +1167,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           json.chatListSync.archiveListInProgress !== true &&
           !chatsHaveArchiveRef.current
         ) {
-          // Same revision already painted without archive dialogs — stop loading.
-          queueMicrotask(() => setArchiveEmptyConfirmed(true));
+          // Ready flag can race ahead of the archive payload. Do NOT drop the
+          // loading row on "unchanged" — force a full paint instead.
+          queueMicrotask(() => {
+            if (!isVoiceDialogUiOpen()) {
+              void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
+            }
+          });
         }
         unchangedPollStreakRef.current += 1;
         if (options?.silent && pollCountRef.current % 10 === 0) {
@@ -2215,11 +2227,26 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     if (!searchNeedle) {
       if (archiveOpen) {
-        return archiveSortedChats.map((row) => ({
-          kind: "chat" as const,
-          key: `chat-${row.telegram_chat_id}`,
-          row,
-        }));
+        if (archiveSortedChats.length > 0) {
+          return archiveSortedChats.map((row) => ({
+            kind: "chat" as const,
+            key: `chat-${row.telegram_chat_id}`,
+            row,
+          }));
+        }
+        // Keep a reserved loading row until archive dialogs paint — never flash empty.
+        if (archiveRevealRequested && !archiveEmptyConfirmed) {
+          return [
+            {
+              kind: "archiveFolder" as const,
+              key: "archive-folder",
+              previewTitle: null,
+              unreadCount: 0,
+              loading: true,
+            },
+          ];
+        }
+        return [];
       }
       const items: ChatListDisplayItem[] = [];
       if (archiveSortedChats.length > 0) {
@@ -2598,12 +2625,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     if (listSearchActive) return;
+    if (archiveRevealRequested && !archiveChatsPainted && !archiveEmptyConfirmed) return;
     if (!chatListAtBottomRef.current) return;
     if (isVoiceDialogUiOpen()) return;
     if (mayHaveMoreOnServer) {
       void requestLoadMoreChats(needsPositionedPage ? "positioned" : "unpositioned");
     }
   }, [
+    archiveChatsPainted,
+    archiveEmptyConfirmed,
+    archiveRevealRequested,
     mayHaveMoreOnServer,
     needsPositionedPage,
     requestLoadMoreChats,
@@ -2616,16 +2647,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   useEffect(() => {
     if (!authReady || !isTelegramMessagesConnected) return;
     if (listSearchActive) return;
+    if (archiveRevealRequested && !archiveChatsPainted && !archiveEmptyConfirmed) return;
     if (!mayHaveMoreOnServer) return;
 
     const tick = () => {
       if (isVoiceDialogUiOpen()) return;
+      if (archiveRevealPendingRef.current) return;
       void requestLoadMoreChats(needsPositionedPage ? "positioned" : "unpositioned");
     };
     tick();
     const id = setInterval(tick, CHAT_LIST_AUTO_LOAD_MORE_MS);
     return () => clearInterval(id);
   }, [
+    archiveChatsPainted,
+    archiveEmptyConfirmed,
+    archiveRevealRequested,
     authReady,
     isTelegramMessagesConnected,
     mayHaveMoreOnServer,
@@ -2641,6 +2677,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
+    // While archive reveal is painting, do not compete for TDLib / fetch slots.
+    if (archiveRevealPendingRef.current) return;
     void loadChatsRef.current({
       silent: true,
       forceFull: cachedChatCount > chats.length,
@@ -2674,16 +2712,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveScrollArmedRef.current = true;
     setArchiveScrollArmed(true);
     archiveRevealPendingRef.current = true;
+    setArchiveEmptyConfirmed(false);
     setArchiveRevealRequested(true);
     // Gateway may already be ready from an earlier reveal in this process —
     // still open the folder this session; only skip the network sync.
     if (chatListSync?.archiveListReady === true) {
       archivePaintFetchStartedRef.current = false;
-      if (!chatsHaveArchiveRef.current) {
-        setArchiveEmptyConfirmed(true);
-      } else {
+      if (chatsHaveArchiveRef.current) {
         archiveRevealPendingRef.current = false;
+        return;
       }
+      // Ready but archive rows not painted yet — keep loading and force paint.
+      void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
       return;
     }
     archivePaintFetchStartedRef.current = false;
@@ -2774,7 +2814,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (isVoiceDialogUiOpen()) return;
     if (!archivePaintFetchStartedRef.current) {
       archivePaintFetchStartedRef.current = true;
-      void loadChatsRef.current({ silent: true, forceFull: true });
+      void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
     }
     // If the paint fetch never lands, drop the loading row — do not restart forceFull.
     const failSafe = setTimeout(() => {

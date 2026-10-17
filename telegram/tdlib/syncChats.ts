@@ -64,6 +64,7 @@ import {
   getTier3ListCursor,
   isArchiveChatSyncInProgress,
   isArchiveListReady,
+  isBackgroundChatSyncInProgress,
   isPositionedComplete,
   isTier3Available,
 } from "./chatListSyncState.js";
@@ -1524,6 +1525,10 @@ export async function syncRemainingChatsInBackground(
     });
 
     for (let offset = 0; offset < pageChats.length; offset += BACKGROUND_CHAT_SYNC_PAGE_SIZE) {
+      // Scroll-up archive reveal takes the TDLib client — pause main/folder paging.
+      while (isArchiveChatSyncInProgress(telegramUsername)) {
+        await sleep(40);
+      }
       const slice = pageChats.slice(offset, offset + BACKGROUND_CHAT_SYNC_PAGE_SIZE);
       if (slice.length === 0) continue;
       const visible = await omitHiddenPrivateChats(client, slice);
@@ -1694,6 +1699,10 @@ export async function syncArchiveChatList(
   if (isArchiveListReady(telegramUsername)) return 0;
   if (!markArchiveChatSyncStart(telegramUsername)) return 0;
   try {
+    logGateway("sync_chat_archive_start", {
+      telegramUsername,
+      backgroundInProgress: isBackgroundChatSyncInProgress(telegramUsername),
+    });
     const archiveChats = await loadChatsFromList(client, { _: "chatListArchive" });
     const visible = await omitHiddenPrivateChats(client, archiveChats);
     const rows = await buildLiveRowsForChats(client, visible, {
