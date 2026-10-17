@@ -792,6 +792,7 @@ export function MessageChatMessageRow({
                 // rows used to fetch every full JPEG at once and freeze the tab.
                 !(contentActive && mediaNearView)
               }
+              chatTitle={chat.title}
             />
           </View>
           </Pressable>

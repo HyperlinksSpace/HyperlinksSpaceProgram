@@ -53,6 +53,7 @@ import { MessageChatLinkifiedText } from "./MessageChatLinkifiedText";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { useMessageChatNavigate } from "./MessageChatNavigateContext";
 import { MessageChatWebPagePreviewCard } from "./MessageChatWebPagePreview";
+import { MessageChatVideoViewer } from "./MessageChatVideoViewer";
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
 
 const REPLY_THUMB_PX = 32;
@@ -84,6 +85,8 @@ type Props = {
    * prefetch band (tdesktop nearby preload).
    */
   deferFullMediaFetch?: boolean;
+  /** Chat / channel title shown under the fullscreen video viewer. */
+  chatTitle?: string | null;
 };
 
 function resolveMediaUrl(chatId: number, messageId: number): string {
@@ -536,6 +539,7 @@ export function MessageChatBubbleBody({
   emojiContentActive = true,
   mediaFetchEnabled,
   deferFullMediaFetch,
+  chatTitle = null,
 }: Props) {
   const mediaLoadEnabled = mediaFetchEnabled ?? emojiContentActive;
   const deferFullMedia = deferFullMediaFetch ?? !mediaLoadEnabled;
@@ -544,6 +548,10 @@ export function MessageChatBubbleBody({
   const [liveMediaSize, setLiveMediaSize] = useState<{ widthPx: number; heightPx: number } | null>(
     null,
   );
+  const [videoViewer, setVideoViewer] = useState<{
+    src: string;
+    posterSrc: string | null;
+  } | null>(null);
   const timeLabel = formatMessageChatBubbleTime(item.sent_at);
   const outgoingStatus = resolveOutgoingStatusForDisplay(item, chatKind, {
     chat_kind: chatKind,
@@ -604,6 +612,7 @@ export function MessageChatBubbleBody({
 
   useEffect(() => {
     setLiveMediaSize(null);
+    setVideoViewer(null);
   }, [item.telegram_message_id, contentKind, mediaUrl]);
 
   const handleMediaDisplaySizeChange = (widthPx: number, heightPx: number) => {
@@ -739,6 +748,13 @@ export function MessageChatBubbleBody({
             onDisplaySizeChange={handleMediaDisplaySizeChange}
             mediaFetchEnabled={mediaLoadEnabled}
             deferFullMediaFetch={deferFullMedia}
+            onOpenFullscreen={
+              contentKind === "video"
+                ? ({ src, posterSrc }) => {
+                    setVideoViewer({ src, posterSrc });
+                  }
+                : undefined
+            }
           />
           {contentKind === "animation" && overlayMediaMeta ? (
             <View
@@ -873,6 +889,19 @@ export function MessageChatBubbleBody({
             </View>
           ) : null}
         </View>
+      ) : null}
+
+      {videoViewer ? (
+        <MessageChatVideoViewer
+          visible
+          onClose={() => setVideoViewer(null)}
+          src={videoViewer.src}
+          posterSrc={videoViewer.posterSrc}
+          caption={contentKind === "video" ? bodyText : null}
+          captionSegments={contentKind === "video" ? item.text_segments : null}
+          chatTitle={chatTitle}
+          sentAt={item.sent_at}
+        />
       ) : null}
     </View>
   );

@@ -43,6 +43,8 @@ type Props = {
    * in the media prefetch band (tdesktop nearby preload).
    */
   deferFullMediaFetch?: boolean;
+  /** Telegram media viewer — open fullscreen player (videos). */
+  onOpenFullscreen?: (payload: { src: string; posterSrc: string | null }) => void;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -219,6 +221,7 @@ function WebMessageChatVideo({
   showProgress,
   pixelPerfect,
   contentKind,
+  onOpenFullscreen,
 }: {
   src?: string | null;
   posterSrc?: string | null;
@@ -229,6 +232,7 @@ function WebMessageChatVideo({
   showProgress: boolean;
   pixelPerfect?: boolean;
   contentKind: MessageChatContentKind;
+  onOpenFullscreen?: (payload: { src: string; posterSrc: string | null }) => void;
 }) {
   const isVideo = contentKind === "video";
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -429,6 +433,22 @@ function WebMessageChatVideo({
     ...(pixelPerfect ? ({ imageRendering: "crisp-edges" } as object) : null),
   };
 
+  const canOpenFullscreen = Boolean(isVideo && onOpenFullscreen && (src || posterSrc));
+  const openFullscreen = (event?: {
+    stopPropagation?: () => void;
+    preventDefault?: () => void;
+    nativeEvent?: { stopImmediatePropagation?: () => void };
+  }) => {
+    if (!canOpenFullscreen || !onOpenFullscreen) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.nativeEvent?.stopImmediatePropagation?.();
+    onOpenFullscreen({
+      src: (src ?? "").trim(),
+      posterSrc: posterSrc ?? null,
+    });
+  };
+
   return createElement(
     "div",
     {
@@ -442,7 +462,17 @@ function WebMessageChatVideo({
     },
     createElement(
       "div",
-      { style: mediaFrameStyle },
+      {
+        style: {
+          ...mediaFrameStyle,
+          cursor: canOpenFullscreen ? "pointer" : undefined,
+        },
+        onClick: canOpenFullscreen
+          ? (event: { stopPropagation?: () => void; preventDefault?: () => void }) => {
+              openFullscreen(event);
+            }
+          : undefined,
+      },
       src
         ? createElement("video", {
             key: src,
@@ -458,6 +488,7 @@ function WebMessageChatVideo({
             style: {
               ...layeredMediaStyle,
               zIndex: 1,
+              pointerEvents: canOpenFullscreen ? "none" : undefined,
             },
           })
         : null,
@@ -653,6 +684,7 @@ export function MessageChatMediaContent({
   onDisplaySizeChange,
   mediaFetchEnabled = true,
   deferFullMediaFetch = false,
+  onOpenFullscreen,
 }: Props) {
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -1081,6 +1113,18 @@ export function MessageChatMediaContent({
         showProgress={showProgress}
         pixelPerfect={pixelPerfect}
         contentKind={contentKind}
+        onOpenFullscreen={
+          contentKind === "video" && onOpenFullscreen
+            ? ({ src: openSrc, posterSrc: openPoster }) => {
+                const resolved = (openSrc || mediaUri || uri || "").trim();
+                if (!resolved) return;
+                onOpenFullscreen({
+                  src: resolved,
+                  posterSrc: openPoster ?? previewUri ?? null,
+                });
+              }
+            : undefined
+        }
       />
     );
   }
