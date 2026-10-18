@@ -147,19 +147,16 @@ function AppModalSheetBody({
   children,
   footer,
   onClose,
-  fitContentHeight,
 }: {
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
-  fitContentHeight: boolean;
 }) {
   const { t } = useAppStrings();
   const { height: windowHeight } = useWindowDimensions();
   const insets = resolveFloatingDialogInsets(windowHeight);
   const contentSizing = useFloatingDialogContentSizing();
-  const useIntrinsicBody = fitContentHeight || contentSizing;
   const [headerExtendPx, setHeaderExtendPx] = useState(0);
   const setHeaderExtendPxSafe = useCallback((h: number) => {
     const next = Math.round(h);
@@ -188,7 +185,9 @@ function AppModalSheetBody({
     </FloatingDialogScrollChromeProvider>
   );
 
-  if (useIntrinsicBody) {
+  // Intrinsic fit must not use a flex scroll column (height collapses to 0).
+  // After measure / with a stored size, use the same scroll body as other dialogs.
+  if (contentSizing) {
     return chrome(
       <FloatingDialogBody>
         {header}
@@ -248,12 +247,7 @@ export function AppModalSheet({
       onRequestClose={onClose}
       testId="app-modal"
     >
-      <AppModalSheetBody
-        title={title}
-        footer={footer}
-        onClose={onClose}
-        fitContentHeight={fitContentHeight}
-      >
+      <AppModalSheetBody title={title} footer={footer} onClose={onClose}>
         {children}
       </AppModalSheetBody>
     </FloatingDialogShell>
