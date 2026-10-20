@@ -78,9 +78,16 @@ export function GlobalMusicControlBar({ colors }: Props) {
     snap.duration > 0 ? snap.duration : Number(track?.duration_sec) > 0 ? Number(track?.duration_sec) : 0;
   const progress =
     progressDuration > 0 ? Math.max(0, Math.min(1, snap.currentTime / progressDuration)) : 0;
+  // Same duration scale as the playhead so the download edge stays ahead when more is buffered.
+  const bufferedEndSec =
+    snap.bufferedEndSec > 0
+      ? snap.bufferedEndSec
+      : progressDuration > 0 && snap.bufferedRatio > 0
+        ? snap.bufferedRatio * progressDuration
+        : 0;
   const buffered =
     progressDuration > 0
-      ? Math.max(progress, Math.max(0, Math.min(1, snap.bufferedRatio || 0)))
+      ? Math.max(progress, Math.max(0, Math.min(1, bufferedEndSec / progressDuration)))
       : 0;
 
   const applySeekFromClientX = useCallback((clientX: number) => {

@@ -94,16 +94,44 @@ export function MusicPlayerEngine(): null {
     };
     volumeRaf = requestAnimationFrame(tickVolume);
 
+    const resolveDuration = () => {
+      const snap = getMusicPlayer();
+      const trackDur = Number(snap.tracks[snap.index]?.duration_sec);
+      const fallback =
+        snap.duration > 0
+          ? snap.duration
+          : Number.isFinite(trackDur) && trackDur > 0
+            ? trackDur
+            : 0;
+      return mediaDurationSec(audio, fallback);
+    };
     const onTime = () => {
       const t = audio.currentTime || 0;
       if (Number.isFinite(t) && t > 0) lastGoodTimeRef.current = t;
-      reportMusicTime(t, mediaDurationSec(audio, getMusicPlayer().duration));
+      reportMusicTime(t, resolveDuration());
+      reportBuffer();
     };
     const reportBuffer = () => {
       try {
-        if (!audio.buffered || audio.buffered.length === 0) return;
-        const end = audio.buffered.end(audio.buffered.length - 1);
-        reportMusicBuffered(end, mediaDurationSec(audio, getMusicPlayer().duration));
+        const ranges = audio.buffered;
+        if (!ranges || ranges.length === 0) return;
+        let end = 0;
+        for (let i = 0; i < ranges.length; i += 1) {
+          const rangeEnd = ranges.end(i);
+          if (Number.isFinite(rangeEnd)) end = Math.max(end, rangeEnd);
+        }
+        if (!(end > 0)) return;
+        const duration = resolveDuration();
+        // Fully loaded / can play through — fill the download indicator.
+        if (
+          audio.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA &&
+          duration > 0 &&
+          end >= duration * 0.98
+        ) {
+          reportMusicBuffered(duration, duration);
+          return;
+        }
+        reportMusicBuffered(end, duration);
       } catch {
         // ignore
       }
@@ -285,6 +313,9 @@ export function MusicPlayerEngine(): null {
     audio.addEventListener("durationchange", onTime);
     audio.addEventListener("progress", reportBuffer);
     audio.addEventListener("loadedmetadata", reportBuffer);
+    audio.addEventListener("loadeddata", reportBuffer);
+    audio.addEventListener("canplay", reportBuffer);
+    audio.addEventListener("canplaythrough", reportBuffer);
     audio.addEventListener("ended", onEnded);
     audio.addEventListener("error", onError);
     audio.addEventListener("seeked", onSeeked);
@@ -364,6 +395,9 @@ export function MusicPlayerEngine(): null {
       audio.removeEventListener("durationchange", onTime);
       audio.removeEventListener("progress", reportBuffer);
       audio.removeEventListener("loadedmetadata", reportBuffer);
+      audio.removeEventListener("loadeddata", reportBuffer);
+      audio.removeEventListener("canplay", reportBuffer);
+      audio.removeEventListener("canplaythrough", reportBuffer);
       audio.removeEventListener("ended", onEnded);
       audio.removeEventListener("error", onError);
       audio.removeEventListener("seeked", onSeeked);

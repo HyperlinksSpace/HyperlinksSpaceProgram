@@ -36,6 +36,8 @@ export type MusicPlayerSnapshot = {
   duration: number;
   /** Furthest buffered/download edge as a 0–1 ratio of duration (YouTube-style). */
   bufferedRatio: number;
+  /** Furthest buffered edge in seconds — UI divides by the same duration as the playhead. */
+  bufferedEndSec: number;
   volume: number;
   muted: boolean;
   shuffle: boolean;
@@ -58,6 +60,7 @@ let snapshot: MusicPlayerSnapshot = {
   currentTime: 0,
   duration: 0,
   bufferedRatio: 0,
+  bufferedEndSec: 0,
   volume: 1,
   muted: false,
   shuffle: false,
@@ -144,6 +147,7 @@ export function startMusicPlaylist(
     currentTime: 0,
     duration: tracks[index]?.duration_sec ?? 0,
     bufferedRatio: 0,
+    bufferedEndSec: 0,
     order,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
@@ -206,6 +210,7 @@ export function playMusicIndex(index: number): void {
     currentTime: 0,
     duration: snapshot.tracks[next]?.duration_sec ?? 0,
     bufferedRatio: 0,
+    bufferedEndSec: 0,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
   });
@@ -231,6 +236,7 @@ function stepTrack(delta: number): void {
     currentTime: 0,
     duration: tracks[nextIndex]?.duration_sec ?? 0,
     bufferedRatio: 0,
+    bufferedEndSec: 0,
     seekTo: 0,
     seekSeq: snapshot.seekSeq + 1,
   });
@@ -351,16 +357,25 @@ export function reportMusicTime(currentTime: number, duration: number): void {
 
 /** Report how far the media element has buffered (download progress). */
 export function reportMusicBuffered(bufferedEndSec: number, durationSec: number): void {
+  const trackDur = Number(snapshot.tracks[snapshot.index]?.duration_sec);
   const duration =
     Number.isFinite(durationSec) && durationSec > 0
       ? durationSec
       : snapshot.duration > 0
         ? snapshot.duration
-        : 0;
+        : Number.isFinite(trackDur) && trackDur > 0
+          ? trackDur
+          : 0;
   const end = Number.isFinite(bufferedEndSec) ? Math.max(0, bufferedEndSec) : 0;
   const ratio = duration > 0 ? Math.max(0, Math.min(1, end / duration)) : 0;
-  if (Math.abs(ratio - snapshot.bufferedRatio) < 0.008) return;
+  if (
+    Math.abs(end - snapshot.bufferedEndSec) < 0.05 &&
+    Math.abs(ratio - snapshot.bufferedRatio) < 0.002
+  ) {
+    return;
+  }
   setSnapshot({
+    bufferedEndSec: end,
     bufferedRatio: ratio,
     ...(duration > 0 && Math.abs(duration - snapshot.duration) >= 0.2
       ? { duration }
