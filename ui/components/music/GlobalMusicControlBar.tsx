@@ -48,10 +48,14 @@ function formatClock(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+/** Controls sit above the seek strip so their hit targets never share the scrub zone. */
+const MUSIC_SEEK_STRIP_H_PX = 4;
+const MUSIC_CONTROLS_H_PX = MUSIC_CONTROL_BAR_HEIGHT_PX - MUSIC_SEEK_STRIP_H_PX;
+
 function iconHit(pressed: boolean) {
   return {
     width: 22,
-    height: MUSIC_CONTROL_BAR_HEIGHT_PX,
+    height: MUSIC_CONTROLS_H_PX,
     alignItems: "center" as const,
     justifyContent: "center" as const,
     opacity: pressed ? 0.65 : 1,
@@ -180,7 +184,7 @@ export function GlobalMusicControlBar({ colors }: Props) {
     >
       <View
         style={{
-          height: MUSIC_CONTROL_BAR_HEIGHT_PX,
+          height: MUSIC_CONTROLS_H_PX,
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: layout.contentSideInsetPx,
@@ -369,36 +373,44 @@ export function GlobalMusicControlBar({ colors }: Props) {
           if (typeof pageX === "number") applySeekFromClientX(pageX);
         }}
         style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 16,
+          height: MUSIC_SEEK_STRIP_H_PX,
+          width: "100%",
           justifyContent: "flex-end",
-          zIndex: 30,
           cursor: Platform.OS === "web" ? ("pointer" as never) : undefined,
           ...(Platform.OS === "web" ? ({ touchAction: "none" } as object) : {}),
         }}
       >
-        <View pointerEvents="none" style={{ width: "100%", gap: 1 }}>
-          <View style={{ height: 1, backgroundColor: colors.highlight, width: "100%" }}>
-            <View
-              style={{
-                height: 1,
-                width: `${progress * 100}%`,
-                backgroundColor: colors.primary,
-              }}
-            />
-          </View>
-          <View style={{ height: 1, backgroundColor: colors.highlight, width: "100%" }}>
-            <View
-              style={{
-                height: 1,
-                width: `${buffered * 100}%`,
-                backgroundColor: colors.secondary,
-              }}
-            />
-          </View>
+        {/* One track: highlight base, secondary = buffered, primary = playhead. */}
+        <View
+          pointerEvents="none"
+          style={{
+            width: "100%",
+            height: 1,
+            backgroundColor: colors.highlight,
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${buffered * 100}%`,
+              backgroundColor: colors.secondary,
+            }}
+          />
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${progress * 100}%`,
+              backgroundColor: colors.primary,
+            }}
+          />
         </View>
       </Pressable>
       {volumeOpen && Platform.OS === "web" && typeof document !== "undefined"
