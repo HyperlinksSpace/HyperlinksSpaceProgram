@@ -15,8 +15,8 @@ import { FloatingDialogBody } from "../FloatingDialogBody";
 import {
   FloatingDialogShell,
   floatingDialogDragHandleDomProps,
-  floatingDialogDragHandleWebStyle,
   useFloatingDialogContentSizing,
+  useFloatingDialogDragHandle,
 } from "../FloatingDialogShell";
 import { resolveFloatingDialogDefaultSize } from "../floatingDialogGeometry";
 import { HspScrollColumn } from "../HspScrollColumn";
@@ -770,14 +770,7 @@ export function MessageChatProfileSheet({
         : {})}
       onStartShouldSetResponder={() => true}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          ...floatingDialogDragHandleWebStyle,
-        }}
-        {...floatingDialogDragHandleDomProps}
-      >
+      <ProfileSheetMoveHeader>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={t("messages.profile.photoOpenA11y")}
@@ -807,7 +800,6 @@ export function MessageChatProfileSheet({
             paddingTop: 4,
             paddingRight: 36,
           }}
-          {...(Platform.OS === "web" ? ({ "data-floating-no-drag": "1" } as object) : {})}
         >
           <SpecialTelegramUserName
             name={title}
@@ -846,7 +838,7 @@ export function MessageChatProfileSheet({
             right: 0,
           }}
         />
-      </View>
+      </ProfileSheetMoveHeader>
 
       {isChannelProfile ? (
         <View
@@ -1272,6 +1264,32 @@ export function MessageChatProfileSheet({
         addedAt={profilePhoto?.added_at ?? null}
       />
     </>
+  );
+}
+
+/** Header row must own pointerdown — RN Web does not bubble move-drags to the shell. */
+function ProfileSheetMoveHeader({ children }: { children: ReactNode }) {
+  const moveDrag = useFloatingDialogDragHandle();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        ...(Platform.OS === "web"
+          ? ({
+              cursor: moveDrag?.movingSheet ? "grabbing" : "grab",
+              userSelect: "none",
+              touchAction: "none",
+            } as object)
+          : null),
+      }}
+      {...floatingDialogDragHandleDomProps}
+      {...(Platform.OS === "web" && moveDrag
+        ? ({ onPointerDown: moveDrag.onDragHandlePointerDown } as object)
+        : {})}
+    >
+      {children}
+    </View>
   );
 }
 
