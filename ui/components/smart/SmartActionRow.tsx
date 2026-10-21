@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useSmartActivePurpose } from "../../smart/smartActivePurposeStore";
 import {
   bottomBarLabelFitsSlot,
   bottomBarSummarySlotWidthPx,
@@ -11,12 +13,27 @@ const ACTION_BUTTON_HEIGHT_PX = layout.bottomBar.undercoverButtonHeightPx;
 const ACTION_BUTTON_TEXT_INSET_PX = layout.bottomBar.undercoverButtonPaddingHorizontalPx;
 const { textToSendIconGapPx: TEXT_TO_BUTTON_GAP_PX } = layout.bottomBar;
 
+function deployCostKeys(purpose: string): { full: AppStringKey; short: AppStringKey } {
+  if (purpose === "owner") {
+    return {
+      full: "smart.footer.deployCost.owner",
+      short: "smart.footer.deployCostShort.owner",
+    };
+  }
+  return {
+    full: "smart.footer.deployCost",
+    short: "smart.footer.deployCostShort",
+  };
+}
+
 /** In-panel deploy row (swap/send action style): cost label left, deploy button right. */
 export function SmartActionRow() {
   const colors = useColors();
   const { t } = useAppStrings();
-  const fullDeployCostLabel = t("smart.footer.deployCost");
-  const shortDeployCostLabel = t("smart.footer.deployCostShort");
+  const activePurpose = useSmartActivePurpose();
+  const costKeys = deployCostKeys(activePurpose);
+  const fullDeployCostLabel = t(costKeys.full);
+  const shortDeployCostLabel = t(costKeys.short);
   const [rowWidth, setRowWidth] = useState(0);
   const [buttonWidth, setButtonWidth] = useState(0);
   const [fullLabelWidth, setFullLabelWidth] = useState(0);

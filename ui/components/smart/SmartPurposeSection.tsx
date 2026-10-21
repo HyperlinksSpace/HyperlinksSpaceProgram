@@ -1,9 +1,11 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 
 import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { setSmartActivePurpose } from "../../smart/smartActivePurposeStore";
 import {
+  SMART_PURPOSE_DEFAULT,
   SMART_PURPOSE_KEYS,
   type SmartPurposeKey,
 } from "../../smart/smartPurposeTypes";
@@ -11,6 +13,7 @@ import { typographyAeroport20, typographyRect15, useColors } from "../../theme";
 import { SmartPurposeMenuWithDivider } from "./SmartPurposeMenuWithDivider";
 import { SmartStandardHelpHint } from "./SmartStandardHelpHint";
 import { SmartCompanySection } from "./SmartCompanySection";
+import { SmartOwnerSection } from "./SmartOwnerSection";
 import { SmartPurposeFields } from "./SmartPurposeFields";
 
 const SUBTITLE_TO_MENU_GAP_PX = 15;
@@ -30,34 +33,34 @@ const VERSION_FONT_SIZE_PX = 15;
 const VERSION_LINE_HEIGHT_PX = 20;
 
 const MENU_LABEL_KEYS: Record<SmartPurposeKey, AppStringKey> = {
+  owner: "smart.purpose.owner",
   company: "smart.purpose.company",
   agreement: "smart.purpose.agreement",
   investment: "smart.purpose.investment",
-  revenue: "smart.purpose.revenue",
   partners: "smart.purpose.partners",
 };
 
 const DESC_LEAD_KEYS: Record<SmartPurposeKey, AppStringKey> = {
+  owner: "smart.purposeDescLead.owner",
   company: "smart.purposeDescLead.company",
   agreement: "smart.purposeDescLead.agreement",
   investment: "smart.purposeDescLead.investment",
-  revenue: "smart.purposeDescLead.revenue",
   partners: "smart.purposeDescLead.partners",
 };
 
 const DESC_BODY_KEYS: Record<SmartPurposeKey, AppStringKey> = {
+  owner: "smart.purposeDescBody.owner",
   company: "smart.purposeDescBody.company",
   agreement: "smart.purposeDescBody.agreement",
   investment: "smart.purposeDescBody.investment",
-  revenue: "smart.purposeDescBody.revenue",
   partners: "smart.purposeDescBody.partners",
 };
 
 const DEAL_VERSION_KEYS: Record<SmartPurposeKey, AppStringKey> = {
+  owner: "smart.dealVersion.owner",
   company: "smart.dealVersion.company",
   agreement: "smart.dealVersion.agreement",
   investment: "smart.dealVersion.investment",
-  revenue: "smart.dealVersion.revenue",
   partners: "smart.dealVersion.partners",
 };
 
@@ -68,7 +71,11 @@ type Props = {
 export function SmartPurposeSection({ purposeSubtitle }: Props) {
   const colors = useColors();
   const { t } = useAppStrings();
-  const [activeKey, setActiveKey] = useState<SmartPurposeKey>("company");
+  const [activeKey, setActiveKey] = useState<SmartPurposeKey>(SMART_PURPOSE_DEFAULT);
+
+  useEffect(() => {
+    setSmartActivePurpose(activeKey);
+  }, [activeKey]);
 
   const renderMenuItems = useCallback(
     () =>
@@ -172,7 +179,9 @@ export function SmartPurposeSection({ purposeSubtitle }: Props) {
         <SmartStandardHelpHint labelStyle={{ fontSize: VERSION_FONT_SIZE_PX }} />
       </View>
 
-      {activeKey === "company" ? (
+      {activeKey === "owner" ? (
+        <SmartOwnerSection />
+      ) : activeKey === "company" ? (
         <SmartCompanySection />
       ) : (
         <SmartPurposeFields key={activeKey} purposeKey={activeKey} />

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
+import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useSmartActivePurpose } from "../../smart/smartActivePurposeStore";
 import {
   bottomBarLabelFitsSlot,
   bottomBarSummarySlotWidthPx,
@@ -9,6 +11,19 @@ import {
 import { BottomBarHeightReporter, useBottomBarLayout } from "../BottomBarLayoutContext";
 import { useTelegram } from "../Telegram";
 import { layout, typographyFixedRow30Label, useColors } from "../../theme";
+
+function deployCostKeys(purpose: string): { full: AppStringKey; short: AppStringKey } {
+  if (purpose === "owner") {
+    return {
+      full: "smart.footer.deployCost.owner",
+      short: "smart.footer.deployCostShort.owner",
+    };
+  }
+  return {
+    full: "smart.footer.deployCost",
+    short: "smart.footer.deployCostShort",
+  };
+}
 
 const { barMinHeight: BAR_HEIGHT, horizontalPadding: HORIZONTAL_PADDING, textToSendIconGapPx: TEXT_TO_BUTTON_GAP_PX } =
   layout.bottomBar;
@@ -20,6 +35,7 @@ const FOOTER_BUTTON_TEXT_INSET_PX = layout.bottomBar.undercoverButtonPaddingHori
 export function SmartColumnFooter() {
   const colors = useColors();
   const { t } = useAppStrings();
+  const activePurpose = useSmartActivePurpose();
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge } = useBottomBarLayout();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
@@ -27,8 +43,9 @@ export function SmartColumnFooter() {
   const hideBottomBorder =
     (isInTelegram && !layoutStartup.isTelegramMiniAppDesktop) || !footerDockedToScreenEdge;
 
-  const fullDeployCostLabel = t("smart.footer.deployCost");
-  const shortDeployCostLabel = t("smart.footer.deployCostShort");
+  const costKeys = deployCostKeys(activePurpose);
+  const fullDeployCostLabel = t(costKeys.full);
+  const shortDeployCostLabel = t(costKeys.short);
   const [rowWidth, setRowWidth] = useState(0);
   const [buttonWidth, setButtonWidth] = useState(0);
   const [fullLabelWidth, setFullLabelWidth] = useState(0);
