@@ -152,16 +152,29 @@ export async function listUserProfileAudios(
   }
 }
 
-async function startAudioDownload(
+/**
+ * Playing / streaming audio — top of the 1–32 TDLib range so pressing play
+ * immediately outranks background media.
+ */
+const AUDIO_DOWNLOAD_PRIORITY = 32;
+/**
+ * Playlist album_cover_thumbnail bytes. Slightly below the active track so
+ * audio can start, but still high enough that covers keep downloading in
+ * parallel (and ahead of ordinary chat media at ~16).
+ */
+const COVER_DOWNLOAD_PRIORITY = 28;
+
+async function startFileDownload(
   client: Client,
   fileId: number,
+  priority: number,
   offset = 0,
 ): Promise<void> {
   try {
     await client.invoke({
       _: "downloadFile",
       file_id: fileId,
-      priority: 32,
+      priority,
       offset: Math.max(0, Math.trunc(offset)),
       limit: 0,
       synchronous: false,
@@ -169,6 +182,14 @@ async function startAudioDownload(
   } catch {
     /* poll getFile anyway */
   }
+}
+
+async function startAudioDownload(
+  client: Client,
+  fileId: number,
+  offset = 0,
+): Promise<void> {
+  await startFileDownload(client, fileId, AUDIO_DOWNLOAD_PRIORITY, offset);
 }
 
 function localPrefixBytes(file: TdFile): number {
@@ -182,11 +203,17 @@ async function waitForLocalFile(
   client: Client,
   fileId: number,
   timeoutMs: number,
-  options?: { minBytes?: number; offset?: number },
+  options?: {
+    minBytes?: number;
+    offset?: number;
+    /** Defaults to audio priority; covers pass {@link COVER_DOWNLOAD_PRIORITY}. */
+    priority?: number;
+  },
 ): Promise<TdFile | null> {
   const minBytes = options?.minBytes ?? Number.POSITIVE_INFINITY;
+  const priority = options?.priority ?? AUDIO_DOWNLOAD_PRIORITY;
   const deadline = Date.now() + timeoutMs;
-  await startAudioDownload(client, fileId, options?.offset ?? 0);
+  await startFileDownload(client, fileId, priority, options?.offset ?? 0);
   while (Date.now() < deadline) {
     try {
       const file = (await client.invoke({ _: "getFile", file_id: fileId })) as TdFile;
@@ -199,7 +226,7 @@ async function waitForLocalFile(
         }
       }
       if (!file.local?.is_downloading_active) {
-        await startAudioDownload(client, fileId, options?.offset ?? 0);
+        await startFileDownload(client, fileId, priority, options?.offset ?? 0);
       }
     } catch {
       /* keep polling until deadline */
@@ -213,8 +240,11 @@ async function readLocalFileBytes(
   client: Client,
   fileId: number,
   timeoutMs: number,
+  options?: { priority?: number },
 ): Promise<{ data: Buffer; path: string } | null> {
-  const file = await waitForLocalFile(client, fileId, timeoutMs);
+  const file = await waitForLocalFile(client, fileId, timeoutMs, {
+    priority: options?.priority,
+  });
   const filePath = file?.local?.path;
   if (!filePath || !fs.existsSync(filePath)) return null;
   try {
@@ -404,7 +434,10 @@ export async function readProfileAudioCoverBytes(
   if (!Number.isFinite(fileId) || fileId <= 0) return null;
   // album_cover_thumbnail file ids are already small JPEG thumbs — download that
   // file only (do not re-list the full profile playlist on every cover hit).
-  const bytes = await readLocalFileBytes(client, Math.trunc(fileId), COVER_DOWNLOAD_TIMEOUT_MS);
+  // Runs beside the playing track (priority 28 vs audio 32), not instead of it.
+  const bytes = await readLocalFileBytes(client, Math.trunc(fileId), COVER_DOWNLOAD_TIMEOUT_MS, {
+    priority: COVER_DOWNLOAD_PRIORITY,
+  });
   if (!bytes) return null;
   return { data: bytes.data, mime: "image/jpeg" };
 }

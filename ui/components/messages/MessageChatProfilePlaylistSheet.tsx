@@ -9,31 +9,28 @@ import {
 } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { useColors, layout, type ThemeColors } from "../../theme";
-import {
-  resolveFloatingDialogInsets,
-} from "../floatingDialogChrome";
-import { FloatingDialogScrollChromeProvider } from "../floatingDialogScrollChrome";
-import { FloatingDialogStickyHeader } from "../FloatingDialogStickyHeader";
-import {
-  FloatingDialogShell,
-} from "../FloatingDialogShell";
-import { resolveFloatingDialogDefaultSize } from "../floatingDialogGeometry";
-import { HspScrollColumn } from "../HspScrollColumn";
-import { SCROLL_INDICATOR_OVERLAY_CHROME_BORDER_INSET_PX } from "../../scrollIndicatorPx";
-import {
-  fetchTelegramUserProfileExtras,
-  telegramProfileAudioCoverUrl,
-  type TelegramProfileAudioTrack,
-} from "../../telegram/fetchTelegramUserProfile";
+import { unlockMusicAutoplay } from "../../music/musicAudioElement";
 import {
   getMusicPlayer,
   setMusicTracks,
   startMusicPlaylist,
   subscribeMusicPlayer,
   toggleMusicPlay,
+  type MusicPlayerSnapshot,
 } from "../../music/musicPlayerStore";
-import { unlockMusicAutoplay } from "../../music/musicAudioElement";
+import { SCROLL_INDICATOR_OVERLAY_CHROME_BORDER_INSET_PX } from "../../scrollIndicatorPx";
+import {
+  fetchTelegramUserProfileExtras,
+  telegramProfileAudioCoverUrl,
+  type TelegramProfileAudioTrack,
+} from "../../telegram/fetchTelegramUserProfile";
+import { useColors, layout } from "../../theme";
+import { resolveFloatingDialogInsets } from "../floatingDialogChrome";
+import { FloatingDialogScrollChromeProvider } from "../floatingDialogScrollChrome";
+import { FloatingDialogStickyHeader } from "../FloatingDialogStickyHeader";
+import { FloatingDialogShell } from "../FloatingDialogShell";
+import { resolveFloatingDialogDefaultSize } from "../floatingDialogGeometry";
+import { HspScrollColumn } from "../HspScrollColumn";
 import {
   MusicBackChevronIcon,
   MusicPauseIcon,
@@ -49,6 +46,41 @@ import {
   MESSAGE_FONT_SIZE_PX,
   MESSAGE_LINE_HEIGHT_PX,
 } from "./messageListLayout";
+
+/** Only fields the playlist UI needs — ignore time/buffer ticks so covers keep loading. */
+type PlaylistPlaybackSnap = {
+  playing: boolean;
+  index: number;
+  fileId: number | null;
+  userId: number | null;
+};
+
+function playlistPlaybackSnap(snap: MusicPlayerSnapshot): PlaylistPlaybackSnap {
+  const track = snap.tracks[snap.index] ?? null;
+  return {
+    playing: snap.playing,
+    index: snap.index,
+    fileId: track?.file_id ?? null,
+    userId: track?.user_id ?? null,
+  };
+}
+
+let cachedPlaylistPlayback: PlaylistPlaybackSnap = playlistPlaybackSnap(getMusicPlayer());
+
+function getPlaylistPlaybackSnap(): PlaylistPlaybackSnap {
+  const next = playlistPlaybackSnap(getMusicPlayer());
+  const prev = cachedPlaylistPlayback;
+  if (
+    prev.playing === next.playing &&
+    prev.index === next.index &&
+    prev.fileId === next.fileId &&
+    prev.userId === next.userId
+  ) {
+    return prev;
+  }
+  cachedPlaylistPlayback = next;
+  return next;
+}
 
 const PAD_X_PX = 20;
 /** Above profile sheet (10100) so playlist opens on top when launched from profile. */
@@ -145,7 +177,11 @@ export function MessageChatProfilePlaylistSheet({
     [windowHeight, windowWidth],
   );
   const dialogInsets = resolveFloatingDialogInsets(windowHeight);
-  const player = useSyncExternalStore(subscribeMusicPlayer, getMusicPlayer, getMusicPlayer);
+  const playback = useSyncExternalStore(
+    subscribeMusicPlayer,
+    getPlaylistPlaybackSnap,
+    getPlaylistPlaybackSnap,
+  );
   const safeTracks = Array.isArray(tracks) ? tracks : [];
   const [localTracks, setLocalTracks] = useState<TelegramProfileAudioTrack[]>(safeTracks);
   const [scrollY, setScrollY] = useState(0);
@@ -225,16 +261,26 @@ export function MessageChatProfilePlaylistSheet({
   useEffect(() => {
     if (!visible) return;
     // Prefetch album_cover_thumbnail for near-viewport rows only (not full art).
+    // Critical so playlist interaction (scroll / play) keeps covers moving even
+    // while the playing track holds top TDLib priority on the gateway.
+    // Re-runs when the active track changes so covers stay queued alongside audio.
     for (let i = coverFetchWindow.start; i <= coverFetchWindow.end; i += 1) {
       const track = localTracks[i];
       if (!track) continue;
       const cover = trackCoverUri(track);
       if (!cover || !trackCoverNeedsNetworkFetch(cover)) continue;
       prefetchMessageChatProfileAudioCover(cover, {
-        priority: i < PLAYLIST_COVER_OPEN_PREFETCH ? "high" : "normal",
+        priority: "critical",
       });
     }
-  }, [coverFetchWindow.end, coverFetchWindow.start, localTracks, visible]);
+  }, [
+    coverFetchWindow.end,
+    coverFetchWindow.start,
+    localTracks,
+    playback.fileId,
+    playback.playing,
+    visible,
+  ]);
 
   const moveTrack = useCallback((from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;
@@ -297,8 +343,6 @@ export function MessageChatProfilePlaylistSheet({
     },
     [localTracks],
   );
-
-  const activeTrack = player.tracks[player.index] ?? null;
 
   const sheetBody = (
     <FloatingDialogScrollChromeProvider headerExtendPx={headerExtendPx}>
@@ -365,9 +409,9 @@ export function MessageChatProfilePlaylistSheet({
             {localTracks.slice(rowWindow.start, rowWindow.end + 1).map((track, sliceIndex) => {
               const index = rowWindow.start + sliceIndex;
               const active =
-                activeTrack != null &&
-                activeTrack.file_id === track.file_id &&
-                activeTrack.user_id === track.user_id;
+                playback.fileId != null &&
+                playback.fileId === track.file_id &&
+                playback.userId === track.user_id;
               const meta = [formatClock(track.duration_sec), formatSize(track.size_bytes)]
                 .filter(Boolean)
                 .join(", ");
@@ -414,7 +458,7 @@ export function MessageChatProfilePlaylistSheet({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={
-                      active && player.playing
+                      active && playback.playing
                         ? t("messages.music.pause")
                         : t("messages.music.play")
                     }
@@ -432,7 +476,7 @@ export function MessageChatProfilePlaylistSheet({
                       ? ({ "data-floating-no-drag": "1" } as object)
                       : {})}
                   >
-                    {active && player.playing ? (
+                    {active && playback.playing ? (
                       <MusicPauseIcon color={colors.primary} size={12} />
                     ) : (
                       <MusicPlayIcon color={colors.primary} size={12} />
@@ -479,9 +523,7 @@ export function MessageChatProfilePlaylistSheet({
                         placeholderUri={coverPlaceholder}
                         sizePx={COVER_PX}
                         loadEnabled={coverLoadEnabled}
-                        fetchPriority={
-                          index < PLAYLIST_COVER_OPEN_PREFETCH ? "high" : "normal"
-                        }
+                        fetchPriority="critical"
                       />
                     </View>
                   ) : null}

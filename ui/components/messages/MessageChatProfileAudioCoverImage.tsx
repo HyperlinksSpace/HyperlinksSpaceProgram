@@ -39,15 +39,31 @@ function readCachedDisplayUri(uri: string): string | null {
   return coverBlobCache.get(uri) ?? null;
 }
 
+function enqueueCoverFetch(
+  uri: string,
+  priority: NetworkFetchPriority,
+): Promise<string | null> {
+  const cached = readCachedDisplayUri(uri);
+  if (cached) return Promise.resolve(cached);
+  if (isMessageChatProfileAudioCoverFetchFailed(uri)) return Promise.resolve(null);
+
+  const existing = inflightCoverFetches.get(uri);
+  if (existing) return existing;
+
+  const promise = runQueuedNetworkFetch(() => fetchCoverBlobOnce(uri), { priority }).finally(() => {
+    inflightCoverFetches.delete(uri);
+  });
+  inflightCoverFetches.set(uri, promise);
+  return promise;
+}
+
 export function prefetchMessageChatProfileAudioCover(
   uri: string,
   options?: { priority?: NetworkFetchPriority },
 ): void {
   if (!uri || isMessageChatProfileAudioCoverFetchFailed(uri)) return;
   if (readCachedDisplayUri(uri)) return;
-  void runQueuedNetworkFetch(() => fetchCoverBlob(uri), {
-    priority: options?.priority ?? "normal",
-  }).catch(() => {
+  void enqueueCoverFetch(uri, options?.priority ?? "normal").catch(() => {
     /* row onError handles visible failures */
   });
 }
@@ -86,22 +102,6 @@ async function fetchCoverBlobOnce(uri: string): Promise<string | null> {
   coverBlobCache.set(uri, objectUrl);
   notifyCoverCacheListeners();
   return objectUrl;
-}
-
-async function fetchCoverBlob(uri: string): Promise<string | null> {
-  if (!needsAuthenticatedFetch(uri)) return uri;
-  if (coverFailedUrls.has(uri)) return null;
-  const cached = coverBlobCache.get(uri);
-  if (cached) return cached;
-
-  const inflight = inflightCoverFetches.get(uri);
-  if (inflight) return inflight;
-
-  const promise = fetchCoverBlobOnce(uri).finally(() => {
-    inflightCoverFetches.delete(uri);
-  });
-  inflightCoverFetches.set(uri, promise);
-  return promise;
 }
 
 type Props = {
@@ -176,18 +176,17 @@ export function MessageChatProfileAudioCoverImage({
 
     let cancelled = false;
 
-    void runQueuedNetworkFetch(async () => {
+    // Shared queue + inflight map: play/scroll remounts join the same promise
+    // instead of cancelling or duplicating the cover download.
+    void enqueueCoverFetch(uri, fetchPriority).then((next) => {
       if (cancelled) return;
-      const next = await fetchCoverBlob(uri);
-      if (!cancelled) {
-        if (next) {
-          setDisplayUri(next);
-          setSharpReady(true);
-        } else if (!placeholderUri) {
-          onErrorRef.current?.(new Error("cover_unavailable"));
-        }
+      if (next) {
+        setDisplayUri(next);
+        setSharpReady(true);
+      } else if (!placeholderUri) {
+        onErrorRef.current?.(new Error("cover_unavailable"));
       }
-    }, { priority: fetchPriority });
+    });
 
     return () => {
       cancelled = true;
