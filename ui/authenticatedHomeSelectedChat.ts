@@ -119,6 +119,7 @@ function readStoredChat(): MessageChatRowData | null {
               .filter((id) => Number.isFinite(id) && id > 0)
               .map((id) => Math.trunc(id))
           : null,
+        is_saved_messages: Boolean(row.is_saved_messages),
       };
     }
   } catch {

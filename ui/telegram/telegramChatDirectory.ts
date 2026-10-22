@@ -1,3 +1,4 @@
+import { isSavedMessagesPeer } from "../../shared/savedMessages";
 import type { MessageChatRowData } from "../components/messages/MessageChatRow";
 
 /** Latest chat list snapshot for in-app @username / t.me link resolution. */
@@ -52,4 +53,18 @@ export function findTelegramChatById(telegramChatId: number): MessageChatRowData
   const id = Math.trunc(Number(telegramChatId));
   if (!Number.isFinite(id) || id === 0) return null;
   return chatsByTelegramId.get(id) ?? null;
+}
+
+/** Saved Messages — private chat with getMe (flag or peer id match). */
+export function findSavedMessagesChat(selfUserId?: number | null): MessageChatRowData | null {
+  for (const chat of chatsByTelegramId.values()) {
+    if (chat.is_saved_messages) return chat;
+    if (isSavedMessagesPeer(chat.peer_user_id, selfUserId)) return chat;
+  }
+  return null;
+}
+
+/** Snapshot of indexed chats for pickers (e.g. playlist Forward). */
+export function listTelegramDirectoryChats(): MessageChatRowData[] {
+  return [...chatsByTelegramId.values()];
 }

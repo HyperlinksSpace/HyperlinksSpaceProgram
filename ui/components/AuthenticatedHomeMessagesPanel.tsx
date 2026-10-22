@@ -11,6 +11,7 @@ import {
 import Svg, { Path } from "react-native-svg";
 import { buildApiUrl } from "../../api/_base";
 import { normalizeFormattedTextSegments, type FormattedTextSegment } from "../../shared/formattedTextSegments";
+import { isSavedMessagesPeer, savedMessagesQueryMatches } from "../../shared/savedMessages";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
@@ -102,6 +103,7 @@ function normalizeSearchNeedle(raw: string): string {
 
 function chatMatchesLocalSearch(row: MessageChatRowData, needle: string): boolean {
   if (!needle) return true;
+  if (row.is_saved_messages && savedMessagesQueryMatches(needle)) return true;
   const fields = [
     row.title,
     row.subtitle,
@@ -124,6 +126,8 @@ function chatMatchesLocalSearch(row: MessageChatRowData, needle: string): boolea
 
 function chatSearchRank(row: MessageChatRowData, needle: string, serverHit: boolean): number {
   if (!needle) return 0;
+  // Telegram Desktop: Saved Messages is the first hit for "sav" / "Избранное" / "收藏".
+  if (row.is_saved_messages && savedMessagesQueryMatches(needle)) return -1;
   const title = normalizeSearchNeedle(row.title || "");
   const peer = normalizeSearchNeedle(row.peer_username || "");
   const chatUser = normalizeSearchNeedle(row.chat_username || "");
@@ -140,7 +144,10 @@ function chatSearchRank(row: MessageChatRowData, needle: string, serverHit: bool
 }
 
 /** Remote TDLib hits for chats not yet in the scroll-synced local window. */
-function remoteSearchHitToRow(hit: TelegramChatListSearchHit): MessageChatRowData {
+function remoteSearchHitToRow(
+  hit: TelegramChatListSearchHit,
+  selfUserId?: number | null,
+): MessageChatRowData {
   const username = (hit.peerUsername || hit.chatUsername || "").replace(/^@+/, "").trim();
   const kindLabel =
     hit.chatKind === "channel"
@@ -154,6 +161,7 @@ function remoteSearchHitToRow(hit: TelegramChatListSearchHit): MessageChatRowDat
     username ? `@${username}` : "",
     kindLabel,
   ].filter(Boolean);
+  const isSaved = isSavedMessagesPeer(hit.peerUserId, selfUserId);
   return {
     id: hit.chatId,
     telegram_chat_id: hit.chatId,
@@ -169,6 +177,7 @@ function remoteSearchHitToRow(hit: TelegramChatListSearchHit): MessageChatRowDat
     list_tier: "positioned",
     has_active_voice_chat: Boolean(hit.has_active_voice_chat),
     voice_chat_is_joined: Boolean(hit.has_active_voice_chat && hit.voice_chat_is_joined),
+    is_saved_messages: isSaved,
   };
 }
 
@@ -176,17 +185,22 @@ function remoteSearchHitToRow(hit: TelegramChatListSearchHit): MessageChatRowDat
 function resolveSearchHitRow(
   hit: TelegramChatListSearchHit,
   liveById: Map<number, MessageChatRowData>,
+  selfUserId?: number | null,
 ): MessageChatRowData {
   const live = liveById.get(hit.chatId);
-  if (!live) return remoteSearchHitToRow(hit);
-  if (hit.has_active_voice_chat && !live.has_active_voice_chat) {
+  if (!live) return remoteSearchHitToRow(hit, selfUserId);
+  const withSaved =
+    live.is_saved_messages || isSavedMessagesPeer(live.peer_user_id, selfUserId)
+      ? { ...live, is_saved_messages: true }
+      : live;
+  if (hit.has_active_voice_chat && !withSaved.has_active_voice_chat) {
     return {
-      ...live,
+      ...withSaved,
       has_active_voice_chat: true,
       voice_chat_is_joined: Boolean(hit.voice_chat_is_joined),
     };
   }
-  return live;
+  return withSaved;
 }
 
 type ChatListDisplayItem =
@@ -385,6 +399,7 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
         .map((id: number) => Math.trunc(id));
       return ids.length > 0 ? ids : null;
     })(),
+    is_saved_messages: Boolean(row.is_saved_messages),
   };
 }
 
@@ -674,8 +689,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const { openProfileSheet } = useProfileSheet();
   const botWebApp = useMessageChatBotWebApp();
   const { authReady, isAuthenticated, sessionTelegramMessagesConnected } = useAuth();
-  const { isTelegramMessagesConnected, refreshStatus, recoverTelegramMessagesSession } =
-    useTelegramMessagesConnection();
+  const {
+    isTelegramMessagesConnected,
+    connectedTelegramUserId,
+    refreshStatus,
+    recoverTelegramMessagesSession,
+  } = useTelegramMessagesConnection();
   const recoverChatsInFlightRef = useRef(false);
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
 
@@ -2066,7 +2085,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [openProfileSheet],
   );
 
-  const sortedChats = useMemo(() => sortChatRowsTierAware(chats), [chats]);
+  const sortedChats = useMemo(() => {
+    const tagged = chats.map((row) => {
+      if (
+        row.is_saved_messages ||
+        !isSavedMessagesPeer(row.peer_user_id, connectedTelegramUserId)
+      ) {
+        return row;
+      }
+      return { ...row, is_saved_messages: true };
+    });
+    return sortChatRowsTierAware(tagged);
+  }, [chats, connectedTelegramUserId]);
   const archiveOpen = useMessagesArchiveOpen();
   const mainSortedChats = useMemo(
     () => sortedChats.filter((row) => !row.in_archive),
@@ -2220,7 +2250,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         items.push({
           kind: "chat",
           key: `chat-${hit.chatId}`,
-          row: resolveSearchHitRow(hit, liveById),
+          row: resolveSearchHitRow(hit, liveById, connectedTelegramUserId),
         });
       }
       return items;
@@ -2327,17 +2357,17 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     for (const hit of remoteDirectHits) {
       if (directIds.has(hit.chatId)) continue;
       directIds.add(hit.chatId);
-      directRows.push(resolveSearchHitRow(hit, liveById));
+      directRows.push(resolveSearchHitRow(hit, liveById, connectedTelegramUserId));
     }
 
     const globalRows = remoteGlobalHits
       .filter((hit) => !directIds.has(hit.chatId))
-      .map((hit) => resolveSearchHitRow(hit, liveById));
+      .map((hit) => resolveSearchHitRow(hit, liveById, connectedTelegramUserId));
     const globalIdSet = new Set(globalRows.map((row) => row.telegram_chat_id));
 
     const messageRows = remoteMessageHits
       .filter((hit) => !directIds.has(hit.chatId) && !globalIdSet.has(hit.chatId))
-      .map((hit) => resolveSearchHitRow(hit, liveById));
+      .map((hit) => resolveSearchHitRow(hit, liveById, connectedTelegramUserId));
 
     const items: ChatListDisplayItem[] = [];
     // column-reverse: first item sits nearest the search field (visual bottom).
@@ -2384,6 +2414,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveSortedChats,
     chatListSync?.archiveListReady,
     collapsedSearchSections,
+    connectedTelegramUserId,
     mainSortedChats,
     recentsMode,
     recentSearchHits,

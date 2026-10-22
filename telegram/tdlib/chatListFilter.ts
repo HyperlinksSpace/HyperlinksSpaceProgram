@@ -13,6 +13,8 @@ export type ChatListTier = "pinned" | "positioned" | "unpositioned" | "excluded"
 
 export type ChatListFilterOptions = {
   allowSupplementaryPrivate?: boolean;
+  /** TDLib getMe id — Saved Messages (self) stays in the roster even without a list position. */
+  selfUserId?: number | null;
 };
 
 /** Classify a TDLib chat into list tiers (pinned → positioned → unpositioned tail). */
@@ -26,6 +28,16 @@ export function chatListTier(
     return "positioned";
   }
   const peerUserId = peerUserIdFromChat(chat);
+  const selfUserId = options?.selfUserId;
+  if (
+    peerUserId != null &&
+    selfUserId != null &&
+    Number.isFinite(selfUserId) &&
+    selfUserId > 0 &&
+    peerUserId === Math.trunc(selfUserId)
+  ) {
+    return "unpositioned";
+  }
   if (peerUserId != null && specialUserForceIncludedPeerUserIds().includes(peerUserId)) {
     return "unpositioned";
   }
@@ -48,9 +60,19 @@ export function shouldIncludeChatInList(
   if (tier === "pinned" || tier === "positioned") return true;
   if (tier === "unpositioned") {
     if (options?.includeUnpositioned !== false) return true;
-    // Special force-included peers stay in the roster even when supplementary search is off.
+    // Special force-included peers + Saved Messages stay even when supplementary search is off.
     const peerUserId = peerUserIdFromChat(chat);
-    return peerUserId != null && specialUserForceIncludedPeerUserIds().includes(peerUserId);
+    if (peerUserId != null && specialUserForceIncludedPeerUserIds().includes(peerUserId)) {
+      return true;
+    }
+    const selfUserId = options?.selfUserId;
+    return (
+      peerUserId != null &&
+      selfUserId != null &&
+      Number.isFinite(selfUserId) &&
+      selfUserId > 0 &&
+      peerUserId === Math.trunc(selfUserId)
+    );
   }
   return false;
 }

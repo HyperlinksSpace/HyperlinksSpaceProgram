@@ -48,6 +48,8 @@ import { logGateway } from "./gatewayLog.js";
 import { emojiStatusCustomIdFromChat } from "./emojiStatus.js";
 import { filterChatsForList, chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
 import { omitHiddenPrivateChats } from "./chatListVisibility.js";
+import { ensureSavedMessagesChat } from "./savedMessagesChat.js";
+import { isSavedMessagesPeer } from "../../shared/savedMessages.js";
 import {
   markArchiveChatSyncEnd,
   markArchiveChatSyncStart,
@@ -611,10 +613,15 @@ async function loadAllChats(client: Client, options?: LoadAllChatsOptions): Prom
     merge(await loadSupplementaryPrivateChats(client));
   }
 
+  const saved = await ensureSavedMessagesChat(client);
+  if (saved) merge([saved]);
+
+  const selfUserId = await resolveMyUserId(client);
   const allowSupplementaryPrivate = options?.includeSupplementarySearch !== false;
   const listed = filterChatsForList([...collected.values()], {
     allowSupplementaryPrivate,
     includeUnpositioned: allowSupplementaryPrivate,
+    selfUserId,
   });
   return omitHiddenPrivateChats(client, listed);
 }
@@ -1135,7 +1142,8 @@ async function runSyncChatThreads(
   telegramUsername: string,
   options?: SyncChatThreadsOptions,
 ): Promise<number> {
-  setLiveChatSelfUserId(telegramUsername, await resolveMyUserId(client));
+  const selfUserId = await resolveMyUserId(client);
+  setLiveChatSelfUserId(telegramUsername, selfUserId);
 
   const maxPositioned = options?.maxMainChats ?? null;
   /** First Telegram-style page: pins + top of main list only (no archive/folders). */
@@ -1156,7 +1164,7 @@ async function runSyncChatThreads(
       firstPaintCount: STABLE_TOP_FIRST_PAINT,
       onFirstPaint: isStableTopPage
         ? (partial) => {
-            seedLiveChatList(telegramUsername, buildSkeletonLiveRows(partial));
+            seedLiveChatList(telegramUsername, buildSkeletonLiveRows(partial, selfUserId));
             setStableTopReady(telegramUsername, true);
             logGateway("sync_chat_threads_first_paint", {
               telegramUsername,
@@ -1168,6 +1176,11 @@ async function runSyncChatThreads(
     });
     chats = loaded.chats;
     positionedComplete = loaded.positionedComplete;
+    // Always surface Saved Messages on the first page (create if missing).
+    const saved = await ensureSavedMessagesChat(client);
+    if (saved && !chats.some((c) => c.id === saved.id)) {
+      chats = [...chats, saved];
+    }
     // Archive/folders belong on the full sync pass — mixing them into the first
     // page lets non-top dialogs paint before the main-list head (unlike Desktop/Web).
     if (!isStableTopPage && options?.includeArchive !== false) {
@@ -1220,7 +1233,7 @@ async function runSyncChatThreads(
 
   // Telegram Desktop/Web: paint ordered titles ASAP, then fill previews/avatars.
   if (isStableTopPage && chats.length > 0) {
-    seedLiveChatList(telegramUsername, buildSkeletonLiveRows(chats));
+    seedLiveChatList(telegramUsername, buildSkeletonLiveRows(chats, selfUserId));
     setStableTopReady(telegramUsername, true);
   }
 
@@ -1327,12 +1340,16 @@ async function runSyncChatThreads(
   return chats.length;
 }
 
-function buildSkeletonLiveRows(chats: TdChat[]): Omit<LiveChatRow, "revision">[] {
+function buildSkeletonLiveRows(
+  chats: TdChat[],
+  selfUserId: number | null = null,
+): Omit<LiveChatRow, "revision">[] {
   const rows: Omit<LiveChatRow, "revision">[] = [];
   for (let i = 0; i < chats.length; i++) {
     const chat = chats[i];
-    const tier = chatListTier(chat);
+    const tier = chatListTier(chat, { selfUserId });
     if (tier === "excluded") continue;
+    const peerUserId = peerUserIdFromChat(chat);
     rows.push({
       telegram_chat_id: chat.id,
       title: chatTitle(chat),
@@ -1340,7 +1357,7 @@ function buildSkeletonLiveRows(chats: TdChat[]): Omit<LiveChatRow, "revision">[]
       avatar_url: null,
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
-      peer_user_id: peerUserIdFromChat(chat),
+      peer_user_id: peerUserId,
       peer_username: peerUsernameFromChat(chat),
       chat_username: chatUsernameFromChat(chat),
       chat_kind: chatKindFromTdChat(chat),
@@ -1372,6 +1389,7 @@ function buildSkeletonLiveRows(chats: TdChat[]): Omit<LiveChatRow, "revision">[]
       })(),
       ...voiceChatFromTdChat(chat),
       list_tier: tier,
+      is_saved_messages: isSavedMessagesPeer(peerUserId, selfUserId),
     });
   }
   return rows;
@@ -1420,6 +1438,7 @@ async function buildLiveRowsForChats(
     const profile = presences[i];
     const preview = previewPayloads[i];
     const subtitleSegments = preview?.subtitleSegments ?? null;
+    const peerUserId = peerUserIdFromChat(chat);
     liveRows.push({
       telegram_chat_id: chat.id,
       title: chatTitle(chat),
@@ -1428,7 +1447,7 @@ async function buildLiveRowsForChats(
       avatar_url: avatarUrls[i] ?? null,
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
-      peer_user_id: peerUserIdFromChat(chat),
+      peer_user_id: peerUserId,
       peer_username: profile?.username ?? peerUsernameFromChat(chat),
       chat_username: chatUsernameFromChat(chat),
       chat_kind: chatKindFromTdChat(chat),
@@ -1463,7 +1482,8 @@ async function buildLiveRowsForChats(
       })(),
       // Bound id only from metadata; live paint via verify pass below.
       ...voiceChatFromTdChat(chat),
-      list_tier: chatListTier(chat),
+      list_tier: chatListTier(chat, { selfUserId: myUserId }),
+      is_saved_messages: isSavedMessagesPeer(peerUserId, myUserId),
     });
   }
 

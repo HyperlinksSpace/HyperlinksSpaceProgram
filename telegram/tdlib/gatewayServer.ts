@@ -89,6 +89,9 @@ import {
   editChatMessageForUser,
   deleteChatMessagesForUser,
   saveChatMessageAudioForUser,
+  removeProfileAudioForUser,
+  reorderProfileAudiosForUser,
+  forwardProfileAudioForUser,
   resolvePublicChatForUser,
 } from "./connectAttempts.js";
 import {
@@ -1842,6 +1845,95 @@ export function startTdlibGatewayServer(): http.Server {
             return;
           }
           sendJson(res, 200, { ok: true, file_name: result.file_name });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/user/profile-audio/remove") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            fileId?: number;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const fileId = Number(body.fileId);
+          if (!telegramUsername || !Number.isFinite(fileId) || fileId <= 0) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const result = await removeProfileAudioForUser(telegramUsername, fileId);
+          if (!result.ok) {
+            sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
+              ok: false,
+              error: result.error,
+            });
+            return;
+          }
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/user/profile-audio/reorder") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            orderedFileIds?: unknown;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const orderedFileIds = Array.isArray(body.orderedFileIds)
+            ? body.orderedFileIds
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && id > 0)
+            : [];
+          if (!telegramUsername) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const result = await reorderProfileAudiosForUser(telegramUsername, orderedFileIds);
+          if (!result.ok) {
+            sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
+              ok: false,
+              error: result.error,
+            });
+            return;
+          }
+          sendJson(res, 200, { ok: true });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/user/profile-audio/forward") {
+          const body = (await readJson(req)) as {
+            telegramUsername?: string;
+            chatId?: number;
+            fileId?: number;
+            artist?: string;
+            title?: string;
+            durationSec?: number;
+          };
+          const telegramUsername = (body.telegramUsername || "").trim();
+          const chatId = Number(body.chatId);
+          const fileId = Number(body.fileId);
+          if (
+            !telegramUsername ||
+            !Number.isFinite(chatId) ||
+            chatId === 0 ||
+            !Number.isFinite(fileId) ||
+            fileId <= 0
+          ) {
+            sendJson(res, 400, { ok: false, error: "invalid_params" });
+            return;
+          }
+          const result = await forwardProfileAudioForUser(telegramUsername, chatId, {
+            file_id: fileId,
+            artist: typeof body.artist === "string" ? body.artist : "",
+            title: typeof body.title === "string" ? body.title : "",
+            duration_sec: Number(body.durationSec) || 0,
+          });
+          if (!result.ok) {
+            sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
+              ok: false,
+              error: result.error,
+            });
+            return;
+          }
+          sendJson(res, 200, { ok: true });
           return;
         }
 

@@ -1332,6 +1332,21 @@ async function collectCategorizedChatSearchBuckets(
 
   const textQuery = trimmed.startsWith("@") ? bare : trimmed;
 
+  // Localized Saved Messages titles are client-side — TDLib title is the user's
+  // real name — so inject the self-chat first when the query matches EN/RU/ZH.
+  const { savedMessagesQueryMatches } = await import("../../shared/savedMessages.js");
+  if (savedMessagesQueryMatches(textQuery)) {
+    try {
+      const { ensureSavedMessagesChat } = await import("./savedMessagesChat.js");
+      const saved = await ensureSavedMessagesChat(client);
+      if (saved?.id) {
+        await collectChatSearchHit(client, saved.id, direct);
+      }
+    } catch {
+      /* optional */
+    }
+  }
+
   // tdesktop: top section — local + server-known chats (with message previews).
   try {
     const result = (await client.invoke({
@@ -2756,6 +2771,42 @@ export async function saveChatMessageAudioForUser(
   }
   const { saveMessageAudio } = await import("./messageSaveAudio.js");
   return saveMessageAudio(record.client, Math.trunc(chatId), Math.trunc(messageId), target);
+}
+
+export async function removeProfileAudioForUser(
+  telegramUsername: string,
+  fileId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return { ok: false, error: "session_not_ready" };
+  const { removeProfileAudioTrack } = await import("./profileMusicActions.js");
+  return removeProfileAudioTrack(record.client, fileId);
+}
+
+export async function reorderProfileAudiosForUser(
+  telegramUsername: string,
+  orderedFileIds: number[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return { ok: false, error: "session_not_ready" };
+  const { reorderProfileAudioTracks } = await import("./profileMusicActions.js");
+  return reorderProfileAudioTracks(record.client, orderedFileIds);
+}
+
+export async function forwardProfileAudioForUser(
+  telegramUsername: string,
+  chatId: number,
+  track: {
+    file_id: number;
+    artist: string;
+    title: string;
+    duration_sec: number;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const record = await requireReadySession(telegramUsername, 30_000);
+  if (!record) return { ok: false, error: "session_not_ready" };
+  const { forwardProfileAudioToChat } = await import("./profileMusicActions.js");
+  return forwardProfileAudioToChat(record.client, chatId, track);
 }
 
 export async function focusChatForUser(

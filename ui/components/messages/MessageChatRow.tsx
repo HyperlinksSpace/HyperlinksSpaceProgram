@@ -11,6 +11,8 @@ import type { ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { HomeListRowShell } from "../HomeListRowShell";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
+import { SavedMessagesAvatar } from "./SavedMessagesAvatar";
+import { chatIsSavedMessages } from "./savedMessagesDisplay";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { specialUserDisplayName } from "./specialTelegramUserDisplay";
 import { MessageUnreadCountBadge } from "./MessageUnreadCountBadge";
@@ -105,6 +107,8 @@ export type MessageChatRowData = {
   peer_has_main_web_app?: boolean;
   /** Message ids recently deleted — open chat should drop them immediately. */
   pending_deleted_message_ids?: number[] | null;
+  /** Private chat with yourself — Telegram Saved Messages. */
+  is_saved_messages?: boolean;
 };
 
 function resolveAvatarUrl(item: MessageChatRowData): string | null {
@@ -154,7 +158,8 @@ export function MessageChatRow({
   onOpenApp?: (item: MessageChatRowData) => void;
 }) {
   const { locale, t } = useAppStrings();
-  const title = item.title.trim();
+  const isSavedMessages = chatIsSavedMessages(item);
+  const title = isSavedMessages ? t("messages.sideMenu.savedMessages") : item.title.trim();
   const preview = formatMessageChatListPreview(item, locale);
   const subtitle = preview.text;
   const subtitleSegments = useMemo(() => preview.textSegments, [preview.textSegments]);
@@ -288,7 +293,19 @@ export function MessageChatRow({
           overflow: "visible",
         }}
       >
-        {onAvatarPress ? (
+        {isSavedMessages ? (
+          onAvatarPress ? (
+            <ProfileOpenHitTarget
+              label={t("messages.profile.openA11y")}
+              onPress={onAvatarPress}
+              style={{ width: MESSAGE_AVATAR_PX, height: MESSAGE_AVATAR_PX }}
+            >
+              <SavedMessagesAvatar sizePx={MESSAGE_AVATAR_PX} />
+            </ProfileOpenHitTarget>
+          ) : (
+            <SavedMessagesAvatar sizePx={MESSAGE_AVATAR_PX} />
+          )
+        ) : onAvatarPress ? (
           <ProfileOpenHitTarget
             label={t("messages.profile.openA11y")}
             onPress={onAvatarPress}
@@ -377,29 +394,33 @@ export function MessageChatRow({
                 minWidth: 0,
               }}
             >
-              <View
-                style={{
-                  width: MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
-                  height: MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
-                  marginRight: LIST_TYPE_ICON_GAP_PX,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <MessageChatTypeIcon
-                  chatKind={item.chat_kind}
-                  peerIsBot={peerIsBot}
-                  color={colors.secondary}
-                  size={MESSAGE_LIST_INLINE_EMOJI_SIZE_PX}
-                />
-              </View>
+              {!isSavedMessages ? (
+                <View
+                  style={{
+                    width: MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
+                    height: MESSAGE_LIST_INLINE_EMOJI_SIZE_PX,
+                    marginRight: LIST_TYPE_ICON_GAP_PX,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <MessageChatTypeIcon
+                    chatKind={item.chat_kind}
+                    peerIsBot={peerIsBot}
+                    color={colors.secondary}
+                    size={MESSAGE_LIST_INLINE_EMOJI_SIZE_PX}
+                  />
+                </View>
+              ) : null}
               <View style={{ flex: 1, minWidth: 0 }}>
                 <SpecialTelegramUserName
                   name={title}
-                  telegramUserId={item.peer_user_id ?? null}
-                  telegramChatId={item.telegram_chat_id}
-                  emojiStatusCustomEmojiId={item.peer_emoji_status_custom_emoji_id ?? null}
+                  telegramUserId={isSavedMessages ? null : item.peer_user_id ?? null}
+                  telegramChatId={isSavedMessages ? null : item.telegram_chat_id}
+                  emojiStatusCustomEmojiId={
+                    isSavedMessages ? null : item.peer_emoji_status_custom_emoji_id ?? null
+                  }
                   emojiStatusPriority={true}
                   inlineEmojiFetchEnabled={rowInView || Boolean(isActive)}
                   inlineEmojiFetchPriority={rowInView || Boolean(isActive)}

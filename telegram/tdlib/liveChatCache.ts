@@ -37,6 +37,7 @@ import {
   type MessageOutgoingStatus,
 } from "./messageHistoryMap.js";
 import { chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
+import { isSavedMessagesPeer } from "../../shared/savedMessages.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 
 export type LiveChatRow = {
@@ -84,6 +85,8 @@ export type LiveChatRow = {
   voice_chat_is_joined?: boolean;
   /** Recent deleted message ids for open-chat UI removal (ephemeral). */
   pending_deleted_message_ids?: number[];
+  /** Private chat with getMe — Telegram Saved Messages. */
+  is_saved_messages?: boolean;
   /** Monotonic version bumped on each update (for client diffing). */
   revision: number;
 };
@@ -471,7 +474,15 @@ export function patchLiveChatFromTdlib(
           voice_chat_is_joined: false,
         };
       })(),
-      list_tier: existing?.list_tier ?? chatListTier(chat),
+      list_tier:
+        existing?.list_tier ??
+        chatListTier(chat, { selfUserId: getLiveChatSelfUserId(telegramUsername) }),
+      is_saved_messages:
+        existing?.is_saved_messages === true ||
+        isSavedMessagesPeer(
+          existing?.peer_user_id ?? peerUserIdFromChat(chat),
+          getLiveChatSelfUserId(telegramUsername),
+        ),
     };
   return upsertLiveChatRow(telegramUsername, row);
 }

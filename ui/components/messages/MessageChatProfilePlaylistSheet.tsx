@@ -5,6 +5,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
   type TextStyle,
 } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -24,6 +25,14 @@ import {
   telegramProfileAudioCoverUrl,
   type TelegramProfileAudioTrack,
 } from "../../telegram/fetchTelegramUserProfile";
+import {
+  downloadProfilePlaylistTrack,
+  forwardProfilePlaylistTrack,
+  removeProfilePlaylistTrack,
+  reorderProfilePlaylistTracks,
+} from "../../telegram/profilePlaylistActions";
+import { listTelegramDirectoryChats } from "../../telegram/telegramChatDirectory";
+import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { useColors, layout } from "../../theme";
 import { resolveFloatingDialogInsets } from "../floatingDialogChrome";
 import { FloatingDialogScrollChromeProvider } from "../floatingDialogScrollChrome";
@@ -42,6 +51,11 @@ import {
   MessageChatProfileAudioCoverImage,
   prefetchMessageChatProfileAudioCover,
 } from "./MessageChatProfileAudioCoverImage";
+import {
+  MessageChatProfilePlaylistContextMenu,
+  type PlaylistMenuAnchor,
+} from "./MessageChatProfilePlaylistContextMenu";
+import { MessageChatProfilePlaylistForwardSheet } from "./MessageChatProfilePlaylistForwardSheet";
 import {
   MESSAGE_FONT_SIZE_PX,
   MESSAGE_LINE_HEIGHT_PX,
@@ -171,6 +185,7 @@ export function MessageChatProfilePlaylistSheet({
 }: Props) {
   const colors = useColors();
   const { t } = useAppStrings();
+  const { connectedTelegramUserId } = useTelegramMessagesConnection();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const defaultSize = useMemo(
     () => resolveFloatingDialogDefaultSize(windowWidth, windowHeight, "profileList"),
@@ -187,8 +202,23 @@ export function MessageChatProfilePlaylistSheet({
   const [scrollY, setScrollY] = useState(0);
   const [scrollLayoutH, setScrollLayoutH] = useState(0);
   const [headerExtendPx, setHeaderExtendPx] = useState(0);
+  const [menuAnchor, setMenuAnchor] = useState<PlaylistMenuAnchor | null>(null);
+  const [menuTrackIndex, setMenuTrackIndex] = useState<number | null>(null);
+  const [forwardOpen, setForwardOpen] = useState(false);
+  const [forwardTrack, setForwardTrack] = useState<TelegramProfileAudioTrack | null>(null);
   const dragFromRef = useRef<number | null>(null);
+  const dragDirtyRef = useRef(false);
+  const localTracksRef = useRef(localTracks);
+  localTracksRef.current = localTracks;
   const playlistRefreshGenRef = useRef(0);
+  const isOwnPlaylist = useMemo(() => {
+    const ownerId = localTracks[0]?.user_id ?? safeTracks[0]?.user_id ?? null;
+    return (
+      connectedTelegramUserId != null &&
+      ownerId != null &&
+      Math.trunc(ownerId) === Math.trunc(connectedTelegramUserId)
+    );
+  }, [connectedTelegramUserId, localTracks, safeTracks]);
 
   useEffect(() => {
     const incoming = Array.isArray(tracks) ? tracks : [];
@@ -282,6 +312,13 @@ export function MessageChatProfilePlaylistSheet({
     visible,
   ]);
 
+  const persistReorder = useCallback(() => {
+    if (!isOwnPlaylist || !dragDirtyRef.current) return;
+    dragDirtyRef.current = false;
+    const ids = localTracksRef.current.map((row) => row.file_id);
+    void reorderProfilePlaylistTracks(ids);
+  }, [isOwnPlaylist]);
+
   const moveTrack = useCallback((from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;
     setLocalTracks((prev) => {
@@ -290,6 +327,7 @@ export function MessageChatProfilePlaylistSheet({
       const [row] = next.splice(from, 1);
       if (!row) return prev;
       next.splice(to, 0, row);
+      dragDirtyRef.current = true;
       if (samePlaylist(prev)) {
         const current = getMusicPlayer().tracks[getMusicPlayer().index];
         setMusicTracks(next, current?.file_id);
@@ -303,6 +341,7 @@ export function MessageChatProfilePlaylistSheet({
     const onMove = (event: PointerEvent) => {
       const from = dragFromRef.current;
       if (from == null) return;
+      event.preventDefault();
       const el = document.elementFromPoint(event.clientX, event.clientY);
       const row = el?.closest?.("[data-playlist-index]") as HTMLElement | null;
       if (!row) return;
@@ -312,6 +351,7 @@ export function MessageChatProfilePlaylistSheet({
       dragFromRef.current = to;
     };
     const onUp = () => {
+      if (dragFromRef.current != null) persistReorder();
       dragFromRef.current = null;
     };
     document.addEventListener("pointermove", onMove);
@@ -322,7 +362,51 @@ export function MessageChatProfilePlaylistSheet({
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
     };
-  }, [moveTrack, visible]);
+  }, [moveTrack, persistReorder, visible]);
+
+  const openTrackMenu = useCallback((index: number, event: GestureResponderEvent) => {
+    const x = Number(event.nativeEvent.pageX);
+    const y = Number(event.nativeEvent.pageY);
+    setMenuTrackIndex(index);
+    setMenuAnchor({
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    });
+  }, []);
+
+  const closeTrackMenu = useCallback(() => {
+    setMenuAnchor(null);
+    setMenuTrackIndex(null);
+  }, []);
+
+  const menuTrack =
+    menuTrackIndex != null && menuTrackIndex >= 0 && menuTrackIndex < localTracks.length
+      ? localTracks[menuTrackIndex]!
+      : null;
+
+  const handleSaveAs = useCallback(() => {
+    if (!menuTrack) return;
+    downloadProfilePlaylistTrack(menuTrack);
+  }, [menuTrack]);
+
+  const handleForward = useCallback(() => {
+    if (!menuTrack) return;
+    setForwardTrack(menuTrack);
+    setForwardOpen(true);
+  }, [menuTrack]);
+
+  const handleDelete = useCallback(() => {
+    if (!menuTrack || !isOwnPlaylist) return;
+    const fileId = menuTrack.file_id;
+    const prev = localTracksRef.current;
+    const next = prev.filter((row) => row.file_id !== fileId);
+    setLocalTracks(next);
+    if (samePlaylist(prev)) {
+      const current = getMusicPlayer().tracks[getMusicPlayer().index];
+      setMusicTracks(next, current?.file_id);
+    }
+    void removeProfilePlaylistTrack(fileId);
+  }, [isOwnPlaylist, menuTrack]);
 
   const playTrack = useCallback(
     (index: number) => {
@@ -425,7 +509,23 @@ export function MessageChatProfilePlaylistSheet({
                 <View
                   key={`${track.user_id}:${track.file_id}`}
                   {...(Platform.OS === "web"
-                    ? ({ "data-playlist-index": String(index) } as object)
+                    ? ({
+                        dataSet: { playlistIndex: String(index) },
+                        onContextMenu: (event: {
+                          preventDefault?: () => void;
+                          stopPropagation?: () => void;
+                          clientX?: number;
+                          clientY?: number;
+                        }) => {
+                          event.preventDefault?.();
+                          event.stopPropagation?.();
+                          setMenuTrackIndex(index);
+                          setMenuAnchor({
+                            x: Number(event.clientX) || 0,
+                            y: Number(event.clientY) || 0,
+                          });
+                        },
+                      } as object)
                     : {})}
                   style={{
                     flexDirection: "row",
@@ -438,9 +538,28 @@ export function MessageChatProfilePlaylistSheet({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={t("messages.music.reorder")}
-                    onPressIn={() => {
+                    onPressIn={(event) => {
                       dragFromRef.current = index;
+                      if (Platform.OS === "web") {
+                        const native = event.nativeEvent as unknown as {
+                          pointerId?: number;
+                          target?: { setPointerCapture?: (id: number) => void };
+                        };
+                        const pointerId = Number(native.pointerId);
+                        if (
+                          Number.isFinite(pointerId) &&
+                          typeof native.target?.setPointerCapture === "function"
+                        ) {
+                          try {
+                            native.target.setPointerCapture(pointerId);
+                          } catch {
+                            /* ignore */
+                          }
+                        }
+                      }
                     }}
+                    onLongPress={(event) => openTrackMenu(index, event)}
+                    delayLongPress={420}
                     style={({ pressed }) => ({
                       width: 22,
                       height: 30,
@@ -448,9 +567,12 @@ export function MessageChatProfilePlaylistSheet({
                       justifyContent: "center",
                       opacity: pressed ? 0.6 : 1,
                       cursor: Platform.OS === "web" ? ("grab" as never) : undefined,
+                      ...(Platform.OS === "web"
+                        ? ({ touchAction: "none", userSelect: "none" } as object)
+                        : null),
                     })}
                     {...(Platform.OS === "web"
-                      ? ({ "data-floating-no-drag": "1" } as object)
+                      ? ({ dataSet: { floatingNoDrag: "1" } } as object)
                       : {})}
                   >
                     <MusicReorderIcon color={colors.primary} size={16} />
@@ -545,19 +667,46 @@ export function MessageChatProfilePlaylistSheet({
   );
 
   return (
-    <FloatingDialogShell
-      visible={visible}
-      zIndex={PROFILE_OVERLAY_Z}
-      defaultSize={defaultSize}
-      minSize={{ width: 300, height: 300 }}
-      sizeStorageKey="hsp.profilePlaylistSheet.size.v4"
-      offsetStorageKey="hsp.profilePlaylistSheet.offset.v4"
-      onRequestClose={onBack}
-      testId="profile-playlist-sheet"
-      moveIgnoreSelector="[data-floating-no-drag],button,[role='button']"
-    >
-      {sheetBody}
-    </FloatingDialogShell>
+    <>
+      <FloatingDialogShell
+        visible={visible}
+        zIndex={PROFILE_OVERLAY_Z}
+        defaultSize={defaultSize}
+        minSize={{ width: 300, height: 300 }}
+        sizeStorageKey="hsp.profilePlaylistSheet.size.v4"
+        offsetStorageKey="hsp.profilePlaylistSheet.offset.v4"
+        onRequestClose={onBack}
+        testId="profile-playlist-sheet"
+        moveIgnoreSelector="[data-floating-no-drag],button,[role='button']"
+      >
+        {sheetBody}
+      </FloatingDialogShell>
+      <MessageChatProfilePlaylistContextMenu
+        visible={menuAnchor != null && menuTrack != null}
+        anchor={menuAnchor}
+        colors={colors}
+        canDelete={isOwnPlaylist}
+        onClose={closeTrackMenu}
+        onSaveAs={handleSaveAs}
+        onForward={handleForward}
+        onDelete={handleDelete}
+      />
+      <MessageChatProfilePlaylistForwardSheet
+        visible={forwardOpen && forwardTrack != null}
+        chats={listTelegramDirectoryChats()}
+        onClose={() => {
+          setForwardOpen(false);
+          setForwardTrack(null);
+        }}
+        onPick={(chat) => {
+          const track = forwardTrack;
+          setForwardOpen(false);
+          setForwardTrack(null);
+          if (!track) return;
+          void forwardProfilePlaylistTrack(chat.telegram_chat_id, track);
+        }}
+      />
+    </>
   );
 }
 

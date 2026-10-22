@@ -20,6 +20,8 @@ import {
 import { useProfileSheet } from "../../profile/ProfileContext";
 import { layout, typographyFixedRow30Label, useColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
+import { openAuthenticatedHomeChatHistory } from "../../authenticatedHomeSelectedChat";
+import { findSavedMessagesChat } from "../../telegram/telegramChatDirectory";
 import { fetchTelegramUserProfile } from "../../telegram/fetchTelegramUserProfile";
 import type { TelegramProfilePhotoMarkup } from "../../../shared/telegramProfilePhoto";
 import {
@@ -539,6 +541,13 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
     openConnectSheet({ addAccount: true });
   }, [connectedAccounts.length, openConnectSheet, storedAccounts.length, unlimitedAccounts]);
 
+  const openSavedMessages = useCallback(() => {
+    const chat = findSavedMessagesChat(connectedTelegramUserId);
+    if (!chat) return;
+    onClose();
+    openAuthenticatedHomeChatHistory({ ...chat, is_saved_messages: true });
+  }, [connectedTelegramUserId, onClose]);
+
   const handleSwitchAccount = useCallback(
     async (account: { key: string; slot: number; active: boolean }) => {
       if (account.active) return;
@@ -594,6 +603,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
         key: "saved",
         labelKey: "messages.sideMenu.savedMessages",
         Icon: SideMenuSavedIcon,
+        onPress: openSavedMessages,
       },
       {
         key: "settings",
@@ -602,7 +612,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
         onPress: () => openMenuDialog("settings"),
       },
     ],
-    [openMenuDialog, openMyProfile],
+    [openMenuDialog, openMyProfile, openSavedMessages],
   );
 
   const menuDialogs = (

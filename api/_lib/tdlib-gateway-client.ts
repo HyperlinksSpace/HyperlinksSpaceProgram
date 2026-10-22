@@ -1808,6 +1808,61 @@ export async function gatewaySaveChatMessageAudio(
   };
 }
 
+export async function gatewayRemoveProfileAudio(
+  telegramUsername: string,
+  fileId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { response, json } = await gatewayFetch("/v1/user/profile-audio/remove", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername, fileId }),
+  });
+  if (!response.ok || json.ok === false) {
+    return { ok: false, error: typeof json.error === "string" ? json.error : "remove_failed" };
+  }
+  return { ok: true };
+}
+
+export async function gatewayReorderProfileAudios(
+  telegramUsername: string,
+  orderedFileIds: number[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { response, json } = await gatewayFetch("/v1/user/profile-audio/reorder", {
+    method: "POST",
+    body: JSON.stringify({ telegramUsername, orderedFileIds }),
+  });
+  if (!response.ok || json.ok === false) {
+    return { ok: false, error: typeof json.error === "string" ? json.error : "reorder_failed" };
+  }
+  return { ok: true };
+}
+
+export async function gatewayForwardProfileAudio(
+  telegramUsername: string,
+  chatId: number,
+  track: {
+    fileId: number;
+    artist: string;
+    title: string;
+    durationSec: number;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { response, json } = await gatewayFetch("/v1/user/profile-audio/forward", {
+    method: "POST",
+    body: JSON.stringify({
+      telegramUsername,
+      chatId,
+      fileId: track.fileId,
+      artist: track.artist,
+      title: track.title,
+      durationSec: track.durationSec,
+    }),
+  });
+  if (!response.ok || json.ok === false) {
+    return { ok: false, error: typeof json.error === "string" ? json.error : "forward_failed" };
+  }
+  return { ok: true };
+}
+
 export async function gatewayFetchMessageMedia(
   telegramUsername: string,
   chatId: number,

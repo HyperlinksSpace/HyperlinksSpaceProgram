@@ -7,6 +7,8 @@ import { useTelegram } from "../Telegram";
 import { formatMessageChatSubheaderLabel, isMessageChatActionLive } from "./formatMessageChatSubheader";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
+import { SavedMessagesAvatar } from "./SavedMessagesAvatar";
+import { chatIsSavedMessages } from "./savedMessagesDisplay";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
@@ -66,21 +68,36 @@ export function MessageChatHeader({
   const { colorScheme } = useTelegram();
   const lineT = menuStripRuleThickness();
   const stripPaddingX = layout.contentSideInsetPx;
-  const title = chat.title.trim();
+  const isSavedMessages = chatIsSavedMessages(chat);
+  const title = isSavedMessages ? t("messages.sideMenu.savedMessages") : chat.title.trim();
   const showBack = typeof onBack === "function";
-  const titleColor =
-    resolveTelegramUserAccentColorForDisplay(
-      chat.peer_accent_color_light,
-      chat.peer_accent_color_dark,
-      colorScheme,
-      colors.background,
-    ) ?? colors.primary;
-  const subheaderLabel = formatMessageChatSubheaderLabel(chat, locale);
+  const titleColor = isSavedMessages
+    ? colors.primary
+    : resolveTelegramUserAccentColorForDisplay(
+        chat.peer_accent_color_light,
+        chat.peer_accent_color_dark,
+        colorScheme,
+        colors.background,
+      ) ?? colors.primary;
+  const subheaderLabel = isSavedMessages ? null : formatMessageChatSubheaderLabel(chat, locale);
   const subheaderIsLiveAction = isMessageChatActionLive(chat);
-  const showStart = Boolean(showStartVoice && onStartVoice);
+  const showStart = Boolean(showStartVoice && onStartVoice) && !isSavedMessages;
   const iconUrl = resolveTelegramThreadAvatarUrl(chat);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const canOpenProfile = typeof onOpenProfile === "function";
+  const avatarNode = isSavedMessages ? (
+    <SavedMessagesAvatar sizePx={HEADER_AVATAR_PX} />
+  ) : (
+    <MessageChatAvatarSlot
+      iconUrl={iconUrl}
+      initials={avatarInitials}
+      sizePx={HEADER_AVATAR_PX}
+      colors={colors}
+      scheme={colorScheme}
+      loadEnabled
+      fetchPriority="high"
+    />
+  );
 
   const textBase = {
     fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
@@ -106,9 +123,11 @@ export function MessageChatHeader({
     <>
       <SpecialTelegramUserName
         name={title}
-        telegramUserId={chat.peer_user_id ?? null}
-        telegramChatId={chat.telegram_chat_id}
-        emojiStatusCustomEmojiId={chat.peer_emoji_status_custom_emoji_id ?? null}
+        telegramUserId={isSavedMessages ? null : chat.peer_user_id ?? null}
+        telegramChatId={isSavedMessages ? null : chat.telegram_chat_id}
+        emojiStatusCustomEmojiId={
+          isSavedMessages ? null : chat.peer_emoji_status_custom_emoji_id ?? null
+        }
         emojiStatusPriority
         inlineEmojiFetchEnabled
         inlineEmojiFetchPriority
@@ -159,15 +178,7 @@ export function MessageChatHeader({
           flexShrink: 0,
         }}
       >
-        <MessageChatAvatarSlot
-          iconUrl={iconUrl}
-          initials={avatarInitials}
-          sizePx={HEADER_AVATAR_PX}
-          colors={colors}
-          scheme={colorScheme}
-          loadEnabled
-          fetchPriority="high"
-        />
+        {avatarNode}
       </View>
       <View style={{ width: MESSAGE_ICON_TEXT_GAP_PX }} />
       <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{nameBlock}</View>
@@ -191,15 +202,7 @@ export function MessageChatHeader({
           flexShrink: 0,
         }}
       >
-        <MessageChatAvatarSlot
-          iconUrl={iconUrl}
-          initials={avatarInitials}
-          sizePx={HEADER_AVATAR_PX}
-          colors={colors}
-          scheme={colorScheme}
-          loadEnabled
-          fetchPriority="high"
-        />
+        {avatarNode}
       </View>
       <View style={{ width: MESSAGE_ICON_TEXT_GAP_PX }} />
       <View style={{ flex: 1, minWidth: 0, alignItems: "flex-start" }}>{nameBlock}</View>
