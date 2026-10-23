@@ -1825,10 +1825,17 @@ export async function gatewayRemoveProfileAudio(
 export async function gatewayReorderProfileAudios(
   telegramUsername: string,
   orderedFileIds: number[],
+  position?: { fileId: number; afterFileId: number },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const { response, json } = await gatewayFetch("/v1/user/profile-audio/reorder", {
     method: "POST",
-    body: JSON.stringify({ telegramUsername, orderedFileIds }),
+    body: JSON.stringify({
+      telegramUsername,
+      orderedFileIds,
+      ...(position
+        ? { fileId: Math.trunc(position.fileId), afterFileId: Math.trunc(position.afterFileId) }
+        : null),
+    }),
   });
   if (!response.ok || json.ok === false) {
     return { ok: false, error: typeof json.error === "string" ? json.error : "reorder_failed" };

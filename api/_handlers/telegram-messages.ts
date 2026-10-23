@@ -3755,11 +3755,24 @@ export async function telegramMessagesProfileAudioReorderHandler(
   if (!connected) {
     return finishJson(request, res, { ok: false, error: "not_connected", connected: false }, 403);
   }
-  const body = await parseRequestBody<{ ordered_file_ids?: unknown }>(request);
+  const body = await parseRequestBody<{
+    ordered_file_ids?: unknown;
+    file_id?: unknown;
+    after_file_id?: unknown;
+  }>(request);
   const orderedFileIds = Array.isArray(body.ordered_file_ids)
     ? body.ordered_file_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
     : [];
-  const result = await gatewayReorderProfileAudios(userOrRes, orderedFileIds);
+  const fileId = Number(body.file_id);
+  const afterFileId = Number(body.after_file_id);
+  const position =
+    Number.isFinite(fileId) && fileId > 0 && Number.isFinite(afterFileId) && afterFileId >= 0
+      ? { fileId: Math.trunc(fileId), afterFileId: Math.trunc(afterFileId) }
+      : undefined;
+  if (!position && orderedFileIds.length === 0) {
+    return finishJson(request, res, { ok: false, error: "file_id_required" }, 400);
+  }
+  const result = await gatewayReorderProfileAudios(userOrRes, orderedFileIds, position);
   if (!result.ok) {
     return finishJson(
       request,

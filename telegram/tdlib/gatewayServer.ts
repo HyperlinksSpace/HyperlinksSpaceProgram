@@ -91,6 +91,7 @@ import {
   saveChatMessageAudioForUser,
   removeProfileAudioForUser,
   reorderProfileAudiosForUser,
+  setProfileAudioPositionForUser,
   forwardProfileAudioForUser,
   resolvePublicChatForUser,
 } from "./connectAttempts.js";
@@ -1875,8 +1876,12 @@ export function startTdlibGatewayServer(): http.Server {
           const body = (await readJson(req)) as {
             telegramUsername?: string;
             orderedFileIds?: unknown;
+            fileId?: unknown;
+            afterFileId?: unknown;
           };
           const telegramUsername = (body.telegramUsername || "").trim();
+          const fileId = Number(body.fileId);
+          const afterFileId = Number(body.afterFileId);
           const orderedFileIds = Array.isArray(body.orderedFileIds)
             ? body.orderedFileIds
                 .map((id) => Number(id))
@@ -1886,7 +1891,11 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
-          const result = await reorderProfileAudiosForUser(telegramUsername, orderedFileIds);
+          // Prefer a single setProfileAudioPosition (drag-drop); fall back to full list.
+          const result =
+            Number.isFinite(fileId) && fileId > 0 && Number.isFinite(afterFileId) && afterFileId >= 0
+              ? await setProfileAudioPositionForUser(telegramUsername, fileId, afterFileId)
+              : await reorderProfileAudiosForUser(telegramUsername, orderedFileIds);
           if (!result.ok) {
             sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
               ok: false,

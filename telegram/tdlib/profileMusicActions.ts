@@ -24,8 +24,44 @@ export async function removeProfileAudioTrack(
 }
 
 /**
- * Persist playlist order after a drag. `orderedFileIds` is the full new order;
- * we apply setProfileAudioPosition for each file relative to the previous one.
+ * Move one profile audio to a new slot (Telegram `account.saveMusic` / TDLib
+ * `setProfileAudioPosition`). `afterFileId` 0 = beginning of the list.
+ */
+export async function setProfileAudioTrackPosition(
+  client: Client,
+  fileId: number,
+  afterFileId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = Math.trunc(Number(fileId));
+  const afterId = Math.trunc(Number(afterFileId));
+  if (!Number.isFinite(id) || id <= 0) {
+    return { ok: false, error: "file_id_required" };
+  }
+  if (!Number.isFinite(afterId) || afterId < 0) {
+    return { ok: false, error: "after_file_id_invalid" };
+  }
+  if (afterId === id) {
+    return { ok: false, error: "after_file_id_invalid" };
+  }
+  try {
+    await client.invoke({
+      _: "setProfileAudioPosition",
+      file_id: id,
+      after_file_id: afterId,
+    });
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "reorder_failed",
+    };
+  }
+}
+
+/**
+ * Persist a full playlist order after drag. Prefer a single
+ * {@link setProfileAudioTrackPosition} when only one track moved; this walks
+ * left-to-right so a complete list still converges if the client sends all ids.
  */
 export async function reorderProfileAudioTracks(
   client: Client,
@@ -39,11 +75,8 @@ export async function reorderProfileAudioTracks(
     for (let i = 0; i < ids.length; i += 1) {
       const fileId = ids[i]!;
       const afterFileId = i === 0 ? 0 : ids[i - 1]!;
-      await client.invoke({
-        _: "setProfileAudioPosition",
-        file_id: fileId,
-        after_file_id: afterFileId,
-      });
+      const result = await setProfileAudioTrackPosition(client, fileId, afterFileId);
+      if (!result.ok) return result;
     }
     return { ok: true };
   } catch (err) {

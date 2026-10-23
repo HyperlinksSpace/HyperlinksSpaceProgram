@@ -29,7 +29,7 @@ import {
   downloadProfilePlaylistTrack,
   forwardProfilePlaylistTrack,
   removeProfilePlaylistTrack,
-  reorderProfilePlaylistTracks,
+  repositionProfilePlaylistTrack,
 } from "../../telegram/profilePlaylistActions";
 import { listTelegramDirectoryChats } from "../../telegram/telegramChatDirectory";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -207,6 +207,8 @@ export function MessageChatProfilePlaylistSheet({
   const [forwardOpen, setForwardOpen] = useState(false);
   const [forwardTrack, setForwardTrack] = useState<TelegramProfileAudioTrack | null>(null);
   const dragFromRef = useRef<number | null>(null);
+  /** File id of the row grabbed for drag — index changes while bubbling. */
+  const dragFileIdRef = useRef<number | null>(null);
   const dragDirtyRef = useRef(false);
   const localTracksRef = useRef(localTracks);
   localTracksRef.current = localTracks;
@@ -223,6 +225,7 @@ export function MessageChatProfilePlaylistSheet({
   useEffect(() => {
     const incoming = Array.isArray(tracks) ? tracks : [];
     setLocalTracks((prev) => {
+      if (dragDirtyRef.current) return prev;
       if (!visible) return incoming;
       if (
         Array.isArray(prev) &&
@@ -232,6 +235,7 @@ export function MessageChatProfilePlaylistSheet({
       ) {
         return prev;
       }
+      localTracksRef.current = incoming;
       return incoming;
     });
   }, [tracks, visible]);
@@ -250,8 +254,11 @@ export function MessageChatProfilePlaylistSheet({
 
     void fetchTelegramUserProfileExtras(0, userId, undefined, { priority: "high" }).then((result) => {
       if (cancelled || refreshGen !== playlistRefreshGenRef.current || !result.ok) return;
+      // Don't clobber an in-progress / just-finished local reorder with a stale fetch.
+      if (dragDirtyRef.current || dragFromRef.current != null) return;
       const full = result.extras.playlist;
       if (!Array.isArray(full) || full.length === 0) return;
+      localTracksRef.current = full;
       setLocalTracks(full);
     });
 
@@ -314,26 +321,36 @@ export function MessageChatProfilePlaylistSheet({
 
   const persistReorder = useCallback(() => {
     if (!isOwnPlaylist || !dragDirtyRef.current) return;
-    dragDirtyRef.current = false;
+    const fileId = dragFileIdRef.current;
+    // Ref is updated synchronously in moveTrack — do not wait for React re-render.
     const ids = localTracksRef.current.map((row) => row.file_id);
-    void reorderProfilePlaylistTracks(ids);
+    dragDirtyRef.current = false;
+    dragFileIdRef.current = null;
+    if (fileId == null || !Number.isFinite(fileId) || fileId <= 0) return;
+    const index = ids.indexOf(fileId);
+    if (index < 0) return;
+    const afterFileId = index === 0 ? 0 : ids[index - 1]!;
+    // Bump refresh gen so an in-flight extras fetch cannot overwrite this order.
+    playlistRefreshGenRef.current += 1;
+    void repositionProfilePlaylistTrack(fileId, afterFileId);
   }, [isOwnPlaylist]);
 
   const moveTrack = useCallback((from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;
-    setLocalTracks((prev) => {
-      if (!Array.isArray(prev) || from >= prev.length || to >= prev.length) return prev;
-      const next = [...prev];
-      const [row] = next.splice(from, 1);
-      if (!row) return prev;
-      next.splice(to, 0, row);
-      dragDirtyRef.current = true;
-      if (samePlaylist(prev)) {
-        const current = getMusicPlayer().tracks[getMusicPlayer().index];
-        setMusicTracks(next, current?.file_id);
-      }
-      return next;
-    });
+    const prev = localTracksRef.current;
+    if (!Array.isArray(prev) || from >= prev.length || to >= prev.length) return;
+    const next = [...prev];
+    const [row] = next.splice(from, 1);
+    if (!row) return;
+    next.splice(to, 0, row);
+    // Keep ref in sync before setState so pointerup can persist the final order.
+    localTracksRef.current = next;
+    dragDirtyRef.current = true;
+    if (samePlaylist(prev)) {
+      const current = getMusicPlayer().tracks[getMusicPlayer().index];
+      setMusicTracks(next, current?.file_id);
+    }
+    setLocalTracks(next);
   }, []);
 
   useEffect(() => {
@@ -400,11 +417,13 @@ export function MessageChatProfilePlaylistSheet({
     const fileId = menuTrack.file_id;
     const prev = localTracksRef.current;
     const next = prev.filter((row) => row.file_id !== fileId);
+    localTracksRef.current = next;
     setLocalTracks(next);
     if (samePlaylist(prev)) {
       const current = getMusicPlayer().tracks[getMusicPlayer().index];
       setMusicTracks(next, current?.file_id);
     }
+    playlistRefreshGenRef.current += 1;
     void removeProfilePlaylistTrack(fileId);
   }, [isOwnPlaylist, menuTrack]);
 
@@ -540,6 +559,7 @@ export function MessageChatProfilePlaylistSheet({
                     accessibilityLabel={t("messages.music.reorder")}
                     onPressIn={(event) => {
                       dragFromRef.current = index;
+                      dragFileIdRef.current = localTracksRef.current[index]?.file_id ?? null;
                       if (Platform.OS === "web") {
                         const native = event.nativeEvent as unknown as {
                           pointerId?: number;
