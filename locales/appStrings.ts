@@ -1042,13 +1042,13 @@ const en = {
     "Sign in to manage Owner deploys, Swap, Smart, and the rest of the program from one interface.",
   "ownerDeploy.actionsTitle": "Get started",
   "ownerDeploy.actionsHint":
-    "Pay and deploy with a TonConnect wallet, or sign in to open the full program on the Swap tab.",
+    "Pay and deploy with a TonConnect wallet, or sign in to open Smart with Owner selected.",
   "ownerDeploy.connectAndDeployCta": "Connect wallet & deploy · 5 Gram",
   "ownerDeploy.deployCta": "Deploy Owner · 5 Gram",
   "ownerDeploy.connectedAs": "Connected: {{address}}",
   "ownerDeploy.or": "or",
   "ownerDeploy.signInCta": "Sign in",
-  "ownerDeploy.signInHint": "After sign-in you land on Swap — Smart Owner is in the program menu.",
+  "ownerDeploy.signInHint": "After sign-in you open Smart with Owner already selected.",
   "ownerDeploy.signInTitle": "Sign in",
   "ownerDeploy.deploySuccess":
     "Payment sent. Your Owner deploy is registered — open the program after sign-in to manage it.",
@@ -2071,13 +2071,13 @@ const ru = {
     "Войдите, чтобы управлять Owner, Swap, Smart и остальным интерфейсом программы в одном месте.",
   "ownerDeploy.actionsTitle": "Начать",
   "ownerDeploy.actionsHint":
-    "Оплатите и задеплойте через TonConnect или войдите, чтобы открыть полную программу на вкладке Swap.",
+    "Оплатите и задеплойте через TonConnect или войдите — откроется Smart с выбранным Owner.",
   "ownerDeploy.connectAndDeployCta": "Подключить кошелёк и задеплоить · 5 Gram",
   "ownerDeploy.deployCta": "Задеплоить Owner · 5 Gram",
   "ownerDeploy.connectedAs": "Подключено: {{address}}",
   "ownerDeploy.or": "или",
   "ownerDeploy.signInCta": "Войти",
-  "ownerDeploy.signInHint": "После входа вы попадёте на Swap — Owner доступен в Smart.",
+  "ownerDeploy.signInHint": "После входа откроется Smart с уже выбранным Owner.",
   "ownerDeploy.signInTitle": "Войти",
   "ownerDeploy.deploySuccess":
     "Платёж отправлен. Деплой Owner зарегистрирован — войдите в программу, чтобы управлять им.",
@@ -3027,13 +3027,13 @@ const zh = {
     "登录后可在同一界面管理 Owner、Swap、Smart 及程序其余功能。",
   "ownerDeploy.actionsTitle": "开始",
   "ownerDeploy.actionsHint":
-    "通过 TonConnect 钱包支付并部署，或登录后打开完整程序并进入 Swap 标签。",
+    "通过 TonConnect 钱包支付并部署，或登录后直接打开已选中 Owner 的 Smart。",
   "ownerDeploy.connectAndDeployCta": "连接钱包并部署 · 5 Gram",
   "ownerDeploy.deployCta": "部署 Owner · 5 Gram",
   "ownerDeploy.connectedAs": "已连接：{{address}}",
   "ownerDeploy.or": "或",
   "ownerDeploy.signInCta": "登录",
-  "ownerDeploy.signInHint": "登录后进入 Swap — Owner 位于程序的 Smart 中。",
+  "ownerDeploy.signInHint": "登录后将打开 Smart，并已选中 Owner。",
   "ownerDeploy.signInTitle": "登录",
   "ownerDeploy.deploySuccess":
     "付款已发送。Owner 部署已登记 — 登录程序后即可管理。",

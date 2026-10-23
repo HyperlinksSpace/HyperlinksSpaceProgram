@@ -12,9 +12,12 @@ import { useRouter } from "expo-router";
 
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
+import { useAuthenticatedHomeRouteWideLayout } from "../authenticatedHomeLayoutWidth";
 import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
+import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../authenticatedHomeSelectedChat";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
 import { resolveProPaymentTonAddress } from "../pro/proPaymentConfig";
+import { setSmartActivePurpose } from "../smart/smartActivePurposeStore";
 import { SWAP_GRAM_TOKEN } from "../swap/swapPairTypes";
 import { layout, typographyRect15, useColors } from "../theme";
 import { buildSendTransferTransaction } from "../ton/buildSendTransferTransaction";
@@ -55,6 +58,7 @@ export function OwnerDeployPage() {
   const ton = useTonConnectSession();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= WIDE_MIN;
+  const isWideHome = useAuthenticatedHomeRouteWideLayout();
 
   const [signInOpen, setSignInOpen] = useState(false);
   const [deployBusy, setDeployBusy] = useState(false);
@@ -67,9 +71,11 @@ export function OwnerDeployPage() {
     if (!authHydrated) return;
     if (!isAuthenticated) return;
     takeOwnerDeployAfterAuth();
-    openAuthenticatedHomeRightPanel("swap");
-    router.replace("/");
-  }, [authHydrated, isAuthenticated, router]);
+    setSmartActivePurpose("owner");
+    openAuthenticatedHomeRightPanel("smart");
+    focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
+    router.replace(isWideHome ? "/" : "/smart");
+  }, [authHydrated, isAuthenticated, isWideHome, router]);
 
   const openSignIn = useCallback(() => {
     markOwnerDeployAfterAuth();

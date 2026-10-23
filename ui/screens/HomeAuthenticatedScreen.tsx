@@ -105,12 +105,14 @@ import {
   useAuthenticatedHomeRightPanel,
 } from "../authenticatedHomeRightPanel";
 import { takeOwnerDeployAfterAuth } from "../ownerDeploy/ownerDeployAfterAuth";
+import { setSmartActivePurpose } from "../smart/smartActivePurposeStore";
 import {
   setAuthenticatedHomeLeftNavIndex,
   useAuthenticatedHomeLeftNavIndex,
 } from "../authenticatedHomeLeftNavIndex";
 import {
   clearAuthenticatedHomeSelectedChat,
+  focusAuthenticatedHomeMiddleColumnOnHeaderPanel,
   useAuthenticatedHomeMiddleColumnFocus,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
@@ -1175,10 +1177,15 @@ function HomeAuthenticatedScreenMain() {
   }, [isWideHome, rightPanel]);
 
   useEffect(() => {
-    // `/owner-deploy` sign-in → always open Swap on first authenticated paint.
+    // `/owner-deploy` sign-in → Smart with Owner purpose (wide panel or /smart).
     if (!takeOwnerDeployAfterAuth()) return;
-    openAuthenticatedHomeRightPanel("swap");
-  }, []);
+    setSmartActivePurpose("owner");
+    openAuthenticatedHomeRightPanel("smart");
+    focusAuthenticatedHomeMiddleColumnOnHeaderPanel();
+    if (!isWideHome) {
+      router.replace("/smart");
+    }
+  }, [isWideHome, router]);
 
   useEffect(() => {
     // Swap entry surface is Currencies until the user opens a pair form.

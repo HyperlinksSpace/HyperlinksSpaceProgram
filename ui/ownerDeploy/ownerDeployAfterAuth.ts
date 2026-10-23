@@ -1,6 +1,6 @@
 /**
  * After OAuth / email sign-in from `/owner-deploy`, land on authenticated home
- * with the Swap tab open (default panel; flag keeps intent explicit across redirects).
+ * with Smart → Owner selected (flag survives OAuth redirects to `/`).
  */
 const STORAGE_KEY = "hsp.ownerDeploy.afterAuth.v1";
 
