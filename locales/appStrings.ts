@@ -1026,6 +1026,34 @@ const en = {
   "welcome.subtitle": "This is the best way to earn and spend",
   /** NBSP after "to" so the preposition does not dangle at a line end. */
   "welcome.title": "Welcome to\u00A0our program",
+  "ownerDeploy.title": "Owner Smart Contract",
+  "ownerDeploy.subtitle":
+    "Deploy a Gram (TON) Owner that controls your other contracts — transfer ownership in one place.",
+  "ownerDeploy.benefitsTitle": "Why deploy an Owner",
+  "ownerDeploy.benefit.control":
+    "One Owner can be set as the administrator of many smart contracts you launch later.",
+  "ownerDeploy.benefit.transfer":
+    "Hand off an entire project by transferring the Owner — no need to update each dependent contract.",
+  "ownerDeploy.benefit.walletLike":
+    "Close in spirit to a wallet contract: simple, on-chain, and built for Gram (TON).",
+  "ownerDeploy.benefit.fee":
+    "Deploy costs 5 Gram; part of that amount covers network fees.",
+  "ownerDeploy.benefit.program":
+    "Sign in to manage Owner deploys, Swap, Smart, and the rest of the program from one interface.",
+  "ownerDeploy.actionsTitle": "Get started",
+  "ownerDeploy.actionsHint":
+    "Pay and deploy with a TonConnect wallet, or sign in to open the full program on the Swap tab.",
+  "ownerDeploy.connectAndDeployCta": "Connect wallet & deploy · 5 Gram",
+  "ownerDeploy.deployCta": "Deploy Owner · 5 Gram",
+  "ownerDeploy.connectedAs": "Connected: {{address}}",
+  "ownerDeploy.or": "or",
+  "ownerDeploy.signInCta": "Sign in",
+  "ownerDeploy.signInHint": "After sign-in you land on Swap — Smart Owner is in the program menu.",
+  "ownerDeploy.signInTitle": "Sign in",
+  "ownerDeploy.deploySuccess":
+    "Payment sent. Your Owner deploy is registered — open the program after sign-in to manage it.",
+  "ownerDeploy.deployCancelled": "Wallet request cancelled.",
+  "ownerDeploy.deployError": "Could not send the deploy payment. Try again.",
 } as const;
 
 const ru = {
@@ -2027,6 +2055,34 @@ const ru = {
   "welcome.subtitle": "Лучший способ заработать и потратить",
   /** NBSP after "в" so the preposition does not dangle at a line end. */
   "welcome.title": "Добро пожаловать в\u00A0нашу программу",
+  "ownerDeploy.title": "Смарт-контракт Owner",
+  "ownerDeploy.subtitle":
+    "Задеплойте Owner на Gram (TON), который управляет вашими другими контрактами — передавайте владение в одном месте.",
+  "ownerDeploy.benefitsTitle": "Зачем нужен Owner",
+  "ownerDeploy.benefit.control":
+    "Один Owner можно назначить администратором многих смарт-контрактов, которые вы запустите позже.",
+  "ownerDeploy.benefit.transfer":
+    "Передайте весь проект, передав Owner — без правок каждого зависимого контракта.",
+  "ownerDeploy.benefit.walletLike":
+    "По духу близок к контракту кошелька: простой, on-chain и рассчитан на Gram (TON).",
+  "ownerDeploy.benefit.fee":
+    "Деплой стоит 5 Gram; часть суммы покрывает сетевые комиссии.",
+  "ownerDeploy.benefit.program":
+    "Войдите, чтобы управлять Owner, Swap, Smart и остальным интерфейсом программы в одном месте.",
+  "ownerDeploy.actionsTitle": "Начать",
+  "ownerDeploy.actionsHint":
+    "Оплатите и задеплойте через TonConnect или войдите, чтобы открыть полную программу на вкладке Swap.",
+  "ownerDeploy.connectAndDeployCta": "Подключить кошелёк и задеплоить · 5 Gram",
+  "ownerDeploy.deployCta": "Задеплоить Owner · 5 Gram",
+  "ownerDeploy.connectedAs": "Подключено: {{address}}",
+  "ownerDeploy.or": "или",
+  "ownerDeploy.signInCta": "Войти",
+  "ownerDeploy.signInHint": "После входа вы попадёте на Swap — Owner доступен в Smart.",
+  "ownerDeploy.signInTitle": "Войти",
+  "ownerDeploy.deploySuccess":
+    "Платёж отправлен. Деплой Owner зарегистрирован — войдите в программу, чтобы управлять им.",
+  "ownerDeploy.deployCancelled": "Запрос в кошельке отменён.",
+  "ownerDeploy.deployError": "Не удалось отправить оплату деплоя. Попробуйте ещё раз.",
 } satisfies { [K in keyof typeof en]: string };
 
 const zh = {
@@ -2955,6 +3011,34 @@ const zh = {
   "welcome.attribution.url": "https://www.hyperlinks.space/",
   "welcome.subtitle": "这是赚钱与消费的最佳方式",
   "welcome.title": "欢迎来到我们的程序",
+  "ownerDeploy.title": "所有者智能合约",
+  "ownerDeploy.subtitle":
+    "部署 Gram（TON）Owner，统一控制你的其他合约——在一处转移所有权。",
+  "ownerDeploy.benefitsTitle": "为何部署 Owner",
+  "ownerDeploy.benefit.control":
+    "可将同一个 Owner 设为之后启动的多个智能合约的管理员。",
+  "ownerDeploy.benefit.transfer":
+    "通过转移 Owner 交接整个项目，无需逐个修改依赖合约。",
+  "ownerDeploy.benefit.walletLike":
+    "风格接近钱包合约：简洁、上链，面向 Gram（TON）。",
+  "ownerDeploy.benefit.fee":
+    "部署费用为 5 Gram，其中一部分用于支付网络手续费。",
+  "ownerDeploy.benefit.program":
+    "登录后可在同一界面管理 Owner、Swap、Smart 及程序其余功能。",
+  "ownerDeploy.actionsTitle": "开始",
+  "ownerDeploy.actionsHint":
+    "通过 TonConnect 钱包支付并部署，或登录后打开完整程序并进入 Swap 标签。",
+  "ownerDeploy.connectAndDeployCta": "连接钱包并部署 · 5 Gram",
+  "ownerDeploy.deployCta": "部署 Owner · 5 Gram",
+  "ownerDeploy.connectedAs": "已连接：{{address}}",
+  "ownerDeploy.or": "或",
+  "ownerDeploy.signInCta": "登录",
+  "ownerDeploy.signInHint": "登录后进入 Swap — Owner 位于程序的 Smart 中。",
+  "ownerDeploy.signInTitle": "登录",
+  "ownerDeploy.deploySuccess":
+    "付款已发送。Owner 部署已登记 — 登录程序后即可管理。",
+  "ownerDeploy.deployCancelled": "已取消钱包请求。",
+  "ownerDeploy.deployError": "无法发送部署付款。请重试。",
 } satisfies { [K in keyof typeof en]: string };
 
 export const appStrings = {

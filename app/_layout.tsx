@@ -165,6 +165,7 @@ function RootScreenFooter({
   if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
 
   if (pathname === "/founder") return null;
+  if (pathname === "/owner-deploy") return null;
   if (pathname?.startsWith("/ai-share")) return null;
 
   if (isAuthenticated) {
@@ -346,6 +347,7 @@ function RootContent() {
     }
     if (
       pathname === "/welcome" ||
+      pathname === "/owner-deploy" ||
       pathname === "/home" ||
       pathname === "/" ||
       pathname === ""

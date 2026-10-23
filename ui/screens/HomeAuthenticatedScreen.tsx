@@ -104,6 +104,7 @@ import {
   openAuthenticatedHomeRightPanel,
   useAuthenticatedHomeRightPanel,
 } from "../authenticatedHomeRightPanel";
+import { takeOwnerDeployAfterAuth } from "../ownerDeploy/ownerDeployAfterAuth";
 import {
   setAuthenticatedHomeLeftNavIndex,
   useAuthenticatedHomeLeftNavIndex,
@@ -1172,6 +1173,12 @@ function HomeAuthenticatedScreenMain() {
       openAuthenticatedHomeRightPanel(DEFAULT_AUTHENTICATED_HOME_RIGHT_PANEL_KEY);
     }
   }, [isWideHome, rightPanel]);
+
+  useEffect(() => {
+    // `/owner-deploy` sign-in → always open Swap on first authenticated paint.
+    if (!takeOwnerDeployAfterAuth()) return;
+    openAuthenticatedHomeRightPanel("swap");
+  }, []);
 
   useEffect(() => {
     // Swap entry surface is Currencies until the user opens a pair form.

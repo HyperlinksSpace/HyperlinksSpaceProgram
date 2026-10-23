@@ -117,7 +117,12 @@ function isValidBasicEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export function WelcomeAuthButtons() {
+type WelcomeAuthButtonsProps = {
+  /** Hide desktop app preview strip (e.g. inside a modal). */
+  hideAppPreviews?: boolean;
+};
+
+export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButtonsProps = {}) {
   const router = useRouter();
   const { signIn } = useAuth();
   const colors = useColors();
@@ -439,7 +444,7 @@ export function WelcomeAuthButtons() {
           submitDisabled={emailSubmitting}
         />
       </View>
-      <WelcomeAppPreviews />
+      {hideAppPreviews ? null : <WelcomeAppPreviews />}
     </View>
   );
 }

@@ -10,6 +10,7 @@ export function isWelcomeLayoutRoute(
     pathname === "/" || pathname === "" || pathname === null;
   return (
     pathname === "/welcome" ||
+    pathname === "/owner-deploy" ||
     (isRootPath && auth.authHydrated && auth.authReady && !auth.isAuthenticated) ||
     (pathname === "/home" && auth.authHydrated && auth.authReady && !auth.isAuthenticated)
   );
