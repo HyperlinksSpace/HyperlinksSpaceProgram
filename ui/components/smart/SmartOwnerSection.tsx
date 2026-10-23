@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useTonConnectSession } from "../../ton/TonConnectProvider";
 import { typographyRect15, useColors } from "../../theme";
+import {
+  resolveActiveWalletAddress,
+  sameWalletAddress,
+  useActiveWalletPreference,
+} from "../../wallet/activeWalletPreference";
+import { useTelegram } from "../Telegram";
 import { SmartFormBottomTextLane } from "./SmartFormBottomTextLane";
 import { SmartFormCapsLabel } from "./SmartFormCapsLabel";
 import { SmartTitleTextSection } from "./SmartTitleTextSection";
@@ -35,9 +42,48 @@ const sectionLabelStyle = (color: string) => [
 export function SmartOwnerSection() {
   const colors = useColors();
   const { t } = useAppStrings();
+  const { wallet } = useTelegram();
+  const ton = useTonConnectSession();
+  const activeWalletPreference = useActiveWalletPreference();
+
+  const activeWalletAddress = useMemo(
+    () =>
+      resolveActiveWalletAddress({
+        builtinAddress: (wallet?.wallet_address ?? "").trim(),
+        preference: activeWalletPreference,
+        tonConnected: ton.connected,
+        tonAddress: ton.friendlyAddress || ton.address,
+      }).trim(),
+    [
+      activeWalletPreference,
+      ton.address,
+      ton.connected,
+      ton.friendlyAddress,
+      wallet?.wallet_address,
+    ],
+  );
+
   const [title, setTitle] = useState(() => t("smart.owner.titleDefault"));
   const [bodyText, setBodyText] = useState("");
-  const [ownerWallet, setOwnerWallet] = useState("");
+  const [ownerWallet, setOwnerWallet] = useState(activeWalletAddress);
+  /** Last value we auto-filled from the header’s current wallet. */
+  const lastSyncedWalletRef = useRef(activeWalletAddress);
+
+  useEffect(() => {
+    setOwnerWallet((prev) => {
+      const prevTrim = prev.trim();
+      // Follow the active wallet when empty or still showing the previous sync.
+      if (!prevTrim || sameWalletAddress(prevTrim, lastSyncedWalletRef.current)) {
+        lastSyncedWalletRef.current = activeWalletAddress;
+        return activeWalletAddress;
+      }
+      return prev;
+    });
+  }, [activeWalletAddress]);
+
+  const onChangeOwnerWallet = useCallback((next: string) => {
+    setOwnerWallet(next);
+  }, []);
 
   return (
     <>
@@ -88,7 +134,7 @@ export function SmartOwnerSection() {
       <SmartUndercoverTextField
         nativeID={SMART_OWNER_WALLET_INPUT_ID}
         value={ownerWallet}
-        onChangeText={setOwnerWallet}
+        onChangeText={onChangeOwnerWallet}
         placeholder={t("smart.owner.ownerWalletPlaceholder")}
       />
     </>
