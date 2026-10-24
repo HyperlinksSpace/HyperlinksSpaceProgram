@@ -84,17 +84,18 @@ function previewKindForWidth(windowWidth: number): keyof typeof PREVIEW_ASSETS {
 
 type WelcomeAppPreviewsProps = {
   /**
-   * Cap rendered width (e.g. a modal body). When omitted, uses 80% of the window as on `/`.
-   * The image keeps its aspect ratio so the full screenshot stays visible.
+   * Layout viewport for breakpoints and 80% sizing. On `/` this is the window.
+   * In a resizable dialog, pass the dialog body width so screenshots switch
+   * mobile / desktop / full the same way as the welcome page.
    */
-  fitToWidth?: number;
+  layoutWidth?: number;
 };
 
 /**
  * Theme-aware app preview: mobile / desktop / full SVG by viewport width; 80% of screen width capped per tier.
  * `assets/previews/white` vs `black` — same surface tone as the app (`background`), not text color alone.
  */
-export function WelcomeAppPreviews({ fitToWidth }: WelcomeAppPreviewsProps = {}) {
+export function WelcomeAppPreviews({ layoutWidth }: WelcomeAppPreviewsProps = {}) {
   const { width: windowWidth } = useWindowDimensions();
   const colors = useColors();
   const { t } = useAppStrings();
@@ -105,16 +106,17 @@ export function WelcomeAppPreviews({ fitToWidth }: WelcomeAppPreviewsProps = {})
   }, []);
   const useLightPreviews = useLightPreviewAssets(colors);
 
-  const effectiveWidth = hydrated ? windowWidth : 0;
+  const hasLayoutWidth =
+    typeof layoutWidth === "number" && Number.isFinite(layoutWidth) && layoutWidth > 0;
+  const effectiveWidth = hasLayoutWidth ? layoutWidth : hydrated ? windowWidth : 0;
   const kind = previewKindForWidth(effectiveWidth);
   const variant = PREVIEW_ASSETS[kind];
   const spec = useLightPreviews ? variant.light : variant.dark;
   const maxW = MAX_WIDTH_BY_KIND[kind];
   const fromViewport = effectiveWidth * PREVIEW_WIDTH_FRACTION;
-  const fitCap =
-    typeof fitToWidth === "number" && Number.isFinite(fitToWidth) && fitToWidth > 0
-      ? Math.max(1, fitToWidth - PREVIEW_BORDER_WIDTH * 2)
-      : Number.POSITIVE_INFINITY;
+  const fitCap = hasLayoutWidth
+    ? Math.max(1, (layoutWidth ?? 0) - PREVIEW_BORDER_WIDTH * 2)
+    : Number.POSITIVE_INFINITY;
   const previewWidth = Math.max(
     1,
     Math.round(Math.min(fromViewport, maxW, spec.width, fitCap)),
