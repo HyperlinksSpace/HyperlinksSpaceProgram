@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useColors } from "../theme";
 import { AppModalSheet } from "../components/AppModalSheet";
+import { WelcomeAppPreviews } from "../components/WelcomeAppPreviews";
 import { WelcomeAuthButtons } from "../components/WelcomeAuthButtons";
 import { WelcomeLanguageSwitcher } from "../components/WelcomeLanguageSwitcher";
 import { markOwnerDeployAfterAuth } from "./ownerDeployAfterAuth";
@@ -27,6 +28,11 @@ export function OwnerDeploySignInDialog({ visible, onClose }: Props) {
   const colors = useColors();
   const { width: windowWidth } = useWindowDimensions();
   const isWideLayout = windowWidth > WIDE_LAYOUT_MIN_WIDTH;
+  const [bodyWidth, setBodyWidth] = useState(0);
+  const onBodyLayout = useCallback((width: number) => {
+    const next = Math.round(width);
+    setBodyWidth((current) => (current === next ? current : next));
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
@@ -44,7 +50,10 @@ export function OwnerDeploySignInDialog({ visible, onClose }: Props) {
       sizeStorageKey="hsp.ownerDeploySignIn.size.v2"
       offsetStorageKey="hsp.ownerDeploySignIn.offset.v1"
     >
-      <View style={styles.content}>
+      <View
+        style={styles.content}
+        onLayout={(event) => onBodyLayout(event.nativeEvent.layout.width)}
+      >
         <View style={styles.introBlock}>
           <Text
             style={[
@@ -63,8 +72,13 @@ export function OwnerDeploySignInDialog({ visible, onClose }: Props) {
           </Text>
         </View>
         <View style={styles.authBlock}>
-          <WelcomeAuthButtons />
+          <WelcomeAuthButtons hideAppPreviews />
         </View>
+        {bodyWidth > 0 ? (
+          <View style={styles.previewBlock}>
+            <WelcomeAppPreviews fitToWidth={bodyWidth} />
+          </View>
+        ) : null}
       </View>
     </AppModalSheet>
   );
@@ -111,6 +125,10 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 360,
     marginTop: GAP_SUBTITLE_TO_AUTH,
+    alignItems: "center",
+  },
+  previewBlock: {
+    width: "100%",
     alignItems: "center",
   },
 });

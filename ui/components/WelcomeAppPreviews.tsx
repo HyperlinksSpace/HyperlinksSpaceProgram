@@ -82,11 +82,19 @@ function previewKindForWidth(windowWidth: number): keyof typeof PREVIEW_ASSETS {
   return "full";
 }
 
+type WelcomeAppPreviewsProps = {
+  /**
+   * Cap rendered width (e.g. a modal body). When omitted, uses 80% of the window as on `/`.
+   * The image keeps its aspect ratio so the full screenshot stays visible.
+   */
+  fitToWidth?: number;
+};
+
 /**
  * Theme-aware app preview: mobile / desktop / full SVG by viewport width; 80% of screen width capped per tier.
  * `assets/previews/white` vs `black` — same surface tone as the app (`background`), not text color alone.
  */
-export function WelcomeAppPreviews() {
+export function WelcomeAppPreviews({ fitToWidth }: WelcomeAppPreviewsProps = {}) {
   const { width: windowWidth } = useWindowDimensions();
   const colors = useColors();
   const { t } = useAppStrings();
@@ -103,9 +111,13 @@ export function WelcomeAppPreviews() {
   const spec = useLightPreviews ? variant.light : variant.dark;
   const maxW = MAX_WIDTH_BY_KIND[kind];
   const fromViewport = effectiveWidth * PREVIEW_WIDTH_FRACTION;
+  const fitCap =
+    typeof fitToWidth === "number" && Number.isFinite(fitToWidth) && fitToWidth > 0
+      ? Math.max(1, fitToWidth - PREVIEW_BORDER_WIDTH * 2)
+      : Number.POSITIVE_INFINITY;
   const previewWidth = Math.max(
     1,
-    Math.round(Math.min(fromViewport, maxW, spec.width)),
+    Math.round(Math.min(fromViewport, maxW, spec.width, fitCap)),
   );
   const previewHeight = (previewWidth * spec.height) / spec.width;
   const attributionUrl = t("welcome.attribution.url");
