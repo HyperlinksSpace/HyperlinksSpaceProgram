@@ -35,6 +35,11 @@ import { dllrToTokens, formatDllrAmount, tokensToDllr } from "../ui/ai/aiConsump
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../ui/fonts";
 import { useColors } from "../ui/theme";
 import { saveFounderPdf } from "../ui/founder/exportFounderPdf";
+import { resolveProPaymentTonAddress } from "../ui/pro/proPaymentConfig";
+import {
+  formatSmartDeployAmount,
+  listSmartDeployCosts,
+} from "../ui/smart/smartDeployCosts";
 
 function dllrDraftFromTokens(tokens: number, usdPer1k: number): string {
   const d = tokensToDllr(tokens, usdPer1k);
@@ -1396,6 +1401,62 @@ export default function FounderScreen() {
             {aiLimitsBusy ? "Saving…" : "Save AI limits"}
           </Text>
         </Pressable>
+      </Card>
+
+      <Card title="Smart contract deploy prices" colors={colors}>
+        <Text style={{ color: colors.secondary, fontSize: 13, lineHeight: 18, fontFamily: font }}>
+          Each Smart purpose charges a native Gram / TON deploy. Part of the amount stays with the
+          contract for network fees and storage; the rest is program profit, sent to the same treasury
+          used when users buy DLLR (USDT on TON).
+        </Text>
+        <View style={{ gap: 2, marginTop: 4 }}>
+          <Text style={{ color: colors.secondary, fontSize: 12, fontFamily: font }}>
+            Profit wallet (DLLR buy / Pro treasury)
+          </Text>
+          <Text
+            selectable
+            style={{
+              color: colors.primary,
+              fontSize: 13,
+              fontFamily: Platform.OS === "web" ? "ui-monospace, SFMono-Regular, Menlo, monospace" : font,
+            }}
+          >
+            {resolveProPaymentTonAddress()}
+          </Text>
+        </View>
+        <View style={{ gap: 8, marginTop: 8 }}>
+          {listSmartDeployCosts().map((row) => (
+            <View
+              key={row.purpose}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.highlight,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                gap: 6,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: narrow ? "column" : "row",
+                  justifyContent: "space-between",
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14, fontFamily: font }}>
+                  {row.label}
+                </Text>
+                <Text style={{ color: colors.primary, fontWeight: "800", fontSize: 14, fontFamily: font }}>
+                  {formatSmartDeployAmount(row.total, row.unit)}
+                </Text>
+              </View>
+              <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 17, fontFamily: font }}>
+                Fees / contract {formatSmartDeployAmount(row.fee, row.unit)} · Profit{" "}
+                {formatSmartDeployAmount(row.profit, row.unit)} → DLLR treasury
+              </Text>
+            </View>
+          ))}
+        </View>
       </Card>
 
       <Card title="Pro catalog · feature launch & pricing" colors={colors}>
