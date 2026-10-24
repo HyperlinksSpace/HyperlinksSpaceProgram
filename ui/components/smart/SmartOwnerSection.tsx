@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Text, View } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
@@ -9,6 +9,7 @@ import {
   sameWalletAddress,
   useActiveWalletPreference,
 } from "../../wallet/activeWalletPreference";
+import { getOwnerDraft, setOwnerDraft, useOwnerDraft } from "../../smart/ownerDraftStore";
 import { useTelegram } from "../Telegram";
 import { SmartFormBottomTextLane } from "./SmartFormBottomTextLane";
 import { SmartFormCapsLabel } from "./SmartFormCapsLabel";
@@ -46,6 +47,17 @@ export function SmartOwnerSection() {
   const ton = useTonConnectSession();
   const activeWalletPreference = useActiveWalletPreference();
 
+  const draft = useOwnerDraft();
+  const seededTitle = useRef(false);
+
+  useLayoutEffect(() => {
+    if (seededTitle.current) return;
+    seededTitle.current = true;
+    if (!getOwnerDraft().title.trim()) {
+      setOwnerDraft({ title: t("smart.owner.titleDefault") });
+    }
+  }, [t]);
+
   const activeWalletAddress = useMemo(
     () =>
       resolveActiveWalletAddress({
@@ -63,40 +75,45 @@ export function SmartOwnerSection() {
     ],
   );
 
-  const [title, setTitle] = useState(() => t("smart.owner.titleDefault"));
-  const [bodyText, setBodyText] = useState("");
-  const [ownerWallet, setOwnerWallet] = useState(activeWalletAddress);
   /** Last value we auto-filled from the header’s current wallet. */
   const lastSyncedWalletRef = useRef(activeWalletAddress);
 
   useEffect(() => {
-    setOwnerWallet((prev) => {
-      const prevTrim = prev.trim();
-      // Follow the active wallet when empty or still showing the previous sync.
-      if (!prevTrim || sameWalletAddress(prevTrim, lastSyncedWalletRef.current)) {
-        lastSyncedWalletRef.current = activeWalletAddress;
-        return activeWalletAddress;
+    const current = getOwnerDraft().ownerWallet;
+    const prevTrim = current.trim();
+    // Follow the active wallet when empty or still showing the previous sync.
+    if (!prevTrim || sameWalletAddress(prevTrim, lastSyncedWalletRef.current)) {
+      lastSyncedWalletRef.current = activeWalletAddress;
+      if (current !== activeWalletAddress) {
+        setOwnerDraft({ ownerWallet: activeWalletAddress });
       }
-      return prev;
-    });
+    }
   }, [activeWalletAddress]);
 
-  const onChangeOwnerWallet = useCallback((next: string) => {
-    setOwnerWallet(next);
+  const onChangeTitle = useCallback((title: string) => {
+    setOwnerDraft({ title, status: null });
+  }, []);
+
+  const onChangeText = useCallback((text: string) => {
+    setOwnerDraft({ text, status: null });
+  }, []);
+
+  const onChangeOwnerWallet = useCallback((ownerWallet: string) => {
+    setOwnerDraft({ ownerWallet, status: null });
   }, []);
 
   return (
     <>
       <SmartTitleTextSection
-        title={title}
-        text={bodyText}
+        title={draft.title}
+        text={draft.text}
         titleLabel={t("smart.owner.titleLabel")}
         textLabel={t("smart.owner.textLabel")}
         textPlaceholder={t("smart.owner.textPlaceholder")}
         titleInputId={SMART_OWNER_TITLE_INPUT_ID}
         textInputId={SMART_OWNER_TEXT_INPUT_ID}
-        onChangeTitle={setTitle}
-        onChangeText={setBodyText}
+        onChangeTitle={onChangeTitle}
+        onChangeText={onChangeText}
       />
 
       <View style={{ height: TEXT_FORM_TO_OWNER_GAP_PX }} />
@@ -133,10 +150,27 @@ export function SmartOwnerSection() {
 
       <SmartUndercoverTextField
         nativeID={SMART_OWNER_WALLET_INPUT_ID}
-        value={ownerWallet}
+        value={draft.ownerWallet}
         onChangeText={onChangeOwnerWallet}
         placeholder={t("smart.owner.ownerWalletPlaceholder")}
       />
+
+      {draft.status ? (
+        <Text
+          style={[
+            typographyRect15,
+            {
+              marginTop: 16,
+              fontSize: 15,
+              lineHeight: 22,
+              fontWeight: "400",
+              color: draft.status.kind === "ok" ? colors.primary : colors.secondary,
+            },
+          ]}
+        >
+          {draft.status.message}
+        </Text>
+      ) : null}
     </>
   );
 }

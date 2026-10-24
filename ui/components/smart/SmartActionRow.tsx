@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useDeployOwnerContract } from "../../ownerDeploy/useDeployOwnerContract";
 import { useSmartActivePurpose } from "../../smart/smartActivePurposeStore";
 import {
   bottomBarLabelFitsSlot,
@@ -31,6 +32,7 @@ export function SmartActionRow() {
   const colors = useColors();
   const { t } = useAppStrings();
   const activePurpose = useSmartActivePurpose();
+  const ownerDeploy = useDeployOwnerContract();
   const costKeys = deployCostKeys(activePurpose);
   const fullDeployCostLabel = t(costKeys.full);
   const shortDeployCostLabel = t(costKeys.short);
@@ -89,7 +91,22 @@ export function SmartActionRow() {
         </View>
         <Pressable
           accessibilityRole="button"
-          style={[styles.actionButton, { backgroundColor: colors.undercover }]}
+          accessibilityLabel={t("smart.footer.deployButton")}
+          disabled={activePurpose === "owner" && ownerDeploy.busy}
+          onPress={
+            activePurpose === "owner"
+              ? () => {
+                  void ownerDeploy.deployFromDraft();
+                }
+              : undefined
+          }
+          style={[
+            styles.actionButton,
+            {
+              backgroundColor: colors.undercover,
+              opacity: activePurpose === "owner" && ownerDeploy.busy ? 0.7 : 1,
+            },
+          ]}
           onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
         >
           <Text style={[typographyFixedRow30Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>

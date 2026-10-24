@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,21 +16,15 @@ import { useAuthenticatedHomeRouteWideLayout } from "../authenticatedHomeLayoutW
 import { openAuthenticatedHomeRightPanel } from "../authenticatedHomeRightPanel";
 import { focusAuthenticatedHomeMiddleColumnOnHeaderPanel } from "../authenticatedHomeSelectedChat";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../fonts";
-import { resolveProPaymentTonAddress } from "../pro/proPaymentConfig";
 import { setSmartActivePurpose } from "../smart/smartActivePurposeStore";
-import { SWAP_GRAM_TOKEN } from "../swap/swapPairTypes";
 import { layout, typographyRect15, useColors } from "../theme";
-import { buildSendTransferTransaction } from "../ton/buildSendTransferTransaction";
-import { formatTonConnectErrorMessage } from "../ton/formatTonConnectErrorMessage";
-import { isTonConnectUserRejection } from "../ton/isTonConnectUserRejection";
 import { useTonConnectSession } from "../ton/TonConnectProvider";
+import { useDeployOwnerContract } from "./useDeployOwnerContract";
 import { HspScrollColumn } from "../components/HspScrollColumn";
 import { WelcomeLanguageSwitcher } from "../components/WelcomeLanguageSwitcher";
 import { OwnerDeploySignInDialog } from "./OwnerDeploySignInDialog";
 import { markOwnerDeployAfterAuth, takeOwnerDeployAfterAuth } from "./ownerDeployAfterAuth";
 
-const OWNER_DEPLOY_COST_GRAM = "5";
-const OWNER_DEPLOY_MEMO = "HSP Owner Smart Contract deploy";
 const MAX_CONTENT_WIDTH = 560;
 const WIDE_MIN = 480;
 
@@ -47,8 +41,8 @@ function uiFont() {
 }
 
 /**
- * Public landing at `/owner-deploy`: Owner contract benefits, TonConnect pay,
- * or sign-in (welcome dialog) → authenticated home Swap tab.
+ * Public landing at `/owner-deploy`: Owner contract benefits, TonConnect deploy
+ * of the Tolk Owner contract, or sign-in → authenticated home with Owner selected.
  */
 export function OwnerDeployPage() {
   const colors = useColors();
@@ -56,16 +50,14 @@ export function OwnerDeployPage() {
   const router = useRouter();
   const { isAuthenticated, authHydrated } = useAuth();
   const ton = useTonConnectSession();
+  const ownerDeploy = useDeployOwnerContract();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= WIDE_MIN;
   const isWideHome = useAuthenticatedHomeRouteWideLayout();
 
   const [signInOpen, setSignInOpen] = useState(false);
-  const [deployBusy, setDeployBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [statusKind, setStatusKind] = useState<"ok" | "err" | null>(null);
-
-  const paymentAddress = useMemo(() => resolveProPaymentTonAddress(), []);
 
   useEffect(() => {
     if (!authHydrated) return;
@@ -85,36 +77,15 @@ export function OwnerDeployPage() {
   const onDeployWithTonConnect = useCallback(async () => {
     setStatusMsg(null);
     setStatusKind(null);
-    try {
-      if (!ton.connected || !ton.address) {
-        await ton.openConnectModal();
-        return;
-      }
-      setDeployBusy(true);
-      const request = await buildSendTransferTransaction({
-        amount: OWNER_DEPLOY_COST_GRAM,
-        token: SWAP_GRAM_TOKEN,
-        fromWalletAddress: ton.address,
-        toAddress: paymentAddress,
-        comment: OWNER_DEPLOY_MEMO,
-      });
-      await ton.sendTransaction(request);
-      setStatusKind("ok");
-      setStatusMsg(t("ownerDeploy.deploySuccess"));
-    } catch (error) {
-      if (isTonConnectUserRejection(error)) {
-        setStatusKind("err");
-        setStatusMsg(t("ownerDeploy.deployCancelled"));
-      } else {
-        setStatusKind("err");
-        setStatusMsg(
-          formatTonConnectErrorMessage(error) ?? t("ownerDeploy.deployError"),
-        );
-      }
-    } finally {
-      setDeployBusy(false);
-    }
-  }, [paymentAddress, t, ton]);
+    const result = await ownerDeploy.deploy({
+      title: t("ownerDeploy.title"),
+      text: t("ownerDeploy.subtitle"),
+      ownerWallet: ton.address ?? "",
+    });
+    if (!result.message) return;
+    setStatusKind(result.ok ? "ok" : "err");
+    setStatusMsg(result.message);
+  }, [ownerDeploy.deploy, t, ton.address]);
 
   if (!authHydrated || isAuthenticated) {
     return (
@@ -201,7 +172,7 @@ export function OwnerDeployPage() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("ownerDeploy.deployCta")}
-            disabled={deployBusy}
+            disabled={ownerDeploy.busy}
             onPress={() => {
               void onDeployWithTonConnect();
             }}
@@ -210,11 +181,11 @@ export function OwnerDeployPage() {
               {
                 backgroundColor: colors.undercover,
                 borderColor: colors.primary,
-                opacity: deployBusy ? 0.7 : pressed ? 0.85 : 1,
+                opacity: ownerDeploy.busy ? 0.7 : pressed ? 0.85 : 1,
               },
             ]}
           >
-            {deployBusy ? (
+            {ownerDeploy.busy ? (
               <ActivityIndicator color={colors.primary} />
             ) : (
               <Text style={[styles.btnLabel, { color: colors.primary, fontFamily: uiFont() }]}>

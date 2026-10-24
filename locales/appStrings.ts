@@ -1051,9 +1051,12 @@ const en = {
   "ownerDeploy.signInHint": "After sign-in you open Smart with Owner already selected.",
   "ownerDeploy.signInTitle": "Sign in",
   "ownerDeploy.deploySuccess":
-    "Payment sent. Your Owner deploy is registered — open the program after sign-in to manage it.",
+    "Owner deployed at {{address}}. Network fees come out of the 5 Gram; the rest stays on the contract.",
   "ownerDeploy.deployCancelled": "Wallet request cancelled.",
-  "ownerDeploy.deployError": "Could not send the deploy payment. Try again.",
+  "ownerDeploy.deployError": "Could not deploy the Owner contract. Try again.",
+  "ownerDeploy.missingTitle": "Enter a title for this Owner.",
+  "ownerDeploy.missingWallet": "Enter the wallet that controls this Owner.",
+  "ownerDeploy.invalidWallet": "That wallet address is not a valid TON address.",
 } as const;
 
 const ru = {
@@ -2080,9 +2083,12 @@ const ru = {
   "ownerDeploy.signInHint": "После входа откроется Smart с уже выбранным Owner.",
   "ownerDeploy.signInTitle": "Войти",
   "ownerDeploy.deploySuccess":
-    "Платёж отправлен. Деплой Owner зарегистрирован — войдите в программу, чтобы управлять им.",
+    "Owner задеплоен: {{address}}. Комиссия сети списывается из 5 Gram, остаток остаётся на контракте.",
   "ownerDeploy.deployCancelled": "Запрос в кошельке отменён.",
-  "ownerDeploy.deployError": "Не удалось отправить оплату деплоя. Попробуйте ещё раз.",
+  "ownerDeploy.deployError": "Не удалось задеплоить контракт Owner. Попробуйте ещё раз.",
+  "ownerDeploy.missingTitle": "Введите название для этого Owner.",
+  "ownerDeploy.missingWallet": "Укажите кошелёк, который управляет этим Owner.",
+  "ownerDeploy.invalidWallet": "Этот адрес кошелька не является корректным адресом TON.",
 } satisfies { [K in keyof typeof en]: string };
 
 const zh = {
@@ -3036,9 +3042,12 @@ const zh = {
   "ownerDeploy.signInHint": "登录后将打开 Smart，并已选中 Owner。",
   "ownerDeploy.signInTitle": "登录",
   "ownerDeploy.deploySuccess":
-    "付款已发送。Owner 部署已登记 — 登录程序后即可管理。",
+    "Owner 已部署：{{address}}。网络费用从 5 Gram 中扣除，余额留在合约上。",
   "ownerDeploy.deployCancelled": "已取消钱包请求。",
-  "ownerDeploy.deployError": "无法发送部署付款。请重试。",
+  "ownerDeploy.deployError": "无法部署 Owner 合约。请重试。",
+  "ownerDeploy.missingTitle": "请填写此 Owner 的标题。",
+  "ownerDeploy.missingWallet": "请填写控制此 Owner 的钱包。",
+  "ownerDeploy.invalidWallet": "该钱包地址不是有效的 TON 地址。",
 } satisfies { [K in keyof typeof en]: string };
 
 export const appStrings = {

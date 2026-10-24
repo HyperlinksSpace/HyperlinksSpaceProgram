@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { AppStringKey } from "../../../locales/appStrings";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { useDeployOwnerContract } from "../../ownerDeploy/useDeployOwnerContract";
 import { useSmartActivePurpose } from "../../smart/smartActivePurposeStore";
 import {
   bottomBarLabelFitsSlot,
@@ -36,6 +37,7 @@ export function SmartColumnFooter() {
   const colors = useColors();
   const { t } = useAppStrings();
   const activePurpose = useSmartActivePurpose();
+  const ownerDeploy = useDeployOwnerContract();
   const { themeBgReady, isInTelegram, layoutStartup } = useTelegram();
   const { footerDockedToScreenEdge } = useBottomBarLayout();
   const backgroundColor = themeBgReady ? colors.background : "transparent";
@@ -112,15 +114,30 @@ export function SmartColumnFooter() {
               {deployCostLabel}
             </Text>
           </View>
-          <View
+          <Pressable
             accessibilityRole="button"
-            style={[styles.footerButton, { backgroundColor: colors.undercover }]}
+            accessibilityLabel={t("smart.footer.deployButton")}
+            disabled={activePurpose === "owner" && ownerDeploy.busy}
+            onPress={
+              activePurpose === "owner"
+                ? () => {
+                    void ownerDeploy.deployFromDraft();
+                  }
+                : undefined
+            }
+            style={[
+              styles.footerButton,
+              {
+                backgroundColor: colors.undercover,
+                opacity: activePurpose === "owner" && ownerDeploy.busy ? 0.7 : 1,
+              },
+            ]}
             onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
           >
             <Text style={[typographyFixedRow30Label, { color: colors.primary, textAlign: "center" }]} numberOfLines={1}>
               {t("smart.footer.deployButton")}
             </Text>
-          </View>
+          </Pressable>
         </View>
       </View>
       {!hideBottomBorder ? (
