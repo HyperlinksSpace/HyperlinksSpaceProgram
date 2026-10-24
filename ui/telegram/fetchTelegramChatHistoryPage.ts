@@ -17,6 +17,7 @@ import {
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
+import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 
 export type ChatHistoryPageResult = {
   messages: MessageChatHistoryItem[];
@@ -348,6 +349,8 @@ async function fetchTelegramChatHistoryPageOnce(
     params.set("newer_below", String(Math.trunc(newerBelow)));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
+  return runQueuedNetworkFetch(
+    async () => {
   const controller = new AbortController();
   const timeoutMs = options?.background
     ? HISTORY_FETCH_BACKGROUND_TIMEOUT_MS
@@ -423,6 +426,9 @@ async function fetchTelegramChatHistoryPageOnce(
   } finally {
     clearTimeout(timer);
   }
+    },
+    { priority: options?.background === true ? "normal" : "critical" },
+  );
 }
 
 const HISTORY_FETCH_MAX_ATTEMPTS = 3;

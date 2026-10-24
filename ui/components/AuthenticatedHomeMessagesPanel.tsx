@@ -32,12 +32,14 @@ import {
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
 import {
+  isOpenChatFocusHoldActive,
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
   setOpenChatFocusHold,
 } from "../messageChatHistoryPrefetch";
 import { unlockVoiceAutoplay } from "../telegram/unlockVoiceAutoplay";
+import { warmupTelegramChatSession } from "../telegram/warmupTelegramChatSession";
 import { publishTelegramChatDirectory } from "../telegram/telegramChatDirectory";
 import { openTelegramBotWebApp } from "../telegram/openTelegramBotWebApp";
 import { useMessageChatBotWebApp } from "./messages/MessageChatBotWebAppContext";
@@ -1866,9 +1868,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       clearQueuedNormalNetworkFetches();
       // tdesktop: start full history warm before the message list mounts.
       prefetchChatHistoryPriority(resolvedItem);
-      void import("../telegram/warmupTelegramChatSession").then(({ warmupTelegramChatSession }) => {
-        void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
-      });
+      void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
       openAuthenticatedHomeChatHistory(
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
@@ -2137,7 +2137,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [chatListSearchQuery],
   );
   const recentsMode = chatListSearchFocused && !searchNeedle;
+  const recentsPending = recentsMode && !recentSearchLoaded && recentSearchHits.length === 0;
   const listSearchActive = Boolean(searchNeedle) || recentsMode;
+  /** Recents overlay still loading — keep the main list painted (Telegram Desktop). */
+  const searchListReplacesMain = listSearchActive && !recentsPending;
   useEffect(() => {
     if (listSearchActive && archiveOpen) {
       setMessagesArchiveOpen(false);
@@ -2239,7 +2242,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   const displayListItems = useMemo((): ChatListDisplayItem[] => {
     // Search/recents use column-reverse: first array item sits nearest the search field (bottom).
-    if (recentsMode) {
+    if (recentsMode && !recentsPending) {
       const liveById = new Map(sortedChats.map((row) => [row.telegram_chat_id, row]));
       const items: ChatListDisplayItem[] = [];
       // column-reverse: footer first in array → nearest the search field (visual bottom).
@@ -2417,6 +2420,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     connectedTelegramUserId,
     mainSortedChats,
     recentsMode,
+    recentsPending,
     recentSearchHits,
     recentSearchLoaded,
     remoteDirectChatIdSet,
@@ -2429,21 +2433,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     t,
   ]);
 
-  // Progressive top→bottom reveal: paint the first slice immediately, then grow in
-  // timed batches so a full 400+ chat payload does not mount in one paint.
+  // Virtualization paints the visible band; reveal the full in-memory list at once
+  // (Telegram Desktop / WebK). Search uses the same window so exit does not drip 30 rows.
   const {
     viewportCount: chatListRevealCount,
     expandViewport: expandChatListReveal,
     canExpandViewport: canExpandChatListReveal,
-  } = useChatListViewport(listSearchActive ? 0 : displayListItems.length, {
-    autoReveal: !listSearchActive,
-  });
+  } = useChatListViewport(displayListItems.length, { autoReveal: true });
 
   const revealedDisplayListItems = useMemo(() => {
-    if (listSearchActive) return displayListItems;
     if (chatListRevealCount >= displayListItems.length) return displayListItems;
     return displayListItems.slice(0, Math.max(0, chatListRevealCount));
-  }, [chatListRevealCount, displayListItems, listSearchActive]);
+  }, [chatListRevealCount, displayListItems]);
 
   const displayChats = useMemo(
     () =>
@@ -2472,7 +2473,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     chatListScrollMetrics.layoutH > 0 ? chatListScrollMetrics.layoutH : 480;
   const chatListVirtualTotalCount = revealedDisplayListItems.length;
   const chatListVirtualWindow = useMemo(() => {
-    if (listSearchActive) {
+    if (searchListReplacesMain) {
       return {
         enabled: false,
         startIndex: 0,
@@ -2487,7 +2488,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }, {
       rowStridePx: chatListRowStride,
       contentTopInsetPx: chatListShellTopInset + (chatListScrollMetrics.contentTopInsetPx ?? 0),
-      stickyWindow: chatListVirtualStickyRef.current,
+      stickyWindow: searchListReplacesMain ? undefined : chatListVirtualStickyRef.current,
     });
     chatListVirtualStickyRef.current = {
       startIndex: next.startIndex,
@@ -2502,7 +2503,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     chatListEffectiveLayoutH,
     chatListScrollMetrics.scrollY,
     revealedDisplayListItems.length,
-    listSearchActive,
+    searchListReplacesMain,
   ]);
   chatListVirtualWindowRef.current = chatListVirtualWindow;
 
@@ -2601,13 +2602,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
    * (last indices = visual top).
    */
   const prioritizeAvatarChatIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (selectedChatId != null && Number.isFinite(selectedChatId)) {
+      ids.add(selectedChatId);
+    }
     const topVisibleCount = Math.min(12, visibleChats.length);
-    if (topVisibleCount === 0) return new Set<number>();
-    const topFirst = listSearchActive
+    if (topVisibleCount === 0) return ids;
+    const topFirst = searchListReplacesMain
       ? visibleChats.slice(-topVisibleCount)
       : visibleChats.slice(0, topVisibleCount);
-    return new Set(topFirst.map((row) => row.telegram_chat_id));
-  }, [listSearchActive, visibleChatIdsKey]);
+    for (const row of topFirst) ids.add(row.telegram_chat_id);
+    return ids;
+  }, [searchListReplacesMain, selectedChatId, visibleChatIdsKey]);
 
   // tdesktop: keep neighbors warm so the next switch paints from cache.
   useEffect(() => {
@@ -2619,11 +2625,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (selected?.has_active_voice_chat) return;
     prefetchVisibleChatNeighbors(visibleChats, selectedChatId, {
       radius: 1,
-      visualTopAtEnd: listSearchActive,
+      visualTopAtEnd: searchListReplacesMain,
     });
     // visibleChats identity changes every render; key on ids + selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleChatIdsKey
-  }, [isTelegramMessagesConnected, listSearchActive, selectedChatId, visibleChatIdsKey]);
+  }, [isTelegramMessagesConnected, searchListReplacesMain, selectedChatId, visibleChatIdsKey]);
 
   useEffect(() => {
     setChatListBottomLoaderActive(showBottomLoader);
@@ -2683,6 +2689,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
     const tick = () => {
       if (isVoiceDialogUiOpen()) return;
+      if (isOpenChatFocusHoldActive()) return;
       if (archiveRevealPendingRef.current) return;
       void requestLoadMoreChats(needsPositionedPage ? "positioned" : "unpositioned");
     };
@@ -2708,6 +2715,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
+    if (isOpenChatFocusHoldActive()) return;
     // While archive reveal is painting, do not compete for TDLib / fetch slots.
     if (archiveRevealPendingRef.current) return;
     void loadChatsRef.current({
@@ -2913,7 +2921,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       {items.map((item, index) => {
         const absoluteIndex = startIndex + index;
         // column-reverse: first item is nearest the search field (visual bottom).
-        const isVisualBottomEdge = listSearchActive
+        const isVisualBottomEdge = searchListReplacesMain
           ? absoluteIndex === 0
           : absoluteIndex === revealedDisplayListItems.length - 1 && !showBottomLoader;
         if (item.kind === "archiveFolder") {
@@ -3115,9 +3123,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                   : undefined
               }
               onPressIn={
-                listSearchActive && chatSelectionEnabled
+                chatSelectionEnabled
                   ? () => {
-                      markChatListSearchRowPressPending();
+                      if (listSearchActive) markChatListSearchRowPressPending();
+                      setOpenChatFocusHold(item.row.telegram_chat_id);
+                      demoteQueuedNetworkFetches();
+                      clearQueuedNormalNetworkFetches();
+                      prefetchChatHistoryPriority(item.row);
+                      void warmupTelegramChatSession(item.row.telegram_chat_id);
                     }
                   : undefined
               }
@@ -3241,7 +3254,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       <View
         style={[
           listShellStyle,
-          listSearchActive
+          searchListReplacesMain
             ? {
                 // Grow upward from the search field: first result sits at the visual bottom.
                 // No minHeight — stretching to the viewport left a large empty gap above the field.

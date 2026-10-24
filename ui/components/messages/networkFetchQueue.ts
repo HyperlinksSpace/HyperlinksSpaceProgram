@@ -59,7 +59,8 @@ export function runQueuedNetworkFetch<T>(
           drainWaiters();
         });
     };
-    if (inFlight < MAX_CONCURRENT) {
+    // Open-chat history must not wait behind list avatar/emoji jobs.
+    if (priority === "critical" || inFlight < MAX_CONCURRENT) {
       run();
       return;
     }

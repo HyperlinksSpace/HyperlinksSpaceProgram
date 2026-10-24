@@ -318,7 +318,7 @@ export function MessageChatRow({
               colors={colors}
               scheme={colorScheme}
               loadEnabled={avatarFetchEnabled}
-              fetchPriority={isActive || prioritizeAvatar ? "high" : "normal"}
+              fetchPriority={isActive ? "critical" : prioritizeAvatar ? "high" : "normal"}
               borderColor={voiceRingColor}
               activeVoiceRing={hasActiveVoice}
               joinedVoiceRing={isJoinedVoice}
@@ -351,7 +351,7 @@ export function MessageChatRow({
             colors={colors}
             scheme={colorScheme}
             loadEnabled={avatarFetchEnabled}
-            fetchPriority={isActive || prioritizeAvatar ? "high" : "normal"}
+            fetchPriority={isActive ? "critical" : prioritizeAvatar ? "high" : "normal"}
             borderColor={voiceRingColor}
             activeVoiceRing={hasActiveVoice}
             joinedVoiceRing={isJoinedVoice}

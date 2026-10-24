@@ -91,7 +91,7 @@ function prefetchQueueSnapshot(): {
   };
 }
 
-function isOpenChatFocusHoldActive(): boolean {
+export function isOpenChatFocusHoldActive(): boolean {
   return openChatFocusId != null && Date.now() < openChatFocusUntilMs;
 }
 
