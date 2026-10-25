@@ -1314,15 +1314,25 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             return prev;
           }
           const syncReady = json.chatListSync?.stableTopReady === true;
-          // Ready-without-rows must be recorded with this chats commit. An earlier
-          // chatListSync update would drop the loading row before paint.
+          // Only a priority archive paint may confirm empty. Live main-list polls
+          // omit archive rows until that fetch lands, and used to drop the loading
+          // snippet (and the press target) before Archived chats could open.
           const archiveSnapshotEmpty =
+            archiveRevealPendingRef.current &&
+            Boolean(options?.priority) &&
             syncReady &&
             json.chatListSync?.archiveListReady === true &&
             json.chatListSync.archiveListInProgress !== true &&
             !rows.some((row) => row.in_archive);
           if (archiveSnapshotEmpty) {
-            queueMicrotask(() => setArchiveEmptyConfirmed(true));
+            queueMicrotask(() => {
+              logPageDisplay("messages_archive_empty_confirmed", {
+                count: rows.length,
+                forceFull: Boolean(options?.forceFull),
+                priority: Boolean(options?.priority),
+              });
+              setArchiveEmptyConfirmed(true);
+            });
           }
           // First ordered paint / reseed: replace, never merge — merge can keep a wrong-order skeleton.
           if (
@@ -2104,12 +2114,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   );
   const archiveSortedChats = useMemo(
     () =>
-      // Session scroll-up only — ignore gateway archiveListReady left over from a
-      // prior reveal so archived dialogs stay hidden on fresh page load.
-      archiveRevealRequested && chatListSync?.archiveListReady === true
+      // Session scroll-up / archive view only — do not wait on archiveListReady
+      // once rows are already in `chats` (ready can lag the payload).
+      archiveRevealRequested || archiveOpen
         ? sortedChats.filter((row) => Boolean(row.in_archive))
         : [],
-    [archiveRevealRequested, chatListSync?.archiveListReady, sortedChats],
+    [archiveOpen, archiveRevealRequested, sortedChats],
   );
   const archiveChatsPainted = archiveSortedChats.length > 0;
   const listModeChats = archiveOpen ? archiveSortedChats : mainSortedChats;
@@ -2268,7 +2278,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           }));
         }
         // Keep a reserved loading row until archive dialogs paint — never flash empty.
-        if (archiveRevealRequested && !archiveEmptyConfirmed) {
+        if (!archiveEmptyConfirmed) {
           return [
             {
               kind: "archiveFolder" as const,
@@ -2774,6 +2784,29 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     requestArchiveChats,
   ]);
 
+  const handleOpenArchive = useCallback(() => {
+    logPageDisplay("messages_archive_open", {
+      painted: archiveSortedChats.length,
+      emptyConfirmed: archiveEmptyConfirmed,
+      archiveListReady: chatListSync?.archiveListReady === true,
+    });
+    setArchiveEmptyConfirmed(false);
+    archiveRevealPendingRef.current = true;
+    setArchiveRevealRequested(true);
+    setMessagesArchiveOpen(true);
+    if (chatListSync?.archiveListReady === true && chatsHaveArchiveRef.current) {
+      archiveRevealPendingRef.current = false;
+      return;
+    }
+    archivePaintFetchStartedRef.current = false;
+    void requestArchiveChats();
+  }, [
+    archiveEmptyConfirmed,
+    archiveSortedChats.length,
+    chatListSync?.archiveListReady,
+    requestArchiveChats,
+  ]);
+
   useEffect(() => {
     if (chatListVirtualWindow.startIndex > 0) {
       archiveScrollArmedRef.current = true;
@@ -2805,35 +2838,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   useEffect(() => {
     if (!archiveRevealRequested) return;
     if (chatListSync?.archiveListReady === true) return;
-    if (listSearchActive || archiveOpen) return;
+    if (listSearchActive) return;
     const id = setInterval(() => {
       void requestArchiveChats();
     }, 1200);
-    // Don't leave the reserved loading row forever if the gateway ignores archive.
-    const failSafe = setTimeout(() => {
-      archiveRevealPendingRef.current = false;
-      setArchiveEmptyConfirmed(true);
-      setChatListSync((prev) =>
-        prev?.archiveListReady === true
-          ? prev
-          : {
-              inProgress: prev?.inProgress ?? false,
-              cachedCount: prev?.cachedCount ?? chatsCountRef.current,
-              positionedComplete: prev?.positionedComplete,
-              stableTopReady: prev?.stableTopReady ?? true,
-              archiveListReady: true,
-              archiveListInProgress: false,
-              tier3Available: prev?.tier3Available,
-              tier3InProgress: prev?.tier3InProgress,
-            },
-      );
-    }, 12_000);
     return () => {
       clearInterval(id);
-      clearTimeout(failSafe);
     };
   }, [
-    archiveOpen,
     archiveRevealRequested,
     chatListSync?.archiveListReady,
     listSearchActive,
@@ -2849,22 +2861,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       archivePaintFetchStartedRef.current = false;
       return;
     }
-    if (listSearchActive || archiveOpen) return;
+    if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
     if (!archivePaintFetchStartedRef.current) {
       archivePaintFetchStartedRef.current = true;
       void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
     }
-    // If the paint fetch never lands, drop the loading row — do not restart forceFull.
-    const failSafe = setTimeout(() => {
-      archiveRevealPendingRef.current = false;
-      setArchiveEmptyConfirmed(true);
+    // Retry the paint fetch — do not confirm empty on a timer (that unmounted
+    // the loading snippet before archived chats arrived).
+    const retry = setTimeout(() => {
+      archivePaintFetchStartedRef.current = false;
+      void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
     }, 8_000);
-    return () => clearTimeout(failSafe);
+    return () => clearTimeout(retry);
   }, [
     archiveChatsPainted,
     archiveEmptyConfirmed,
-    archiveOpen,
     archiveRevealRequested,
     chatListSync?.archiveListReady,
     listSearchActive,
@@ -2933,7 +2945,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               colors={colors}
               isLast={isVisualBottomEdge}
               loading={item.loading === true}
-              onPress={() => setMessagesArchiveOpen(true)}
+              onPress={handleOpenArchive}
             />
           );
         }

@@ -45,7 +45,7 @@ export function MessageChatListArchiveFolderRow({
     <HomeListRowShell
       isLast={isLast}
       colors={colors}
-      onPress={loading ? undefined : onPress}
+      onPress={onPress}
     >
       <View
         style={{
