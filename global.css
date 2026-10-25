@@ -36,6 +36,21 @@
 }
 
 /*
+ * Playlist reorder handle: global [role=button] cursor:pointer wins over RN inline
+ * `cursor: grab` on the SVG child. Force grab / grabbing for this control only.
+ */
+[data-playlist-reorder="true"],
+[data-playlist-reorder="true"] * {
+  cursor: grab !important;
+}
+[data-playlist-reorder="true"]:active,
+[data-playlist-reorder="true"]:active *,
+[data-playlist-reorder="true"][data-playlist-reordering="true"],
+[data-playlist-reorder="true"][data-playlist-reordering="true"] * {
+  cursor: grabbing !important;
+}
+
+/*
  * Display-only amounts (header “1$”, send/swap placeholders). Not inputs — no I-beam or caret.
  */
 [data-hsp-display-amount="true"],

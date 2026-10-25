@@ -23,21 +23,30 @@ export async function removeProfilePlaylistTrack(
 }
 
 /**
- * Persist drag-drop: move `fileId` so it sits after `afterFileId` (0 = first).
- * Matches TDLib `setProfileAudioPosition` / Telegram `account.saveMusic`.
+ * Persist drag-drop so native Telegram apps match this playlist.
+ * Sends the moved slot (`after_file_id` 0 = first) plus the full visible order
+ * so the gateway can verify / walk `account.saveMusic` if a single move is not enough.
  */
-export async function repositionProfilePlaylistTrack(
-  fileId: number,
-  afterFileId: number,
+export async function persistProfilePlaylistOrder(
+  orderedFileIds: number[],
+  moved?: { fileId: number; afterFileId: number },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ids = orderedFileIds.map((id) => Math.trunc(Number(id))).filter((id) => Number.isFinite(id) && id > 0);
+  const fileId = moved != null ? Math.trunc(Number(moved.fileId)) : 0;
+  const afterFileId = moved != null ? Math.trunc(Number(moved.afterFileId)) : -1;
+  if (ids.length === 0 && !(fileId > 0 && afterFileId >= 0)) {
+    return { ok: false, error: "file_id_required" };
+  }
   try {
     const response = await fetch(buildApiUrl("/api/telegram-messages-profile-audio-reorder"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        file_id: Math.trunc(fileId),
-        after_file_id: Math.trunc(afterFileId),
+        ordered_file_ids: ids,
+        ...(fileId > 0 && afterFileId >= 0
+          ? { file_id: fileId, after_file_id: afterFileId }
+          : null),
       }),
     });
     const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -48,6 +57,17 @@ export async function repositionProfilePlaylistTrack(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "reorder_failed" };
   }
+}
+
+/**
+ * Persist drag-drop: move `fileId` so it sits after `afterFileId` (0 = first).
+ * Matches TDLib `setProfileAudioPosition` / Telegram `account.saveMusic`.
+ */
+export async function repositionProfilePlaylistTrack(
+  fileId: number,
+  afterFileId: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return persistProfilePlaylistOrder([], { fileId, afterFileId });
 }
 
 export async function reorderProfilePlaylistTracks(

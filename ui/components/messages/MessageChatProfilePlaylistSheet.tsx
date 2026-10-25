@@ -28,8 +28,8 @@ import {
 import {
   downloadProfilePlaylistTrack,
   forwardProfilePlaylistTrack,
+  persistProfilePlaylistOrder,
   removeProfilePlaylistTrack,
-  repositionProfilePlaylistTrack,
 } from "../../telegram/profilePlaylistActions";
 import { listTelegramDirectoryChats } from "../../telegram/telegramChatDirectory";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -210,6 +210,7 @@ export function MessageChatProfilePlaylistSheet({
   /** File id of the row grabbed for drag — index changes while bubbling. */
   const dragFileIdRef = useRef<number | null>(null);
   const dragDirtyRef = useRef(false);
+  const [reordering, setReordering] = useState(false);
   const localTracksRef = useRef(localTracks);
   localTracksRef.current = localTracks;
   const playlistRefreshGenRef = useRef(0);
@@ -323,16 +324,20 @@ export function MessageChatProfilePlaylistSheet({
     if (!isOwnPlaylist || !dragDirtyRef.current) return;
     const fileId = dragFileIdRef.current;
     // Ref is updated synchronously in moveTrack — do not wait for React re-render.
-    const ids = localTracksRef.current.map((row) => row.file_id);
+    const ids = localTracksRef.current
+      .map((row) => Math.trunc(Number(row.file_id)))
+      .filter((id) => Number.isFinite(id) && id > 0);
     dragDirtyRef.current = false;
     dragFileIdRef.current = null;
+    setReordering(false);
     if (fileId == null || !Number.isFinite(fileId) || fileId <= 0) return;
-    const index = ids.indexOf(fileId);
+    const movedId = Math.trunc(fileId);
+    const index = ids.indexOf(movedId);
     if (index < 0) return;
     const afterFileId = index === 0 ? 0 : ids[index - 1]!;
     // Bump refresh gen so an in-flight extras fetch cannot overwrite this order.
     playlistRefreshGenRef.current += 1;
-    void repositionProfilePlaylistTrack(fileId, afterFileId);
+    void persistProfilePlaylistOrder(ids, { fileId: movedId, afterFileId });
   }, [isOwnPlaylist]);
 
   const moveTrack = useCallback((from: number, to: number) => {
@@ -370,14 +375,15 @@ export function MessageChatProfilePlaylistSheet({
     const onUp = () => {
       if (dragFromRef.current != null) persistReorder();
       dragFromRef.current = null;
+      setReordering(false);
     };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-    document.addEventListener("pointercancel", onUp);
+    document.addEventListener("pointermove", onMove, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("pointercancel", onUp, true);
     return () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      document.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("pointermove", onMove, true);
+      document.removeEventListener("pointerup", onUp, true);
+      document.removeEventListener("pointercancel", onUp, true);
     };
   }, [moveTrack, persistReorder, visible]);
 
@@ -560,18 +566,21 @@ export function MessageChatProfilePlaylistSheet({
                     onPressIn={(event) => {
                       dragFromRef.current = index;
                       dragFileIdRef.current = localTracksRef.current[index]?.file_id ?? null;
+                      setReordering(true);
                       if (Platform.OS === "web") {
                         const native = event.nativeEvent as unknown as {
                           pointerId?: number;
+                          currentTarget?: { setPointerCapture?: (id: number) => void };
                           target?: { setPointerCapture?: (id: number) => void };
                         };
                         const pointerId = Number(native.pointerId);
+                        const host = native.currentTarget ?? native.target;
                         if (
                           Number.isFinite(pointerId) &&
-                          typeof native.target?.setPointerCapture === "function"
+                          typeof host?.setPointerCapture === "function"
                         ) {
                           try {
-                            native.target.setPointerCapture(pointerId);
+                            host.setPointerCapture(pointerId);
                           } catch {
                             /* ignore */
                           }
@@ -592,7 +601,13 @@ export function MessageChatProfilePlaylistSheet({
                         : null),
                     })}
                     {...(Platform.OS === "web"
-                      ? ({ dataSet: { floatingNoDrag: "1" } } as object)
+                      ? ({
+                          dataSet: {
+                            floatingNoDrag: "1",
+                            playlistReorder: "true",
+                            playlistReordering: reordering ? "true" : undefined,
+                          },
+                        } as object)
                       : {})}
                   >
                     <MusicReorderIcon color={colors.primary} size={16} />

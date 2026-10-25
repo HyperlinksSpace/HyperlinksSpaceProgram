@@ -2809,8 +2809,8 @@ export async function reorderProfileAudiosForUser(
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const record = await requireReadySession(telegramUsername, 30_000);
   if (!record) return { ok: false, error: "session_not_ready" };
-  const { reorderProfileAudioTracks } = await import("./profileMusicActions.js");
-  return reorderProfileAudioTracks(record.client, orderedFileIds);
+  const { persistProfileAudioOrder } = await import("./profileMusicActions.js");
+  return persistProfileAudioOrder(record.client, orderedFileIds);
 }
 
 /** Move one profile audio after `afterFileId` (0 = start). Prefer this for drag-drop. */
@@ -2818,11 +2818,12 @@ export async function setProfileAudioPositionForUser(
   telegramUsername: string,
   fileId: number,
   afterFileId: number,
+  orderedFileIds: number[] = [],
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const record = await requireReadySession(telegramUsername, 30_000);
   if (!record) return { ok: false, error: "session_not_ready" };
-  const { setProfileAudioTrackPosition } = await import("./profileMusicActions.js");
-  return setProfileAudioTrackPosition(record.client, fileId, afterFileId);
+  const { persistProfileAudioOrder } = await import("./profileMusicActions.js");
+  return persistProfileAudioOrder(record.client, orderedFileIds, { fileId, afterFileId });
 }
 
 export async function forwardProfileAudioForUser(

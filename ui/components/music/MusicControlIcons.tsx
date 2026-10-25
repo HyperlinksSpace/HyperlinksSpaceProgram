@@ -9,12 +9,20 @@ type IconProps = {
 function Root({
   size = 16,
   children,
+  pointerEvents,
 }: {
   size?: number;
   children: ReactNode;
+  pointerEvents?: "none" | "auto" | "box-none";
 }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <Svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      pointerEvents={pointerEvents}
+    >
       {children}
     </Svg>
   );
@@ -133,7 +141,7 @@ export function MusicBackChevronIcon({ color, size }: IconProps) {
 
 export function MusicReorderIcon({ color, size }: IconProps) {
   return (
-    <Root size={size}>
+    <Root size={size} pointerEvents="none">
       <Rect x={3} y={4} width={10} height={1.3} rx={0.4} fill={color} />
       <Rect x={3} y={7.35} width={10} height={1.3} rx={0.4} fill={color} />
       <Rect x={3} y={10.7} width={10} height={1.3} rx={0.4} fill={color} />

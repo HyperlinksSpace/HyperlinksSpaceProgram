@@ -1,5 +1,6 @@
 import type { Client } from "tdl";
-import type { TelegramProfileAudioTrack } from "./profileMusic.js";
+import { logGateway } from "./gatewayLog.js";
+import { listUserProfileAudios, type TelegramProfileAudioTrack } from "./profileMusic.js";
 
 /** Remove a track from the current user's profile playlist. */
 export async function removeProfileAudioTrack(
@@ -20,6 +21,37 @@ export async function removeProfileAudioTrack(
       ok: false,
       error: err instanceof Error ? err.message : "remove_failed",
     };
+  }
+}
+
+function sameIdOrder(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+function sameIdSet(left: number[], right: number[]): boolean {
+  if (left.length !== right.length) return false;
+  const counts = new Map<number, number>();
+  for (const id of left) counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const id of right) {
+    const n = counts.get(id);
+    if (n == null || n <= 0) return false;
+    if (n === 1) counts.delete(id);
+    else counts.set(id, n - 1);
+  }
+  return counts.size === 0;
+}
+
+async function currentUserId(client: Client): Promise<number | null> {
+  try {
+    const me = (await client.invoke({ _: "getMe" })) as { id?: number };
+    const id = Number(me.id);
+    return Number.isFinite(id) && id > 0 ? Math.trunc(id) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -50,11 +82,25 @@ export async function setProfileAudioTrackPosition(
       after_file_id: afterId,
     });
     return { ok: true };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "reorder_failed",
-    };
+  } catch (firstErr) {
+    try {
+      // tdl camelCase fallback if the snake_case request was rejected as unknown.
+      await client.invoke({
+        _: "setProfileAudioPosition",
+        fileId: id,
+        afterFileId: afterId,
+      } as never);
+      return { ok: true };
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : firstErr instanceof Error
+            ? firstErr.message
+            : "reorder_failed";
+      logGateway("profile_audio_set_position_failed", { fileId: id, afterFileId: afterId, error: message });
+      return { ok: false, error: message };
+    }
   }
 }
 
@@ -85,6 +131,55 @@ export async function reorderProfileAudioTracks(
       error: err instanceof Error ? err.message : "reorder_failed",
     };
   }
+}
+
+/**
+ * Persist HSP playlist order to Telegram (`setProfileAudioPosition` /
+ * `account.saveMusic`). Applies the dragged slot first, then verifies against
+ * `getUserProfileAudios` and walks the full list when the sets match but order
+ * still differs — so official Telegram apps show the same playlist.
+ */
+export async function persistProfileAudioOrder(
+  client: Client,
+  orderedFileIds: number[],
+  position?: { fileId: number; afterFileId: number },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const ids = orderedFileIds
+    .map((id) => Math.trunc(Number(id)))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  const fileId = position != null ? Math.trunc(Number(position.fileId)) : 0;
+  const afterFileId = position != null ? Math.trunc(Number(position.afterFileId)) : -1;
+  if (fileId > 0 && afterFileId >= 0 && afterFileId !== fileId) {
+    const moved = await setProfileAudioTrackPosition(client, fileId, afterFileId);
+    if (!moved.ok && ids.length === 0) return moved;
+  } else if (ids.length === 0) {
+    return { ok: false, error: "file_id_required" };
+  }
+
+  const uid = await currentUserId(client);
+  if (uid != null && ids.length > 0) {
+    const listed = await listUserProfileAudios(client, uid);
+    const listedIds = listed.map((track) => track.file_id);
+    if (sameIdOrder(listedIds, ids)) {
+      logGateway("profile_audio_order_synced", { count: ids.length });
+      return { ok: true };
+    }
+    if (sameIdSet(listedIds, ids)) {
+      logGateway("profile_audio_order_walk", { count: ids.length });
+      return reorderProfileAudioTracks(client, ids);
+    }
+    if (listedIds.length > ids.length && sameIdOrder(listedIds.slice(0, ids.length), ids)) {
+      return { ok: true };
+    }
+    logGateway("profile_audio_order_mismatch", {
+      listed: listedIds.length,
+      desired: ids.length,
+    });
+  }
+  if (ids.length > 0) {
+    return reorderProfileAudioTracks(client, ids);
+  }
+  return { ok: true };
 }
 
 /** Forward a profile audio file into another chat (Telegram "Forward" for playlist tracks). */

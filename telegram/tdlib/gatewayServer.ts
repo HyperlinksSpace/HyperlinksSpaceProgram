@@ -1892,10 +1892,16 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "invalid_params" });
             return;
           }
-          // Prefer a single setProfileAudioPosition (drag-drop); fall back to full list.
+          // Single slot + full order: persist verifies against getUserProfileAudios
+          // so native Telegram apps match program.hyperlinks.space.
           const result =
             Number.isFinite(fileId) && fileId > 0 && Number.isFinite(afterFileId) && afterFileId >= 0
-              ? await setProfileAudioPositionForUser(telegramUsername, fileId, afterFileId)
+              ? await setProfileAudioPositionForUser(
+                  telegramUsername,
+                  fileId,
+                  afterFileId,
+                  orderedFileIds,
+                )
               : await reorderProfileAudiosForUser(telegramUsername, orderedFileIds);
           if (!result.ok) {
             sendJson(res, result.error === "session_not_ready" ? 503 : 400, {
