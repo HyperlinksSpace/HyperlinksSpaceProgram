@@ -58,6 +58,7 @@ import {
   MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
   MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
   MESSAGE_CHAT_LOAD_NEWER_ERROR_BACKOFF_MS,
+  MESSAGE_CHAT_LOAD_NEWER_THRESHOLD_PX,
   MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX,
   MESSAGE_CHAT_LOAD_OLDER_PREFETCH_PX,
   MESSAGE_CHAT_EDGE_PREFETCH_SCREENS,
@@ -5657,6 +5658,11 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       let loadedOldestBefore =
         oldestHistoryMessageId(loadedMessagesRef.current) ?? headBeforeLoad;
 
+      const olderMetrics = scrollControllerRef.current?.getMetrics();
+      const atHardOlderEdge =
+        expandArmed ||
+        (olderMetrics != null &&
+          isNearChatTop(olderMetrics.scrollY, MESSAGE_CHAT_LOAD_OLDER_THRESHOLD_PX));
       for (let attempt = 0; attempt < MAX_OLDER_PAGE_ATTEMPTS; attempt += 1) {
         olderLoadInFlightBeforeIdRef.current = pageCursor;
         result = await fetchOlderHistoryCharBudget(
@@ -5664,6 +5670,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           chat.peer_user_id,
           pageCursor,
           MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
+          { background: !atHardOlderEdge },
         );
         // Join opened while this page was in flight — apply would freeze the
         // sheet (logs: prepend_merge_applied + unread_sync under voice dialog).
@@ -5975,6 +5982,7 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           warmPeerId,
           warmBeforeId,
           MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
+          { background: true },
         ).then((warm) => {
           if (warm.error || warm.messages.length === 0) return;
           mergeCachedChatHistoryTail(warmChatId, warm);
@@ -6092,11 +6100,21 @@ export function MessageChatMessageList({ chat, colors }: Props) {
     });
 
     try {
+      const newerMetrics = scrollControllerRef.current?.getMetrics();
+      const distBottom =
+        newerMetrics != null
+          ? Math.max(
+              0,
+              newerMetrics.contentH - (newerMetrics.scrollY + newerMetrics.layoutH),
+            )
+          : Number.POSITIVE_INFINITY;
+      const atHardNewerEdge = distBottom <= MESSAGE_CHAT_LOAD_NEWER_THRESHOLD_PX;
       let result = await fetchNewerHistoryCharBudget(
         chat.telegram_chat_id,
         chat.peer_user_id,
         sinceMessageId,
         MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
+        { background: !atHardNewerEdge },
       );
 
       if (isVoiceDialogUiOpen()) {

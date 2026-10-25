@@ -712,6 +712,7 @@ export function startTdlibGatewayServer(): http.Server {
               warming: result.warming === true,
               archive: true,
               ready: result.ready,
+              archiveCount: result.archiveCount,
               chatListSync: buildChatListSyncStatus(telegramUsername),
             });
             return;

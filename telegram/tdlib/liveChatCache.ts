@@ -319,6 +319,16 @@ export function removeLiveChatsByPeerUserId(
   return bumpRevision(cache, telegramUsername);
 }
 
+export function countLiveArchiveChats(telegramUsername: string): number {
+  const list = getLiveChatList(telegramUsername);
+  if (!list || list.length === 0) return 0;
+  let count = 0;
+  for (const row of list) {
+    if (row.in_archive) count += 1;
+  }
+  return count;
+}
+
 /** Merge rows into the live cache with a single revision bump (background paging). */
 export function mergeLiveChatRows(
   telegramUsername: string,

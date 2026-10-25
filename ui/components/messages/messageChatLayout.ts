@@ -139,15 +139,22 @@ export const MESSAGE_CHAT_EDGE_PREFETCH_SCREENS = 3;
 export const MESSAGE_CHAT_MEDIA_PREFETCH_PX = 900;
 
 /**
- * Older rows seeded above the open anchor (bottom / restore / around).
+ * First-paint window around the open anchor (~1–1.5 screens). Older (above)
+ * and newer (below) pages fill after the visible rows are on screen.
+ */
+export const MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE = 12;
+/** Bottom-open tail: newest rows only (visible), not a 2N older dump. */
+export const MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL = 16;
+/**
+ * Older rows to keep after the visible open (scroll-up buffer).
  * Matches N so every open has a full scrollable side when history allows.
  */
 export const MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER = 40;
-/** Newer rows seeded below a mid-thread open anchor (N). */
+/** Newer rows seeded below a mid-thread open anchor (N) after first paint. */
 export const MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER = 40;
 /**
- * Minimum older rows above first-unread / around-unread open.
- * Prefetch and TDLib around-unread should seed at least this much context above the divider.
+ * Minimum older rows above first-unread after the visible divider paints.
+ * Prefetch / TDLib around-unread first paint uses {@link MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE}.
  */
 export const MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER = 40;
 /** Batch size when scrolling down into newer history below the loaded window. */

@@ -526,6 +526,7 @@ export async function telegramMessagesChatsLoadMoreHandler(
         warming,
         archive: true,
         ready: result.ready === true || result.chatListSync?.archiveListReady === true,
+        archiveCount: result.archiveCount ?? null,
         chatListSync: result.chatListSync,
         error: result.error,
       },

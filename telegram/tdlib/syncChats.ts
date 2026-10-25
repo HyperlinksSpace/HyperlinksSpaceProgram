@@ -1398,7 +1398,12 @@ function buildSkeletonLiveRows(
 async function buildLiveRowsForChats(
   client: Client,
   chats: TdChat[],
-  options?: { skipMemberCounts?: boolean; preserveListIndexOrder?: boolean },
+  options?: {
+    skipMemberCounts?: boolean;
+    preserveListIndexOrder?: boolean;
+    /** Chats came from chatListArchive — keep them archived even if TDLib also lists main. */
+    forceInArchive?: boolean;
+  },
 ): Promise<Omit<LiveChatRow, "revision">[]> {
   if (chats.length === 0) return [];
 
@@ -1470,7 +1475,7 @@ async function buildLiveRowsForChats(
       last_read_inbox_message_id: lastReadInboxMessageIdFromChat(chat),
       ...lastMessageListRowMetaFromChat(chat, myUserId),
       ...(() => {
-        const inArchive = isArchiveOnlyChat(chat);
+        const inArchive = options?.forceInArchive === true || isArchiveOnlyChat(chat);
         return {
           in_archive: inArchive,
           is_pinned: inArchive ? isChatPinnedInArchiveList(chat) : isChatPinnedInMainList(chat),
@@ -1727,6 +1732,7 @@ export async function syncArchiveChatList(
     const visible = await omitHiddenPrivateChats(client, archiveChats);
     const rows = await buildLiveRowsForChats(client, visible, {
       skipMemberCounts: true,
+      forceInArchive: true,
     });
     if (rows.length > 0) {
       mergeLiveChatRows(telegramUsername, rows);
@@ -1743,8 +1749,6 @@ export async function syncArchiveChatList(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logGateway("sync_chat_archive_error", { telegramUsername, message });
-    // Still mark ready so the UI does not spin forever on empty/failed archive.
-    setArchiveListReady(telegramUsername, true);
     throw err;
   } finally {
     markArchiveChatSyncEnd(telegramUsername);

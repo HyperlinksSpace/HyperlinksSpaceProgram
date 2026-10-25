@@ -43,8 +43,15 @@ import {
   isArchiveChatSyncInProgress,
   isArchiveListReady,
   isPositionedComplete,
+  setArchiveListReady,
 } from "./chatListSyncState.js";
-import { getLiveChatList, getLiveChatListRevision, patchLiveChatMemberMeta, patchLiveChatVideoChat } from "./liveChatCache.js";
+import {
+  countLiveArchiveChats,
+  getLiveChatList,
+  getLiveChatListRevision,
+  patchLiveChatMemberMeta,
+  patchLiveChatVideoChat,
+} from "./liveChatCache.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
 import { type TdChat } from "./chatPreview.js";
 import { verifyGroupCallLiveState } from "./voiceParticipants.js";
@@ -1918,9 +1925,15 @@ export function requestArchiveChatSync(telegramUsername: string): {
   inProgress: boolean;
   ready: boolean;
   warming?: boolean;
+  archiveCount: number;
 } {
-  if (isArchiveListReady(telegramUsername)) {
-    return { started: false, inProgress: false, ready: true };
+  const archiveCount = countLiveArchiveChats(telegramUsername);
+  if (isArchiveListReady(telegramUsername) && archiveCount > 0) {
+    return { started: false, inProgress: false, ready: true, archiveCount };
+  }
+  if (isArchiveListReady(telegramUsername) && archiveCount === 0) {
+    // Stale ready from a prior empty/error pass — live cache has no archive rows.
+    setArchiveListReady(telegramUsername, false);
   }
   const record = getActiveRecord(telegramUsername);
   const already = isArchiveChatSyncInProgress(telegramUsername);
@@ -1932,13 +1945,20 @@ export function requestArchiveChatSync(telegramUsername: string): {
         }
       });
     }
-    return { started: false, inProgress: already, ready: false, warming: true };
+    return {
+      started: false,
+      inProgress: already,
+      ready: false,
+      warming: true,
+      archiveCount: countLiveArchiveChats(telegramUsername),
+    };
   }
   const started = scheduleArchiveChatSync(record.client, telegramUsername);
   return {
     started,
     inProgress: started || isArchiveChatSyncInProgress(telegramUsername),
     ready: isArchiveListReady(telegramUsername),
+    archiveCount: countLiveArchiveChats(telegramUsername),
   };
 }
 

@@ -8,8 +8,9 @@ import {
 } from "../components/messages/messageChatCharacterRange";
 import { resolveFirstUnreadMessageId, resolveLastReadMessageId } from "../components/messages/messageListLayout";
 import {
-  MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER,
   MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
+  MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+  MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
   MESSAGE_CHAT_HISTORY_PAGE_SIZE,
 } from "../components/messages/messageChatLayout";
 import {
@@ -26,10 +27,6 @@ const FETCH_PAGE_SIZE = MESSAGE_CHAT_HISTORY_PAGE_SIZE;
 const MAX_FETCH_ROUNDS = 40;
 /** Hard cap: media-heavy chats fill char budgets with hundreds of rows otherwise. */
 const MAX_MESSAGES_PER_CHAR_PAGE = MESSAGE_CHAT_HISTORY_PAGE_SIZE * 2;
-
-function seedContextMessageCount(charBudget: number): number {
-  return Math.max(4, Math.min(30, Math.ceil(charBudget / 400)));
-}
 
 function mergeSortedMessages(
   existing: MessageChatHistoryItem[],
@@ -55,11 +52,13 @@ async function fetchPageWithWarmup(
   olderAbove?: number | null,
   newerBelow?: number | null,
   limit: number = FETCH_PAGE_SIZE,
+  options?: { background?: boolean },
 ): Promise<ChatHistoryPageResult> {
   const pageLimit = Math.min(
     Math.max(1, Math.trunc(limit) || FETCH_PAGE_SIZE),
     MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
   );
+  const fetchOpts = options?.background === true ? { background: true } : undefined;
   let result = await fetchTelegramChatHistoryPage(
     chatId,
     pageLimit,
@@ -70,6 +69,7 @@ async function fetchPageWithWarmup(
     aroundMessageId,
     olderAbove,
     newerBelow,
+    fetchOpts,
   );
   if (
     result.error === "session_not_ready" ||
@@ -86,6 +86,7 @@ async function fetchPageWithWarmup(
       aroundMessageId,
       olderAbove,
       newerBelow,
+      fetchOpts,
     );
   }
   return result;
@@ -137,7 +138,17 @@ export async function fetchChatHistoryTailCharBudget(
   let cursor: number | null = null;
 
   for (let round = 0; round < MAX_FETCH_ROUNDS; round += 1) {
-    const result = await fetchPageWithWarmup(chatId, peerUserId, cursor);
+    const result = await fetchPageWithWarmup(
+      chatId,
+      peerUserId,
+      cursor,
+      null,
+      false,
+      null,
+      round === 0 ? MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL : null,
+      0,
+      round === 0 ? MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL : FETCH_PAGE_SIZE,
+    );
     if (result.error) {
       return { ...result, messages, anchorMessageId: null };
     }
@@ -157,6 +168,8 @@ export async function fetchChatHistoryTailCharBudget(
         : mergeSortedMessages(result.messages, messages);
     hasMoreOlder = result.hasMoreOlder;
     nextBeforeMessageId = result.nextBeforeMessageId;
+    // First paint is the visible tail only — older pages load after on scroll.
+    if (round === 0) break;
     if (totalCharacterWeight(messages) >= charBudget) break;
     if (!result.hasMoreOlder || result.nextBeforeMessageId == null) break;
     cursor = result.nextBeforeMessageId;
@@ -311,8 +324,6 @@ export async function fetchChatHistoryAroundCharBudget(
     messages = seed.messages;
     applyPageMeta(pageMeta, seed);
   } else {
-    const contextUp = seedContextMessageCount(charBudgetUp);
-    const contextDown = seedContextMessageCount(charBudgetDown);
     const aroundSeed = await fetchPageWithWarmup(
       chatId,
       peerUserId,
@@ -320,8 +331,9 @@ export async function fetchChatHistoryAroundCharBudget(
       null,
       false,
       anchorId,
-      contextUp,
-      contextDown,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE * 2 + 2,
     );
     if (aroundSeed.error) {
       return { ...aroundSeed, anchorMessageId: anchorId };
@@ -331,8 +343,6 @@ export async function fetchChatHistoryAroundCharBudget(
   }
 
   if (!messages.some((row) => row.telegram_message_id === anchorId)) {
-    const contextUp = seedContextMessageCount(charBudgetUp);
-    const contextDown = seedContextMessageCount(charBudgetDown);
     const aroundSeed = await fetchPageWithWarmup(
       chatId,
       peerUserId,
@@ -340,8 +350,9 @@ export async function fetchChatHistoryAroundCharBudget(
       null,
       false,
       anchorId,
-      contextUp,
-      contextDown,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+      MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE * 2 + 2,
     );
     if (aroundSeed.error) {
       return { ...aroundSeed, anchorMessageId: anchorId };
@@ -350,60 +361,8 @@ export async function fetchChatHistoryAroundCharBudget(
     applyPageMeta(pageMeta, aroundSeed);
   }
 
-  let olderCursor =
-    pageMeta.nextBeforeMessageId ??
-    (messages.length > 0 ? messages[0]!.telegram_message_id : null);
-  for (let round = 0; round < MAX_FETCH_ROUNDS; round += 1) {
-    const anchorIndex = messages.findIndex(
-      (row) => row.telegram_message_id === anchorId,
-    );
-    if (anchorIndex < 0) break;
-    let usedUp = 0;
-    for (let index = anchorIndex - 1; index >= 0; index -= 1) {
-      usedUp += messageCharacterWeight(messages[index]!);
-    }
-    if (usedUp >= charBudgetUp) break;
-    if (olderCursor == null) break;
-    const older = await fetchPageWithWarmup(chatId, peerUserId, olderCursor);
-    if (older.error) {
-      pageMeta.hasMoreOlder = older.hasMoreOlder;
-      pageMeta.nextBeforeMessageId = older.nextBeforeMessageId;
-      break;
-    }
-    if (older.messages.length === 0) {
-      pageMeta.hasMoreOlder = older.hasMoreOlder;
-      pageMeta.nextBeforeMessageId = older.nextBeforeMessageId;
-      break;
-    }
-    messages = mergeSortedMessages(older.messages, messages);
-    pageMeta.hasMoreOlder = older.hasMoreOlder;
-    pageMeta.nextBeforeMessageId = older.nextBeforeMessageId;
-    olderCursor =
-      older.nextBeforeMessageId ??
-      older.messages[0]?.telegram_message_id ??
-      messages[0]?.telegram_message_id ??
-      null;
-    applyPageMeta(pageMeta, older);
-  }
-
-  for (let round = 0; round < MAX_FETCH_ROUNDS; round += 1) {
-    const anchorIndex = messages.findIndex(
-      (row) => row.telegram_message_id === anchorId,
-    );
-    if (anchorIndex < 0) break;
-    let usedDown = 0;
-    for (let index = anchorIndex + 1; index < messages.length; index += 1) {
-      usedDown += messageCharacterWeight(messages[index]!);
-    }
-    if (usedDown >= charBudgetDown) break;
-    const tailId = messages[messages.length - 1]?.telegram_message_id ?? 0;
-    if (tailId <= 0) break;
-    const newer = await fetchPageWithWarmup(chatId, peerUserId, null, tailId);
-    if (newer.error || newer.messages.length === 0) break;
-    messages = mergeSortedMessages(messages, newer.messages);
-    applyPageMeta(pageMeta, newer);
-  }
-
+  // Visible seed only. Extra older/newer pages would delay the on-screen
+  // messages; MessageList loads those after paint via edge pagination.
   const preTrimHeadId = messages[0]?.telegram_message_id ?? null;
   const preTrimCount = messages.length;
   messages = trimMessagesAroundAnchorCharBudget(
@@ -461,9 +420,9 @@ export async function fetchChatHistoryAroundUnreadCharBudget(
     null,
     true,
     null,
-    MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER,
-    null,
-    MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
+    MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+    MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+    MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE * 2 + 2,
   );
   if (seedPage.error) {
     return { ...seedPage, anchorMessageId: null };
@@ -535,32 +494,26 @@ export async function fetchChatHistoryAroundUnreadCharBudget(
     (row) => row.telegram_message_id === paintAnchor,
   );
   if (seedHasBoundary) {
-    const paintIndex = seedPage.messages.findIndex(
-      (row) => row.telegram_message_id === paintAnchor,
+    const trimmed = trimMessagesAroundAnchorCount(
+      seedPage.messages,
+      paintAnchor,
+      MESSAGE_LIST_VIEWPORT_LIMIT,
     );
-    const olderAboveCount = Math.max(0, paintIndex);
-    if (olderAboveCount >= MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER) {
-      const trimmed = trimMessagesAroundAnchorCount(
-        seedPage.messages,
-        paintAnchor,
-        MESSAGE_LIST_VIEWPORT_LIMIT,
-      );
-      const trimmedHead = trimmed[0]?.telegram_message_id ?? null;
-      const seedHead = seedPage.messages[0]?.telegram_message_id ?? null;
-      return {
-        ...seedPage,
-        messages: trimmed,
-        hasMoreOlder:
-          seedPage.hasMoreOlder ||
-          (trimmedHead != null &&
-            seedHead != null &&
-            (trimmedHead > seedHead || trimmed.length < seedPage.messages.length)),
-        nextBeforeMessageId:
-          trimmedHead ?? seedPage.nextBeforeMessageId,
-        lastReadInboxMessageId: readCursor ?? seedPage.lastReadInboxMessageId,
-        anchorMessageId: paintAnchor,
-      };
-    }
+    const trimmedHead = trimmed[0]?.telegram_message_id ?? null;
+    const seedHead = seedPage.messages[0]?.telegram_message_id ?? null;
+    return {
+      ...seedPage,
+      messages: trimmed,
+      hasMoreOlder:
+        seedPage.hasMoreOlder ||
+        (trimmedHead != null &&
+          seedHead != null &&
+          (trimmedHead > seedHead || trimmed.length < seedPage.messages.length)),
+      nextBeforeMessageId:
+        trimmedHead ?? seedPage.nextBeforeMessageId,
+      lastReadInboxMessageId: readCursor ?? seedPage.lastReadInboxMessageId,
+      anchorMessageId: paintAnchor,
+    };
   }
 
   return fetchChatHistoryAroundCharBudget(
@@ -584,6 +537,7 @@ export async function fetchOlderHistoryCharBudget(
   peerUserId: number | null | undefined,
   beforeMessageId: number,
   charBudget: number,
+  options?: { background?: boolean },
 ): Promise<ChatHistoryPageResult> {
   let messages: MessageChatHistoryItem[] = [];
   let cursor: number | null = Math.trunc(beforeMessageId);
@@ -597,7 +551,18 @@ export async function fetchOlderHistoryCharBudget(
 
   for (let round = 0; round < MAX_FETCH_ROUNDS; round += 1) {
     if (cursor == null) break;
-    const result = await fetchPageWithWarmup(chatId, peerUserId, cursor);
+    const result = await fetchPageWithWarmup(
+      chatId,
+      peerUserId,
+      cursor,
+      null,
+      false,
+      null,
+      null,
+      null,
+      FETCH_PAGE_SIZE,
+      options,
+    );
     if (result.error) {
       return { ...result, messages };
     }
@@ -615,7 +580,18 @@ export async function fetchOlderHistoryCharBudget(
         let recovered = false;
         for (const delayMs of [450, 900, 1400] as const) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
-          const retry = await fetchPageWithWarmup(chatId, peerUserId, cursor);
+          const retry = await fetchPageWithWarmup(
+            chatId,
+            peerUserId,
+            cursor,
+            null,
+            false,
+            null,
+            null,
+            null,
+            FETCH_PAGE_SIZE,
+            options,
+          );
           if (retry.error) {
             return { ...retry, messages };
           }
@@ -701,6 +677,7 @@ export async function fetchNewerHistoryCharBudget(
   peerUserId: number | null | undefined,
   sinceMessageId: number,
   charBudget: number,
+  options?: { background?: boolean },
 ): Promise<ChatHistoryPageResult> {
   let messages: MessageChatHistoryItem[] = [];
   let cursor = Math.trunc(sinceMessageId);
@@ -711,7 +688,18 @@ export async function fetchNewerHistoryCharBudget(
   let selfUserId: number | null = null;
 
   for (let round = 0; round < MAX_FETCH_ROUNDS; round += 1) {
-    const result = await fetchPageWithWarmup(chatId, peerUserId, null, cursor);
+    const result = await fetchPageWithWarmup(
+      chatId,
+      peerUserId,
+      null,
+      cursor,
+      false,
+      null,
+      null,
+      null,
+      FETCH_PAGE_SIZE,
+      options,
+    );
     if (result.error) {
       return { ...result, messages };
     }

@@ -632,6 +632,7 @@ export async function gatewayLoadMoreChats(
   tier?: "positioned" | "unpositioned";
   archive?: boolean;
   ready?: boolean;
+  archiveCount?: number;
   chatListSync?: ChatListSyncStatus;
   error?: string;
 }> {
@@ -656,6 +657,7 @@ export async function gatewayLoadMoreChats(
       warming?: boolean;
       archive?: boolean;
       ready?: boolean;
+      archiveCount?: number;
       chatListSync?: ChatListSyncStatus;
       error?: string;
     };
@@ -673,6 +675,10 @@ export async function gatewayLoadMoreChats(
       warming: json.warming === true,
       archive: json.archive === true || options?.archive === true,
       ready: json.ready,
+      archiveCount:
+        typeof json.archiveCount === "number" && Number.isFinite(json.archiveCount)
+          ? Math.max(0, Math.trunc(json.archiveCount))
+          : undefined,
       chatListSync: json.chatListSync,
       error: json.error,
     };

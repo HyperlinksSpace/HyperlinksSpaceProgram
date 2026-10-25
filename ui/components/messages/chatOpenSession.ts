@@ -8,6 +8,8 @@ import {
   MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER,
   MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER,
   MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
+  MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+  MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
   MESSAGE_CHAT_HISTORY_PAGE_SIZE,
 } from "./messageChatLayout";
 import { CHAT_HISTORY_WINDOW_N } from "./chatHistoryWindowBudget";
@@ -136,13 +138,10 @@ function aroundMessageFetch(anchorMessageId: number): ChatOpenFetchSpec {
     anchorMessageId,
     olderBudgetRows: MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER,
     newerBudgetRows: MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER,
-    limit:
-      MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER +
-      MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER +
-      2,
+    limit: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE * 2 + 2,
     aroundUnread: false,
-    olderAbove: MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER,
-    newerBelow: MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER,
+    olderAbove: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+    newerBelow: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
   };
 }
 
@@ -153,16 +152,15 @@ function aroundUnreadFetch(unreadCount: number): ChatOpenFetchSpec {
     olderBudgetRows: MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER,
     newerBudgetRows: MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER,
     limit: Math.min(
-      MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
+      MESSAGE_CHAT_HISTORY_PAGE_SIZE,
       Math.max(
-        OPEN_WINDOW_2N,
-        MESSAGE_CHAT_HISTORY_PAGE_SIZE,
-        unreadCount + MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER + 8,
+        MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE * 2 + 2,
+        Math.min(unreadCount, MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX),
       ),
     ),
     aroundUnread: true,
-    olderAbove: MESSAGE_CHAT_HISTORY_AROUND_UNREAD_OLDER,
-    newerBelow: MESSAGE_CHAT_HISTORY_OPEN_NEWER_BUFFER,
+    olderAbove: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+    newerBelow: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
   };
 }
 
@@ -170,12 +168,11 @@ function tailFetchFallback(): ChatOpenFetchSpec {
   return {
     kind: "tail",
     anchorMessageId: null,
-    // At chat end: redistribute unused newer budget → up to 2N older.
     olderBudgetRows: OPEN_WINDOW_2N,
     newerBudgetRows: 0,
-    limit: Math.max(MESSAGE_CHAT_HISTORY_PAGE_SIZE, OPEN_WINDOW_2N),
+    limit: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
     aroundUnread: false,
-    olderAbove: OPEN_WINDOW_2N,
+    olderAbove: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
     newerBelow: 0,
   };
 }
