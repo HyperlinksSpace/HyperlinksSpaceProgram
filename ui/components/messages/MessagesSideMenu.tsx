@@ -405,9 +405,9 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
     );
   }, [connectedTelegramUserId]);
   const selfAnimatedAvatarUrl = useMemo(() => {
-    if (connectedTelegramUserId == null || !profilePhoto?.has_animation) return null;
+    if (connectedTelegramUserId == null || !selfAvatarUrl) return null;
     return `${selfAvatarUrl}&animated=1`;
-  }, [connectedTelegramUserId, profilePhoto?.has_animation, selfAvatarUrl]);
+  }, [connectedTelegramUserId, selfAvatarUrl]);
 
   const handleDisconnect = useCallback(() => {
     const active = storedAccounts.find((a) => a.active);

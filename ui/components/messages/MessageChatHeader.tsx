@@ -10,7 +10,10 @@ import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { SavedMessagesAvatar } from "./SavedMessagesAvatar";
 import { chatIsSavedMessages } from "./savedMessagesDisplay";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import {
+  resolveTelegramThreadAnimatedAvatarUrl,
+  resolveTelegramThreadAvatarUrl,
+} from "./resolveTelegramThreadAvatarUrl";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
 import {
   MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
@@ -83,6 +86,7 @@ export function MessageChatHeader({
   const subheaderIsLiveAction = isMessageChatActionLive(chat);
   const showStart = Boolean(showStartVoice && onStartVoice) && !isSavedMessages;
   const iconUrl = resolveTelegramThreadAvatarUrl(chat);
+  const animatedIconUrl = resolveTelegramThreadAnimatedAvatarUrl(chat);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const canOpenProfile = typeof onOpenProfile === "function";
   const avatarNode = isSavedMessages ? (
@@ -90,6 +94,7 @@ export function MessageChatHeader({
   ) : (
     <MessageChatAvatarSlot
       iconUrl={iconUrl}
+      animatedIconUrl={animatedIconUrl}
       initials={avatarInitials}
       sizePx={HEADER_AVATAR_PX}
       colors={colors}

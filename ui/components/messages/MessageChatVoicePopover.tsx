@@ -43,7 +43,11 @@ import {
   MESSAGE_CHAT_JOINED_VOICE_RING_COLOR,
 } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import { resolveTelegramUserAvatarUrl } from "./resolveTelegramUserAvatarUrl";
+import {
+  resolveTelegramUserAnimatedAvatarUrl,
+  resolveTelegramUserAvatarUrl,
+} from "./resolveTelegramUserAvatarUrl";
+import { withTelegramAvatarAnimation } from "./resolveTelegramThreadAvatarUrl";
 import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
 import { useProfileSheet } from "../../profile/ProfileContext";
@@ -517,6 +521,7 @@ const VoiceParticipantRow = memo(function VoiceParticipantRow({
   const title = formatVoiceParticipantTitle(participant);
   const description = participant.description.trim();
   const avatarUrl = resolveTelegramUserAvatarUrl(participant);
+  const animatedAvatarUrl = resolveTelegramUserAnimatedAvatarUrl(participant);
   // Admin mute → red. Local volume 0% (muted for you) → red. User turned their
   // own mic off (can_unmute_self) → secondary. Open mic → primary.
   const micAdminMuted =
@@ -642,6 +647,7 @@ const VoiceParticipantRow = memo(function VoiceParticipantRow({
       >
         <MessageChatAvatarSlot
           iconUrl={avatarUrl}
+          animatedIconUrl={animatedAvatarUrl}
           initials={extractChatAvatarInitials(title)}
           sizePx={MESSAGE_AVATAR_PX}
           colors={colors}
@@ -2127,6 +2133,7 @@ export function MessageChatVoicePopover({
         >
           <MessageChatAvatarSlot
             iconUrl={privateCall.avatarUrl}
+            animatedIconUrl={withTelegramAvatarAnimation(privateCall.avatarUrl)}
             initials={privateCall.initials}
             sizePx={140}
             colors={colors}

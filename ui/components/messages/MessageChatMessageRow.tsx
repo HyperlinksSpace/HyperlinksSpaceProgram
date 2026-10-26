@@ -51,7 +51,10 @@ import { messageChatCallArrowWidthPx } from "./MessageChatCallArrow";
 import { formatMessageCallLabel } from "./formatMessageCallLabel";
 import { messageChatAudioInnerWidthPx } from "./MessageChatAudioContent";
 import type { MessageChatRowData } from "./MessageChatRow";
-import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import {
+  resolveTelegramThreadAnimatedAvatarUrl,
+  resolveTelegramThreadAvatarUrl,
+} from "./resolveTelegramThreadAvatarUrl";
 import { resolveMessageSenderDisplayName } from "./resolveMessageSenderDisplayName";
 import { specialUserBadgeExtraWidthPx } from "./specialTelegramUserDisplay";
 import {
@@ -148,6 +151,7 @@ export function MessageChatMessageRow({
   const { t } = useAppStrings();
   const { openProfileSheet } = useProfileSheet();
   const iconUrl = resolveTelegramThreadAvatarUrl(chat, item, chatKind);
+  const animatedIconUrl = resolveTelegramThreadAnimatedAvatarUrl(chat, item, chatKind);
   const avatarInitials = useMemo(() => {
     const name =
       chatKind === "channel"
@@ -683,6 +687,7 @@ export function MessageChatMessageRow({
       >
         <MessageChatAvatarSlot
           iconUrl={iconUrl}
+          animatedIconUrl={animatedIconUrl}
           initials={avatarInitials}
           sizePx={MESSAGE_BUBBLE_AVATAR_PX}
           colors={colors}

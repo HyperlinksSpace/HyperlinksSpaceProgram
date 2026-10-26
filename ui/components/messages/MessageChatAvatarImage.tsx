@@ -81,7 +81,10 @@ async function fetchAvatarBlobOnce(uri: string): Promise<string | null> {
     }
     return null;
   }
-  const blob = await response.blob();
+  const raw = await response.blob();
+  const mime = (response.headers.get("content-type") || "").split(";")[0].trim();
+  const blob =
+    mime && raw.type !== mime ? new Blob([await raw.arrayBuffer()], { type: mime }) : raw;
   const objectUrl = URL.createObjectURL(blob);
   avatarBlobCache.set(uri, objectUrl);
   notifyAvatarCacheListeners();

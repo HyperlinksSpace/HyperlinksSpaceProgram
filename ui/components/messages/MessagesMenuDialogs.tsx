@@ -43,7 +43,11 @@ import { formatMessageChatListTime } from "./formatMessageChatTime";
 import { formatMessageChatPresenceLabel } from "./formatMessageChatPresence";
 import type { MessageChatKind, MessageChatRowData } from "./MessageChatRow";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
-import { resolveTelegramUserAvatarUrl } from "./resolveTelegramUserAvatarUrl";
+import {
+  resolveTelegramUserAnimatedAvatarUrl,
+  resolveTelegramUserAvatarUrl,
+} from "./resolveTelegramUserAvatarUrl";
+import { withTelegramAvatarAnimation } from "./resolveTelegramThreadAvatarUrl";
 import { SideMenuCallsIcon } from "./MessagesSideMenuIcons";
 
 const PAD_X = 20;
@@ -519,6 +523,10 @@ function NewGroupDialog({ onClose }: { onClose: () => void }) {
               user_id: contact.userId,
               chat_id: contact.chatId,
             });
+            const animatedAvatarUrl = resolveTelegramUserAnimatedAvatarUrl({
+              user_id: contact.userId,
+              chat_id: contact.chatId,
+            });
             return (
               <Pressable
                 key={contact.userId}
@@ -537,6 +545,7 @@ function NewGroupDialog({ onClose }: { onClose: () => void }) {
               >
                 <MessageChatAvatarSlot
                   iconUrl={avatarUrl}
+                  animatedIconUrl={animatedAvatarUrl}
                   initials={extractChatAvatarInitials(contact.title)}
                   sizePx={ROW_AVATAR_PX}
                   colors={colors}
@@ -830,6 +839,10 @@ function ContactsDialog({ onClose }: { onClose: () => void }) {
               user_id: contact.userId,
               chat_id: contact.chatId,
             });
+            const animatedAvatarUrl = resolveTelegramUserAnimatedAvatarUrl({
+              user_id: contact.userId,
+              chat_id: contact.chatId,
+            });
             return (
               <Pressable
                 key={contact.userId}
@@ -846,6 +859,7 @@ function ContactsDialog({ onClose }: { onClose: () => void }) {
               >
                 <MessageChatAvatarSlot
                   iconUrl={avatarUrl}
+                  animatedIconUrl={animatedAvatarUrl}
                   initials={extractChatAvatarInitials(contact.title)}
                   sizePx={ROW_AVATAR_PX}
                   colors={colors}
@@ -965,6 +979,10 @@ function CallsDialog({ onClose }: { onClose: () => void }) {
             >
               <MessageChatAvatarSlot
                 iconUrl={resolveTelegramUserAvatarUrl({
+                  user_id: contact.userId,
+                  chat_id: contact.chatId,
+                })}
+                animatedIconUrl={resolveTelegramUserAnimatedAvatarUrl({
                   user_id: contact.userId,
                   chat_id: contact.chatId,
                 })}
@@ -1136,6 +1154,10 @@ function CallsDialog({ onClose }: { onClose: () => void }) {
                     user_id: row.peerUserId,
                     chat_id: row.chatId,
                   })}
+                  animatedIconUrl={resolveTelegramUserAnimatedAvatarUrl({
+                    user_id: row.peerUserId,
+                    chat_id: row.chatId,
+                  })}
                   initials={extractChatAvatarInitials(row.title)}
                   sizePx={ROW_AVATAR_PX}
                   colors={colors}
@@ -1250,6 +1272,7 @@ function SettingsDialog({
         >
           <MessageChatAvatarSlot
             iconUrl={settingsProfile?.avatarUrl ?? null}
+            animatedIconUrl={withTelegramAvatarAnimation(settingsProfile?.avatarUrl ?? null)}
             initials={initials}
             sizePx={54}
             colors={colors}

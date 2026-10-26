@@ -24,7 +24,10 @@ import {
   isMessageChatActionLive,
 } from "./formatMessageChatSubheader";
 import { formatMessageChatListTime } from "./formatMessageChatTime";
-import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import {
+  resolveTelegramThreadAnimatedAvatarUrl,
+  resolveTelegramThreadAvatarUrl,
+} from "./resolveTelegramThreadAvatarUrl";
 import { useElementVisible } from "./useElementVisible";
 import { MessageChatOutgoingChecks } from "./MessageChatOutgoingChecks";
 import { type MessageOutgoingStatus } from "./messageChatHistoryTypes";
@@ -167,6 +170,7 @@ export function MessageChatRow({
   const isPinned = Boolean(item.is_pinned);
   const showPin = isPinned && !trailing;
   const iconUrl = resolveAvatarUrl(item);
+  const animatedIconUrl = resolveTelegramThreadAnimatedAvatarUrl(item, null, item.chat_kind ?? null);
   const parsedClock = formatMessageChatListTime(item.last_message_at, locale);
   const timeLabel = parsedClock || (item.last_message_at ? timePendingLabel : "");
   const showTimeMeta = Boolean(timeLabel.trim());
@@ -313,6 +317,7 @@ export function MessageChatRow({
           >
             <MessageChatAvatarSlot
               iconUrl={showAvatarImage ? iconUrl : null}
+              animatedIconUrl={animatedIconUrl}
               initials={avatarInitials}
               sizePx={MESSAGE_AVATAR_PX}
               colors={colors}
@@ -346,6 +351,7 @@ export function MessageChatRow({
         ) : (
           <MessageChatAvatarSlot
             iconUrl={showAvatarImage ? iconUrl : null}
+            animatedIconUrl={animatedIconUrl}
             initials={avatarInitials}
             sizePx={MESSAGE_AVATAR_PX}
             colors={colors}

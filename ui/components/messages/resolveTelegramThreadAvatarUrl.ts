@@ -46,10 +46,12 @@ export function resolveTelegramThreadAvatarUrl(
   chatKind?: MessageChatKind | null,
 ): string | null {
   const inChannelThread = chatKind === "channel";
-  if (chat.avatar_url === TELEGRAM_THREAD_NO_AVATAR) {
-    return null;
-  }
-  const storedChatAvatar = resolveStoredAvatarUrl(chat.avatar_url);
+  // NO_AVATAR only means the static chat JPEG is missing (video-only profile
+  // photos often have no chat.photo.small). Keep resolving the user proxy.
+  const storedChatAvatar =
+    chat.avatar_url === TELEGRAM_THREAD_NO_AVATAR
+      ? null
+      : resolveStoredAvatarUrl(chat.avatar_url);
 
   if (inChannelThread || item?.sender_is_channel) {
     if (storedChatAvatar) return storedChatAvatar;
@@ -80,4 +82,45 @@ export function resolveTelegramThreadAvatarUrl(
   }
 
   return avatarProxyUrl({ chatId: chat.telegram_chat_id });
+}
+
+/** MPEG4/WebM loop for a user profile photo (`chatPhoto.animation`). */
+export function withTelegramAvatarAnimation(url: string | null): string | null {
+  if (!url || url.startsWith("data:")) return null;
+  if (!url.includes("/api/telegram-messages-avatar")) return null;
+  if (/(?:[?&])animated=1(?:&|$)/.test(url)) return url;
+  return url.includes("?") ? `${url}&animated=1` : `${url}?animated=1`;
+}
+
+export function resolveTelegramThreadAnimatedAvatarUrl(
+  chat: MessageChatRowData,
+  item?: Pick<
+    MessageChatHistoryItem,
+    "sender_user_id" | "sender_chat_id" | "sender_is_channel" | "is_outgoing"
+  > | null,
+  chatKind?: MessageChatKind | null,
+): string | null {
+  const inChannelThread = chatKind === "channel";
+  if (inChannelThread || item?.sender_is_channel) return null;
+  if (item?.is_outgoing) return null;
+
+  if (item) {
+    const senderUserId = safeTelegramUserIdForLog(item.sender_user_id);
+    if (senderUserId != null) {
+      return withTelegramAvatarAnimation(avatarProxyUrl({ userId: senderUserId }));
+    }
+  }
+
+  const peerUserId = safeTelegramUserIdForLog(chat.peer_user_id);
+  if (peerUserId != null) {
+    return withTelegramAvatarAnimation(
+      avatarProxyUrl({ userId: peerUserId, chatId: validChatIdForAvatar(chat.telegram_chat_id) }),
+    );
+  }
+
+  const chatId = validChatIdForAvatar(chat.telegram_chat_id);
+  if ((chat.chat_kind === "private" || chatKind === "private") && chatId != null && chatId > 0) {
+    return withTelegramAvatarAnimation(avatarProxyUrl({ userId: chatId, chatId }));
+  }
+  return null;
 }

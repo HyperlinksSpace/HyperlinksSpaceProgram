@@ -167,16 +167,29 @@ function AvatarAnimationLayer({
   }, [loadEnabled, uri]);
 
   if (!src || Platform.OS !== "web") return null;
+  const kickPlay = (node: { play?: () => Promise<void> } | null) => {
+    if (node?.play) void node.play().catch(() => {});
+  };
   return createElement("video", {
     src,
     autoPlay: true,
     loop: true,
     muted: true,
     playsInline: true,
-    ref: (node: { play?: () => Promise<void> } | null) => {
-      if (node?.play) void node.play().catch(() => {});
+    playsinline: true,
+    "webkit-playsinline": "true",
+    controls: false,
+    disablePictureInPicture: true,
+    preload: "auto",
+    ref: kickPlay,
+    onCanPlay: (event: { currentTarget?: { play?: () => Promise<void> } }) => {
+      kickPlay(event.currentTarget ?? null);
+      onReadyRef.current();
     },
-    onLoadedData: () => onReadyRef.current(),
+    onLoadedData: (event: { currentTarget?: { play?: () => Promise<void> } }) => {
+      kickPlay(event.currentTarget ?? null);
+      onReadyRef.current();
+    },
     onError: () => onErrorRef.current(),
     style: {
       position: "absolute",
@@ -219,7 +232,7 @@ export function MessageChatAvatarSlot({
 
   const customEmojiId = profilePhoto?.custom_emoji_id?.trim() || null;
   const fill = profilePhoto?.fill ?? null;
-  const hasAnimation = Boolean(profilePhoto?.has_animation && animatedIconUrl);
+  const hasAnimation = Boolean(animatedIconUrl) || Boolean(profilePhoto?.has_animation);
   const useStickerPhoto = Boolean(customEmojiId);
   const markStickerReady = useCallback(() => setStickerMediaReady(true), []);
 
@@ -245,7 +258,7 @@ export function MessageChatAvatarSlot({
     });
   }, [customEmojiId, fill?.kind, hasAnimation]);
 
-  const tryVideo = hasAnimation && !videoFailed && Boolean(animatedIconUrl);
+  const tryVideo = Boolean(animatedIconUrl) && !videoFailed;
   const animationPainted = videoReady || stickerMediaReady;
   /** Keep the static JPEG visible until the animated face (emoji or MPEG4) is ready. */
   const tryImage =

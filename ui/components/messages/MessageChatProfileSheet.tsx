@@ -508,13 +508,12 @@ export function MessageChatProfileSheet({
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
   const profilePhoto = profile?.profile_photo ?? null;
   const animatedIconUrl = useMemo(() => {
-    if (!profilePhoto?.has_animation) return null;
     const userId = profile?.user_id ?? chat?.peer_user_id ?? null;
     if (userId == null || !Number.isFinite(userId) || userId === 0) return null;
     return buildApiUrl(
       `/api/telegram-messages-avatar?user_id=${encodeURIComponent(String(userId))}&animated=1`,
     );
-  }, [chat?.peer_user_id, profile?.user_id, profilePhoto?.has_animation]);
+  }, [chat?.peer_user_id, profile?.user_id]);
   const channelAvatarUrl = channel
     ? `/api/telegram-messages-avatar?chat_id=${encodeURIComponent(String(channel.chat_id))}`
     : null;

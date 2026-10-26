@@ -24,7 +24,10 @@ import {
   MESSAGE_CHAT_VOICE_RING_OUTSET_PX,
 } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import { resolveTelegramUserAvatarUrl } from "./resolveTelegramUserAvatarUrl";
+import {
+  resolveTelegramUserAnimatedAvatarUrl,
+  resolveTelegramUserAvatarUrl,
+} from "./resolveTelegramUserAvatarUrl";
 import { prefetchMessageChatAvatar } from "./MessageChatAvatarImage";
 import {
   MessageChatLeaveVoiceIcon,
@@ -5305,6 +5308,7 @@ export function MessageChatVoiceBar({
               >
                 {stackedParticipants.map((participant, index) => {
                   const avatarUrl = resolveTelegramUserAvatarUrl(participant);
+                  const animatedAvatarUrl = resolveTelegramUserAnimatedAvatarUrl(participant);
                   const participantTitle = formatVoiceParticipantTitle(participant);
                   const speaking = Boolean(
                     rowSpeakKeys(participant).some((k) => speakingByKey[k]),
@@ -5324,6 +5328,7 @@ export function MessageChatVoiceBar({
                     >
                       <MessageChatAvatarSlot
                         iconUrl={avatarUrl}
+                        animatedIconUrl={animatedAvatarUrl}
                         initials={extractChatAvatarInitials(participantTitle)}
                         sizePx={avatarPx}
                         colors={colors}

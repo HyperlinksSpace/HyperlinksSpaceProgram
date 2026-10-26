@@ -208,7 +208,7 @@ export async function readUserAvatarAnimationBytes(
 ): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
   const photo = await resolveUserChatPhoto(client, userId);
   if (!photo) return "no_avatar";
-  const fileId = animationFileId(photo, true) ?? animationFileId(photo, false);
+  const fileId = animationFileId(photo, false) ?? animationFileId(photo, true);
   if (fileId == null) return "no_avatar";
   for (let attempt = 0; attempt < 2; attempt++) {
     const file = await waitForLocalFile(client, fileId);

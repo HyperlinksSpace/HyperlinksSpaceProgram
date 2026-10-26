@@ -5,7 +5,10 @@ import {
   isMessageChatAvatarFetchFailed,
   prefetchMessageChatAvatar,
 } from "./MessageChatAvatarImage";
-import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import {
+  resolveTelegramThreadAnimatedAvatarUrl,
+  resolveTelegramThreadAvatarUrl,
+} from "./resolveTelegramThreadAvatarUrl";
 import { logPageDisplay } from "../../pageDisplayLog";
 
 const OPEN_CHAT_AVATAR_PREFETCH_MAX = 48;
@@ -43,11 +46,13 @@ function collectAvatarUrls(
   };
 
   push(resolveTelegramThreadAvatarUrl(chat, null, chatKind));
+  push(resolveTelegramThreadAnimatedAvatarUrl(chat, null, chatKind));
 
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const item = messages[i]!;
     if (item.is_outgoing) continue;
     push(resolveTelegramThreadAvatarUrl(chat, item, chatKind));
+    push(resolveTelegramThreadAnimatedAvatarUrl(chat, item, chatKind));
     if (uris.length >= OPEN_CHAT_AVATAR_PREFETCH_MAX) break;
   }
 
@@ -87,6 +92,9 @@ export function prefetchOpenChatListAvatar(chat: MessageChatRowData, chatKind?: 
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
   setOpenChatAvatarPriority(chatId);
-  const uri = resolveTelegramThreadAvatarUrl(chat, null, chatKind ?? chat.chat_kind ?? null);
+  const kind = chatKind ?? chat.chat_kind ?? null;
+  const uri = resolveTelegramThreadAvatarUrl(chat, null, kind);
   if (uri) prefetchMessageChatAvatar(uri, { priority: "high" });
+  const animatedUri = resolveTelegramThreadAnimatedAvatarUrl(chat, null, kind);
+  if (animatedUri) prefetchMessageChatAvatar(animatedUri, { priority: "high" });
 }

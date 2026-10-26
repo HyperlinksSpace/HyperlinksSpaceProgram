@@ -7,7 +7,10 @@ import { FloatingDialogCloseButton } from "../FloatingDialogCloseButton";
 import { resolveFloatingDialogViewportInsets } from "../floatingDialogChrome";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { extractChatAvatarInitials } from "./chatAvatarInitials";
-import { resolveTelegramThreadAvatarUrl } from "./resolveTelegramThreadAvatarUrl";
+import {
+  resolveTelegramThreadAnimatedAvatarUrl,
+  resolveTelegramThreadAvatarUrl,
+} from "./resolveTelegramThreadAvatarUrl";
 import type { MessageChatRowData } from "./MessageChatRow";
 
 type Props = {
@@ -23,6 +26,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
   const { t } = useAppStrings();
   const title = (chat.title ?? "").trim() || t("messages.privateCall.active");
   const avatarUrl = resolveTelegramThreadAvatarUrl(chat);
+  const animatedAvatarUrl = resolveTelegramThreadAnimatedAvatarUrl(chat);
   const initials = extractChatAvatarInitials(title);
   const viewportInsets = useMemo(
     () =>
@@ -64,6 +68,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
         />
         <MessageChatAvatarSlot
           iconUrl={avatarUrl}
+          animatedIconUrl={animatedAvatarUrl}
           initials={initials}
           sizePx={120}
           colors={colors}

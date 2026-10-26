@@ -20,3 +20,13 @@ export function resolveTelegramUserAvatarUrl(participant: {
   if (!query.toString()) return null;
   return buildApiUrl(`/api/telegram-messages-avatar?${query.toString()}`);
 }
+
+/** Video profile photo for a voice / call participant. */
+export function resolveTelegramUserAnimatedAvatarUrl(participant: {
+  user_id?: number | null;
+  chat_id?: number | null;
+}): string | null {
+  const url = resolveTelegramUserAvatarUrl(participant);
+  if (!url) return null;
+  return url.includes("animated=1") ? url : `${url}&animated=1`;
+}
