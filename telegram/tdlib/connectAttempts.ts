@@ -2856,9 +2856,9 @@ export async function focusChatForUser(
   }
 
   try {
-    await record.client.invoke({ _: "openChat", chat_id: chatId });
+    const { ensureTdChatLoaded } = await import("./chatHistory.js");
     const chatPreview = await import("./chatPreview.js");
-    const chat = (await record.client.invoke({ _: "getChat", chat_id: chatId })) as chatPreview.TdChat;
+    const chat = (await ensureTdChatLoaded(record.client, chatId)) as chatPreview.TdChat;
     const { patchLiveChatFromTdlib } = await import("./liveChatCache.js");
     patchLiveChatFromTdlib(telegramUsername, chat, {});
     const { resolveBoundGroupCallId } = await import("./voiceParticipants.js");

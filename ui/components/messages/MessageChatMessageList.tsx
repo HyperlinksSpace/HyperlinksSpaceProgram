@@ -4802,40 +4802,47 @@ export function MessageChatMessageList({ chat, colors }: Props) {
           const session = resolveChatOpenSession(chat);
           const plan = chatOpenScrollPlanFromSession(resolveChatOpenSession(chat));
           const fetchAnchor = session.displayAnchorMessageId ?? 0;
-          let result;
-          if (session.fetch.kind === "around_unread") {
-            result = await fetchChatHistoryAroundUnreadCharBudget(
-              chat.telegram_chat_id,
-              chat.peer_user_id,
-              MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
-              MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
-              { lastReadInboxHint: chat.last_read_inbox_message_id ?? null },
-            );
-          } else if (
-            session.fetch.kind === "around_message" &&
-            session.fetch.anchorMessageId != null &&
-            session.fetch.anchorMessageId > 0
-          ) {
-            result = await fetchChatHistoryAroundCharBudget(
-              chat.telegram_chat_id,
-              chat.peer_user_id,
-              session.fetch.anchorMessageId,
-              MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
-              MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
-            );
-          } else if (plan.openAnchor === "bottom") {
-            // Fallback only when no anchor id exists (empty / brand-new chat).
-            result = await fetchChatHistoryTailCharBudget(
+          const loadHistoryPage = async () => {
+            if (session.fetch.kind === "around_unread") {
+              return fetchChatHistoryAroundUnreadCharBudget(
+                chat.telegram_chat_id,
+                chat.peer_user_id,
+                MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
+                MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
+                { lastReadInboxHint: chat.last_read_inbox_message_id ?? null },
+              );
+            }
+            if (
+              session.fetch.kind === "around_message" &&
+              session.fetch.anchorMessageId != null &&
+              session.fetch.anchorMessageId > 0
+            ) {
+              return fetchChatHistoryAroundCharBudget(
+                chat.telegram_chat_id,
+                chat.peer_user_id,
+                session.fetch.anchorMessageId,
+                MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
+                MESSAGE_CHAT_VIEWPORT_CHAR_RANGE,
+              );
+            }
+            if (plan.openAnchor === "bottom") {
+              // Fallback only when no anchor id exists (empty / brand-new chat).
+              return fetchChatHistoryTailCharBudget(
+                chat.telegram_chat_id,
+                chat.peer_user_id,
+                MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
+              );
+            }
+            return fetchChatHistoryHeadCharBudget(
               chat.telegram_chat_id,
               chat.peer_user_id,
               MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
             );
-          } else {
-            result = await fetchChatHistoryHeadCharBudget(
-              chat.telegram_chat_id,
-              chat.peer_user_id,
-              MESSAGE_CHAT_PAGINATION_CHAR_RANGE,
-            );
+          };
+          let result = await loadHistoryPage();
+          if (result.error && isTransientHistoryFetchError(result.error)) {
+            await warmupTelegramChatSession(chat.telegram_chat_id);
+            result = await loadHistoryPage();
           }
           if (cancelled) return;
           if (result.error) {

@@ -265,7 +265,8 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
     error === "history_failed" ||
     error === "gateway_timeout_retry" ||
     error === "network_error" ||
-    error === "not_found"
+    error === "not_found" ||
+    /chat not found/i.test(error)
   ) {
     return true;
   }
@@ -529,7 +530,8 @@ export async function loadTelegramChatHistoryFirstPage(
   if (
     result.error === "session_not_ready" ||
     result.error === "history_unavailable" ||
-    result.error === "not_found"
+    result.error === "not_found" ||
+    (typeof result.error === "string" && /chat not found/i.test(result.error))
   ) {
     await warmupPromise;
     result = await fetchTelegramChatHistoryPage(...fetchArgs);

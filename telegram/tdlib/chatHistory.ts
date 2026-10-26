@@ -126,6 +126,97 @@ export async function resolveMyUserId(client: Client): Promise<number | null> {
   }
 }
 
+/** TDLib slim/no chat DB: restored DMs and not-yet-hydrated list rows 404 on getChat. */
+export function isTdChatMissingError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  return /chat not found/i.test(message);
+}
+
+/**
+ * Open a chat for history. If TDLib has not hydrated it yet (lazy chat list),
+ * create the private/basic/supergroup chat from the id so getChat succeeds.
+ */
+export async function ensureTdChatLoaded(client: Client, chatId: number): Promise<TdChat> {
+  const id = Math.trunc(chatId);
+  const tryGet = async (): Promise<TdChat | null> => {
+    try {
+      try {
+        await client.invoke({ _: "openChat", chat_id: id });
+      } catch {
+        /* Chat not found until created */
+      }
+      return (await client.invoke({ _: "getChat", chat_id: id })) as TdChat;
+    } catch {
+      return null;
+    }
+  };
+
+  const first = await tryGet();
+  if (first) return first;
+
+  logGateway("chat_ensure_create", { chatId: id });
+  if (id > 0) {
+    try {
+      try {
+        await client.invoke({ _: "getUser", user_id: id });
+      } catch {
+        /* createPrivateChat may still fetch the user */
+      }
+      await client.invoke({
+        _: "createPrivateChat",
+        user_id: id,
+        force: true,
+      });
+    } catch (err) {
+      logGateway("chat_ensure_private_failed", {
+        chatId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (id < -1_000_000_000_000) {
+    const supergroupId = -id - 1_000_000_000_000;
+    try {
+      await client.invoke({
+        _: "createSupergroupChat",
+        supergroup_id: supergroupId,
+        force: true,
+      });
+    } catch (err) {
+      logGateway("chat_ensure_supergroup_failed", {
+        chatId: id,
+        supergroupId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (id < 0) {
+    const groupId = -id;
+    try {
+      await client.invoke({
+        _: "createBasicGroupChat",
+        basic_group_id: groupId,
+        force: true,
+      });
+    } catch {
+      try {
+        await client.invoke({
+          _: "createSupergroupChat",
+          supergroup_id: groupId,
+          force: true,
+        });
+      } catch (err) {
+        logGateway("chat_ensure_group_failed", {
+          chatId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  const second = await tryGet();
+  if (second) return second;
+  throw new Error("Chat not found");
+}
+
 async function mapHistoryBatch(
   client: Client,
   messages: TdMessage[],
@@ -163,11 +254,7 @@ export async function fetchChatHistory(
   next_before_message_id: number | null;
   last_read_outbox_message_id: number | null;
 }> {
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
+  const chat = await ensureTdChatLoaded(client, chatId);
 
   const pageLimit = Math.min(Math.max(limit, 1), 100);
   const loadOlder =
@@ -175,8 +262,6 @@ export async function fetchChatHistory(
     Number.isFinite(beforeMessageId) &&
     beforeMessageId > 0;
   const rawBatchLimit = Math.min(100, Math.max(pageLimit, 50));
-
-  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
   const chatKind = chatKindFromTdChat(chat);
   const selfUserId = await resolveMyUserId(client);
 
@@ -370,17 +455,12 @@ export async function fetchChatHistoryAroundMessage(
   const anchorId = Math.trunc(anchorMessageId);
   if (!Number.isFinite(anchorId) || anchorId <= 0) {
     const fallback = await fetchChatHistory(client, chatId, limit);
-    return { ...fallback, member_count: await memberCountFromChat(client, (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat) };
-  }
-
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
+    const loaded = await ensureTdChatLoaded(client, chatId);
+    return { ...fallback, member_count: await memberCountFromChat(client, loaded) };
   }
 
   const pageLimit = Math.min(Math.max(limit, 1), 100);
-  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const chat = await ensureTdChatLoaded(client, chatId);
   const chatKind = chatKindFromTdChat(chat);
   const selfUserId = await resolveMyUserId(client);
 
@@ -526,14 +606,8 @@ export async function fetchChatHistoryAroundUnread(
   last_read_inbox_message_id: number | null;
   member_count: number | null;
 }> {
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
-
   const pageLimit = Math.min(Math.max(limit, 1), 100);
-  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const chat = await ensureTdChatLoaded(client, chatId);
   const unreadCount = normalizeUnreadCount(chat);
   const hintRaw = Number(lastReadInboxHint);
   const hint =
@@ -610,14 +684,8 @@ export async function fetchChatHistorySince(
     throw new Error("invalid_since_message_id");
   }
 
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
-
   const pageLimit = Math.min(Math.max(limit, 1), 100);
-  const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+  const chat = await ensureTdChatLoaded(client, chatId);
   const chatKind = chatKindFromTdChat(chat);
   const selfUserId = await resolveMyUserId(client);
 
@@ -675,11 +743,7 @@ export async function viewChatInboxMessagesUpTo(
     return { unread_count: 0, last_read_inbox_message_id: null };
   }
 
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
+  await ensureTdChatLoaded(client, chatId);
 
   await client.invoke({
     _: "viewMessages",
@@ -699,13 +763,7 @@ export async function viewChatInboxMessagesUpTo(
 /** Mark inbox messages as read (clears unread badge like Telegram when a chat is opened). */
 export async function markChatInboxRead(client: Client, chatId: number): Promise<void> {
   try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
-
-  try {
-    const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
+    const chat = await ensureTdChatLoaded(client, chatId);
     const lastMessage = chat.last_message as { id?: number } | null | undefined;
     const lastId = Number(lastMessage?.id);
     if (Number.isFinite(lastId) && lastId > 0) {
@@ -732,11 +790,7 @@ export async function sendChatTextMessage(
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > MAX_OUTGOING_TEXT_LENGTH) return null;
 
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open or TDLib will reject send with a clearer error */
-  }
+  await ensureTdChatLoaded(client, chatId);
 
   const replyId = Number(replyToMessageId);
   const message = (await client.invoke({
@@ -781,11 +835,7 @@ export async function sendChatPhotoMessage(
   const caption = typeof options?.caption === "string" ? options.caption.trim() : "";
   if (caption.length > MAX_OUTGOING_TEXT_LENGTH) return null;
 
-  try {
-    await client.invoke({ _: "openChat", chat_id: chatId });
-  } catch {
-    /* already open */
-  }
+  await ensureTdChatLoaded(client, chatId);
 
   const mime = (options?.mime || "image/jpeg").toLowerCase();
   const ext =

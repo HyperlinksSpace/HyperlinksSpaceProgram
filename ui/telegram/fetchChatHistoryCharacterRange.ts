@@ -73,7 +73,8 @@ async function fetchPageWithWarmup(
   );
   if (
     result.error === "session_not_ready" ||
-    result.error === "history_unavailable"
+    result.error === "history_unavailable" ||
+    (typeof result.error === "string" && /chat not found/i.test(result.error))
   ) {
     await warmupTelegramChatSession(chatId);
     result = await fetchTelegramChatHistoryPage(
