@@ -4,6 +4,7 @@ import {
   Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -28,6 +29,7 @@ import {
   demoteQueuedNetworkFetches,
 } from "../components/messages/networkFetchQueue";
 import { fetchTelegramUserProfile } from "../telegram/fetchTelegramUserProfile";
+import { subscribeProfilePlaylistReordered } from "../telegram/profilePlaylistSync";
 
 /** Lazy — avoids ProfileContext ↔ VoicePopover circular import via private-call host. */
 const MessageChatPrivateCallHost = lazy(() =>
@@ -105,6 +107,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [privateCallAlive, setPrivateCallAlive] = useState(false);
   const [musicPlaylistSheetVisible, setMusicPlaylistSheetVisible] = useState(false);
   const [playlistSheetTracks, setPlaylistSheetTracks] = useState<TelegramProfileAudioTrack[]>([]);
+
+  useEffect(
+    () =>
+      subscribeProfilePlaylistReordered(({ userId, tracks }) => {
+        if (tracks.length === 0) return;
+        setPlaylistSheetTracks((prev) => {
+          const owner = prev[0]?.user_id ?? tracks[0]?.user_id;
+          if (owner != null && Math.trunc(userId) !== Math.trunc(owner)) return prev;
+          return tracks;
+        });
+      }),
+    [],
+  );
 
   const openProfileSheet = useCallback((target: ProfileSheetTarget | MessageChatRowData) => {
     const chat = toProfileChat(target);

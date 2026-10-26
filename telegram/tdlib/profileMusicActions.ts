@@ -164,12 +164,16 @@ export async function persistProfileAudioOrder(
       logGateway("profile_audio_order_synced", { count: ids.length });
       return { ok: true };
     }
-    if (sameIdSet(listedIds, ids)) {
+    if (sameIdSet(listedIds, ids) && listedIds.length === ids.length) {
       logGateway("profile_audio_order_walk", { count: ids.length });
       return reorderProfileAudioTracks(client, ids);
     }
-    if (listedIds.length > ids.length && sameIdOrder(listedIds.slice(0, ids.length), ids)) {
-      return { ok: true };
+    if (listedIds.length > ids.length && ids.every((id) => listedIds.includes(id))) {
+      logGateway("profile_audio_order_incomplete", {
+        listed: listedIds.length,
+        desired: ids.length,
+      });
+      return { ok: false, error: "playlist_incomplete" };
     }
     logGateway("profile_audio_order_mismatch", {
       listed: listedIds.length,

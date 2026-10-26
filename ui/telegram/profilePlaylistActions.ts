@@ -70,6 +70,17 @@ export async function repositionProfilePlaylistTrack(
   return persistProfilePlaylistOrder([], { fileId, afterFileId });
 }
 
+/** When the UI list is shorter than Telegram's, keep the user's order up front. */
+export function mergeProfilePlaylistFileIds(fullListed: number[], desired: number[]): number[] {
+  const full = fullListed.map((id) => Math.trunc(id)).filter((id) => Number.isFinite(id) && id > 0);
+  const want = desired.map((id) => Math.trunc(id)).filter((id) => Number.isFinite(id) && id > 0);
+  if (want.length === 0) return full;
+  if (want.length >= full.length) return want;
+  const wantSet = new Set(want);
+  const tail = full.filter((id) => !wantSet.has(id));
+  return [...want, ...tail];
+}
+
 export async function reorderProfilePlaylistTracks(
   orderedFileIds: number[],
 ): Promise<{ ok: true } | { ok: false; error: string }> {

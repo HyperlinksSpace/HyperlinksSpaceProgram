@@ -30,7 +30,11 @@ import {
   forwardProfilePlaylistTrack,
   persistProfilePlaylistOrder,
   removeProfilePlaylistTrack,
+  mergeProfilePlaylistFileIds,
+  reorderProfilePlaylistTracks,
 } from "../../telegram/profilePlaylistActions";
+import { emitProfilePlaylistReordered } from "../../telegram/profilePlaylistSync";
+import { appWarn } from "../../../shared/appLog";
 import { listTelegramDirectoryChats } from "../../telegram/telegramChatDirectory";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import { useColors, layout } from "../../theme";
@@ -214,14 +218,18 @@ export function MessageChatProfilePlaylistSheet({
   const localTracksRef = useRef(localTracks);
   localTracksRef.current = localTracks;
   const playlistRefreshGenRef = useRef(0);
+  const playlistOwnerUserId = useMemo(() => {
+    const fromTracks =
+      localTracks[0]?.user_id ??
+      safeTracks[0]?.user_id ??
+      playback.userId;
+    return fromTracks != null && Number.isFinite(fromTracks) ? Math.trunc(fromTracks) : null;
+  }, [localTracks, playback.userId, safeTracks]);
+
   const isOwnPlaylist = useMemo(() => {
-    const ownerId = localTracks[0]?.user_id ?? safeTracks[0]?.user_id ?? null;
-    return (
-      connectedTelegramUserId != null &&
-      ownerId != null &&
-      Math.trunc(ownerId) === Math.trunc(connectedTelegramUserId)
-    );
-  }, [connectedTelegramUserId, localTracks, safeTracks]);
+    if (connectedTelegramUserId == null || playlistOwnerUserId == null) return false;
+    return Math.trunc(connectedTelegramUserId) === playlistOwnerUserId;
+  }, [connectedTelegramUserId, playlistOwnerUserId]);
 
   useEffect(() => {
     const incoming = Array.isArray(tracks) ? tracks : [];
@@ -323,22 +331,69 @@ export function MessageChatProfilePlaylistSheet({
   const persistReorder = useCallback(() => {
     if (!isOwnPlaylist || !dragDirtyRef.current) return;
     const fileId = dragFileIdRef.current;
+    const tracksAfterDrag = localTracksRef.current;
     // Ref is updated synchronously in moveTrack — do not wait for React re-render.
-    const ids = localTracksRef.current
+    const ids = tracksAfterDrag
       .map((row) => Math.trunc(Number(row.file_id)))
       .filter((id) => Number.isFinite(id) && id > 0);
     dragDirtyRef.current = false;
     dragFileIdRef.current = null;
     setReordering(false);
-    if (fileId == null || !Number.isFinite(fileId) || fileId <= 0) return;
-    const movedId = Math.trunc(fileId);
-    const index = ids.indexOf(movedId);
-    if (index < 0) return;
-    const afterFileId = index === 0 ? 0 : ids[index - 1]!;
-    // Bump refresh gen so an in-flight extras fetch cannot overwrite this order.
+    if (ids.length === 0) return;
+
+    const moved =
+      fileId != null && Number.isFinite(fileId) && fileId > 0
+        ? (() => {
+            const movedId = Math.trunc(fileId);
+            const index = ids.indexOf(movedId);
+            if (index < 0) return undefined;
+            const afterFileId = index === 0 ? 0 : ids[index - 1]!;
+            return { fileId: movedId, afterFileId };
+          })()
+        : undefined;
+
     playlistRefreshGenRef.current += 1;
-    void persistProfilePlaylistOrder(ids, { fileId: movedId, afterFileId });
-  }, [isOwnPlaylist]);
+    const ownerId = playlistOwnerUserId;
+
+    const applySynced = () => {
+      if (ownerId != null) {
+        emitProfilePlaylistReordered(ownerId, tracksAfterDrag);
+      }
+    };
+
+    void (async () => {
+      let result = await persistProfilePlaylistOrder(ids, moved);
+      if (!result.ok && result.error === "playlist_incomplete" && ownerId != null) {
+        const refreshed = await fetchTelegramUserProfileExtras(0, ownerId, undefined, {
+          priority: "high",
+        });
+        if (refreshed.ok && refreshed.extras.playlist.length > 0) {
+          const full = refreshed.extras.playlist;
+          const fullIds = full.map((row) => Math.trunc(row.file_id));
+          const mergedIds = mergeProfilePlaylistFileIds(fullIds, ids);
+          result = await reorderProfilePlaylistTracks(mergedIds);
+          if (result.ok) {
+            const byId = new Map(full.map((row) => [row.file_id, row]));
+            const mergedTracks = mergedIds
+              .map((id) => byId.get(id))
+              .filter((row): row is TelegramProfileAudioTrack => row != null);
+            localTracksRef.current = mergedTracks;
+            setLocalTracks(mergedTracks);
+            emitProfilePlaylistReordered(ownerId, mergedTracks);
+            return;
+          }
+        }
+      }
+      if (!result.ok) {
+        result = await reorderProfilePlaylistTracks(ids);
+      }
+      if (result.ok) {
+        applySynced();
+        return;
+      }
+      appWarn("[playlist-reorder]", result.error, { trackCount: ids.length });
+    })();
+  }, [isOwnPlaylist, playlistOwnerUserId]);
 
   const moveTrack = useCallback((from: number, to: number) => {
     if (from === to || from < 0 || to < 0) return;

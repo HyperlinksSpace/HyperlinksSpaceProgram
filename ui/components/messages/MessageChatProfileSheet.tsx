@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { subscribeProfilePlaylistReordered } from "../../telegram/profilePlaylistSync";
 import {
   Platform,
   Pressable,
@@ -444,6 +445,23 @@ export function MessageChatProfileSheet({
     });
     return () => controller.abort();
   }, [visible, chat]);
+
+  useEffect(() => {
+    if (!visible || !chat?.peer_user_id) return;
+    const peerUserId = Math.trunc(chat.peer_user_id);
+    return subscribeProfilePlaylistReordered(({ userId, tracks }) => {
+      if (userId !== peerUserId || tracks.length === 0) return;
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const first = tracks[0];
+        return {
+          ...prev,
+          playlist: tracks,
+          music: first ? { artist: first.artist, title: first.title } : prev.music,
+        };
+      });
+    });
+  }, [visible, chat?.peer_user_id]);
 
   const title = (profile?.title || chat?.title || "").trim();
   const usernameHandles = useMemo(() => {
