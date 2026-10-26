@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Platform, PixelRatio, Pressable, Text, View, type ViewStyle } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
@@ -26,6 +26,10 @@ import { SpecialTelegramUserName } from "./SpecialTelegramUserName";
 import { resolveTelegramUserAccentColorForDisplay } from "./resolveTelegramUserAccentColor";
 import { MessageChatStartVoiceIcon } from "./MessageChatVoiceIcons";
 import { MessageChatOvalBackButton } from "./MessageChatOvalBackButton";
+import {
+  prefetchTelegramProfilePhotoMarkup,
+  useTelegramProfilePhotoMarkup,
+} from "../../telegram/telegramProfilePhotoStore";
 
 const START_VOICE_ICON_HIT_PX = 36;
 const START_VOICE_ICON_SIZE_PX = 22;
@@ -86,8 +90,24 @@ export function MessageChatHeader({
   const subheaderIsLiveAction = isMessageChatActionLive(chat);
   const showStart = Boolean(showStartVoice && onStartVoice) && !isSavedMessages;
   const iconUrl = resolveTelegramThreadAvatarUrl(chat);
-  const animatedIconUrl = resolveTelegramThreadAnimatedAvatarUrl(chat);
+  const profilePhoto = useTelegramProfilePhotoMarkup(
+    chat.peer_user_id ?? (chat.chat_kind === "private" ? chat.telegram_chat_id : null),
+    chat.profile_photo ?? null,
+  );
+  const animatedIconUrl =
+    profilePhoto?.custom_emoji_id && !profilePhoto.has_animation
+      ? null
+      : resolveTelegramThreadAnimatedAvatarUrl(chat);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
+  useEffect(() => {
+    const userId = chat.peer_user_id ?? (chat.chat_kind === "private" ? chat.telegram_chat_id : null);
+    if (userId == null || isSavedMessages) return;
+    prefetchTelegramProfilePhotoMarkup({
+      chatId: chat.telegram_chat_id,
+      userId,
+      priority: "high",
+    });
+  }, [chat.chat_kind, chat.peer_user_id, chat.telegram_chat_id, isSavedMessages]);
   const canOpenProfile = typeof onOpenProfile === "function";
   const avatarNode = isSavedMessages ? (
     <SavedMessagesAvatar sizePx={HEADER_AVATAR_PX} />
@@ -95,7 +115,8 @@ export function MessageChatHeader({
     <MessageChatAvatarSlot
       iconUrl={iconUrl}
       animatedIconUrl={animatedIconUrl}
-      profilePhoto={chat.profile_photo ?? null}
+      profilePhoto={profilePhoto}
+      telegramUserId={chat.peer_user_id ?? (chat.chat_kind === "private" ? chat.telegram_chat_id : null)}
       initials={avatarInitials}
       sizePx={HEADER_AVATAR_PX}
       colors={colors}

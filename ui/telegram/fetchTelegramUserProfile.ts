@@ -7,6 +7,7 @@ import {
   normalizeTelegramProfilePhotoMarkup,
   type TelegramProfilePhotoMarkup,
 } from "../../shared/telegramProfilePhoto";
+import { rememberTelegramProfilePhotoMarkup } from "./telegramProfilePhotoCache";
 
 export type { TelegramProfilePhotoMarkup };
 
@@ -115,7 +116,7 @@ function normalizeProfilePayload(profile: TelegramUserProfile): TelegramUserProf
           url: profile.bot_menu_button.url.trim(),
         }
       : null;
-  return {
+  const normalized: TelegramUserProfile = {
     ...profile,
     is_bot: Boolean(profile.is_bot),
     has_main_web_app: Boolean(profile.has_main_web_app),
@@ -140,6 +141,8 @@ function normalizeProfilePayload(profile: TelegramUserProfile): TelegramUserProf
         ? profile.membership
         : null,
   };
+  rememberTelegramProfilePhotoMarkup(normalized.user_id, normalized.profile_photo);
+  return normalized;
 }
 
 /** Immediate sheet paint from chat-list row while the gateway profile loads. */

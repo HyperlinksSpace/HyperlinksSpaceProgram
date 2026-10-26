@@ -16,6 +16,23 @@ import {
 } from "./MessageChatAvatarImage";
 import { MessageChatInlineTgsEmoji } from "./MessageChatInlineTgsEmoji";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
+import {
+  prefetchTelegramProfilePhotoMarkup,
+  useTelegramProfilePhotoMarkup,
+} from "../../telegram/telegramProfilePhotoStore";
+
+function telegramUserIdFromAvatarUrl(url: string | null | undefined): number | null {
+  if (!url || url.startsWith("data:")) return null;
+  try {
+    const parsed = new URL(url, "https://program.hyperlinks.space");
+    const raw = parsed.searchParams.get("user_id");
+    const userId = raw != null ? Number(raw) : NaN;
+    if (!Number.isFinite(userId) || userId === 0) return null;
+    return Math.trunc(userId);
+  } catch {
+    return null;
+  }
+}
 
 /** Exact 1px stroke; divider / chrome color is `colors.highlight`. */
 const AVATAR_BORDER_WIDTH_PX = 1;
@@ -121,6 +138,8 @@ type Props = {
   profilePhoto?: TelegramProfilePhotoMarkup | null;
   /** MPEG4/WebM loop from `chatPhoto.animation` (`/api/telegram-messages-avatar?animated=1`). */
   animatedIconUrl?: string | null;
+  /** Peer/self Telegram user id — loads looping custom-emoji markup for every avatar slot. */
+  telegramUserId?: number | null;
   emojiFetchEnabled?: boolean;
   /** When false, omit the 1px highlight frame (e.g. fullscreen photo viewer). */
   framed?: boolean;
@@ -219,6 +238,7 @@ export function MessageChatAvatarSlot({
   imageContentFit = "cover",
   profilePhoto = null,
   animatedIconUrl = null,
+  telegramUserId = null,
   emojiFetchEnabled = true,
   framed = true,
 }: Props) {
@@ -230,9 +250,18 @@ export function MessageChatAvatarSlot({
   const [videoFailed, setVideoFailed] = useState(false);
   const [stickerMediaReady, setStickerMediaReady] = useState(false);
 
-  const customEmojiId = profilePhoto?.custom_emoji_id?.trim() || null;
-  const fill = profilePhoto?.fill ?? null;
-  const hasAnimation = Boolean(animatedIconUrl) || Boolean(profilePhoto?.has_animation);
+  const resolvedUserId =
+    (telegramUserId != null && Number.isFinite(telegramUserId) && telegramUserId !== 0
+      ? Math.trunc(telegramUserId)
+      : null) ??
+    telegramUserIdFromAvatarUrl(animatedIconUrl) ??
+    telegramUserIdFromAvatarUrl(iconUrl);
+  const resolvedPhoto = useTelegramProfilePhotoMarkup(resolvedUserId, profilePhoto);
+  const customEmojiId = resolvedPhoto?.custom_emoji_id?.trim() || null;
+  const fill = resolvedPhoto?.fill ?? null;
+  const stickerOnlyLoop = Boolean(customEmojiId) && !resolvedPhoto?.has_animation;
+  const hasAnimation =
+    (!stickerOnlyLoop && Boolean(animatedIconUrl)) || Boolean(resolvedPhoto?.has_animation);
   const useStickerPhoto = Boolean(customEmojiId);
   const markStickerReady = useCallback(() => setStickerMediaReady(true), []);
 
@@ -243,6 +272,15 @@ export function MessageChatAvatarSlot({
     setVideoFailed(false);
     setStickerMediaReady(false);
   }, [animatedIconUrl, customEmojiId, iconUrl]);
+
+  useEffect(() => {
+    if (!loadEnabled || resolvedUserId == null) return;
+    prefetchTelegramProfilePhotoMarkup({
+      userId: resolvedUserId,
+      chatId: resolvedUserId,
+      priority: fetchPriority === "normal" ? "normal" : "high",
+    });
+  }, [fetchPriority, loadEnabled, resolvedUserId]);
 
   useEffect(() => {
     if (activeVoiceRing) ensureActiveVoiceRingCss();
@@ -258,7 +296,7 @@ export function MessageChatAvatarSlot({
     });
   }, [customEmojiId, fill?.kind, hasAnimation]);
 
-  const tryVideo = Boolean(animatedIconUrl) && !videoFailed;
+  const tryVideo = Boolean(animatedIconUrl) && !videoFailed && !stickerOnlyLoop;
   const animationPainted = videoReady || stickerMediaReady;
   /** Keep the static JPEG visible until the animated face (emoji or MPEG4) is ready. */
   const tryImage =

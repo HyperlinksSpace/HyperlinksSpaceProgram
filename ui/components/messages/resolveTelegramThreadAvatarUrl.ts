@@ -102,9 +102,10 @@ export function resolveTelegramThreadAnimatedAvatarUrl(
 ): string | null {
   const inChannelThread = chatKind === "channel";
   if (inChannelThread || item?.sender_is_channel) return null;
-  if (item?.is_outgoing) return null;
   const markup = chat.profile_photo;
-  if (markup?.custom_emoji_id && !markup.has_animation) return null;
+  // Custom-emoji faces loop via TGS/WebM emoji, not the MPEG4 avatar proxy.
+  // Outgoing bubbles still animate the sender (self) — never skip is_outgoing.
+  if (!item?.is_outgoing && markup?.custom_emoji_id && !markup.has_animation) return null;
 
   if (item) {
     const senderUserId = safeTelegramUserIdForLog(item.sender_user_id);

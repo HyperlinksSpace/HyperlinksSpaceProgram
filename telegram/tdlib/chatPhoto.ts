@@ -52,9 +52,15 @@ export function profilePhotoMarkupFromTdChatPhoto(
   return markupFromChatPhoto(asRecord(photo));
 }
 
+function recordHasAnimationFlag(photo: Record<string, unknown> | null): boolean {
+  if (!photo) return false;
+  return photo.has_animation === true || photo.hasAnimation === true;
+}
+
 export function chatPhotoHasLoopingVisual(photo: unknown): boolean {
   const row = asRecord(photo);
   if (!row) return false;
+  if (recordHasAnimationFlag(row)) return true;
   if (animationFileId(row, false) != null || animationFileId(row, true) != null) return true;
   return Boolean(asRecord(row.sticker));
 }
@@ -69,9 +75,9 @@ function markupFromChatPhoto(photo: Record<string, unknown> | null): TelegramPro
     parseCustomEmojiId(type?.customEmojiId) ??
     (sticker ? readCustomEmojiIdField(sticker) : null);
   const fill = parseTdlibBackgroundFill(sticker?.background_fill ?? sticker?.backgroundFill);
-  const hasAnimation = Boolean(
-    animationFileId(photo, true) ?? animationFileId(photo, false),
-  );
+  const hasAnimation =
+    recordHasAnimationFlag(photo) ||
+    Boolean(animationFileId(photo, true) ?? animationFileId(photo, false));
   const addedRaw = photo.added_date ?? photo.addedDate;
   const addedSec =
     typeof addedRaw === "number" && Number.isFinite(addedRaw) && addedRaw > 0
@@ -102,7 +108,7 @@ export function pickChatPhotoFromUserFullInfo(
 
 export function profilePhotoHasAnimationFlag(user: Record<string, unknown> | null): boolean {
   const photo = asRecord(user?.profile_photo ?? user?.profilePhoto);
-  return photo?.has_animation === true || photo?.hasAnimation === true;
+  return recordHasAnimationFlag(photo);
 }
 
 async function loadFirstUserProfilePhoto(
@@ -249,6 +255,11 @@ export async function readUserAvatarAnimationBytes(
   } catch {
     /* deleted / inaccessible */
   }
+  try {
+    await client.invoke({ _: "openChat", chat_id: userId });
+  } catch {
+    /* chat not hydrated */
+  }
 
   let user: Record<string, unknown> | null = null;
   try {
@@ -271,10 +282,25 @@ export async function readUserAvatarAnimationBytes(
   } catch {
     /* chat not hydrated */
   }
+  try {
+    const list = (await client.invoke({
+      _: "getUserProfilePhotos",
+      user_id: userId,
+      offset: 0,
+      limit: 20,
+    })) as { photos?: unknown[] };
+    if (Array.isArray(list.photos)) {
+      for (const photo of list.photos) pushPhoto(photo);
+    }
+  } catch {
+    /* photo album unavailable */
+  }
 
   const fileIds: number[] = [];
   const seen = new Set<number>();
+  let photoHasAnimation = hasAnimationFlag;
   for (const photo of photos) {
+    if (recordHasAnimationFlag(photo)) photoHasAnimation = true;
     for (const id of [
       animationFileId(photo, false),
       animationFileId(photo, true),
@@ -293,12 +319,13 @@ export async function readUserAvatarAnimationBytes(
   logGateway("user_avatar_animation_miss", {
     userId,
     hasAnimationFlag,
+    photoHasAnimation,
     photoCount: photos.length,
     fileIdCount: fileIds.length,
   });
 
   // Video avatars often hydrate after createPrivateChat — 503 so the client
   // retries instead of sticky 404 initials.
-  if (hasAnimationFlag || fileIds.length > 0) return null;
+  if (photoHasAnimation || fileIds.length > 0) return null;
   return "no_avatar";
 }

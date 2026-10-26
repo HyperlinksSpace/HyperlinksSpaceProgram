@@ -2127,7 +2127,10 @@ export async function getUserAvatarAnimationForUser(
   if (!record) return null;
   const result = await readUserAvatarAnimationBytes(record.client, userId);
   const resolved: AvatarImageResult = result === "no_avatar" ? "no_avatar" : result;
-  userAvatarAnimationCache.set(cacheKey, { value: resolved, atMs: Date.now() });
+  // MPEG4 / TGS faces hydrate after getUserFullInfo — don't stick a 404.
+  if (resolved && resolved !== "no_avatar") {
+    userAvatarAnimationCache.set(cacheKey, { value: resolved, atMs: Date.now() });
+  }
   return resolved;
 }
 

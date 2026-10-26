@@ -689,7 +689,14 @@ export function MessageChatMessageRow({
         <MessageChatAvatarSlot
           iconUrl={iconUrl}
           animatedIconUrl={animatedIconUrl}
-          profilePhoto={chatKind === "private" ? chat.profile_photo ?? null : null}
+          profilePhoto={
+            item.is_outgoing || chatKind !== "private" ? null : chat.profile_photo ?? null
+          }
+          telegramUserId={
+            item.sender_user_id
+            ?? (item.is_outgoing ? selfUserId : chat.peer_user_id)
+            ?? null
+          }
           initials={avatarInitials}
           sizePx={MESSAGE_BUBBLE_AVATAR_PX}
           colors={colors}

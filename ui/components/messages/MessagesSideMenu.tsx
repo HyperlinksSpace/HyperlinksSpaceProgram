@@ -732,6 +732,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
                   loadEnabled={visible && connectedTelegramUserId != null}
                   fetchPriority="critical"
                   profilePhoto={profilePhoto}
+                  telegramUserId={connectedTelegramUserId}
                   animatedIconUrl={selfAnimatedAvatarUrl}
                   emojiFetchEnabled={visible}
                 />
@@ -847,6 +848,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
                         loadEnabled={visible}
                         fetchPriority="high"
                         profilePhoto={account.active ? profilePhoto : null}
+                        telegramUserId={account.active ? connectedTelegramUserId : null}
                         animatedIconUrl={account.active ? selfAnimatedAvatarUrl : null}
                         emojiFetchEnabled={visible}
                       />

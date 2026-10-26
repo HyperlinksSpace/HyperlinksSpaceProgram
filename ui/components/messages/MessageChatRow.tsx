@@ -321,6 +321,7 @@ export function MessageChatRow({
               iconUrl={showAvatarImage ? iconUrl : null}
               animatedIconUrl={animatedIconUrl}
               profilePhoto={item.profile_photo ?? null}
+              telegramUserId={item.peer_user_id ?? (item.chat_kind === "private" ? item.telegram_chat_id : null)}
               initials={avatarInitials}
               sizePx={MESSAGE_AVATAR_PX}
               colors={colors}
@@ -356,6 +357,7 @@ export function MessageChatRow({
             iconUrl={showAvatarImage ? iconUrl : null}
             animatedIconUrl={animatedIconUrl}
             profilePhoto={item.profile_photo ?? null}
+            telegramUserId={item.peer_user_id ?? (item.chat_kind === "private" ? item.telegram_chat_id : null)}
             initials={avatarInitials}
             sizePx={MESSAGE_AVATAR_PX}
             colors={colors}
