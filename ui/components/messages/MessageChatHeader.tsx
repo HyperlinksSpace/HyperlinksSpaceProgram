@@ -95,6 +95,7 @@ export function MessageChatHeader({
     <MessageChatAvatarSlot
       iconUrl={iconUrl}
       animatedIconUrl={animatedIconUrl}
+      profilePhoto={chat.profile_photo ?? null}
       initials={avatarInitials}
       sizePx={HEADER_AVATAR_PX}
       colors={colors}

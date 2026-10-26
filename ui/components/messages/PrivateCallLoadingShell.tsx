@@ -69,6 +69,7 @@ export function PrivateCallLoadingShell({ chat, onClose }: Props) {
         <MessageChatAvatarSlot
           iconUrl={avatarUrl}
           animatedIconUrl={animatedAvatarUrl}
+          profilePhoto={chat.profile_photo ?? null}
           initials={initials}
           sizePx={120}
           colors={colors}

@@ -76,7 +76,11 @@ import {
   SUPPLEMENTARY_CONTACT_SEARCH_QUERIES,
 } from "../../shared/specialTelegramUsers.js";
 import { chatKindFromTdChat, lastMessageListRowMetaFromChat } from "./messageHistoryMap.js";
-import { resolveUserChatPhoto } from "./chatPhoto.js";
+import {
+  chatPhotoHasLoopingVisual,
+  profilePhotoMarkupFromTdChatPhoto,
+  resolveUserChatPhoto,
+} from "./chatPhoto.js";
 import { listPhotoSizeCandidates } from "./photoParse.js";
 
 type TdFile = {
@@ -681,7 +685,12 @@ async function downloadChatAvatarBytes(
     const fileIds = [current.photo?.small?.id, current.photo?.big?.id].filter(
       (id): id is number => typeof id === "number",
     );
-    if (fileIds.length === 0) return TELEGRAM_THREAD_NO_AVATAR;
+    if (fileIds.length === 0) {
+      // Video / custom-emoji faces often have no JPEG sizes. Don't hard-miss
+      // them — the animated avatar endpoint hydrates the loop instead.
+      if (chatPhotoHasLoopingVisual(current.photo)) return null;
+      return TELEGRAM_THREAD_NO_AVATAR;
+    }
 
     for (const fileId of fileIds) {
       try {
@@ -973,6 +982,7 @@ async function resolvePeerProfile(
   accentColorDark: string | null;
   isBot: boolean;
   hasMainWebApp: boolean;
+  hasAnimation: boolean;
 }> {
   const peerUserId = peerUserIdFromChat(chat);
   if (peerUserId == null) {
@@ -984,6 +994,7 @@ async function resolvePeerProfile(
       accentColorDark: null,
       isBot: false,
       hasMainWebApp: false,
+      hasAnimation: false,
     };
   }
   try {
@@ -993,10 +1004,13 @@ async function resolvePeerProfile(
       username?: string;
       usernames?: { active_usernames?: string[]; editable_username?: string };
       type?: { _?: string; has_main_web_app?: boolean };
+      profile_photo?: { has_animation?: boolean; hasAnimation?: boolean };
+      profilePhoto?: { has_animation?: boolean; hasAnimation?: boolean };
     };
     const profile = userProfileFromTdUser(user);
     const hasMainWebApp =
       user.type?._ === "userTypeBot" && Boolean(user.type.has_main_web_app);
+    const photo = user.profile_photo ?? user.profilePhoto;
     return {
       presence: presenceFromTdlibStatus(user.status),
       emojiStatusCustomEmojiId: profile.emoji_status_custom_emoji_id,
@@ -1005,6 +1019,7 @@ async function resolvePeerProfile(
       accentColorDark: profile.accent_color_dark,
       isBot: profile.is_bot,
       hasMainWebApp,
+      hasAnimation: photo?.has_animation === true || photo?.hasAnimation === true,
     };
   } catch {
     return {
@@ -1015,6 +1030,7 @@ async function resolvePeerProfile(
       accentColorDark: null,
       isBot: false,
       hasMainWebApp: false,
+      hasAnimation: false,
     };
   }
 }
@@ -1355,6 +1371,7 @@ function buildSkeletonLiveRows(
       title: chatTitle(chat),
       subtitle: "",
       avatar_url: null,
+      profile_photo: profilePhotoMarkupFromTdChatPhoto(chat.photo),
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
       peer_user_id: peerUserId,
@@ -1450,6 +1467,13 @@ async function buildLiveRowsForChats(
       subtitle: preview?.subtitle ?? "",
       ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : {}),
       avatar_url: avatarUrls[i] ?? null,
+      profile_photo: (() => {
+        const markup = profilePhotoMarkupFromTdChatPhoto(chat.photo);
+        if (!profile?.hasAnimation) return markup;
+        return markup
+          ? { ...markup, has_animation: true }
+          : { custom_emoji_id: null, fill: null, has_animation: true, added_at: null };
+      })(),
       last_message_at: lastMessageAtIso(chat),
       unread_count: normalizeUnreadCount(chat),
       peer_user_id: peerUserId,

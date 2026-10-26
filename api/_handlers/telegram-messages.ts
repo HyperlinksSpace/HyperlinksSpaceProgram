@@ -18,6 +18,7 @@ import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import { appLog, safeTelegramUserIdForLog, telegramUserIdLogField } from "../../shared/appLog.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
+import { normalizeTelegramProfilePhotoMarkup } from "../../shared/telegramProfilePhoto.js";
 import { gatewayDisconnect, gatewayFetchChatAvatar, gatewayFetchChatMessages, gatewayFetchTelegramEmoji, gatewayFetchLiveChats, gatewayFetchMessageMedia, gatewayOpenMessageMediaStream, gatewayFetchUserAvatar, gatewayFetchUserProfile, gatewayFetchUserProfileExtras, gatewayOpenProfileAudioStream, gatewayFetchProfileAudioCover, gatewayBlockUser, gatewayUnblockUser, gatewaySearchChatLinks, gatewaySearchChatMedia, gatewayCreatePrivateCall, gatewayGetPrivateCall, gatewayDiscardPrivateCall, gatewayFocusChat, gatewayLoadMoreChats, gatewayOpenLiveChatsStream, gatewayOpenChatMessagesStream, gatewayOpenVoiceParticipantsStream, gatewayOpenVoiceCallMessagesStream, gatewayResyncChats, gatewaySendChatMessage, gatewaySendChatPhoto, gatewayAnswerCallbackQuery, gatewayOpenBotWebApp, gatewayEditChatMessage, gatewayDeleteChatMessages, gatewaySaveChatMessageAudio, gatewayRemoveProfileAudio, gatewayReorderProfileAudios, gatewayForwardProfileAudio,   gatewayJoinChatVoice, gatewaySetChatVoiceMicMuted, gatewaySetChatVoiceParticipantVolume, gatewaySetChatVoiceParticipantSpeaking, gatewayStartChatVoice, gatewayLeaveChatVoice, gatewayStartChatVoiceScreenShare, gatewayEndChatVoiceScreenShare, gatewaySendChatVoiceCallMessage, gatewayFetchChatVoiceParticipants, gatewayResolvePublicChat, gatewaySearchChats, gatewaySearchRecentChats, gatewayAddRecentlyFoundChat, gatewayRemoveRecentlyFoundChat, gatewayClearRecentlyFoundChats, gatewayUserHasPersistedSession, gatewayWarmupSession, gatewayViewChatInboxMessages, gatewayToggleChatPinned, gatewaySetPinnedChatsOrder, gatewayListContacts, gatewayAddContact, gatewayCreateGroup, gatewayCreateChannel, gatewayFetchCallsOverview } from "../_lib/tdlib-gateway-client.js";
 
 type NodeRes = {
@@ -190,6 +191,7 @@ function mapLiveChats(live: { chats: Record<string, unknown>[]; revision: number
     subtitle: row.subtitle ?? "",
     subtitle_segments: Array.isArray(row.subtitle_segments) ? row.subtitle_segments : null,
     avatar_url: row.avatar_url ?? null,
+    profile_photo: normalizeTelegramProfilePhotoMarkup(row.profile_photo),
     last_message_at: row.last_message_at,
     unread_count: row.unread_count ?? 0,
     peer_user_id: row.peer_user_id ?? null,
@@ -3124,6 +3126,7 @@ function mapResolvedChatRow(row: Record<string, unknown>) {
     title: typeof row.title === "string" ? row.title : "",
     subtitle: typeof row.subtitle === "string" ? row.subtitle : "",
     avatar_url: typeof row.avatar_url === "string" ? row.avatar_url : null,
+    profile_photo: normalizeTelegramProfilePhotoMarkup(row.profile_photo),
     last_message_at:
       typeof row.last_message_at === "string" || typeof row.last_message_at === "number"
         ? String(row.last_message_at)

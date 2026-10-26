@@ -39,6 +39,8 @@ import {
 import { chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chatListFilter.js";
 import { isSavedMessagesPeer } from "../../shared/savedMessages.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
+import type { TelegramProfilePhotoMarkup } from "../../shared/telegramProfilePhoto.js";
+import { profilePhotoMarkupFromTdChatPhoto } from "./chatPhoto.js";
 
 export type LiveChatRow = {
   telegram_chat_id: number;
@@ -46,6 +48,8 @@ export type LiveChatRow = {
   subtitle: string;
   subtitle_segments?: FormattedTextSegment[] | null;
   avatar_url: string | null;
+  /** Custom-emoji / video profile photo from `chat.photo` (same as the profile sheet). */
+  profile_photo?: TelegramProfilePhotoMarkup | null;
   last_message_at: string;
   unread_count: number;
   peer_user_id: number | null;
@@ -392,6 +396,8 @@ export function patchLiveChatFromTdlib(
     subtitle,
     ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : { subtitle_segments: null }),
     avatar_url: input.avatar_url !== undefined ? input.avatar_url : (existing?.avatar_url ?? null),
+    profile_photo:
+      profilePhotoMarkupFromTdChatPhoto(chat.photo) ?? existing?.profile_photo ?? null,
     last_message_at: lastMessageAtIso(chat, lastMessage),
     unread_count: normalizeUnreadCount(chat),
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
@@ -526,6 +532,7 @@ export function patchLiveChatReadInbox(
     subtitle: existing.subtitle,
     ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
+    profile_photo: existing.profile_photo ?? null,
     last_message_at: existing.last_message_at,
     unread_count: nextUnread,
     peer_user_id: existing.peer_user_id,
@@ -581,6 +588,7 @@ export function patchLiveChatAction(
     subtitle: existing.subtitle,
     ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
+    profile_photo: existing.profile_photo ?? null,
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
@@ -628,6 +636,7 @@ export function patchLiveChatPresence(
       subtitle: row.subtitle,
       ...(row.subtitle_segments ? { subtitle_segments: row.subtitle_segments } : {}),
       avatar_url: row.avatar_url,
+      profile_photo: row.profile_photo ?? null,
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
@@ -679,6 +688,7 @@ export function patchLiveChatEmojiStatus(
       subtitle: row.subtitle,
       ...(row.subtitle_segments ? { subtitle_segments: row.subtitle_segments } : {}),
       avatar_url: row.avatar_url,
+      profile_photo: row.profile_photo ?? null,
       last_message_at: row.last_message_at,
       unread_count: row.unread_count,
       peer_user_id: row.peer_user_id,
@@ -728,6 +738,7 @@ export function patchLiveChatChatEmojiStatus(
     subtitle: existing.subtitle,
     ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
+    profile_photo: existing.profile_photo ?? null,
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
@@ -779,6 +790,7 @@ export function applyLiveMessageUpdate(
     subtitle: preview || existing?.subtitle || "",
     ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : {}),
     avatar_url: existing?.avatar_url ?? null,
+    profile_photo: existing?.profile_photo ?? null,
     last_message_at: lastMessageAtIso({ id: chatId, last_message: message }, message),
     unread_count:
       typeof unreadCount === "number" && unreadCount >= 0
@@ -834,6 +846,7 @@ export function patchLiveChatMemberMeta(
     subtitle: existing.subtitle,
     ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
+    profile_photo: existing.profile_photo ?? null,
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,
@@ -897,6 +910,7 @@ export function patchLiveChatVideoChat(
     subtitle: existing.subtitle,
     ...(existing.subtitle_segments ? { subtitle_segments: existing.subtitle_segments } : {}),
     avatar_url: existing.avatar_url,
+    profile_photo: existing.profile_photo ?? null,
     last_message_at: existing.last_message_at,
     unread_count: existing.unread_count,
     peer_user_id: existing.peer_user_id,

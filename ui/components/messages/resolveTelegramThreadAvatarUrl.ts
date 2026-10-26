@@ -103,6 +103,8 @@ export function resolveTelegramThreadAnimatedAvatarUrl(
   const inChannelThread = chatKind === "channel";
   if (inChannelThread || item?.sender_is_channel) return null;
   if (item?.is_outgoing) return null;
+  const markup = chat.profile_photo;
+  if (markup?.custom_emoji_id && !markup.has_animation) return null;
 
   if (item) {
     const senderUserId = safeTelegramUserIdForLog(item.sender_user_id);

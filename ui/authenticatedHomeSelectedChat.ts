@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { normalizeTelegramGroupCallId } from "../shared/telegramGroupCallSdp";
+import { normalizeTelegramProfilePhotoMarkup } from "../shared/telegramProfilePhoto";
 import type { MessageChatRowData } from "./components/messages/MessageChatRow";
 import { saveChatScrollPosition } from "./messageChatScrollCache";
 
@@ -31,6 +32,7 @@ function readStoredChat(): MessageChatRowData | null {
         title: typeof row.title === "string" ? row.title : "",
         subtitle: typeof row.subtitle === "string" ? row.subtitle : "",
         avatar_url: typeof row.avatar_url === "string" ? row.avatar_url : null,
+        profile_photo: normalizeTelegramProfilePhotoMarkup(row.profile_photo),
         last_message_at:
           typeof row.last_message_at === "string" || typeof row.last_message_at === "number"
             ? String(row.last_message_at)

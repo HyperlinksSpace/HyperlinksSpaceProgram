@@ -36,8 +36,27 @@ function animationFileId(photo: Record<string, unknown>, preferSmall: boolean): 
   const small = asRecord(photo.small_animation ?? photo.smallAnimation);
   const big = asRecord(photo.animation);
   const first = preferSmall ? small ?? big : big ?? small;
-  if (!first) return null;
-  return fileIdFromTdFile(first.file ?? first);
+  if (!first) {
+    return fileIdFromTdFile(photo.animation) ?? fileIdFromTdFile(photo.small_animation ?? photo.smallAnimation);
+  }
+  return (
+    fileIdFromTdFile(first.file ?? first) ??
+    fileIdFromTdFile(first.id) ??
+    fileIdFromTdFile(first)
+  );
+}
+
+export function profilePhotoMarkupFromTdChatPhoto(
+  photo: unknown,
+): TelegramProfilePhotoMarkup | null {
+  return markupFromChatPhoto(asRecord(photo));
+}
+
+export function chatPhotoHasLoopingVisual(photo: unknown): boolean {
+  const row = asRecord(photo);
+  if (!row) return false;
+  if (animationFileId(row, false) != null || animationFileId(row, true) != null) return true;
+  return Boolean(asRecord(row.sticker));
 }
 
 function markupFromChatPhoto(photo: Record<string, unknown> | null): TelegramProfilePhotoMarkup | null {
@@ -202,15 +221,11 @@ async function waitForLocalFile(client: Client, fileId: number): Promise<TdFile 
   return null;
 }
 
-export async function readUserAvatarAnimationBytes(
+async function downloadAnimationBytes(
   client: Client,
-  userId: number,
-): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
-  const photo = await resolveUserChatPhoto(client, userId);
-  if (!photo) return "no_avatar";
-  const fileId = animationFileId(photo, false) ?? animationFileId(photo, true);
-  if (fileId == null) return "no_avatar";
-  for (let attempt = 0; attempt < 2; attempt++) {
+  fileId: number,
+): Promise<{ data: Buffer; mime: string } | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const file = await waitForLocalFile(client, fileId);
     const path = file?.local?.path;
     if (!path || !fs.existsSync(path)) continue;
@@ -223,4 +238,67 @@ export async function readUserAvatarAnimationBytes(
     }
   }
   return null;
+}
+
+export async function readUserAvatarAnimationBytes(
+  client: Client,
+  userId: number,
+): Promise<{ data: Buffer; mime: string } | "no_avatar" | null> {
+  try {
+    await client.invoke({ _: "createPrivateChat", user_id: userId, force: false });
+  } catch {
+    /* deleted / inaccessible */
+  }
+
+  let user: Record<string, unknown> | null = null;
+  try {
+    user = (await client.invoke({ _: "getUser", user_id: userId })) as Record<string, unknown>;
+  } catch {
+    /* keep null */
+  }
+  const hasAnimationFlag = profilePhotoHasAnimationFlag(user);
+
+  const photos: Record<string, unknown>[] = [];
+  const pushPhoto = (value: unknown) => {
+    const row = asRecord(value);
+    if (row) photos.push(row);
+  };
+
+  pushPhoto(await resolveUserChatPhoto(client, userId));
+  try {
+    const chat = (await client.invoke({ _: "getChat", chat_id: userId })) as Record<string, unknown>;
+    pushPhoto(chat.photo);
+  } catch {
+    /* chat not hydrated */
+  }
+
+  const fileIds: number[] = [];
+  const seen = new Set<number>();
+  for (const photo of photos) {
+    for (const id of [
+      animationFileId(photo, false),
+      animationFileId(photo, true),
+    ]) {
+      if (id == null || seen.has(id)) continue;
+      seen.add(id);
+      fileIds.push(id);
+    }
+  }
+
+  for (const fileId of fileIds) {
+    const downloaded = await downloadAnimationBytes(client, fileId);
+    if (downloaded) return downloaded;
+  }
+
+  logGateway("user_avatar_animation_miss", {
+    userId,
+    hasAnimationFlag,
+    photoCount: photos.length,
+    fileIdCount: fileIds.length,
+  });
+
+  // Video avatars often hydrate after createPrivateChat — 503 so the client
+  // retries instead of sticky 404 initials.
+  if (hasAnimationFlag || fileIds.length > 0) return null;
+  return "no_avatar";
 }

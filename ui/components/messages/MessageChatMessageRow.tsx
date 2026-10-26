@@ -203,6 +203,7 @@ export function MessageChatMessageRow({
       chat_username: chat.chat_username ?? null,
       chat_kind: chat.chat_kind ?? chatKind,
       avatar_url: chat.avatar_url,
+      profile_photo: chat.profile_photo ?? null,
       peer_emoji_status_custom_emoji_id:
         item.sender_emoji_status_custom_emoji_id ??
         chat.peer_emoji_status_custom_emoji_id ??
@@ -688,6 +689,7 @@ export function MessageChatMessageRow({
         <MessageChatAvatarSlot
           iconUrl={iconUrl}
           animatedIconUrl={animatedIconUrl}
+          profilePhoto={chatKind === "private" ? chat.profile_photo ?? null : null}
           initials={avatarInitials}
           sizePx={MESSAGE_BUBBLE_AVATAR_PX}
           colors={colors}

@@ -1,4 +1,5 @@
 import type { FormattedTextSegment } from "../../../shared/formattedTextSegments";
+import type { TelegramProfilePhotoMarkup } from "../../../shared/telegramProfilePhoto";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Platform, Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
@@ -70,6 +71,7 @@ export type MessageChatRowData = {
   subtitle: string;
   subtitle_segments?: FormattedTextSegment[] | null;
   avatar_url: string | null;
+  profile_photo?: TelegramProfilePhotoMarkup | null;
   last_message_at: string | null;
   unread_count: number;
   /** @deprecated Unused — unread_count drives the scroll-to-bottom FAB. */
@@ -318,6 +320,7 @@ export function MessageChatRow({
             <MessageChatAvatarSlot
               iconUrl={showAvatarImage ? iconUrl : null}
               animatedIconUrl={animatedIconUrl}
+              profilePhoto={item.profile_photo ?? null}
               initials={avatarInitials}
               sizePx={MESSAGE_AVATAR_PX}
               colors={colors}
@@ -352,6 +355,7 @@ export function MessageChatRow({
           <MessageChatAvatarSlot
             iconUrl={showAvatarImage ? iconUrl : null}
             animatedIconUrl={animatedIconUrl}
+            profilePhoto={item.profile_photo ?? null}
             initials={avatarInitials}
             sizePx={MESSAGE_AVATAR_PX}
             colors={colors}
