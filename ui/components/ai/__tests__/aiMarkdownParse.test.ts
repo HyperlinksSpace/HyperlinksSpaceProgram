@@ -38,6 +38,18 @@ describe("aiMarkdownParse", () => {
     }
   });
 
+  it("strips incomplete bold markers while streaming", () => {
+    const plain = aiMarkdownToPlainText("Hello **wor");
+    assert.doesNotMatch(plain, /\*\*/);
+    assert.match(plain, /Hello wor/);
+  });
+
+  it("drops a lone heading marker on the last line while streaming", () => {
+    const plain = aiMarkdownToPlainText("Intro\n\n##");
+    assert.doesNotMatch(plain, /##/);
+    assert.match(plain, /Intro/);
+  });
+
   it("keeps *italic* when more text follows on the same line (Brain trace)", () => {
     const md = "привет\n\n---\n*Brain trace:* classify:Sci/Tech(0.48) · RAG:2chunk(s)";
     const plain = aiMarkdownToPlainText(md);
