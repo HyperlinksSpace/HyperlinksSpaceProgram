@@ -68,44 +68,7 @@ export function stripIncompleteAiMarkdownTail(md: string): string {
     }
   }
 
-  return stripIncompleteAiMarkdownLastLine(out);
-}
-
-/** Drop partial block prefixes on the final line while the typewriter is mid-token. */
-function stripIncompleteAiMarkdownLastLine(md: string): string {
-  if (!md) return md;
-  const lines = md.split("\n");
-  const lastIdx = lines.length - 1;
-  let last = lines[lastIdx] ?? "";
-  if (!last) return md;
-
-  if (/^\s*#{1,6}\s*$/.test(last)) {
-    lines.pop();
-    return lines.join("\n");
-  }
-
-  if (/^\s*([-*•])\s*$/.test(last)) {
-    lines.pop();
-    return lines.join("\n");
-  }
-
-  if (/^\s*\d+[.)]\s*$/.test(last)) {
-    lines.pop();
-    return lines.join("\n");
-  }
-
-  const linkStart = last.lastIndexOf("[");
-  if (linkStart >= 0) {
-    const tail = last.slice(linkStart);
-    const complete = /^\[[^\]]+\]\([^)]+\)/.test(tail);
-    if (!complete && (/\[[^\]]*$/.test(tail) || /\[[^\]]*\]\([^)]*$/.test(tail))) {
-      last = last.slice(0, linkStart);
-      lines[lastIdx] = last;
-      return lines.join("\n");
-    }
-  }
-
-  return md;
+  return out;
 }
 
 export function parseAiInline(text: string): AiInlineNode[] {

@@ -17,7 +17,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -26,8 +25,6 @@ import {
 } from "react-native";
 
 import { useAppStrings } from "../../../locales/AppStringsContext";
-import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
-import { filterChooseCurrencyRows } from "../../swap/filterChooseCurrencyRows";
 import { useObservedWidth } from "../../smart/useObservedWidth";
 import { resolveWebRefElement } from "../../smart/resolveWebLayoutElement";
 import { isBrowserZoomWheelEvent } from "../../browserZoom";
@@ -87,10 +84,6 @@ const CONTENT_INSET_PX = layout.bottomBar.horizontalPadding;
 const SCROLLBAR_RIGHT_INSET_PX = layout.scrollIndicatorRightInsetPx;
 const HEADER_DIVIDER_HEIGHT_PX = scrollIndicatorHairlineBorderWidthPx();
 const HEADER_BLOCK_HEIGHT_PX = CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX + HEADER_DIVIDER_HEIGHT_PX;
-const CHOOSE_CURRENCY_SEARCH_INPUT_HEIGHT_PX = 38;
-const CHOOSE_CURRENCY_SEARCH_BLOCK_HEIGHT_PX = CHOOSE_CURRENCY_SEARCH_INPUT_HEIGHT_PX + 10;
-const STICKY_TABLE_CHROME_HEIGHT_PX =
-  CHOOSE_CURRENCY_SEARCH_BLOCK_HEIGHT_PX + HEADER_BLOCK_HEIGHT_PX;
 const SCROLL_ATTACH_RETRY_FRAMES = 24;
 const SPARKLINE_ROW_STRIDE_PX =
   CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX +
@@ -577,8 +570,6 @@ type Props = {
    * Floating dialogs should pass the same padX as {@link FloatingDialogStickyHeader}.
    */
   contentInsetPx?: number;
-  /** Full-width search above the column legend (choose-currency / swap picker). */
-  showTokenSearch?: boolean;
 };
 
 export function ChooseCurrencyTable({
@@ -595,20 +586,11 @@ export function ChooseCurrencyTable({
   listEmptyMessage = null,
   scrollIndicatorExtendBottomPx = 0,
   contentInsetPx = CONTENT_INSET_PX,
-  showTokenSearch = true,
 }: Props) {
   const insetX = Number.isFinite(contentInsetPx) && contentInsetPx >= 0 ? contentInsetPx : CONTENT_INSET_PX;
   const { t, tf, locale } = useAppStrings();
   const defaultRows = useMemo(() => [buildChooseCurrencyDllrRow(locale)] as const, [locale]);
   const rows = rowsProp ?? defaultRows;
-  const [searchQuery, setSearchQuery] = useState("");
-  const displayRows = useMemo(
-    () => (showTokenSearch ? filterChooseCurrencyRows(rows, searchQuery) : [...rows]),
-    [rows, searchQuery, showTokenSearch],
-  );
-  const stickyChromeHeightPx = showTokenSearch
-    ? STICKY_TABLE_CHROME_HEIGHT_PX
-    : HEADER_BLOCK_HEIGHT_PX;
   const colors = useColors();
   const { widthPx, onLayout, onRef } = useObservedWidth("choose_currency_table");
   const flatListRef = useRef<FlatList<ChooseCurrencyRow>>(null);
@@ -627,10 +609,10 @@ export function ChooseCurrencyTable({
 
   useEffect(() => {
     if (!expandedRowKey) return;
-    if (!displayRows.some((row) => row.rowKey === expandedRowKey)) {
+    if (!rows.some((row) => row.rowKey === expandedRowKey)) {
       setExpandedRowKey(null);
     }
-  }, [displayRows, expandedRowKey]);
+  }, [expandedRowKey, rows]);
 
   const setShellNodeRef = useCallback(
     (node: View | null) => {
@@ -728,23 +710,19 @@ export function ChooseCurrencyTable({
       return;
     }
     const allSparkline: string[] = [];
-    for (const row of displayRows) {
+    for (const row of rows) {
       if (row.lastYearKind === "sparkline") allSparkline.push(row.rowKey);
     }
-    const end = Math.min(displayRows.length, sparklineViewStart + sparklineViewCount);
+    const end = Math.min(rows.length, sparklineViewStart + sparklineViewCount);
     const visible: string[] = [];
     for (let i = sparklineViewStart; i < end; i++) {
-      const row = displayRows[i];
+      const row = rows[i];
       if (row?.lastYearKind === "sparkline") visible.push(row.rowKey);
     }
     syncChooseCurrencyYearChartListOrder(allSparkline);
     syncChooseCurrencyYearChartVisibleWindow(visible);
-    prefetchChooseCurrencyYearChartsForRowWindow(
-      displayRows,
-      sparklineViewStart,
-      sparklineViewCount,
-    );
-  }, [displayRows, prefetchCharts, sparklineViewCount, sparklineViewStart]);
+    prefetchChooseCurrencyYearChartsForRowWindow(rows, sparklineViewStart, sparklineViewCount);
+  }, [prefetchCharts, rows, sparklineViewCount, sparklineViewStart]);
 
   useEffect(() => {
     if (prefetchCharts) return;
@@ -982,46 +960,9 @@ export function ChooseCurrencyTable({
     return { show: true as const, thumbH, thumbTop, maxScroll, trackH, trackTop };
   }, [scroll, shellLayoutH, scrollIndicatorExtendBottomPx]);
 
-  const tokenSearchField = useMemo(() => {
-    if (!showTokenSearch) return null;
-    return (
-      <View
-        style={{ width: "100%", paddingHorizontal: insetX, paddingBottom: 10 }}
-        pointerEvents="auto"
-      >
-        <TextInput
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder={t("swap.chooseCurrency.searchPlaceholder")}
-          placeholderTextColor={colors.secondary}
-          cursorColor={colors.primary}
-          accessibilityLabel={t("swap.chooseCurrency.searchA11y")}
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode={Platform.OS === "ios" ? "while-editing" : undefined}
-          style={{
-            width: "100%",
-            height: CHOOSE_CURRENCY_SEARCH_INPUT_HEIGHT_PX,
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            backgroundColor: colors.undercover,
-            color: colors.primary,
-            fontFamily: Platform.OS === "web" ? WEB_UI_SANS_STACK : FONT_UI_SANS_REGULAR,
-            fontSize: 15,
-            lineHeight: 20,
-            ...(Platform.OS === "web"
-              ? ({ outlineStyle: "none" } as Record<string, string>)
-              : null),
-          }}
-        />
-      </View>
-    );
-  }, [colors.primary, colors.secondary, colors.undercover, insetX, searchQuery, showTokenSearch, t]);
-
   const listHeader = useMemo(
     () => (
       <View style={[styles.headerBlock, { backgroundColor: colors.background }]}>
-        {tokenSearchField}
         <View style={[styles.headerRow, { paddingHorizontal: insetX }]}>
           {visibleColumns.map((column, columnIndex) => {
             const edge =
@@ -1043,7 +984,7 @@ export function ChooseCurrencyTable({
         />
       </View>
     ),
-    [colors.background, headers, insetX, tokenSearchField, visibleColumns],
+    [colors.background, headers, insetX, visibleColumns],
   );
 
   const renderItem = useCallback(
@@ -1052,7 +993,7 @@ export function ChooseCurrencyTable({
         row={item}
         rank={String(index + 1)}
         visibleColumns={visibleColumns}
-        isLast={index >= displayRows.length - 1}
+        isLast={index >= rows.length - 1}
         onPress={onWalletAction ? undefined : onSelectRow}
         onToggleExpand={onWalletAction ? onToggleExpand : undefined}
         onWalletAction={onWalletAction}
@@ -1068,7 +1009,7 @@ export function ChooseCurrencyTable({
       onToggleExpand,
       onWalletAction,
       prefetchCharts,
-      displayRows.length,
+      rows.length,
       visibleColumns,
     ],
   );
@@ -1106,33 +1047,28 @@ export function ChooseCurrencyTable({
   }, [colors.accent, colors.secondary, isFetchingMore, isLoading, loadError, rows.length, t]);
 
   const listEmpty = useMemo(() => {
-    if (isLoading || displayRows.length > 0) return null;
-    const trimmedQuery = searchQuery.trim();
-    const message = trimmedQuery
-      ? t("swap.chooseCurrency.searchEmpty")
-      : listEmptyMessage;
-    if (!message) return null;
+    if (!listEmptyMessage || isLoading || rows.length > 0) return null;
     return (
       <View style={styles.footerState}>
-        <Text style={[typographyAeroport15, { color: colors.secondary }]}>{message}</Text>
+        <Text style={[typographyAeroport15, { color: colors.secondary }]}>{listEmptyMessage}</Text>
       </View>
     );
-  }, [colors.secondary, displayRows.length, isLoading, listEmptyMessage, searchQuery, t]);
+  }, [colors.secondary, isLoading, listEmptyMessage, rows.length]);
 
   return (
     <View style={styles.shell} onLayout={onShellLayout} ref={setShellNodeRef} collapsable={false}>
       <FlatList
         ref={flatListRef}
-        data={displayRows as ChooseCurrencyRow[]}
+        data={rows as ChooseCurrencyRow[]}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        extraData={{ visibleColumns, expandedRowKey, searchQuery }}
+        extraData={{ visibleColumns, expandedRowKey }}
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,
           {
             paddingTop:
-              stickyChromeHeightPx + LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX,
+              HEADER_BLOCK_HEIGHT_PX + LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX,
           },
         ]}
         showsVerticalScrollIndicator={false}
