@@ -4,7 +4,14 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import {
   buildChooseCurrencyDllrRow,
   type ChooseCurrencyRow,
+  type ChooseCurrencyTableSection,
 } from "../components/swap/chooseCurrencyTableTypes";
+import { formatLocaleDllrBalance } from "../format/localeAmountFormat";
+import {
+  getBuiltinDllrBalanceUsd,
+  subscribeBuiltinDllrBalance,
+} from "../pro/dllrBalanceStore";
+import { formatSwapHoldingUsd } from "./formatSwapTokenMarketValue";
 import { fetchAccountSwapJettons } from "./fetchSwapJettons";
 import {
   buildBalanceByJettonAddress,
@@ -16,6 +23,11 @@ import {
   requestSwapJettonsNextPage,
   subscribeSwapJettonsCatalog,
 } from "./swapJettonsCatalogCache";
+import {
+  partitionChooseCurrencyRowsForWalletFirst,
+  sortChooseCurrencyRowsByMarketCap,
+  type ChooseCurrencyWalletPartition,
+} from "./partitionChooseCurrencyRows";
 import type { SwapAccountJettonBalance, SwapJetton } from "./swapJettonsTypes";
 
 function mergeAccountJettons(
@@ -36,6 +48,8 @@ function mergeAccountJettons(
 
 export type ChooseCurrencyRowsState = {
   rows: readonly ChooseCurrencyRow[];
+  /** Swap buy/sell picker: wallet-held tokens first, then the catalog. */
+  rowSections?: readonly ChooseCurrencyTableSection[];
   isLoading: boolean;
   isFetchingMore: boolean;
   error: string | null;
@@ -43,11 +57,25 @@ export type ChooseCurrencyRowsState = {
   loadMore: () => void;
 };
 
+export type UseChooseCurrencyRowsOptions = {
+  /** Group non-zero wallet balances above the market catalog (swap token picker). */
+  walletSectionFirst?: boolean;
+  walletSectionTitle?: string | null;
+};
+
 export function useChooseCurrencyRows(
   walletAddress: string | null | undefined,
   enabled = true,
+  options?: UseChooseCurrencyRowsOptions,
 ): ChooseCurrencyRowsState {
+  const walletSectionFirst = options?.walletSectionFirst === true;
+  const walletSectionTitle = options?.walletSectionTitle ?? null;
   const { locale } = useAppStrings();
+  const dllrBalanceUsd = useSyncExternalStore(
+    subscribeBuiltinDllrBalance,
+    getBuiltinDllrBalanceUsd,
+    getBuiltinDllrBalanceUsd,
+  );
   const catalog = useSyncExternalStore(
     subscribeSwapJettonsCatalog,
     getSwapJettonsCatalogSnapshot,
@@ -97,22 +125,52 @@ export function useChooseCurrencyRows(
     [catalog.jettons, accountItems],
   );
 
-  const dllrRow = useMemo(() => buildChooseCurrencyDllrRow(locale), [locale]);
+  const dllrRow = useMemo(() => {
+    const base = buildChooseCurrencyDllrRow(locale);
+    if (!walletSectionFirst) return base;
+    const hasDllr = dllrBalanceUsd > 0;
+    const balance = hasDllr ? formatLocaleDllrBalance(dllrBalanceUsd, locale) : "—";
+    return {
+      ...base,
+      balance,
+      value: formatSwapHoldingUsd(dllrBalanceUsd, locale),
+    };
+  }, [dllrBalanceUsd, locale, walletSectionFirst]);
 
-  const rows = useMemo(() => {
+  const browseRows = useMemo(() => {
     const apiRows: ChooseCurrencyRow[] = [];
     for (const jetton of jettons) {
       const row = mapJettonToChooseCurrencyRow(jetton, balanceByAddress, locale);
       if (!row) continue;
       apiRows.push(row);
     }
-    apiRows.sort((a, b) => {
-      const delta = b.marketCapUsd - a.marketCapUsd;
-      if (delta !== 0) return delta;
-      return a.currency.ticker.localeCompare(b.currency.ticker);
-    });
-    return [dllrRow, ...apiRows];
+    return [dllrRow, ...sortChooseCurrencyRowsByMarketCap(apiRows)];
   }, [balanceByAddress, dllrRow, jettons, locale]);
+
+  const walletPartition = useMemo((): ChooseCurrencyWalletPartition | null => {
+    if (!walletSectionFirst) return null;
+    return partitionChooseCurrencyRowsForWalletFirst(browseRows, locale);
+  }, [browseRows, locale, walletSectionFirst]);
+
+  const rowSections = useMemo((): readonly ChooseCurrencyTableSection[] | undefined => {
+    if (!walletPartition) return undefined;
+    const sections: ChooseCurrencyTableSection[] = [];
+    if (walletPartition.walletAvailable.length > 0) {
+      sections.push({
+        title: walletSectionTitle,
+        rows: walletPartition.walletAvailable,
+      });
+    }
+    if (walletPartition.rest.length > 0) {
+      sections.push({ title: null, rows: walletPartition.rest });
+    }
+    return sections.length > 0 ? sections : undefined;
+  }, [walletPartition, walletSectionTitle]);
+
+  const rows = useMemo(() => {
+    if (!walletPartition) return browseRows;
+    return [...walletPartition.walletAvailable, ...walletPartition.rest];
+  }, [browseRows, walletPartition]);
 
   const loadMore = useCallback(() => {
     requestSwapJettonsNextPage();
@@ -120,6 +178,7 @@ export function useChooseCurrencyRows(
 
   return {
     rows,
+    rowSections,
     isLoading: enabled && catalog.isLoading && rows.length <= 1,
     isFetchingMore: enabled && catalog.isFetchingMore,
     error: catalog.error,
