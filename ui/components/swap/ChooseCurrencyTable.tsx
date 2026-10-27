@@ -76,7 +76,6 @@ import {
   buildChooseCurrencyDllrRow,
   type ChooseCurrencyColumnKey,
   type ChooseCurrencyRow,
-  type ChooseCurrencyTableSection,
 } from "./chooseCurrencyTableTypes";
 import { CrossTokenNameplate, CROSS_NAMEPLATE_GAP_PX, isDllrCurrencyRow } from "./CrossTokenNameplate";
 
@@ -90,45 +89,6 @@ const SPARKLINE_ROW_STRIDE_PX =
   CHOOSE_CURRENCY_TABLE_ROW_HEIGHT_PX +
   2 * LIST_ROW_PRESS_HIGHLIGHT_PADDING_Y_PX +
   LIST_ROW_GAP_PX;
-
-type ChooseCurrencyListItem =
-  | { kind: "section"; key: string; title: string }
-  | { kind: "row"; key: string; row: ChooseCurrencyRow; rank: number; isLast: boolean };
-
-function buildChooseCurrencyListItems(
-  rows: readonly ChooseCurrencyRow[],
-  rowSections?: readonly ChooseCurrencyTableSection[],
-): ChooseCurrencyListItem[] {
-  const lastRowKey = rows.length > 0 ? rows[rows.length - 1]!.rowKey : null;
-  if (!rowSections?.length) {
-    return rows.map((row, index) => ({
-      kind: "row",
-      key: row.rowKey,
-      row,
-      rank: index + 1,
-      isLast: row.rowKey === lastRowKey,
-    }));
-  }
-  const items: ChooseCurrencyListItem[] = [];
-  let rank = 0;
-  for (const section of rowSections) {
-    const title = section.title?.trim();
-    if (title && section.rows.length > 0) {
-      items.push({ kind: "section", key: `section:${title}`, title });
-    }
-    for (const row of section.rows) {
-      rank += 1;
-      items.push({
-        kind: "row",
-        key: row.rowKey,
-        row,
-        rank,
-        isLast: row.rowKey === lastRowKey,
-      });
-    }
-  }
-  return items;
-}
 
 /** RN-web FlatList scroll node — API first, then DOM walk inside the shell. */
 function findFlatListScrollElement(
@@ -583,7 +543,6 @@ const MemoDataRow = memo(
 
 type Props = {
   rows?: readonly ChooseCurrencyRow[];
-  rowSections?: readonly ChooseCurrencyTableSection[];
   isLoading?: boolean;
   isFetchingMore?: boolean;
   loadError?: string | null;
@@ -613,39 +572,8 @@ type Props = {
   contentInsetPx?: number;
 };
 
-function ChooseCurrencySectionHeader({
-  title,
-  contentInsetPx,
-}: {
-  title: string;
-  contentInsetPx: number;
-}) {
-  const colors = useColors();
-  return (
-    <View
-      style={{
-        paddingHorizontal: contentInsetPx,
-        paddingTop: 12,
-        paddingBottom: 4,
-        width: "100%",
-      }}
-    >
-      <Text
-        style={[
-          typographyAeroport15,
-          typographySansSemibold,
-          { color: colors.secondary, lineHeight: 20 },
-        ]}
-      >
-        {title}
-      </Text>
-    </View>
-  );
-}
-
 export function ChooseCurrencyTable({
   rows: rowsProp,
-  rowSections,
   isLoading = false,
   isFetchingMore = false,
   loadError = null,
@@ -663,13 +591,9 @@ export function ChooseCurrencyTable({
   const { t, tf, locale } = useAppStrings();
   const defaultRows = useMemo(() => [buildChooseCurrencyDllrRow(locale)] as const, [locale]);
   const rows = rowsProp ?? defaultRows;
-  const listItems = useMemo(
-    () => buildChooseCurrencyListItems(rows, rowSections),
-    [rowSections, rows],
-  );
   const colors = useColors();
   const { widthPx, onLayout, onRef } = useObservedWidth("choose_currency_table");
-  const flatListRef = useRef<FlatList<ChooseCurrencyListItem>>(null);
+  const flatListRef = useRef<FlatList<ChooseCurrencyRow>>(null);
   const shellRef = useRef<View>(null);
   const [scroll, setScroll] = useState({ layoutH: 0, contentH: 0, scrollY: 0 });
   const [shellLayoutH, setShellLayoutH] = useState(0);
@@ -1064,25 +988,20 @@ export function ChooseCurrencyTable({
   );
 
   const renderItem = useCallback(
-    ({ item }: { item: ChooseCurrencyListItem }) => {
-      if (item.kind === "section") {
-        return <ChooseCurrencySectionHeader title={item.title} contentInsetPx={insetX} />;
-      }
-      return (
-        <MemoDataRow
-          row={item.row}
-          rank={String(item.rank)}
-          visibleColumns={visibleColumns}
-          isLast={item.isLast}
-          onPress={onWalletAction ? undefined : onSelectRow}
-          onToggleExpand={onWalletAction ? onToggleExpand : undefined}
-          onWalletAction={onWalletAction}
-          expanded={onWalletAction ? expandedRowKey === item.row.rowKey : false}
-          prefetchCharts={prefetchCharts}
-          contentInsetPx={insetX}
-        />
-      );
-    },
+    ({ item, index }: { item: ChooseCurrencyRow; index: number }) => (
+      <MemoDataRow
+        row={item}
+        rank={String(index + 1)}
+        visibleColumns={visibleColumns}
+        isLast={index >= rows.length - 1}
+        onPress={onWalletAction ? undefined : onSelectRow}
+        onToggleExpand={onWalletAction ? onToggleExpand : undefined}
+        onWalletAction={onWalletAction}
+        expanded={onWalletAction ? expandedRowKey === item.rowKey : false}
+        prefetchCharts={prefetchCharts}
+        contentInsetPx={insetX}
+      />
+    ),
     [
       expandedRowKey,
       insetX,
@@ -1090,11 +1009,12 @@ export function ChooseCurrencyTable({
       onToggleExpand,
       onWalletAction,
       prefetchCharts,
+      rows.length,
       visibleColumns,
     ],
   );
 
-  const keyExtractor = useCallback((item: ChooseCurrencyListItem) => item.key, []);
+  const keyExtractor = useCallback((item: ChooseCurrencyRow) => item.rowKey, []);
 
   const handleEndReached = useCallback(() => {
     onLoadMore?.();
@@ -1139,10 +1059,10 @@ export function ChooseCurrencyTable({
     <View style={styles.shell} onLayout={onShellLayout} ref={setShellNodeRef} collapsable={false}>
       <FlatList
         ref={flatListRef}
-        data={listItems}
+        data={rows as ChooseCurrencyRow[]}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        extraData={{ visibleColumns, expandedRowKey, listItems }}
+        extraData={{ visibleColumns, expandedRowKey }}
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,

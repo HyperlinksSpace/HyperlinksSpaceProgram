@@ -45,17 +45,8 @@ export function ChooseCurrencyPanelContent({
   const pickerMode = useSwapCurrencyPicker();
   const pickerActive = pickerMode != null;
   const isBrowse = pickerMode === "browse";
-  const tokenPicker = isSwapCurrencySide(pickerMode);
-  const { rows, rowSections, isLoading, isFetchingMore, error, loadMore } = useChooseCurrencyRows(
-    walletAddress,
-    pickerActive,
-    tokenPicker
-      ? {
-          walletSectionFirst: true,
-          walletSectionTitle: t("swap.chooseCurrency.sectionWallet"),
-        }
-      : undefined,
-  );
+  const { rows, isLoading, isFetchingMore, error, loadMore } =
+    useChooseCurrencyRows(walletAddress, pickerActive);
   const contentInset = layout.bottomBar.horizontalPadding;
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const scrollShellBleed = { marginHorizontal: -contentInset };
@@ -107,7 +98,6 @@ export function ChooseCurrencyPanelContent({
       <View style={{ flex: 1, minHeight: 0, ...scrollShellBleed }}>
         <ChooseCurrencyTable
           rows={rows}
-          rowSections={rowSections}
           isLoading={isLoading}
           isFetchingMore={isFetchingMore}
           loadError={error}

@@ -709,7 +709,6 @@ const en = {
   "swap.chooseCurrency.col.lastYear": "Last Year",
   "swap.chooseCurrency.loading": "Loading tokens…",
   "swap.chooseCurrency.loadingMore": "{count} tokens loaded",
-  "swap.chooseCurrency.sectionWallet": "Available on the wallet",
 
   "send.footer.submit": "N / A",
   "send.title": "Send",
@@ -1742,7 +1741,6 @@ const ru = {
   "swap.chooseCurrency.col.lastYear": "Год",
   "swap.chooseCurrency.loading": "Загрузка токенов…",
   "swap.chooseCurrency.loadingMore": "Загружено {count} токенов",
-  "swap.chooseCurrency.sectionWallet": "Доступно на кошельке",
 
   "send.footer.submit": "N / A",
   "send.title": "Отправить",
@@ -2731,7 +2729,6 @@ const zh = {
   "swap.chooseCurrency.col.lastYear": "近一年",
   "swap.chooseCurrency.loading": "正在加载代币…",
   "swap.chooseCurrency.loadingMore": "已加载 {count} 个代币",
-  "swap.chooseCurrency.sectionWallet": "钱包中的货币",
   "send.footer.submit": "N / A",
   "send.title": "发送",
   "send.max": "最大",

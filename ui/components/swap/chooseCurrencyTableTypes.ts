@@ -19,11 +19,6 @@ export type ChooseCurrencyColumnKey =
 
 export type ChooseCurrencyColumnPriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
 
-export type ChooseCurrencyTableSection = {
-  title?: string | null;
-  rows: readonly ChooseCurrencyRow[];
-};
-
 export type ChooseCurrencyRow = {
   /** Stable list key (jetton address). */
   rowKey: string;
