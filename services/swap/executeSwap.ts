@@ -1,19 +1,21 @@
-import { waitForRouteResults } from "@swap-coffee/sdk";
+import { RoutingApi, type ApiTokenAddress } from "@swap-coffee/sdk";
 
-import {
-  buildSwapRouteQuote,
-  swapCoffeeRoutingApi,
-  toApiTokenAddress,
-} from "../../ui/swap/swapCoffeeRouting";
-import type { SwapPairToken } from "../../ui/swap/swapPairTypes";
 import {
   sendSwapCoffeeTransactions,
   type SwapCoffeeTxMessage,
 } from "../wallet/tonSwapSend";
 
+export type SwapExecuteToken = {
+  address: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  isNative?: boolean;
+};
+
 export type ExecuteSwapParams = {
-  fromToken: SwapPairToken;
-  toToken: SwapPairToken;
+  fromToken: SwapExecuteToken;
+  toToken: SwapExecuteToken;
   fromAmount: string;
   slippage?: number;
   senderAddress: string;
@@ -29,9 +31,29 @@ export type ExecuteSwapResult = {
   routeStatus?: string;
 };
 
+const routingApi = new RoutingApi();
+
+function isNativeTonAddress(address: string, isNative?: boolean): boolean {
+  const addr = address.trim().toLowerCase();
+  if (isNative && !addr) return true;
+  return (
+    addr === "native" ||
+    addr === "0:0000000000000000000000000000000000000000000000000000000000000000" ||
+    /^0:0+$/.test(addr) ||
+    addr.includes("00000000000000000000000000000000000000000000000000000000")
+  );
+}
+
+function toApiTokenAddress(token: SwapExecuteToken): ApiTokenAddress {
+  if (isNativeTonAddress(token.address, token.isNative)) {
+    return { blockchain: "ton", address: "native" };
+  }
+  return { blockchain: "ton", address: token.address };
+}
+
 /**
  * Mirror of whatswap `swap-service.ts` without TonConnect:
- * buildRoute → buildTransactionsV2 → V4 sendTransfer → waitForRouteResults.
+ * buildRoute → buildTransactionsV2 → wallet sendTransfer.
  */
 export async function executeSwap(params: ExecuteSwapParams): Promise<ExecuteSwapResult> {
   try {
@@ -46,17 +68,23 @@ export async function executeSwap(params: ExecuteSwapParams): Promise<ExecuteSwa
       return { success: false, error: "wallet_locked" };
     }
 
-    const route = await buildSwapRouteQuote({
-      sellToken: params.fromToken,
-      buyToken: params.toToken,
-      amount: inputAmount,
-      direction: "exact_in",
+    const input_token = toApiTokenAddress(params.fromToken);
+    const output_token = toApiTokenAddress(params.toToken);
+    const route = await routingApi.buildRoute({
+      input_token,
+      output_token,
+      input_amount: inputAmount,
+      max_splits: 4,
     });
+    const quote = route.data as { paths?: unknown } | null;
+    if (!quote?.paths) {
+      return { success: false, error: "no_route" };
+    }
 
-    const transactions = await swapCoffeeRoutingApi.buildTransactionsV2({
+    const transactions = await routingApi.buildTransactionsV2({
       sender_address: params.senderAddress.trim(),
-      slippage: params.slippage ?? 0.05,
-      paths: route.paths as never,
+      slippage: params.slippage ?? 0.1,
+      paths: quote.paths as never,
     });
 
     const data = transactions.data as {
@@ -73,21 +101,12 @@ export async function executeSwap(params: ExecuteSwapParams): Promise<ExecuteSwa
       transactions: data.transactions,
       endpoint: params.tonRpcUrl,
       apiKey: params.tonRpcKey,
+      expectedFromAddress: params.senderAddress.trim(),
     });
-
-    let routeStatus: string | undefined;
-    if (data.route_id) {
-      const results = await waitForRouteResults(data.route_id, swapCoffeeRoutingApi);
-      routeStatus =
-        results && typeof results === "object" && "status" in results
-          ? String((results as { status?: unknown }).status ?? "")
-          : undefined;
-    }
 
     return {
       success: true,
       routeId: data.route_id,
-      routeStatus,
     };
   } catch (err) {
     return {
@@ -99,8 +118,8 @@ export async function executeSwap(params: ExecuteSwapParams): Promise<ExecuteSwa
 
 /** Server-side: build txs only (signing happens after envelope unwrap). */
 export async function buildSwapCoffeeTransactionsForSender(opts: {
-  fromToken: SwapPairToken;
-  toToken: SwapPairToken;
+  fromToken: SwapExecuteToken;
+  toToken: SwapExecuteToken;
   fromAmount: string;
   senderAddress: string;
   slippage?: number;
@@ -115,19 +134,24 @@ export async function buildSwapCoffeeTransactionsForSender(opts: {
     throw new Error("invalid_amount");
   }
 
-  const quote = await buildSwapRouteQuote({
-    sellToken: opts.fromToken,
-    buyToken: opts.toToken,
-    amount: inputAmount,
-    direction: "exact_in",
+  const route = await routingApi.buildRoute({
+    input_token: toApiTokenAddress(opts.fromToken),
+    output_token: toApiTokenAddress(opts.toToken),
+    input_amount: inputAmount,
+    max_splits: 4,
   });
+  const quote = route.data as {
+    paths?: unknown;
+    input_amount?: number | string;
+    output_amount?: number | string;
+  } | null;
+  if (!quote?.paths) {
+    throw new Error("no_route");
+  }
 
-  // Keep RoutingApi aware of token shapes used by waiters / debug.
-  void toApiTokenAddress;
-
-  const transactions = await swapCoffeeRoutingApi.buildTransactionsV2({
+  const transactions = await routingApi.buildTransactionsV2({
     sender_address: opts.senderAddress.trim(),
-    slippage: opts.slippage ?? 0.05,
+    slippage: opts.slippage ?? 0.1,
     paths: quote.paths as never,
   });
 
@@ -143,7 +167,7 @@ export async function buildSwapCoffeeTransactionsForSender(opts: {
   return {
     routeId: data.route_id,
     transactions: data.transactions,
-    inputAmount: quote.inputAmount,
-    outputAmount: quote.outputAmount,
+    inputAmount: Number(quote.input_amount) || inputAmount,
+    outputAmount: Number(quote.output_amount) || 0,
   };
 }

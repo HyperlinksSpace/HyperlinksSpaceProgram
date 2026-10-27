@@ -1,11 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useAppStrings } from "../../../locales/AppStringsContext";
+import { executeSwapOnWallet } from "../../swap/executeSwapOnWallet";
 import { formatSwapTokenAmount } from "../../swap/swapChartFormat";
 import {
   useSwapDealActionState,
   type SwapDealButtonNotice,
 } from "../../swap/useSwapDealActionState";
+import { useTonConnectSession } from "../../ton/TonConnectProvider";
+import { formatTonConnectErrorMessage } from "../../ton/formatTonConnectErrorMessage";
+import { isTonConnectUserRejection } from "../../ton/isTonConnectUserRejection";
+import {
+  bumpWalletBalanceRefresh,
+  scheduleWalletBalanceRefreshBurst,
+} from "../../wallet/walletBalanceRefresh";
 import {
   bottomBarLabelFitsSlot,
   bottomBarSummarySlotWidthPx,
@@ -43,6 +51,12 @@ function useResolvedDealProps(props: Props) {
     dealSide: hooked.dealSide,
     buttonNotice: props.buttonNotice ?? hooked.buttonNotice,
     buttonActive: props.buttonActive ?? hooked.buttonActive,
+    walletKind: hooked.walletKind,
+    senderAddress: hooked.senderAddress,
+    fromToken: hooked.fromToken,
+    toToken: hooked.toToken,
+    fromAmount: hooked.fromAmount,
+    initDataRaw: hooked.initDataRaw,
   };
 }
 
@@ -58,8 +72,22 @@ function useResolvedDealProps(props: Props) {
 export function SwapDealActionRow({ density = "compact", ...props }: Props) {
   const colors = useColors();
   const { t, tf } = useAppStrings();
-  const { dllrAmount, buySymbol, dealSide, buttonNotice, buttonActive } =
-    useResolvedDealProps(props);
+  const {
+    dllrAmount,
+    buySymbol,
+    dealSide,
+    buttonNotice,
+    buttonActive,
+    walletKind,
+    senderAddress,
+    fromToken,
+    toToken,
+    fromAmount,
+    initDataRaw,
+  } = useResolvedDealProps(props);
+  const tonConnect = useTonConnectSession();
+  const [sending, setSending] = useState(false);
+  const [execNotice, setExecNotice] = useState<SwapDealButtonNotice | null>(null);
 
   const labelStyle = typographyFixedRow30Label;
   const buttonHeight = layout.bottomBar.undercoverButtonHeightPx;
@@ -81,18 +109,23 @@ export function SwapDealActionRow({ density = "compact", ...props }: Props) {
         })
       : dealShort;
 
+  const effectiveNotice = execNotice ?? buttonNotice;
   const noticeFull =
-    buttonNotice === "dllrFrozen"
+    effectiveNotice === "dllrFrozen"
       ? t("swap.action.dllrFrozen")
-      : buttonNotice === "noPool"
+      : effectiveNotice === "noPool"
         ? t("swap.action.noPool")
-        : buttonNotice === "noAmount"
+        : effectiveNotice === "noAmount"
           ? t("swap.action.noAmount")
-          : buttonNotice === "lowAmount"
+          : effectiveNotice === "lowAmount"
             ? t("swap.action.lowAmount")
-            : null;
+            : effectiveNotice === "noWallet"
+              ? t("swap.action.noWallet")
+              : effectiveNotice === "failed"
+                ? t("swap.action.failed")
+                : null;
   const noticeShort =
-    buttonNotice === "dllrFrozen"
+    effectiveNotice === "dllrFrozen"
       ? t("swap.action.dllrFrozenShort")
       : noticeFull;
   const hasNotice = noticeFull != null;
@@ -179,7 +212,52 @@ export function SwapDealActionRow({ density = "compact", ...props }: Props) {
     setShortNoticeWidth(0);
   }, [noticeFull, noticeShort]);
 
-  const buttonLabelColor = buttonActive ? colors.primary : colors.secondary;
+  const canPress = buttonActive && !sending;
+  const buttonLabelColor = canPress ? colors.primary : colors.secondary;
+
+  const onSwapPress = useCallback(() => {
+    if (!canPress) return;
+    setExecNotice(null);
+    setSending(true);
+    void (async () => {
+      try {
+        const result = await executeSwapOnWallet({
+          kind: walletKind,
+          senderAddress,
+          fromToken,
+          toToken,
+          fromAmount,
+          initDataRaw,
+          tonConnect,
+        });
+        if (!result.ok) {
+          if (result.error === "dllr_frozen") setExecNotice("dllrFrozen");
+          else if (result.error === "no_route" || result.error === "no_pool") setExecNotice("noPool");
+          else if (result.error === "wallet_required") setExecNotice("noWallet");
+          else setExecNotice("failed");
+          return;
+        }
+        bumpWalletBalanceRefresh();
+        scheduleWalletBalanceRefreshBurst([3_000, 12_000, 30_000]);
+      } catch (error) {
+        if (!isTonConnectUserRejection(error)) {
+          console.warn("[swap-execute] failed", formatTonConnectErrorMessage(error) ?? error);
+          setExecNotice("failed");
+        }
+      } finally {
+        setSending(false);
+      }
+    })();
+  }, [
+    canPress,
+    fromAmount,
+    fromToken,
+    initDataRaw,
+    senderAddress,
+    toToken,
+    tonConnect,
+    walletKind,
+  ]);
 
   const buttonInner = (
     <Text style={[labelStyle, { color: buttonLabelColor, textAlign: "center" }]} numberOfLines={1}>
@@ -256,11 +334,12 @@ export function SwapDealActionRow({ density = "compact", ...props }: Props) {
             </Text>
           </View>
         ) : null}
-        {buttonActive ? (
+        {canPress ? (
           <Pressable
             accessibilityRole="button"
             style={[buttonStyle, { marginLeft: hasNotice ? 0 : TEXT_TO_BUTTON_GAP_PX }]}
             onLayout={(event) => onButtonLayout(Math.round(event.nativeEvent.layout.width))}
+            onPress={onSwapPress}
           >
             {buttonInner}
           </Pressable>

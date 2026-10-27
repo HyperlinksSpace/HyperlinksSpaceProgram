@@ -1,3 +1,4 @@
+AI responce formatting on responce generation.
 Generate actual wallet on start
 Test https://program.hyperlinks.space/owner-deploy
 Messages lazy loading, fullscreen, on loading on tma
