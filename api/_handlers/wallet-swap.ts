@@ -9,7 +9,7 @@ import {
 } from "../../database/telegramAuth.js";
 import { getDefaultWalletByUsername } from "../../database/wallets.js";
 import { upsertUserFromTma } from "../../database/users.js";
-import { executeSwap } from "../../services/swap/executeSwap.js";
+import type { ExecuteSwapParams } from "../../services/swap/executeSwap.js";
 import { authByInitData } from "../wallet/_auth.js";
 import { getSessionTokenFromRequest } from "../_lib/session-auth.js";
 import { sha256Hex } from "../_lib/telegram-oidc.js";
@@ -175,7 +175,8 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
 
     const mnemonic = await unwrapMnemonicFromWalletRow(wallet);
     const rpc = tonRpc();
-    const result = await executeSwap({
+    const { executeSwap } = await import("../../services/swap/executeSwap.js");
+    const swapParams: ExecuteSwapParams = {
       fromToken,
       toToken,
       fromAmount,
@@ -184,7 +185,8 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       mnemonic,
       tonRpcUrl: rpc.url,
       tonRpcKey: rpc.key,
-    });
+    };
+    const result = await executeSwap(swapParams);
 
     appLog(LOG_TAG, result.success ? "swap_ok" : "swap_failed", {
       usernamePrefix: `${username.slice(0, 3)}***`,

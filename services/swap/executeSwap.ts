@@ -3,7 +3,7 @@ import { RoutingApi, type ApiTokenAddress } from "@swap-coffee/sdk";
 import {
   sendSwapCoffeeTransactions,
   type SwapCoffeeTxMessage,
-} from "../wallet/tonSwapSend";
+} from "../wallet/tonSwapSend.js";
 
 export type SwapExecuteToken = {
   address: string;

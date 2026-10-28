@@ -32,7 +32,6 @@ import walletEnvelopeProbeHandler from './_handlers/wallet-envelope-probe.js';
 import walletEnvelopeRoundtripHandler from './_handlers/wallet-envelope-roundtrip.js';
 import walletActivateHandler from './_handlers/wallet-activate.js';
 import walletSendHandler from './_handlers/wallet-send.js';
-import walletSwapHandler from './_handlers/wallet-swap.js';
 import walletMnemonicHandler from './_handlers/wallet-mnemonic.js';
 import profileDisplayNameHandler from './_handlers/profile-display-name.js';
 import {
@@ -134,7 +133,6 @@ const ROUTES: Record<string, ApiHandler> = {
   'wallet-envelope-roundtrip': walletEnvelopeRoundtripHandler as ApiHandler,
   'wallet-activate': walletActivateHandler as ApiHandler,
   'wallet-send': walletSendHandler as ApiHandler,
-  'wallet-swap': walletSwapHandler as ApiHandler,
   'wallet-mnemonic': walletMnemonicHandler as ApiHandler,
   'profile-display-name': profileDisplayNameHandler as ApiHandler,
   /** Public short paths from vercel.json rewrites (request URL may still show these segments). */
