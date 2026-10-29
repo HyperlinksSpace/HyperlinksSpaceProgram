@@ -1,14 +1,15 @@
 import { Image } from "expo-image";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
-import { SWAP_BUY_AMOUNT_TON } from "../../swap/fetchSwapAmount";
-import { formatSwapPrice, formatSwapTokenAmount } from "../../swap/swapChartFormat";
+import { formatSwapPrice } from "../../swap/swapChartFormat";
 import { navigateToSwapCurrencyPicker } from "../../swap/navigateToSwapCurrencyPicker";
-import { rotateSwapPair, useSwapPairState } from "../../swap/swapPairStore";
 import {
-  swapTokenDisplaySymbol,
-  swapUnitAmountSide,
-} from "../../swap/swapPairTypes";
+  rotateSwapPair,
+  setSwapBuyAmount,
+  setSwapSellAmount,
+  useSwapPairState,
+} from "../../swap/swapPairStore";
+import { swapTokenDisplaySymbol } from "../../swap/swapPairTypes";
 import {
   displayAmountTextProps,
   layout,
@@ -20,6 +21,7 @@ import {
 import { useResolvedPathname } from "../../useResolvedPathname";
 import { SmartGradientDivider } from "../smart/SmartGradientDivider";
 import { SwapActionRow } from "./SwapActionRow";
+import { SwapAmountInput } from "./SwapAmountInput";
 import { SwapRotateIcon, SwapSelectChevron } from "./SwapFormIcons";
 import { SwapSampleTokenStrip } from "./SwapSampleTokenStrip";
 import { swapDllrTokenImage, swapTonTokenImage } from "./swapFormAssets";
@@ -51,6 +53,16 @@ function tokenIconSource(token: {
   return null;
 }
 
+function swapAmountPlaceholder(
+  amount: string,
+  isQuoting: boolean,
+  isUserEditedSide: boolean,
+): string {
+  if (amount.trim()) return "0";
+  if (isQuoting && !isUserEditedSide) return "…";
+  return "0";
+}
+
 /**
  * Sell / max·rotate·wallet / Buy / insufficient-amount blocks below the chart (prev-main).
  */
@@ -64,25 +76,22 @@ export function SwapFormBelowChart({
   const router = useRouter();
   const pathname = useResolvedPathname();
   const { width: windowWidth } = useWindowDimensions();
-  const { sellToken, buyToken } = useSwapPairState();
+  const {
+    sellToken,
+    buyToken,
+    sellAmount,
+    buyAmount,
+    isQuoting,
+    quoteDirection,
+  } = useSwapPairState();
   const showSwapActionBlock =
     showActionBlock ?? windowWidth <= layout.authenticatedHome.secondBreakpoint;
-  // whatswap-style: keep "1" on the chart asset side; priced DLLR amount on the other.
-  const unitSide = swapUnitAmountSide(sellToken, buyToken);
-  const pricedAmount =
-    priceUsd != null ? priceUsd * SWAP_BUY_AMOUNT_TON : null;
 
   const openBuyCurrency = () =>
     navigateToSwapCurrencyPicker(router, "buy", windowWidth, pathname);
   const openSellCurrency = () =>
     navigateToSwapCurrencyPicker(router, "sell", windowWidth, pathname);
 
-  const unitAmountText = formatSwapTokenAmount(SWAP_BUY_AMOUNT_TON);
-  const pricedAmountText =
-    pricedAmount != null ? formatSwapTokenAmount(pricedAmount) : "…";
-  const sellAmountText = unitSide === "sell" ? unitAmountText : pricedAmountText;
-  const buyAmountText = unitSide === "buy" ? unitAmountText : pricedAmountText;
-  // Both sides of a DLLR pair share ~the same USD notional (asset unit × chart price).
   const pairUsdText =
     priceUsd != null ? `${formatSwapPrice(priceUsd)}$` : "…";
   const sellPriceText = pairUsdText;
@@ -93,6 +102,9 @@ export function SwapFormBelowChart({
   const sellLabel = swapTokenDisplaySymbol(sellToken).toLowerCase();
   const buyLabel = swapTokenDisplaySymbol(buyToken).toLowerCase();
   const buyNetworkLabel = swapTokenDisplaySymbol(buyToken);
+
+  const sellEdited = quoteDirection === "exact_in";
+  const buyEdited = quoteDirection === "exact_out";
 
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>
@@ -113,18 +125,19 @@ export function SwapFormBelowChart({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <Text
-            {...displayAmountTextProps}
-            style={[amountTextStyle, webNonEditableTextStyle, { color: colors.primary }]}
-          >
-            {sellAmountText}
-          </Text>
+          <SwapAmountInput
+            value={sellAmount}
+            onChangeValue={setSwapSellAmount}
+            placeholder={swapAmountPlaceholder(sellAmount, isQuoting, sellEdited)}
+            accessibilityLabel="Sell amount"
+          />
           <Pressable
             accessibilityRole="button"
             onPress={openSellCurrency}
-            style={{ flexDirection: "row", alignItems: "center" }}
+            style={{ flexDirection: "row", alignItems: "center", flexShrink: 0 }}
           >
             {sellIcon ? (
               <Image source={sellIcon} style={{ width: 20, height: 20 }} contentFit="contain" />
@@ -204,18 +217,19 @@ export function SwapFormBelowChart({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
           }}
         >
-          <Text
-            {...displayAmountTextProps}
-            style={[amountTextStyle, webNonEditableTextStyle, { color: colors.primary }]}
-          >
-            {buyAmountText}
-          </Text>
+          <SwapAmountInput
+            value={buyAmount}
+            onChangeValue={setSwapBuyAmount}
+            placeholder={swapAmountPlaceholder(buyAmount, isQuoting, buyEdited)}
+            accessibilityLabel="Buy amount"
+          />
           <Pressable
             accessibilityRole="button"
             onPress={openBuyCurrency}
-            style={{ flexDirection: "row", alignItems: "center" }}
+            style={{ flexDirection: "row", alignItems: "center", flexShrink: 0 }}
           >
             {buyIcon ? (
               <Image source={buyIcon} style={{ width: 20, height: 20 }} contentFit="contain" />

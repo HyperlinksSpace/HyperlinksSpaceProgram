@@ -1,9 +1,10 @@
 AI responce formatting on responce generation.
+Search in swap, amounts calculation
 Generate actual wallet on start
 Test https://program.hyperlinks.space/owner-deploy
 Messages lazy loading, fullscreen, on loading on tma
 Music interrupting
-no hsp 
+no hsp
 
 1. Owner > side car > sign in
 2. swp cfe

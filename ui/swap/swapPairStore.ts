@@ -159,31 +159,38 @@ export function selectSwapBuyTokenForDllr(token: SwapPairToken) {
 }
 
 export function rotateSwapPair() {
-  // whatswap rotation: swap tokens and move the fixed unit ("1") to the opposite side.
+  // whatswap rotation: swap tokens, move the chart-unit amount to the new unit side, re-quote.
   const nextSell = state.buyToken;
   const nextBuy = state.sellToken;
+  const prevUnitSide = swapUnitAmountSide(state.sellToken, state.buyToken);
+  const prevUnitRaw =
+    prevUnitSide === "sell"
+      ? state.sellAmount.trim()
+      : state.buyAmount.trim();
+  const unitAmount = prevUnitRaw || "1";
+
   const unitSide = swapUnitAmountSide(nextSell, nextBuy);
   if (unitSide === "buy") {
-    // Buying 1 chart asset for DLLR — quote exact-out of 1.
     setState({
       sellToken: nextSell,
       buyToken: nextBuy,
       sellAmount: "",
-      buyAmount: "1",
+      buyAmount: unitAmount,
       quoteDirection: "exact_out",
       lastQuotedBuyAmount: null,
       lastQuotedSellAmount: null,
+      quoteError: null,
     });
     return;
   }
-  // Selling 1 chart asset for DLLR — quote exact-in of 1.
   setState({
     sellToken: nextSell,
     buyToken: nextBuy,
-    sellAmount: "1",
+    sellAmount: unitAmount,
     buyAmount: "",
     quoteDirection: "exact_in",
     lastQuotedBuyAmount: null,
     lastQuotedSellAmount: null,
+    quoteError: null,
   });
 }

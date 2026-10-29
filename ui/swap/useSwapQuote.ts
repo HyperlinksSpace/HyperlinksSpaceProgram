@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { formatSwapQuoteAmount } from "./formatSwapQuoteAmount";
 import { buildSwapRouteQuote } from "./swapCoffeeRouting";
 import {
   getSwapPairState,
@@ -10,13 +11,6 @@ import {
 } from "./swapPairStore";
 
 const QUOTE_DEBOUNCE_MS = 350;
-
-function formatAmount(n: number): string {
-  if (!Number.isFinite(n)) return "";
-  if (n >= 1_000_000) return n.toFixed(2);
-  if (n >= 1) return n.toFixed(4).replace(/\.?0+$/, "");
-  return n.toFixed(6).replace(/\.?0+$/, "");
-}
 
 /**
  * Live Swap.Coffee quotes (whatswap `use-swap-calculation` port).
@@ -57,11 +51,11 @@ export function useSwapQuote(): void {
           if (id !== requestIdRef.current) return;
           const nextSell =
             snap.quoteDirection === "exact_out"
-              ? formatAmount(quote.inputAmount)
+              ? formatSwapQuoteAmount(quote.inputAmount)
               : snap.sellAmount;
           const nextBuy =
             snap.quoteDirection === "exact_in"
-              ? formatAmount(quote.outputAmount)
+              ? formatSwapQuoteAmount(quote.outputAmount)
               : snap.buyAmount;
           setSwapQuoteResult({
             sellAmount: nextSell,
