@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from "react";
 import { Image } from "expo-image";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
@@ -98,21 +99,47 @@ export function SwapFormBelowChart({
   const sellEdited = quoteDirection === "exact_in";
   const buyEdited = quoteDirection === "exact_out";
 
-  const resolvedSellAmount = (() => {
-    if (sellAmount.trim()) return sellAmount;
-    if (!sellEdited && lastQuotedSellAmount != null && Number.isFinite(lastQuotedSellAmount)) {
-      return formatSwapQuoteAmount(lastQuotedSellAmount);
-    }
-    return sellAmount;
-  })();
-
-  const resolvedBuyAmount = (() => {
-    if (buyAmount.trim()) return buyAmount;
+  const resolvedBuyAmount = useMemo(() => {
+    if (buyEdited && buyAmount.trim()) return buyAmount;
     if (!buyEdited && lastQuotedBuyAmount != null && Number.isFinite(lastQuotedBuyAmount)) {
       return formatSwapQuoteAmount(lastQuotedBuyAmount);
     }
+    if (buyAmount.trim()) return buyAmount;
     return buyAmount;
-  })();
+  }, [buyAmount, buyEdited, lastQuotedBuyAmount]);
+
+  const stableBuyDisplayRef = useRef("");
+  const stableSellDisplayRef = useRef("");
+
+  useEffect(() => {
+    stableBuyDisplayRef.current = "";
+    stableSellDisplayRef.current = "";
+  }, [sellToken.address, buyToken.address]);
+
+  if (resolvedBuyAmount.trim()) {
+    stableBuyDisplayRef.current = resolvedBuyAmount;
+  }
+  const buyFieldValue =
+    !buyEdited && !resolvedBuyAmount.trim() && stableBuyDisplayRef.current
+      ? stableBuyDisplayRef.current
+      : resolvedBuyAmount;
+
+  const resolvedSellAmount = useMemo(() => {
+    if (sellEdited && sellAmount.trim()) return sellAmount;
+    if (!sellEdited && lastQuotedSellAmount != null && Number.isFinite(lastQuotedSellAmount)) {
+      return formatSwapQuoteAmount(lastQuotedSellAmount);
+    }
+    if (sellAmount.trim()) return sellAmount;
+    return sellAmount;
+  }, [sellAmount, sellEdited, lastQuotedSellAmount]);
+
+  if (resolvedSellAmount.trim()) {
+    stableSellDisplayRef.current = resolvedSellAmount;
+  }
+  const sellFieldValue =
+    !sellEdited && !resolvedSellAmount.trim() && stableSellDisplayRef.current
+      ? stableSellDisplayRef.current
+      : resolvedSellAmount;
 
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>
@@ -137,7 +164,7 @@ export function SwapFormBelowChart({
           }}
         >
           <SwapAmountInput
-            value={resolvedSellAmount}
+            value={sellFieldValue}
             onChangeValue={setSwapSellAmount}
             placeholder="0"
             accessibilityLabel="Sell amount"
@@ -229,7 +256,7 @@ export function SwapFormBelowChart({
           }}
         >
           <SwapAmountInput
-            value={resolvedBuyAmount}
+            value={buyFieldValue}
             onChangeValue={setSwapBuyAmount}
             placeholder="0"
             accessibilityLabel="Buy amount"

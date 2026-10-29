@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 
 import type { SwapPairState } from "./swapPairStore";
 import { quoteLedgerDllrChartPair } from "./estimateDllrPairAmounts";
-import { formatSwapQuoteAmount } from "./formatSwapQuoteAmount";
 import {
   buildSwapRouteQuote,
   buildSwapRouteQuoteDllrAsUsdt,
@@ -31,32 +30,22 @@ function applyRouteQuoteToStore(
   isQuoting: boolean,
   error: string | null,
 ): boolean {
-  const nextSell =
-    snap.quoteDirection === "exact_out"
-      ? Number.isFinite(quote.inputAmount)
-        ? formatSwapQuoteAmount(quote.inputAmount)
-        : snap.sellAmount
-      : snap.sellAmount;
-  const nextBuy =
-    snap.quoteDirection === "exact_in"
-      ? Number.isFinite(quote.outputAmount)
-        ? formatSwapQuoteAmount(quote.outputAmount)
-        : snap.buyAmount
-      : snap.buyAmount;
-  const sellNumeric = Number.isFinite(quote.inputAmount)
-    ? quote.inputAmount
-    : snap.lastQuotedSellAmount;
-  const buyNumeric = Number.isFinite(quote.outputAmount)
-    ? quote.outputAmount
-    : snap.lastQuotedBuyAmount;
+  // Quote-driven side lives in lastQuoted*; basis-side strings stay user-owned.
+  const nextSell = snap.sellAmount;
+  const nextBuy = snap.buyAmount;
+  const sellNumeric =
+    snap.quoteDirection === "exact_out" && Number.isFinite(quote.inputAmount)
+      ? quote.inputAmount
+      : snap.lastQuotedSellAmount;
+  const buyNumeric =
+    snap.quoteDirection === "exact_in" && Number.isFinite(quote.outputAmount)
+      ? quote.outputAmount
+      : snap.lastQuotedBuyAmount;
   const numericsUnchanged =
     snap.lastQuotedSellAmount === sellNumeric &&
     snap.lastQuotedBuyAmount === buyNumeric;
-  const textUnchanged =
-    nextSell === snap.sellAmount && nextBuy === snap.buyAmount;
   if (
     numericsUnchanged &&
-    textUnchanged &&
     snap.isQuoting === isQuoting &&
     snap.quoteError === error
   ) {
@@ -73,6 +62,10 @@ function applyRouteQuoteToStore(
   return true;
 }
 
+function quoteBasisAmount(snap: SwapPairState): string {
+  return snap.basisField === "sell" ? snap.sellAmount : snap.buyAmount;
+}
+
 function quoteInputKey(snap: SwapPairState): string {
   return [
     snap.sellToken.address,
@@ -81,8 +74,7 @@ function quoteInputKey(snap: SwapPairState): string {
     snap.buyToken.isNative ? "1" : "0",
     snap.quoteDirection,
     snap.basisField,
-    snap.sellAmount,
-    snap.buyAmount,
+    quoteBasisAmount(snap),
   ].join("|");
 }
 
@@ -186,28 +178,29 @@ export function useSwapQuote(chartPriceUsdPerChartToken: number | null): void {
         })
           .then((quote) => {
             if (id !== requestIdRef.current) return;
-            applyRouteQuoteToStore(snap, quote, false, null);
+            applyRouteQuoteToStore(getSwapPairState(), quote, false, null);
           })
           .catch((err) => {
             if (id !== requestIdRef.current) return;
             const message =
               err instanceof Error ? err.message : "quote_failed";
+            const fresh = getSwapPairState();
             if (
               chartPriceUsdPerChartToken != null &&
               Number.isFinite(chartPriceUsdPerChartToken) &&
               chartPriceUsdPerChartToken > 0
             ) {
-              const chart = chartQuoteForSnap(snap, chartPriceUsdPerChartToken);
+              const chart = chartQuoteForSnap(fresh, chartPriceUsdPerChartToken);
               if (chart) {
-                applyRouteQuoteToStore(snap, chart, false, null);
+                applyRouteQuoteToStore(fresh, chart, false, null);
                 return;
               }
             }
             setSwapQuoteResult({
-              sellAmount: snap.sellAmount,
-              buyAmount: snap.buyAmount,
-              sellNumeric: null,
-              buyNumeric: null,
+              sellAmount: fresh.sellAmount,
+              buyAmount: fresh.buyAmount,
+              sellNumeric: fresh.lastQuotedSellAmount,
+              buyNumeric: fresh.lastQuotedBuyAmount,
               error: message,
               isQuoting: false,
             });
@@ -221,7 +214,7 @@ export function useSwapQuote(chartPriceUsdPerChartToken: number | null): void {
       if (!(amount > 0) || !Number.isFinite(amount)) {
         setSwapQuoteResult({
           sellAmount: snap.sellAmount,
-          buyAmount: snap.quoteDirection === "exact_in" ? "" : snap.buyAmount,
+          buyAmount: snap.buyAmount,
           sellNumeric: null,
           buyNumeric: null,
           error: null,
@@ -241,17 +234,18 @@ export function useSwapQuote(chartPriceUsdPerChartToken: number | null): void {
       })
         .then((quote) => {
           if (id !== requestIdRef.current) return;
-          applyRouteQuoteToStore(snap, quote, false, null);
+          applyRouteQuoteToStore(getSwapPairState(), quote, false, null);
         })
         .catch((err) => {
           if (id !== requestIdRef.current) return;
           const message =
             err instanceof Error ? err.message : "quote_failed";
+          const fresh = getSwapPairState();
           setSwapQuoteResult({
-            sellAmount: snap.sellAmount,
-            buyAmount: snap.quoteDirection === "exact_in" ? "" : snap.buyAmount,
-            sellNumeric: null,
-            buyNumeric: null,
+            sellAmount: fresh.sellAmount,
+            buyAmount: fresh.buyAmount,
+            sellNumeric: fresh.lastQuotedSellAmount,
+            buyNumeric: fresh.lastQuotedBuyAmount,
             error: message,
             isQuoting: false,
           });
@@ -272,10 +266,9 @@ export function useSwapQuote(chartPriceUsdPerChartToken: number | null): void {
     pair.buyToken.address,
     pair.sellToken.isNative,
     pair.buyToken.isNative,
-    pair.sellAmount,
-    pair.buyAmount,
     pair.quoteDirection,
     pair.basisField,
+    pair.basisField === "sell" ? pair.sellAmount : pair.buyAmount,
   ]);
 
   useEffect(() => subscribeSwapPair(() => {}), []);
