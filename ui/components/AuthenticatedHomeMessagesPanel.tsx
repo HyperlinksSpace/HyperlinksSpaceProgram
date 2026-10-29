@@ -865,6 +865,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const archiveRevealPendingRef = useRef(false);
   const chatsHaveArchiveRef = useRef(false);
   const archivePaintFetchStartedRef = useRef(false);
+  useEffect(() => {
+    chatsHaveArchiveRef.current = chats.some((row) => Boolean(row.in_archive));
+  }, [chats]);
   const [archiveScrollArmed, setArchiveScrollArmed] = useState(false);
   const archiveScrollArmedRef = useRef(false);
   /** Chat-list rows fetched while the voice dialog was open — apply on close. */
@@ -2767,9 +2770,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveRevealPendingRef.current = true;
     setArchiveEmptyConfirmed(false);
     setArchiveRevealRequested(true);
-    // Gateway may already be ready from an earlier reveal in this process —
-    // still open the folder this session; only skip the network sync.
-    if (chatListSync?.archiveListReady === true && chatsHaveArchiveRef.current) {
+    // Skip sync only when archived dialogs are already in client state (not a stale
+    // ready flag left over from a prior gateway session / list reseed).
+    if (sortedChats.some((row) => Boolean(row.in_archive))) {
       archiveRevealPendingRef.current = false;
       return;
     }
@@ -2777,9 +2780,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     void requestArchiveChats();
   }, [
     archiveOpen,
-    chatListSync?.archiveListReady,
     listSearchActive,
     requestArchiveChats,
+    sortedChats,
   ]);
 
   const handleOpenArchive = useCallback(() => {
@@ -2792,7 +2795,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveRevealPendingRef.current = true;
     setArchiveRevealRequested(true);
     setMessagesArchiveOpen(true);
-    if (chatListSync?.archiveListReady === true && chatsHaveArchiveRef.current) {
+    if (sortedChats.some((row) => Boolean(row.in_archive))) {
       archiveRevealPendingRef.current = false;
       return;
     }
@@ -2803,6 +2806,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveSortedChats.length,
     chatListSync?.archiveListReady,
     requestArchiveChats,
+    sortedChats,
   ]);
 
   useEffect(() => {
