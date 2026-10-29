@@ -1,7 +1,16 @@
 import { useEffect, useRef } from "react";
 
+import type { SwapPairState } from "./swapPairStore";
+import { quoteLedgerDllrChartPair } from "./estimateDllrPairAmounts";
 import { formatSwapQuoteAmount } from "./formatSwapQuoteAmount";
-import { buildSwapRouteQuote } from "./swapCoffeeRouting";
+import {
+  buildSwapRouteQuote,
+  buildSwapRouteQuoteDllrAsUsdt,
+} from "./swapCoffeeRouting";
+import {
+  isDllrSellPair,
+  pairUsesLedgerDllrChartQuote,
+} from "./swapPairTypes";
 import {
   getSwapPairState,
   setSwapQuoteResult,
@@ -12,20 +21,146 @@ import {
 
 const QUOTE_DEBOUNCE_MS = 350;
 
+function parseAmount(raw: string): number {
+  return Number(String(raw).replace(",", ".").trim());
+}
+
+function applyRouteQuoteToStore(
+  snap: SwapPairState,
+  quote: { inputAmount: number; outputAmount: number },
+  isQuoting: boolean,
+  error: string | null,
+) {
+  const nextSell =
+    snap.quoteDirection === "exact_out"
+      ? formatSwapQuoteAmount(quote.inputAmount)
+      : snap.sellAmount;
+  const nextBuy =
+    snap.quoteDirection === "exact_in"
+      ? formatSwapQuoteAmount(quote.outputAmount)
+      : snap.buyAmount;
+  setSwapQuoteResult({
+    sellAmount: nextSell,
+    buyAmount: nextBuy,
+    sellNumeric: quote.inputAmount,
+    buyNumeric: quote.outputAmount,
+    error,
+    isQuoting,
+  });
+}
+
+function chartQuoteForSnap(
+  snap: SwapPairState,
+  chartPriceUsdPerChartToken: number,
+): { inputAmount: number; outputAmount: number } | null {
+  const dllrOnSellSide = isDllrSellPair(snap.sellToken, snap.buyToken);
+  if (snap.quoteDirection === "exact_in") {
+    const sellInput = parseAmount(snap.sellAmount);
+    if (!(sellInput > 0)) return null;
+    return quoteLedgerDllrChartPair({
+      dllrOnSellSide,
+      direction: "exact_in",
+      sellAmount: sellInput,
+      buyAmount: 0,
+      chartPriceUsdPerChartToken,
+    });
+  }
+  const buyInput = parseAmount(snap.buyAmount);
+  if (!(buyInput > 0)) return null;
+  return quoteLedgerDllrChartPair({
+    dllrOnSellSide,
+    direction: "exact_out",
+    sellAmount: 0,
+    buyAmount: buyInput,
+    chartPriceUsdPerChartToken,
+  });
+}
+
 /**
- * Live Swap.Coffee quotes (whatswap `use-swap-calculation` port).
- * Debounces edits and fills the opposite amount field.
+ * Live quotes for the opposite amount field.
+ * Ledger DLLR uses Swap.Coffee USDT routes at 1:1; chart is instant fallback.
  */
-export function useSwapQuote(): void {
+export function useSwapQuote(chartPriceUsdPerChartToken: number | null): void {
   const pair = useSwapPairState();
   const requestIdRef = useRef(0);
 
   useEffect(() => {
     const run = () => {
       const snap = getSwapPairState();
+
+      if (pairUsesLedgerDllrChartQuote(snap.sellToken, snap.buyToken)) {
+        const direction = snap.quoteDirection;
+        const amount =
+          direction === "exact_out"
+            ? parseAmount(snap.buyAmount)
+            : parseAmount(snap.sellAmount);
+
+        if (!(amount > 0) || !Number.isFinite(amount)) {
+          setSwapQuoteResult({
+            sellAmount: snap.sellAmount,
+            buyAmount: snap.buyAmount,
+            sellNumeric: snap.lastQuotedSellAmount,
+            buyNumeric: snap.lastQuotedBuyAmount,
+            error: null,
+            isQuoting: false,
+          });
+          return;
+        }
+
+        if (
+          chartPriceUsdPerChartToken != null &&
+          Number.isFinite(chartPriceUsdPerChartToken) &&
+          chartPriceUsdPerChartToken > 0
+        ) {
+          const chart = chartQuoteForSnap(snap, chartPriceUsdPerChartToken);
+          if (chart) {
+            applyRouteQuoteToStore(snap, chart, true, null);
+          }
+        }
+
+        const id = ++requestIdRef.current;
+        setSwapQuoting(true);
+
+        void buildSwapRouteQuoteDllrAsUsdt({
+          sellToken: snap.sellToken,
+          buyToken: snap.buyToken,
+          amount,
+          direction,
+        })
+          .then((quote) => {
+            if (id !== requestIdRef.current) return;
+            applyRouteQuoteToStore(snap, quote, false, null);
+          })
+          .catch((err) => {
+            if (id !== requestIdRef.current) return;
+            const message =
+              err instanceof Error ? err.message : "quote_failed";
+            if (
+              chartPriceUsdPerChartToken != null &&
+              Number.isFinite(chartPriceUsdPerChartToken) &&
+              chartPriceUsdPerChartToken > 0
+            ) {
+              const chart = chartQuoteForSnap(snap, chartPriceUsdPerChartToken);
+              if (chart) {
+                applyRouteQuoteToStore(snap, chart, false, null);
+                return;
+              }
+            }
+            setSwapQuoteResult({
+              sellAmount: snap.sellAmount,
+              buyAmount: snap.buyAmount,
+              sellNumeric: null,
+              buyNumeric: null,
+              error: message,
+              isQuoting: false,
+            });
+          });
+        return;
+      }
+
       const raw =
         snap.quoteDirection === "exact_out" ? snap.buyAmount : snap.sellAmount;
-      const amount = Number(String(raw).replace(",", ".").trim());
+      const amount = parseAmount(raw);
       if (!(amount > 0) || !Number.isFinite(amount)) {
         setSwapQuoteResult({
           sellAmount: snap.sellAmount,
@@ -49,22 +184,7 @@ export function useSwapQuote(): void {
       })
         .then((quote) => {
           if (id !== requestIdRef.current) return;
-          const nextSell =
-            snap.quoteDirection === "exact_out"
-              ? formatSwapQuoteAmount(quote.inputAmount)
-              : snap.sellAmount;
-          const nextBuy =
-            snap.quoteDirection === "exact_in"
-              ? formatSwapQuoteAmount(quote.outputAmount)
-              : snap.buyAmount;
-          setSwapQuoteResult({
-            sellAmount: nextSell,
-            buyAmount: nextBuy,
-            sellNumeric: quote.inputAmount,
-            buyNumeric: quote.outputAmount,
-            error: null,
-            isQuoting: false,
-          });
+          applyRouteQuoteToStore(snap, quote, false, null);
         })
         .catch((err) => {
           if (id !== requestIdRef.current) return;
@@ -81,9 +201,16 @@ export function useSwapQuote(): void {
         });
     };
 
-    const timer = setTimeout(run, QUOTE_DEBOUNCE_MS);
+    const debounceMs = pairUsesLedgerDllrChartQuote(
+      pair.sellToken,
+      pair.buyToken,
+    )
+      ? 0
+      : QUOTE_DEBOUNCE_MS;
+    const timer = setTimeout(run, debounceMs);
     return () => clearTimeout(timer);
   }, [
+    chartPriceUsdPerChartToken,
     pair.sellToken.address,
     pair.buyToken.address,
     pair.sellToken.isNative,
@@ -91,8 +218,8 @@ export function useSwapQuote(): void {
     pair.sellAmount,
     pair.buyAmount,
     pair.quoteDirection,
+    pair.basisField,
   ]);
 
-  // Keep hook subscribed for external setSell/setBuy from other components.
   useEffect(() => subscribeSwapPair(() => {}), []);
 }

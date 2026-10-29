@@ -1,7 +1,9 @@
 import { RoutingApi, type ApiTokenAddress } from "@swap-coffee/sdk";
 
 import {
+  isDllrToken,
   isNativeTonToken,
+  SWAP_USDT_TOKEN,
   type SwapPairToken,
   type SwapQuoteDirection,
 } from "./swapPairTypes";
@@ -13,6 +15,11 @@ export function toApiTokenAddress(token: SwapPairToken): ApiTokenAddress {
     return { blockchain: "ton", address: "native" };
   }
   return { blockchain: "ton", address: token.address };
+}
+
+/** Ledger DLLR is quoted like USDT at 1:1 (frozen; display/route only). */
+export function usdtStandInForDllr(token: SwapPairToken): SwapPairToken {
+  return isDllrToken(token) ? SWAP_USDT_TOKEN : token;
 }
 
 export type SwapRouteQuote = {
@@ -82,6 +89,23 @@ export async function buildSwapRouteQuote(opts: {
     recommendedGas:
       typeof data.recommended_gas === "number" ? data.recommended_gas : null,
   };
+}
+
+/** Swap.Coffee route with each DLLR leg replaced by USDT (same size). */
+export async function buildSwapRouteQuoteDllrAsUsdt(opts: {
+  sellToken: SwapPairToken;
+  buyToken: SwapPairToken;
+  amount: number;
+  direction: SwapQuoteDirection;
+}): Promise<SwapRouteQuote> {
+  const sellToken = usdtStandInForDllr(opts.sellToken);
+  const buyToken = usdtStandInForDllr(opts.buyToken);
+  return buildSwapRouteQuote({
+    sellToken,
+    buyToken,
+    amount: opts.amount,
+    direction: opts.direction,
+  });
 }
 
 export { routingApi as swapCoffeeRoutingApi };

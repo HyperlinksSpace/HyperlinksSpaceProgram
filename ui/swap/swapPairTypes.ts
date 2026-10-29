@@ -80,6 +80,29 @@ export function isDllrToken(token: SwapPairToken | null | undefined): boolean {
   return token.symbol.trim().toUpperCase() === "DLLR";
 }
 
+/** Sell ledger DLLR for a non-DLLR buy token (default swap form). */
+export function isDllrSellPair(
+  sellToken: SwapPairToken,
+  buyToken: SwapPairToken,
+): boolean {
+  return isDllrToken(sellToken) && !isDllrToken(buyToken);
+}
+
+/** Chart asset on sell, ledger DLLR on buy (after rotate). */
+export function isDllrBuyPair(
+  sellToken: SwapPairToken,
+  buyToken: SwapPairToken,
+): boolean {
+  return !isDllrToken(sellToken) && isDllrToken(buyToken);
+}
+
+export function pairUsesLedgerDllrChartQuote(
+  sellToken: SwapPairToken,
+  buyToken: SwapPairToken,
+): boolean {
+  return isDllrSellPair(sellToken, buyToken) || isDllrBuyPair(sellToken, buyToken);
+}
+
 /**
  * Which form side holds the fixed 1-unit of the priced (non-DLLR) asset —
  * same basis-field rule as whatswap rotation (even: send/buy asset, odd: opposite).

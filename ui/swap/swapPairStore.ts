@@ -2,9 +2,14 @@ import { useSyncExternalStore } from "react";
 
 import type { SwapCurrencySide } from "./swapCurrencyPicker";
 import {
+  SWAP_DEFAULT_DLLR_SELL_AMOUNT,
+  type SwapBasisField,
+} from "./estimateDllrPairAmounts";
+import { computeSwapPairAfterRotate } from "./swapRotateBasis";
+import {
   SWAP_DLLR_TOKEN,
   SWAP_GRAM_TOKEN,
-  swapUnitAmountSide,
+  isDllrSellPair,
   type SwapPairToken,
   type SwapQuoteDirection,
 } from "./swapPairTypes";
@@ -16,6 +21,10 @@ export type SwapPairState = {
   buyAmount: string;
   /** Which field the user last edited. */
   quoteDirection: SwapQuoteDirection;
+  /** Which row holds the basis amount (whatswap basisFieldRef). */
+  basisField: SwapBasisField;
+  /** Preserved basis amount moved on rotate (whatswap originalBasisValueRef). */
+  basisValue: string;
   /** Last successful route meta for the action row. */
   lastQuotedSellAmount: number | null;
   lastQuotedBuyAmount: number | null;
@@ -28,14 +37,33 @@ const listeners = new Set<() => void>();
 let state: SwapPairState = {
   sellToken: SWAP_DLLR_TOKEN,
   buyToken: SWAP_GRAM_TOKEN,
-  sellAmount: "",
-  buyAmount: "1",
-  quoteDirection: "exact_out",
+  sellAmount: SWAP_DEFAULT_DLLR_SELL_AMOUNT,
+  buyAmount: "",
+  quoteDirection: "exact_in",
+  basisField: "sell",
+  basisValue: SWAP_DEFAULT_DLLR_SELL_AMOUNT,
   lastQuotedSellAmount: null,
   lastQuotedBuyAmount: null,
   quoteError: null,
   isQuoting: false,
 };
+
+function dllrSellBaselinePatch(
+  sellToken: SwapPairToken,
+  buyToken: SwapPairToken,
+): Partial<SwapPairState> {
+  if (!isDllrSellPair(sellToken, buyToken)) return {};
+  return {
+    sellAmount: SWAP_DEFAULT_DLLR_SELL_AMOUNT,
+    buyAmount: "",
+    quoteDirection: "exact_in",
+    basisField: "sell",
+    basisValue: SWAP_DEFAULT_DLLR_SELL_AMOUNT,
+    lastQuotedSellAmount: null,
+    lastQuotedBuyAmount: null,
+    quoteError: null,
+  };
+}
 
 function emit() {
   for (const listener of listeners) listener();
@@ -62,16 +90,22 @@ export function useSwapPairState(): SwapPairState {
 }
 
 export function setSwapSellAmount(amount: string) {
+  const trimmed = amount.trim();
   setState({
     sellAmount: amount,
     quoteDirection: "exact_in",
+    basisField: "sell",
+    ...(trimmed ? { basisValue: trimmed } : {}),
   });
 }
 
 export function setSwapBuyAmount(amount: string) {
+  const trimmed = amount.trim();
   setState({
     buyAmount: amount,
     quoteDirection: "exact_out",
+    basisField: "buy",
+    ...(trimmed ? { basisValue: trimmed } : {}),
   });
 }
 
@@ -104,18 +138,20 @@ export function setSwapTokenForSide(side: SwapCurrencySide, token: SwapPairToken
       token.address.toLowerCase() === state.buyToken.address.toLowerCase() &&
       Boolean(token.isNative) === Boolean(state.buyToken.isNative);
     if (sameAsBuy) {
+      const sellToken = token;
+      const buyToken = state.sellToken;
       setState({
-        sellToken: token,
-        buyToken: state.sellToken,
-        buyAmount: "",
-        quoteDirection: "exact_in",
+        sellToken,
+        buyToken,
+        ...dllrSellBaselinePatch(sellToken, buyToken),
       });
       return;
     }
+    const sellToken = token;
+    const buyToken = state.buyToken;
     setState({
-      sellToken: token,
-      buyAmount: "",
-      quoteDirection: "exact_in",
+      sellToken,
+      ...dllrSellBaselinePatch(sellToken, buyToken),
     });
     return;
   }
@@ -123,18 +159,20 @@ export function setSwapTokenForSide(side: SwapCurrencySide, token: SwapPairToken
     token.address.toLowerCase() === state.sellToken.address.toLowerCase() &&
     Boolean(token.isNative) === Boolean(state.sellToken.isNative);
   if (sameAsSell) {
+    const buyToken = token;
+    const sellToken = state.buyToken;
     setState({
-      buyToken: token,
-      sellToken: state.buyToken,
-      buyAmount: "",
-      quoteDirection: "exact_in",
+      buyToken,
+      sellToken,
+      ...dllrSellBaselinePatch(sellToken, buyToken),
     });
     return;
   }
+  const buyToken = token;
+  const sellToken = state.sellToken;
   setState({
-    buyToken: token,
-    buyAmount: "",
-    quoteDirection: "exact_in",
+    buyToken,
+    ...dllrSellBaselinePatch(sellToken, buyToken),
   });
 }
 
@@ -146,51 +184,17 @@ export function selectSwapBuyTokenForDllr(token: SwapPairToken) {
   const isDllr =
     token.address.toLowerCase() === SWAP_DLLR_TOKEN.address.toLowerCase() ||
     token.symbol.trim().toUpperCase() === "DLLR";
+  const sellToken = SWAP_DLLR_TOKEN;
+  const buyToken = isDllr ? SWAP_GRAM_TOKEN : token;
   setState({
-    sellToken: SWAP_DLLR_TOKEN,
-    buyToken: isDllr ? SWAP_GRAM_TOKEN : token,
-    sellAmount: "",
-    buyAmount: "1",
-    quoteDirection: "exact_out",
-    lastQuotedBuyAmount: null,
-    lastQuotedSellAmount: null,
-    quoteError: null,
+    sellToken,
+    buyToken,
+    ...dllrSellBaselinePatch(sellToken, buyToken),
   });
 }
 
+/** whatswap rotate: basis value moves Sell ↔ Buy; opposite side is re-quoted. */
 export function rotateSwapPair() {
-  // whatswap rotation: swap tokens, move the chart-unit amount to the new unit side, re-quote.
-  const nextSell = state.buyToken;
-  const nextBuy = state.sellToken;
-  const prevUnitSide = swapUnitAmountSide(state.sellToken, state.buyToken);
-  const prevUnitRaw =
-    prevUnitSide === "sell"
-      ? state.sellAmount.trim()
-      : state.buyAmount.trim();
-  const unitAmount = prevUnitRaw || "1";
-
-  const unitSide = swapUnitAmountSide(nextSell, nextBuy);
-  if (unitSide === "buy") {
-    setState({
-      sellToken: nextSell,
-      buyToken: nextBuy,
-      sellAmount: "",
-      buyAmount: unitAmount,
-      quoteDirection: "exact_out",
-      lastQuotedBuyAmount: null,
-      lastQuotedSellAmount: null,
-      quoteError: null,
-    });
-    return;
-  }
-  setState({
-    sellToken: nextSell,
-    buyToken: nextBuy,
-    sellAmount: unitAmount,
-    buyAmount: "",
-    quoteDirection: "exact_in",
-    lastQuotedBuyAmount: null,
-    lastQuotedSellAmount: null,
-    quoteError: null,
-  });
+  const next = computeSwapPairAfterRotate(state);
+  setState(next);
 }

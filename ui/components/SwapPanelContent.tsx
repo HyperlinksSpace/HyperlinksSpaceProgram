@@ -35,7 +35,6 @@ export function SwapPanelContent() {
   const pickerMode = useSwapCurrencyPicker();
   const swapFormVisible = pickerMode == null;
   const { sellToken, buyToken } = useSwapPairState();
-  useSwapQuote();
   const chartToken = useMemo(
     () => swapChartTokenForPair(sellToken, buyToken),
     [buyToken, sellToken],
@@ -58,6 +57,8 @@ export function SwapPanelContent() {
     enabled: swapFormVisible,
     deferInitialLoad: true,
   });
+
+  useSwapQuote(effectivePriceUsd);
 
   useEffect(() => {
     swapChartLog("panel_pair", {

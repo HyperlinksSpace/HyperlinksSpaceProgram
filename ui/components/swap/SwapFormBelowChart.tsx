@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { useRouter } from "expo-router";
 import { formatSwapPrice } from "../../swap/swapChartFormat";
+import { formatSwapQuoteAmount } from "../../swap/formatSwapQuoteAmount";
 import { navigateToSwapCurrencyPicker } from "../../swap/navigateToSwapCurrencyPicker";
 import {
   rotateSwapPair,
@@ -83,6 +84,8 @@ export function SwapFormBelowChart({
     buyAmount,
     isQuoting,
     quoteDirection,
+    lastQuotedSellAmount,
+    lastQuotedBuyAmount,
   } = useSwapPairState();
   const showSwapActionBlock =
     showActionBlock ?? windowWidth <= layout.authenticatedHome.secondBreakpoint;
@@ -105,6 +108,22 @@ export function SwapFormBelowChart({
 
   const sellEdited = quoteDirection === "exact_in";
   const buyEdited = quoteDirection === "exact_out";
+
+  const resolvedSellAmount = (() => {
+    if (sellAmount.trim()) return sellAmount;
+    if (!sellEdited && lastQuotedSellAmount != null && Number.isFinite(lastQuotedSellAmount)) {
+      return formatSwapQuoteAmount(lastQuotedSellAmount);
+    }
+    return sellAmount;
+  })();
+
+  const resolvedBuyAmount = (() => {
+    if (buyAmount.trim()) return buyAmount;
+    if (!buyEdited && lastQuotedBuyAmount != null && Number.isFinite(lastQuotedBuyAmount)) {
+      return formatSwapQuoteAmount(lastQuotedBuyAmount);
+    }
+    return buyAmount;
+  })();
 
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>
@@ -129,9 +148,9 @@ export function SwapFormBelowChart({
           }}
         >
           <SwapAmountInput
-            value={sellAmount}
+            value={resolvedSellAmount}
             onChangeValue={setSwapSellAmount}
-            placeholder={swapAmountPlaceholder(sellAmount, isQuoting, sellEdited)}
+            placeholder={swapAmountPlaceholder(resolvedSellAmount, isQuoting, sellEdited)}
             accessibilityLabel="Sell amount"
           />
           <Pressable
@@ -221,9 +240,9 @@ export function SwapFormBelowChart({
           }}
         >
           <SwapAmountInput
-            value={buyAmount}
+            value={resolvedBuyAmount}
             onChangeValue={setSwapBuyAmount}
-            placeholder={swapAmountPlaceholder(buyAmount, isQuoting, buyEdited)}
+            placeholder={swapAmountPlaceholder(resolvedBuyAmount, isQuoting, buyEdited)}
             accessibilityLabel="Buy amount"
           />
           <Pressable
