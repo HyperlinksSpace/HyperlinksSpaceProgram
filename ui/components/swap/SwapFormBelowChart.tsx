@@ -119,10 +119,6 @@ export function SwapFormBelowChart({
   if (resolvedBuyAmount.trim()) {
     stableBuyDisplayRef.current = resolvedBuyAmount;
   }
-  const buyFieldValue =
-    !buyEdited && !resolvedBuyAmount.trim() && stableBuyDisplayRef.current
-      ? stableBuyDisplayRef.current
-      : resolvedBuyAmount;
 
   const resolvedSellAmount = useMemo(() => {
     if (sellEdited && sellAmount.trim()) return sellAmount;
@@ -136,10 +132,17 @@ export function SwapFormBelowChart({
   if (resolvedSellAmount.trim()) {
     stableSellDisplayRef.current = resolvedSellAmount;
   }
-  const sellFieldValue =
-    !sellEdited && !resolvedSellAmount.trim() && stableSellDisplayRef.current
+  const sellFieldValue = sellEdited
+    ? sellAmount
+    : !resolvedSellAmount.trim() && stableSellDisplayRef.current
       ? stableSellDisplayRef.current
       : resolvedSellAmount;
+
+  const buyFieldValue = buyEdited
+    ? buyAmount
+    : !resolvedBuyAmount.trim() && stableBuyDisplayRef.current
+      ? stableBuyDisplayRef.current
+      : resolvedBuyAmount;
 
   return (
     <View style={{ width: "100%", alignSelf: "stretch" }}>

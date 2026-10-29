@@ -127,6 +127,21 @@ export function setSwapQuoteResult(opts: {
   });
 }
 
+/** Route/chart updates — never overwrite user-typed Sell/Buy strings. */
+export function setSwapQuoteNumerics(opts: {
+  sellNumeric: number | null;
+  buyNumeric: number | null;
+  error: string | null;
+  isQuoting: boolean;
+}) {
+  setState({
+    lastQuotedSellAmount: opts.sellNumeric,
+    lastQuotedBuyAmount: opts.buyNumeric,
+    quoteError: opts.error,
+    isQuoting: opts.isQuoting,
+  });
+}
+
 export function setSwapQuoting(isQuoting: boolean) {
   if (state.isQuoting === isQuoting) return;
   setState({ isQuoting });
