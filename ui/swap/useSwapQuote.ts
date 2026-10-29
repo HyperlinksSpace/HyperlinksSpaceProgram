@@ -33,15 +33,25 @@ function applyRouteQuoteToStore(
 ): boolean {
   const nextSell =
     snap.quoteDirection === "exact_out"
-      ? formatSwapQuoteAmount(quote.inputAmount)
+      ? Number.isFinite(quote.inputAmount)
+        ? formatSwapQuoteAmount(quote.inputAmount)
+        : snap.sellAmount
       : snap.sellAmount;
   const nextBuy =
     snap.quoteDirection === "exact_in"
-      ? formatSwapQuoteAmount(quote.outputAmount)
+      ? Number.isFinite(quote.outputAmount)
+        ? formatSwapQuoteAmount(quote.outputAmount)
+        : snap.buyAmount
       : snap.buyAmount;
+  const sellNumeric = Number.isFinite(quote.inputAmount)
+    ? quote.inputAmount
+    : snap.lastQuotedSellAmount;
+  const buyNumeric = Number.isFinite(quote.outputAmount)
+    ? quote.outputAmount
+    : snap.lastQuotedBuyAmount;
   const numericsUnchanged =
-    snap.lastQuotedSellAmount === quote.inputAmount &&
-    snap.lastQuotedBuyAmount === quote.outputAmount;
+    snap.lastQuotedSellAmount === sellNumeric &&
+    snap.lastQuotedBuyAmount === buyNumeric;
   const textUnchanged =
     nextSell === snap.sellAmount && nextBuy === snap.buyAmount;
   if (
@@ -55,8 +65,8 @@ function applyRouteQuoteToStore(
   setSwapQuoteResult({
     sellAmount: nextSell,
     buyAmount: nextBuy,
-    sellNumeric: quote.inputAmount,
-    buyNumeric: quote.outputAmount,
+    sellNumeric,
+    buyNumeric,
     error,
     isQuoting,
   });
@@ -81,26 +91,33 @@ function chartQuoteForSnap(
   chartPriceUsdPerChartToken: number,
 ): { inputAmount: number; outputAmount: number } | null {
   const dllrOnSellSide = isDllrSellPair(snap.sellToken, snap.buyToken);
+  let leg: { sellAmount: number; buyAmount: number } | null;
   if (snap.quoteDirection === "exact_in") {
     const sellInput = parseAmount(snap.sellAmount);
     if (!(sellInput > 0)) return null;
-    return quoteLedgerDllrChartPair({
+    leg = quoteLedgerDllrChartPair({
       dllrOnSellSide,
       direction: "exact_in",
       sellAmount: sellInput,
       buyAmount: 0,
       chartPriceUsdPerChartToken,
     });
+  } else {
+    const buyInput = parseAmount(snap.buyAmount);
+    if (!(buyInput > 0)) return null;
+    leg = quoteLedgerDllrChartPair({
+      dllrOnSellSide,
+      direction: "exact_out",
+      sellAmount: 0,
+      buyAmount: buyInput,
+      chartPriceUsdPerChartToken,
+    });
   }
-  const buyInput = parseAmount(snap.buyAmount);
-  if (!(buyInput > 0)) return null;
-  return quoteLedgerDllrChartPair({
-    dllrOnSellSide,
-    direction: "exact_out",
-    sellAmount: 0,
-    buyAmount: buyInput,
-    chartPriceUsdPerChartToken,
-  });
+  if (!leg) return null;
+  return {
+    inputAmount: leg.sellAmount,
+    outputAmount: leg.buyAmount,
+  };
 }
 
 /**

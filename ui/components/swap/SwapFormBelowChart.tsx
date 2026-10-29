@@ -54,16 +54,6 @@ function tokenIconSource(token: {
   return null;
 }
 
-function swapAmountPlaceholder(
-  amount: string,
-  isQuoting: boolean,
-  isUserEditedSide: boolean,
-): string {
-  if (amount.trim()) return "0";
-  if (isQuoting && !isUserEditedSide) return "…";
-  return "0";
-}
-
 /**
  * Sell / max·rotate·wallet / Buy / insufficient-amount blocks below the chart (prev-main).
  */
@@ -82,7 +72,6 @@ export function SwapFormBelowChart({
     buyToken,
     sellAmount,
     buyAmount,
-    isQuoting,
     quoteDirection,
     lastQuotedSellAmount,
     lastQuotedBuyAmount,
@@ -150,7 +139,7 @@ export function SwapFormBelowChart({
           <SwapAmountInput
             value={resolvedSellAmount}
             onChangeValue={setSwapSellAmount}
-            placeholder={swapAmountPlaceholder(resolvedSellAmount, isQuoting, sellEdited)}
+            placeholder="0"
             accessibilityLabel="Sell amount"
           />
           <Pressable
@@ -242,7 +231,7 @@ export function SwapFormBelowChart({
           <SwapAmountInput
             value={resolvedBuyAmount}
             onChangeValue={setSwapBuyAmount}
-            placeholder={swapAmountPlaceholder(resolvedBuyAmount, isQuoting, buyEdited)}
+            placeholder="0"
             accessibilityLabel="Buy amount"
           />
           <Pressable
