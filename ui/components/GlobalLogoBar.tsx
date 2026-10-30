@@ -23,6 +23,12 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
+import {
+  computeGlobalLogoBarBlockHeight,
+  resolveGlobalLogoBarVariant,
+  shouldShowGlobalLogoBar,
+  type GlobalLogoBarVariant,
+} from "./globalLogoBarLayout";
 
 const LOGO_HEIGHT = 32;
 /** Welcome header glyph height — matches `assets/hslogo*.svg` (94×31). */
@@ -56,7 +62,7 @@ function useLogoTopOffset(
   }, [safeAreaInsetTop, contentSafeAreaInsetTop, contentGlyphHeight]);
 }
 
-type LogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
+type LogoBarVariant = GlobalLogoBarVariant;
 
 function resolveLogoBarVariant(
   isWelcomeLayout: boolean,
@@ -64,22 +70,12 @@ function resolveLogoBarVariant(
   mergedImmersiveFullscreen: boolean,
   isTelegramMiniAppDesktop: boolean,
 ): LogoBarVariant {
-  if (!isWelcomeLayout) return "default";
-
-  // Mobile TMA: never the marketing row (wordmark + About); logo-only — default or immersive.
-  if (isInTelegram && !isTelegramMiniAppDesktop) {
-    const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
-    return immersiveWelcome ? "welcomeImmersiveTma" : "default";
-  }
-
-  const immersiveWelcome = showGlobalLogoBarOnWelcomeTma(isInTelegram, mergedImmersiveFullscreen);
-  if (isInTelegram && immersiveWelcome) {
-    return "welcomeImmersiveTma";
-  }
-  if (Platform.OS === "web" && (!isInTelegram || !immersiveWelcome)) {
-    return "welcomeMarketing";
-  }
-  return "default";
+  return resolveGlobalLogoBarVariant(
+    isWelcomeLayout,
+    isInTelegram,
+    mergedImmersiveFullscreen,
+    isTelegramMiniAppDesktop,
+  );
 }
 
 function WelcomeMarketingBarContent({
@@ -236,26 +232,26 @@ export function GlobalLogoBar() {
    * Flutter-style offset adds a second band of empty space above the bar.
    */
   const isDesktopTma = isInTelegram && isTelegramMiniAppDesktop;
-  const logoBarTopOffset = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
 
-  const belowLogoPad = BOTTOM_PADDING;
-  const topPadGlyph = logoBarTopOffset;
-  const blockHeight = topPadGlyph + headerContentHeight + belowLogoPad;
+  const blockHeight = computeGlobalLogoBarBlockHeight({
+    variant,
+    isInTelegram,
+    isTelegramMiniAppDesktop,
+    isNarrowHeader,
+    safeAreaInsetTop,
+    contentSafeAreaInsetTop,
+  });
+  const topPadGlyph = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
 
-  /**
-   * Signed-in home: logo-only bar in TMA only when **immersive** fullscreen (desktop and mobile).
-   * Expanded-without-fullscreen / browser: no logo bar on home.
-   * Browser welcome (`/` signed out) keeps the marketing row via the web branch above.
-   */
-  const shouldShow = useMemo(() => {
-    if (isWelcomeLayout && Platform.OS === "web") {
-      return true;
-    }
-    if (!isInTelegram) {
-      return false;
-    }
-    return showGlobalLogoBarOnWelcomeTma(isInTelegram, stableWelcomeImmersiveFullscreen);
-  }, [isInTelegram, stableWelcomeImmersiveFullscreen, isWelcomeLayout]);
+  const shouldShow = useMemo(
+    () =>
+      shouldShowGlobalLogoBar({
+        isWelcomeLayout,
+        isInTelegram,
+        stableWelcomeImmersiveFullscreen,
+      }),
+    [isInTelegram, isWelcomeLayout, stableWelcomeImmersiveFullscreen],
+  );
 
   const onPressLogoHome = () => {
     if (Platform.OS !== "web") {
@@ -312,7 +308,7 @@ export function GlobalLogoBar() {
           isDesktopTmaImmersiveWelcome && styles.innerAlignStart,
           {
             paddingTop: topPadGlyph,
-            paddingBottom: belowLogoPad,
+            paddingBottom: BOTTOM_PADDING,
             paddingHorizontal: layout.contentSideInsetPx,
           },
         ]}

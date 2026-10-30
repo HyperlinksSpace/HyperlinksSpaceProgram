@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
@@ -202,6 +202,11 @@ export function TelegramConnectSheet() {
   const showMethods = !showCode && !showPassword && !showSuccess && connectAuthState !== "failed";
   const compactStep = showCode || showPassword || showSuccess;
 
+  const sheetMinSize = useMemo(
+    () => (compactStep ? { width: 300, height: 180 } : { width: 300, height: 480 }),
+    [compactStep],
+  );
+
   const phoneErrorText =
     phoneInvalid || connectError === "invalid_phone_number"
       ? t("messages.connectErrorInvalidPhone")
@@ -230,7 +235,7 @@ export function TelegramConnectSheet() {
       title={sheetTitle}
       sizeKind="connect"
       fitContentHeight={compactStep}
-      minSize={compactStep ? { width: 300, height: 180 } : { width: 300, height: 480 }}
+      minSize={sheetMinSize}
       sizeStorageKey={
         compactStep ? "hsp.telegramConnectSheet.compact.size.v1" : "hsp.telegramConnectSheet.size.v2"
       }

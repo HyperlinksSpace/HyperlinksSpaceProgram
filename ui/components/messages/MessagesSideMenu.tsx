@@ -85,6 +85,7 @@ import {
   type MessagesMenuDialogKind,
 } from "./MessagesMenuDialogs";
 import { prefetchTelegramCustomEmoji } from "./fetchTelegramEmojiBytes";
+import { useGlobalLogoBarBottomInsetPx } from "../globalLogoBarLayout";
 
 const SIDE_MENU_WIDTH_PX = 300;
 const SIDE_MENU_MIN_Z = FLOATING_SURFACE_BASE_Z + 10;
@@ -280,6 +281,8 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
   const { height: windowHeight } = useWindowDimensions();
   const musicSnap = useSyncExternalStore(subscribeMusicPlayer, getMusicPlayer, getMusicPlayer);
   const musicTopInset = musicSnap.visible ? MUSIC_CONTROL_BAR_HEIGHT_PX : 0;
+  const logoBarBottomInset = useGlobalLogoBarBottomInsetPx();
+  const panelTopInset = musicTopInset + logoBarBottomInset;
   const telegramTotalUnread = useSyncExternalStore(
     subscribeTelegramTotalUnread,
     getTelegramTotalUnread,
@@ -657,7 +660,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
     );
   }
 
-  const panelHeight = Math.max(0, windowHeight - musicTopInset);
+  const panelHeight = Math.max(0, windowHeight - panelTopInset);
   const translateX = drawerOpen ? 0 : -SIDE_MENU_WIDTH_PX;
 
   const drawer = (
@@ -666,7 +669,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
       style={{
         position: Platform.OS === "web" ? ("fixed" as unknown as "absolute") : "absolute",
         left: 0,
-        top: musicTopInset,
+        top: panelTopInset,
         right: 0,
         height: panelHeight,
         zIndex: stackZ,

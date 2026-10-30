@@ -431,7 +431,24 @@ export function FloatingDialogShell({
   const sheetOffsetRef = useRef(sheetOffset);
   sheetOffsetRef.current = sheetOffset;
 
+  const clampSizeRef = useRef(clampSize);
+  clampSizeRef.current = clampSize;
+  const clampOffsetRef = useRef(clampOffset);
+  clampOffsetRef.current = clampOffset;
+  const defaultSizeRef = useRef(defaultSize);
+  defaultSizeRef.current = defaultSize;
+  const safeCenterOffsetRef = useRef(safeCenterOffset);
+  safeCenterOffsetRef.current = safeCenterOffset;
+
+  // Open / storage-key / fit-mode only — do not depend on clampSize (recreated when minSize
+  // object identity changes) or defaultSize (window resize), or connect polling re-renders
+  // re-enter intrinsic measure and remount dialog inputs (e.g. Telegram 2FA password).
   useEffect(() => {
+    const clampSizeNow = clampSizeRef.current;
+    const clampOffsetNow = clampOffsetRef.current;
+    const defaultSizeNow = defaultSizeRef.current;
+    const safeCenterNow = safeCenterOffsetRef.current;
+
     if (!visible) {
       setContentSizing(false);
       return;
@@ -439,34 +456,25 @@ export function FloatingDialogShell({
     if (sizeStorageKey) {
       const stored = readFloatingDialogStoredSize(sizeStorageKey);
       if (stored) {
-        setSheetSize(clampSize(stored));
+        setSheetSize(clampSizeNow(stored));
         setContentSizing(false);
       } else {
-        setSheetSize(clampSize(defaultSize));
+        setSheetSize(clampSizeNow(defaultSizeNow));
         setContentSizing(fitContentHeight);
       }
     } else {
-      setSheetSize(clampSize(defaultSize));
+      setSheetSize(clampSizeNow(defaultSizeNow));
       setContentSizing(fitContentHeight);
     }
     if (offsetStorageKey) {
       const storedOffset = readFloatingDialogStoredOffset(offsetStorageKey);
       setSheetOffset(
-        clampOffset(storedOffset ?? safeCenterOffset, sheetSizeRef.current),
+        clampOffsetNow(storedOffset ?? safeCenterNow, sheetSizeRef.current),
       );
     } else {
-      setSheetOffset(safeCenterOffset);
+      setSheetOffset(safeCenterNow);
     }
-  }, [
-    clampOffset,
-    clampSize,
-    defaultSize,
-    fitContentHeight,
-    offsetStorageKey,
-    safeCenterOffset,
-    sizeStorageKey,
-    visible,
-  ]);
+  }, [fitContentHeight, offsetStorageKey, sizeStorageKey, visible]);
 
   // Remeasure after async content settles (profile fields, etc.).
   useEffect(() => {
