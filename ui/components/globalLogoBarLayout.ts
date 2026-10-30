@@ -20,6 +20,19 @@ const BROWSER_FALLBACK_TOP_PADDING = 30;
 
 export type GlobalLogoBarVariant = "default" | "welcomeMarketing" | "welcomeImmersiveTma";
 
+/** TMA immersive fullscreen on desktop / wide — not the compact phone glyph header. */
+export function isTmaFullscreenNonMobileHeader(input: {
+  isInTelegram: boolean;
+  isNarrowHeader: boolean;
+  isTelegramMiniAppDesktop: boolean;
+  immersiveFullscreen: boolean;
+}): boolean {
+  if (!input.isInTelegram || !input.immersiveFullscreen) return false;
+  const useCompactHeaderGlyph =
+    input.isNarrowHeader && input.isInTelegram && !input.isTelegramMiniAppDesktop;
+  return !useCompactHeaderGlyph;
+}
+
 export function computeLogoTopOffsetPx(
   safeAreaInsetTop: number,
   contentSafeAreaInsetTop: number,
@@ -82,10 +95,8 @@ export function computeGlobalLogoBarBlockHeight(input: {
     input.isNarrowHeader && input.isInTelegram && !input.isTelegramMiniAppDesktop;
   const defaultLogoSize = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
   const wordmarkForMarketing = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
-  const isDesktopTmaImmersiveWelcome =
-    input.variant === "welcomeImmersiveTma" && input.isInTelegram && input.isTelegramMiniAppDesktop;
   const logoBlockHeight = defaultLogoSize;
-  const headerContentHeight = isDesktopTmaImmersiveWelcome ? wordmarkForMarketing : logoBlockHeight;
+  const headerContentHeight = logoBlockHeight;
   const contentGlyphForTopOffset =
     input.variant === "welcomeMarketing" ? wordmarkForMarketing : headerContentHeight;
   const baseTelegramStyleTop = computeLogoTopOffsetPx(

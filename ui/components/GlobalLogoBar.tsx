@@ -18,13 +18,14 @@ import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LOGO_WORDMARK_ASPECT, LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
-import { layout, useColors } from "../theme";
+import { layout, typographyFixedRow40Label, useColors } from "../theme";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
 import {
   computeGlobalLogoBarBlockHeight,
+  isTmaFullscreenNonMobileHeader,
   resolveGlobalLogoBarVariant,
   shouldShowGlobalLogoBar,
   type GlobalLogoBarVariant,
@@ -190,9 +191,15 @@ export function GlobalLogoBar() {
     stableWelcomeImmersiveFullscreen,
     isTelegramMiniAppDesktop,
   );
-  /** Immersive fullscreen on Telegram Desktop: same full wordmark as browser marketing (no N-only). */
-  const isDesktopTmaImmersiveWelcome =
-    variant === "welcomeImmersiveTma" && isInTelegram && isTelegramMiniAppDesktop;
+  const isTmaFullscreenNonMobile = isTmaFullscreenNonMobileHeader({
+    isInTelegram,
+    isNarrowHeader,
+    isTelegramMiniAppDesktop,
+    immersiveFullscreen: stableWelcomeImmersiveFullscreen,
+  });
+  /** Immersive TMA on desktop / wide: N logo left, product title centered in the header row. */
+  const isTmaImmersiveTitleHeader =
+    variant === "welcomeImmersiveTma" && isTmaFullscreenNonMobile;
   const hideHeaderTopBorder = isInTelegram && !isTelegramMiniAppDesktop;
 
   useEffect(() => {
@@ -217,7 +224,7 @@ export function GlobalLogoBar() {
    */
   const logoBlockHeight = defaultLogoSize;
   const wordmarkForMarketing = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : WELCOME_LOGO_HEIGHT;
-  const headerContentHeight = isDesktopTmaImmersiveWelcome ? wordmarkForMarketing : logoBlockHeight;
+  const headerContentHeight = logoBlockHeight;
   /** Same as Flutter: offset matches the glyph you’re placing (N logo, wordmark, or welcome size). */
   const contentGlyphForTopOffset =
     variant === "welcomeMarketing" ? wordmarkForMarketing : headerContentHeight;
@@ -259,9 +266,6 @@ export function GlobalLogoBar() {
     }
     router.replace("/");
   };
-
-  const logoWordmarkTextColor = colors.primary;
-  const desktopImmersiveWordmarkWidth = LOGO_WORDMARK_ASPECT * wordmarkForMarketing;
 
   if (!shouldShow) {
     return <View style={[styles.container, { height: 0, backgroundColor }]} />;
@@ -305,7 +309,7 @@ export function GlobalLogoBar() {
       <View
         style={[
           styles.inner,
-          isDesktopTmaImmersiveWelcome && styles.innerAlignStart,
+          isTmaImmersiveTitleHeader && styles.innerAlignStart,
           {
             paddingTop: topPadGlyph,
             paddingBottom: BOTTOM_PADDING,
@@ -313,26 +317,38 @@ export function GlobalLogoBar() {
           },
         ]}
       >
-        <Pressable
-          onPress={onPressLogoHome}
-          style={[styles.logoWrap, isDesktopTmaImmersiveWelcome && styles.logoWrapAlignStart]}
-          accessibilityRole="button"
-          accessibilityLabel={t("key.header.goHomeA11y")}
-        >
-          {isDesktopTmaImmersiveWelcome ? (
-            <View accessible accessibilityLabel={t("global.logoBar.wordmarkA11y")}>
-              <LogoWordmark
-                width={desktopImmersiveWordmarkWidth}
-                height={wordmarkForMarketing}
-                textColor={logoWordmarkTextColor}
-              />
+        {isTmaImmersiveTitleHeader ? (
+          <View style={[styles.tmaImmersiveHeaderRow, { minHeight: logoBlockHeight }]}>
+            <Pressable
+              onPress={onPressLogoHome}
+              style={[styles.tmaImmersiveLogoLeft, { height: logoBlockHeight, width: logoBlockHeight }]}
+              accessibilityRole="button"
+              accessibilityLabel={t("key.header.goHomeA11y")}
+            >
+              <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
+            </Pressable>
+            <View pointerEvents="none" style={styles.tmaImmersiveTitleCenter}>
+              <Text
+                style={[typographyFixedRow40Label, styles.tmaImmersiveTitle, { color: colors.primary }]}
+                numberOfLines={1}
+                accessibilityRole="header"
+              >
+                {t("home.dev.productTitle")}
+              </Text>
             </View>
-          ) : (
+          </View>
+        ) : (
+          <Pressable
+            onPress={onPressLogoHome}
+            style={styles.logoWrap}
+            accessibilityRole="button"
+            accessibilityLabel={t("key.header.goHomeA11y")}
+          >
             <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
               <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
             </View>
-          )}
-        </Pressable>
+          </Pressable>
+        )}
       </View>
     </View>
   );
@@ -362,6 +378,30 @@ const styles = StyleSheet.create({
   logoWrapAlignStart: {
     alignItems: "flex-start",
     alignSelf: "flex-start",
+  },
+  tmaImmersiveHeaderRow: {
+    width: "100%",
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  tmaImmersiveLogoLeft: {
+    zIndex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tmaImmersiveTitleCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tmaImmersiveTitle: {
+    textAlign: "center",
+    maxWidth: "72%",
   },
   logoBox: {
     width: LOGO_HEIGHT,

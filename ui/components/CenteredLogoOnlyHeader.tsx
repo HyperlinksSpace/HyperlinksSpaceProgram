@@ -5,6 +5,7 @@ import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { useTelegram } from "./Telegram";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
+import { isTmaFullscreenNonMobileHeader } from "./globalLogoBarLayout";
 import {
   layout,
   typographyFixedRow40Label,
@@ -69,6 +70,8 @@ export function CenteredLogoOnlyHeader({
   } = useTelegram();
   const [hoverBack, setHoverBack] = useState(false);
   const isTelegramMiniAppDesktop = layoutStartup.isTelegramMiniAppDesktop;
+  const stableImmersiveFullscreen =
+    layoutStartup.mergedImmersiveFullscreen || layoutStartup.launchHashFullscreenPositive;
 
   const { width: dimensionsWidth } = useWindowDimensions();
   const windowWidth = useMemo(() => {
@@ -80,6 +83,12 @@ export function CenteredLogoOnlyHeader({
   const isNarrowHeader = windowWidth <= HEADER_NARROW_MAX_WIDTH;
   const useCompactHeaderGlyph = isNarrowHeader && isInTelegram && !isTelegramMiniAppDesktop;
   const logoBlockHeight = useCompactHeaderGlyph ? MOBILE_LOGO_SIZE : LOGO_HEIGHT;
+  const isTmaFullscreenTitleHeader = isTmaFullscreenNonMobileHeader({
+    isInTelegram,
+    isNarrowHeader,
+    isTelegramMiniAppDesktop,
+    immersiveFullscreen: stableImmersiveFullscreen,
+  });
 
   const baseTelegramStyleTop = useLogoGlyphTopOffset(
     safeAreaInsetTop,
@@ -162,16 +171,38 @@ export function CenteredLogoOnlyHeader({
           {rightAccessory}
         </View>
       ) : null}
-      <Pressable
-        onPress={goHome}
-        style={styles.logoWrap}
-        accessibilityRole="button"
-        accessibilityLabel={t("key.header.goHomeA11y")}
-      >
-        <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
-          <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
+      {isTmaFullscreenTitleHeader ? (
+        <View style={[styles.tmaImmersiveHeaderRow, { minHeight: logoBlockHeight, width: "100%" }]}>
+          <Pressable
+            onPress={goHome}
+            style={[styles.tmaImmersiveLogoLeft, { width: logoBlockHeight, height: logoBlockHeight }]}
+            accessibilityRole="button"
+            accessibilityLabel={t("key.header.goHomeA11y")}
+          >
+            <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
+          </Pressable>
+          <View pointerEvents="none" style={styles.tmaImmersiveTitleCenter}>
+            <Text
+              style={[typographyFixedRow40Label, styles.tmaImmersiveTitle, { color: colors.primary }]}
+              numberOfLines={1}
+              accessibilityRole="header"
+            >
+              {t("home.dev.productTitle")}
+            </Text>
+          </View>
         </View>
-      </Pressable>
+      ) : (
+        <Pressable
+          onPress={goHome}
+          style={styles.logoWrap}
+          accessibilityRole="button"
+          accessibilityLabel={t("key.header.goHomeA11y")}
+        >
+          <View style={[styles.logoBox, { width: logoBlockHeight, height: logoBlockHeight }]}>
+            <HyperlinksSpaceLogo width={logoBlockHeight} height={logoBlockHeight} />
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -216,5 +247,29 @@ const styles = StyleSheet.create({
   logoBox: {
     width: LOGO_HEIGHT,
     height: LOGO_HEIGHT,
+  },
+  tmaImmersiveHeaderRow: {
+    position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "stretch",
+  },
+  tmaImmersiveLogoLeft: {
+    zIndex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tmaImmersiveTitleCenter: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tmaImmersiveTitle: {
+    textAlign: "center",
+    maxWidth: "72%",
   },
 });

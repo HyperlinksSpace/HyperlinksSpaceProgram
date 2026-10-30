@@ -1,5 +1,5 @@
 import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   typographyFixedRow40Label,
   typographyRect15,
@@ -90,6 +90,12 @@ export function WelcomeAuthFormField({
     };
   }, [errorPulseKey, errorShakeX, errorText]);
 
+  const trySubmit = useCallback(() => {
+    if (submitDisabled || submitting) return;
+    if (!value.trim()) return;
+    onSubmit();
+  }, [onSubmit, submitDisabled, submitting, value]);
+
   return (
     <View style={[styles.block, layout === "fill" ? styles.blockFill : null]}>
       {label ? (
@@ -124,6 +130,17 @@ export function WelcomeAuthFormField({
           autoCorrect={false}
           value={value}
           onChangeText={onChangeText}
+          returnKeyType="go"
+          {...(Platform.OS === "web"
+            ? ({
+                enterKeyHint: "go",
+                onKeyPress: (event: { nativeEvent: { key?: string }; preventDefault?: () => void }) => {
+                  if (event.nativeEvent.key !== "Enter") return;
+                  event.preventDefault?.();
+                  trySubmit();
+                },
+              } as object)
+            : { onSubmitEditing: trySubmit })}
         />
       </View>
       {errorText ? (
