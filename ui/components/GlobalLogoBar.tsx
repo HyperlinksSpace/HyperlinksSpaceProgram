@@ -19,13 +19,14 @@ import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LOGO_WORDMARK_ASPECT, LogoWordmark } from "./LogoWordmark";
 import { getTmaInitAndWebAppDebugSnapshot, showGlobalLogoBarOnWelcomeTma } from "./telegramWebApp";
-import { layout, typographyFixedRow40Label, useColors } from "../theme";
+import { layout, typographyFixedRow40Label, FIXED_ROW_40_HEIGHT_PX, useColors } from "../theme";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { isWelcomeLayoutRoute } from "../isWelcomeLayoutRoute";
 import { useResolvedPathname } from "../useResolvedPathname";
 import {
   computeGlobalLogoBarBlockHeight,
+  GLOBAL_LOGO_BAR_BOTTOM_BORDER_PX,
   isTmaFullscreenNonMobileHeader,
   resolveGlobalLogoBarVariant,
   shouldShowGlobalLogoBar,
@@ -269,6 +270,9 @@ export function GlobalLogoBar() {
     contentSafeAreaInsetTop,
   });
   const topPadGlyph = isDesktopTma ? WELCOME_VERTICAL_INDENT : baseTelegramStyleTop;
+  /** Logo + title share one 40px row; center that row in the sticky bar (not top/bottom padding bands). */
+  const immersiveTitleRowHeightPx = FIXED_ROW_40_HEIGHT_PX;
+  const immersiveInnerHeightPx = blockHeight - GLOBAL_LOGO_BAR_BOTTOM_BORDER_PX;
 
   const shouldShow = useMemo(
     () =>
@@ -329,19 +333,29 @@ export function GlobalLogoBar() {
       <View
         style={[
           styles.inner,
-          isTmaImmersiveTitleHeader && styles.innerAlignStart,
-          {
-            paddingTop: topPadGlyph,
-            paddingBottom: BOTTOM_PADDING,
-            paddingHorizontal: layout.contentSideInsetPx,
-          },
+          isTmaImmersiveTitleHeader ? styles.innerImmersiveTitle : null,
+          isTmaImmersiveTitleHeader
+            ? {
+                height: immersiveInnerHeightPx,
+                paddingTop: 0,
+                paddingBottom: 0,
+                paddingHorizontal: layout.contentSideInsetPx,
+              }
+            : {
+                paddingTop: topPadGlyph,
+                paddingBottom: BOTTOM_PADDING,
+                paddingHorizontal: layout.contentSideInsetPx,
+              },
         ]}
       >
         {isTmaImmersiveTitleHeader ? (
-          <View style={[styles.tmaImmersiveHeaderRow, { minHeight: logoBlockHeight }]}>
+          <View style={[styles.tmaImmersiveHeaderRow, { height: immersiveTitleRowHeightPx }]}>
             <Pressable
               onPress={onPressLogoHome}
-              style={[styles.tmaImmersiveLogoLeft, { height: logoBlockHeight, width: logoBlockHeight }]}
+              style={[
+                styles.tmaImmersiveLogoLeft,
+                { height: immersiveTitleRowHeightPx, width: logoBlockHeight },
+              ]}
               accessibilityRole="button"
               accessibilityLabel={t("key.header.goHomeA11y")}
             >
@@ -349,7 +363,11 @@ export function GlobalLogoBar() {
             </Pressable>
             <View pointerEvents="none" style={styles.tmaImmersiveTitleCenter}>
               <Text
-                style={[typographyFixedRow40Label, styles.tmaImmersiveTitle, { color: colors.primary }]}
+                style={[
+                  typographyFixedRow40Label,
+                  styles.tmaImmersiveTitle,
+                  { color: colors.primary },
+                ]}
                 numberOfLines={1}
                 accessibilityRole="header"
               >
@@ -385,8 +403,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  /** Match ordinary desktop TMA marketing row: content starts at the same horizontal band. */
-  innerAlignStart: {
+  innerImmersiveTitle: {
     alignItems: "flex-start",
     justifyContent: "center",
   },

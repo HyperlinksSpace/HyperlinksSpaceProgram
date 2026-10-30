@@ -9,6 +9,7 @@ import { isTmaFullscreenNonMobileHeader } from "./globalLogoBarLayout";
 import {
   layout,
   typographyFixedRow40Label,
+  FIXED_ROW_40_HEIGHT_PX,
   useColors,
   welcomeAuthButtonActiveBackground,
   welcomeAuthButtonHoverBackground,
@@ -101,9 +102,12 @@ export function CenteredLogoOnlyHeader({
   const outsideTma = !isInTelegram;
   const showBack = outsideTma && showBrowserBackButton;
   const showRightAccessory = rightAccessory != null;
+  const immersiveTitleRowHeightPx = FIXED_ROW_40_HEIGHT_PX;
   const containerPadding = outsideTma
     ? { paddingVertical: WELCOME_VERTICAL_INDENT }
-    : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
+    : isTmaFullscreenTitleHeader
+      ? { paddingVertical: WELCOME_VERTICAL_INDENT }
+      : { paddingTop: logoBarTopOffset, paddingBottom: BOTTOM_PADDING };
   const horizontalInset =
     showBack || showRightAccessory ? 0 : layout.contentSideInsetPx;
 
@@ -172,10 +176,15 @@ export function CenteredLogoOnlyHeader({
         </View>
       ) : null}
       {isTmaFullscreenTitleHeader ? (
-        <View style={[styles.tmaImmersiveHeaderRow, { minHeight: logoBlockHeight, width: "100%" }]}>
+        <View
+          style={[styles.tmaImmersiveHeaderRow, { height: immersiveTitleRowHeightPx, width: "100%" }]}
+        >
           <Pressable
             onPress={goHome}
-            style={[styles.tmaImmersiveLogoLeft, { width: logoBlockHeight, height: logoBlockHeight }]}
+            style={[
+              styles.tmaImmersiveLogoLeft,
+              { width: logoBlockHeight, height: immersiveTitleRowHeightPx },
+            ]}
             accessibilityRole="button"
             accessibilityLabel={t("key.header.goHomeA11y")}
           >
