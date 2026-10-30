@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { appLog } from "../../shared/appLog";
+import { logPageDisplay } from "../pageDisplayLog";
 import { useTelegram } from "./Telegram";
 import { HyperlinksSpaceLogo } from "./HyperlinksSpaceLogo";
 import { LOGO_WORDMARK_ASPECT, LogoWordmark } from "./LogoWordmark";
@@ -28,6 +29,7 @@ import {
   isTmaFullscreenNonMobileHeader,
   resolveGlobalLogoBarVariant,
   shouldShowGlobalLogoBar,
+  shouldUseTmaImmersiveTitleHeader,
   type GlobalLogoBarVariant,
 } from "./globalLogoBarLayout";
 
@@ -197,16 +199,19 @@ export function GlobalLogoBar() {
     isTelegramMiniAppDesktop,
     immersiveFullscreen: stableWelcomeImmersiveFullscreen,
   });
-  /** Immersive TMA on desktop / wide: N logo left, product title centered in the header row. */
-  const isTmaImmersiveTitleHeader =
-    variant === "welcomeImmersiveTma" && isTmaFullscreenNonMobile;
+  /** Immersive TMA on desktop / wide: N logo left, product title centered (welcome + signed-in home). */
+  const isTmaImmersiveTitleHeader = shouldUseTmaImmersiveTitleHeader(
+    variant,
+    isTmaFullscreenNonMobile,
+  );
   const hideHeaderTopBorder = isInTelegram && !isTelegramMiniAppDesktop;
 
   useEffect(() => {
-    if (!isWelcomeLayout) return;
+    if (!isTmaImmersiveTitleHeader && !isWelcomeLayout) return;
     const payload = {
       variant,
       isInTelegram,
+      isTmaImmersiveTitleHeader,
       isFullscreenContext: mergedImmersiveFullscreen,
       showDefaultLogoOnWelcomeTma: showGlobalLogoBarOnWelcomeTma(
         isInTelegram,
@@ -215,7 +220,22 @@ export function GlobalLogoBar() {
       initAndWebApp: getTmaInitAndWebAppDebugSnapshot(),
     };
     appLog("[GlobalLogoBar]", "welcome_header_variant", payload);
-  }, [isWelcomeLayout, variant, isInTelegram, mergedImmersiveFullscreen, stableWelcomeImmersiveFullscreen]);
+    logPageDisplay("global_logo_bar_tma_title_header", {
+      variant,
+      isTmaImmersiveTitleHeader,
+      isWelcomeLayout,
+      isTelegramMiniAppDesktop,
+      mergedImmersiveFullscreen: stableWelcomeImmersiveFullscreen,
+    });
+  }, [
+    isTmaImmersiveTitleHeader,
+    isWelcomeLayout,
+    variant,
+    isInTelegram,
+    mergedImmersiveFullscreen,
+    stableWelcomeImmersiveFullscreen,
+    isTelegramMiniAppDesktop,
+  ]);
 
   /**
    * Logo-only bar (signed-in home + TMA welcome): one rhythm — same glyph size and Telegram top offset

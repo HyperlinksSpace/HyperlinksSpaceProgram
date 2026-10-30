@@ -33,6 +33,14 @@ export function isTmaFullscreenNonMobileHeader(input: {
   return !useCompactHeaderGlyph;
 }
 
+/** Logo left + centered product title (not the browser marketing welcome row). */
+export function shouldUseTmaImmersiveTitleHeader(
+  variant: GlobalLogoBarVariant,
+  isTmaFullscreenNonMobile: boolean,
+): boolean {
+  return isTmaFullscreenNonMobile && variant !== "welcomeMarketing";
+}
+
 export function computeLogoTopOffsetPx(
   safeAreaInsetTop: number,
   contentSafeAreaInsetTop: number,
