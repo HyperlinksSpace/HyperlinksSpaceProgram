@@ -18,8 +18,10 @@ import {
 import {
   listAiAgentChats,
   postAiAgentChatAction,
+  type AiAgentChatDto,
   type AiAgentMessageDto,
 } from "../../../api/aiAgentChatsClient";
+import { useAuth } from "../../../auth/AuthContext";
 import {
   fetchMySupportChat,
   sendSupportUserMessage,
@@ -147,6 +149,50 @@ function bringAgentTabToFront(tabs: AiAgentTab[], tab: AiAgentTab): AiAgentTab[]
   return [tab, ...agents];
 }
 
+/** Merge server chat list into open tabs (account-wide; not device-local). */
+function mergeCloudChatsIntoTabs(current: AiAgentTab[], listed: AiAgentChatDto[]): AiAgentTab[] {
+  const support = current.find((tab) => tab.id === SUPPORT_TAB_ID);
+  const agents = current.filter((tab) => tab.id !== SUPPORT_TAB_ID);
+  const listedIds = new Set(listed.map((chat) => chat.id));
+  const byId = new Map(agents.map((tab) => [tab.id, tab]));
+
+  const fromCloud: AiAgentTab[] = listed.map((chat) => {
+    const existing = byId.get(chat.id);
+    if (existing) {
+      return {
+        ...existing,
+        title: chat.title || existing.title,
+        started: true,
+      };
+    }
+    return {
+      id: chat.id,
+      title: chat.title,
+      started: true,
+      messages: [],
+      messagesLoaded: false,
+    };
+  });
+
+  const localDrafts = agents.filter((tab) => !tab.started && !listedIds.has(tab.id));
+  const mergedAgents = [...fromCloud, ...localDrafts];
+  if (!support) return mergedAgents;
+  const unread = Math.max(0, Math.floor(support.unreadCount ?? 0));
+  return unread > 0 ? placeSupportTabSecond(mergedAgents, support) : [...mergedAgents, support];
+}
+
+function pickCloudSyncActiveTabId(
+  merged: AiAgentTab[],
+  previousActiveId: string,
+  claimedFocusId: string | null,
+): string {
+  if (previousActiveId === SUPPORT_TAB_ID) return previousActiveId;
+  if (claimedFocusId && merged.some((tab) => tab.id === claimedFocusId)) return claimedFocusId;
+  if (merged.some((tab) => tab.id === previousActiveId)) return previousActiveId;
+  const firstStarted = merged.find((tab) => tab.id !== SUPPORT_TAB_ID && tab.started);
+  return firstStarted?.id ?? merged[0]!.id;
+}
+
 /** Default empty-state body shared by every idle agent tab. */
 function AiAgentTabEmptyBody({
   columnWidth,
@@ -210,6 +256,7 @@ function AiAgentTabEmptyBody({
 export function AiSearchColumnEmptyState() {
   const colors = useColors();
   const { t } = useAppStrings();
+  const { authReady, isAuthenticated } = useAuth();
   const { setDraftText, setAiSearchSubmit, setAiSearchPlaceholder } = useBottomBarLayout();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
@@ -225,7 +272,8 @@ export function AiSearchColumnEmptyState() {
   const [renameTabId, setRenameTabId] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const hydratedRef = useRef(false);
+  const cloudTabsHydratedRef = useRef(false);
+  const cloudSyncGenRef = useRef(0);
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
   const tabsRef = useRef(tabs);
@@ -361,45 +409,74 @@ export function AiSearchColumnEmptyState() {
     activeTab?.messages.length,
   ]);
 
-  useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    let cancelled = false;
-    void (async () => {
+  const syncAgentTabsFromCloud = useCallback(
+    async (opts?: { applyClaimedFocus?: boolean }) => {
+      if (!authReady || !isAuthenticated) {
+        return { ok: false as const, reason: "auth" as const };
+      }
       const listed = await listAiAgentChats();
-      if (cancelled || !listed.ok || !listed.chats?.length) return;
-      let focusId: string | null = null;
-      if (Platform.OS === "web" && typeof sessionStorage !== "undefined") {
-        focusId = sessionStorage.getItem(CLAIMED_CHAT_STORAGE_KEY);
-        if (focusId) sessionStorage.removeItem(CLAIMED_CHAT_STORAGE_KEY);
-      }
-      const nextTabs: AiAgentTab[] = listed.chats.map((chat) => ({
-        id: chat.id,
-        title: chat.title,
-        started: true,
-        messages: [],
-        messagesLoaded: false,
-      }));
-      if (!cancelled) {
-        setTabs((current) => {
-          const support = current.find((tab) => tab.id === SUPPORT_TAB_ID);
-          if (!support) return nextTabs;
-          const unread = Math.max(0, Math.floor(support.unreadCount ?? 0));
-          return unread > 0
-            ? placeSupportTabSecond(nextTabs, support)
-            : [...nextTabs, support];
+      if (!listed.ok) {
+        logPageDisplay("ai_agent_chats_cloud_sync", {
+          ok: false,
+          error: listed.error ?? "list_failed",
         });
-        setActiveTabId((prev) => {
-          if (prev === SUPPORT_TAB_ID) return prev;
-          if (focusId && nextTabs.some((t) => t.id === focusId)) return focusId;
-          return nextTabs[0]!.id;
-        });
+        return { ok: false as const, reason: "api" as const, error: listed.error };
       }
+      const chats = listed.chats ?? [];
+      let claimedFocusId: string | null = null;
+      if (
+        opts?.applyClaimedFocus &&
+        Platform.OS === "web" &&
+        typeof sessionStorage !== "undefined"
+      ) {
+        claimedFocusId = sessionStorage.getItem(CLAIMED_CHAT_STORAGE_KEY);
+        if (claimedFocusId) sessionStorage.removeItem(CLAIMED_CHAT_STORAGE_KEY);
+      }
+      if (chats.length > 0) {
+        const merged = mergeCloudChatsIntoTabs(tabsRef.current, chats);
+        setTabs(merged);
+        setActiveTabId((prev) => pickCloudSyncActiveTabId(merged, prev, claimedFocusId));
+      }
+      logPageDisplay("ai_agent_chats_cloud_sync", {
+        ok: true,
+        chatCount: chats.length,
+        merged: chats.length > 0,
+      });
+      return { ok: true as const, chatCount: chats.length };
+    },
+    [authReady, isAuthenticated],
+  );
+
+  useEffect(() => {
+    if (!authReady || isAuthenticated) return;
+    cloudTabsHydratedRef.current = false;
+  }, [authReady, isAuthenticated]);
+
+  useEffect(() => {
+    if (!authReady || !isAuthenticated) return;
+    let cancelled = false;
+    const gen = ++cloudSyncGenRef.current;
+    void (async () => {
+      const applyClaimedFocus = !cloudTabsHydratedRef.current;
+      const result = await syncAgentTabsFromCloud({ applyClaimedFocus });
+      if (cancelled || cloudSyncGenRef.current !== gen) return;
+      if (result.ok) cloudTabsHydratedRef.current = true;
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [authReady, isAuthenticated, syncAgentTabsFromCloud]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    if (!authReady || !isAuthenticated) return;
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      void syncAgentTabsFromCloud({ applyClaimedFocus: false });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [authReady, isAuthenticated, syncAgentTabsFromCloud]);
 
   const applySupportChatSnapshot = useCallback(
     (
