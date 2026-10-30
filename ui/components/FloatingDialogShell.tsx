@@ -476,6 +476,18 @@ export function FloatingDialogShell({
     }
   }, [fitContentHeight, offsetStorageKey, sizeStorageKey, visible]);
 
+  // When default dialog size changes (window resize / layout settle) and there is no
+  // stored size, reclamp to the current default without re-entering intrinsic measure.
+  useEffect(() => {
+    if (!visible) return;
+    if (sizeStorageKey && readFloatingDialogStoredSize(sizeStorageKey)) return;
+    setSheetSize((prev) => {
+      const next = clampSizeRef.current(defaultSizeRef.current);
+      if (prev.width === next.width && prev.height === next.height) return prev;
+      return next;
+    });
+  }, [defaultSize.height, defaultSize.width, sizeStorageKey, visible]);
+
   // Remeasure after async content settles (profile fields, etc.).
   useEffect(() => {
     if (!visible || !fitContentHeight) return;

@@ -209,6 +209,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     clearConnectSuccessDismissTimer();
     connectSuccessSyncingRef.current = false;
     setConnectSuccessSyncing(false);
+    connectSheetVisibleRef.current = false;
     setConnectSheetVisible(false);
     connectAuthStateRef.current = "idle";
     setConnectAuthState("idle");
@@ -494,6 +495,9 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       messengerSlot?: number | null;
       codeDelivery?: ConnectCodeDeliveryInfo | null;
     }) => {
+      const wasUserFacingConnect =
+        connectSheetVisibleRef.current || isMidConnectAuth(connectAuthStateRef.current);
+
       if (json.attemptId) attemptIdRef.current = json.attemptId;
       if (typeof json.messengerSlot === "number" && Number.isFinite(json.messengerSlot)) {
         const slot = Math.floor(json.messengerSlot);
@@ -532,7 +536,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       setConnectError(json.error ?? (json.ok === false ? "connect_failed" : null));
 
       if (state === "ready") {
-        if (explicitDisconnectRef.current && !connectSheetVisibleRef.current) {
+        if (explicitDisconnectRef.current && !wasUserFacingConnect) {
           logTelegramConnect("connect_success_ignored_after_disconnect");
           stopPolling();
           attemptIdRef.current = null;
@@ -550,8 +554,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         }
         connectedRef.current = true;
         setConnected(true);
-        const userInitiatedConnect =
-          connectSheetVisibleRef.current || isMidConnectAuth(connectAuthStateRef.current);
+        const userInitiatedConnect = wasUserFacingConnect;
         if (userInitiatedConnect) {
           connectSuccessShownAtRef.current = Date.now();
           setConnectSuccessSyncing(true);
@@ -639,6 +642,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   const startPolling = useCallback(() => {
     stopPolling();
+    void pollConnectStatus();
     pollTimerRef.current = setInterval(() => {
       void pollConnectStatus();
     }, POLL_MS);
@@ -809,11 +813,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   }, []);
 
   useEffect(() => {
-    if (!attemptIdRef.current || !isMidConnectAuth(connectAuthStateRef.current)) return;
-    // Only poll while the connect sheet is open — silent background wait_qr hides Connect.
     if (!connectSheetVisible) return;
+    if (!attemptIdRef.current || !isMidConnectAuth(connectAuthState)) return;
+    // Only poll while the connect sheet is open — silent background wait_qr hides Connect.
     startPolling();
-  }, [connectSheetVisible, startPolling]);
+  }, [connectAuthState, connectSheetVisible, startPolling]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1322,6 +1326,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   const closeConnectSheet = useCallback(() => {
     logTelegramConnect("close_connect_sheet");
+    connectSheetVisibleRef.current = false;
     stopPolling();
     connectStartAbortRef.current?.abort();
     connectStartGenerationRef.current += 1;
