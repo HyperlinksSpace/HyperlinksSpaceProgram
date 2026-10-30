@@ -53,8 +53,10 @@ export async function markTelegramMessagesConnected(telegramUsername: string): P
 
 export async function disconnectTelegramMessages(telegramUsername: string): Promise<void> {
   await sql`
-    UPDATE telegram_messages_connections
-    SET status = 'revoked', revoked_at = NOW()
-    WHERE telegram_username = ${telegramUsername};
+    INSERT INTO telegram_messages_connections (telegram_username, status, connected_at, revoked_at)
+    VALUES (${telegramUsername}, 'revoked', NOW(), NOW())
+    ON CONFLICT (telegram_username) DO UPDATE
+      SET status = 'revoked',
+          revoked_at = NOW();
   `;
 }

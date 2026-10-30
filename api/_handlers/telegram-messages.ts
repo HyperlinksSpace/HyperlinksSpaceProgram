@@ -385,10 +385,13 @@ export async function telegramMessagesDisconnectHandler(
     return userOrRes;
   }
 
-  await gatewayDisconnect(userOrRes);
+  // Revoke product + DB link before gateway teardown so status/warmup cannot
+  // re-heal from a still-active row while TDLib files are being deleted.
   await revokeMtprotoSession(userOrRes);
   await disconnectTelegramMessages(userOrRes);
-  return finishJson(request, res, { ok: true, connected: false }, 200);
+  await gatewayDisconnect(userOrRes);
+  const connected = await isTelegramMessagesConnected(userOrRes);
+  return finishJson(request, res, { ok: true, connected: false, link_cleared: !connected }, 200);
 }
 
 export async function telegramMessagesChatsHandler(

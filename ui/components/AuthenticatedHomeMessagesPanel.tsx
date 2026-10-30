@@ -696,6 +696,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     connectedTelegramUserId,
     refreshStatus,
     recoverTelegramMessagesSession,
+    userDisconnectedTelegramMessages,
   } = useTelegramMessagesConnection();
   const recoverChatsInFlightRef = useRef(false);
   const [chats, setChats] = useState<MessageChatRowData[]>([]);
@@ -1082,9 +1083,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     priority?: boolean;
   }) => {
     if (!isAuthenticated || !isTelegramMessagesConnected) {
-      // Keep painted rows on brief disconnect — wiping flashed "No chats yet"
-      // while status/warmup raced. Only clear on logout.
       if (!isAuthenticated) {
+        setChats([]);
+        setEmptyListConfirmed(false);
+        setListBootstrapPending(false);
+      } else if (
+        userDisconnectedTelegramMessages ||
+        sessionTelegramMessagesConnected === false
+      ) {
         setChats([]);
         setEmptyListConfirmed(false);
         setListBootstrapPending(false);
@@ -1501,6 +1507,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     isTelegramMessagesConnected,
     recoverTelegramMessagesSession,
     sessionTelegramMessagesConnected,
+    userDisconnectedTelegramMessages,
   ]);
 
   useEffect(() => {
@@ -1698,6 +1705,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setInitialChatListRevealed(false);
     }
   }, [isTelegramMessagesConnected]);
+
+  useEffect(() => {
+    if (
+      !isTelegramMessagesConnected &&
+      (userDisconnectedTelegramMessages || sessionTelegramMessagesConnected === false)
+    ) {
+      setChats([]);
+      setEmptyListConfirmed(false);
+      setListBootstrapPending(false);
+      setGatewayWarming(false);
+      setLoading(false);
+      setError(null);
+    }
+  }, [
+    isTelegramMessagesConnected,
+    sessionTelegramMessagesConnected,
+    userDisconnectedTelegramMessages,
+  ]);
 
   useEffect(() => {
     if (initialChatListRevealed) return;
@@ -3173,7 +3198,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const connectionStatusPending =
     !authReady ||
     sessionTelegramMessagesConnected === null ||
-    (sessionTelegramMessagesConnected === true && !isTelegramMessagesConnected);
+    (sessionTelegramMessagesConnected === true &&
+      !isTelegramMessagesConnected &&
+      !userDisconnectedTelegramMessages);
 
   if (connectionStatusPending) {
     return (

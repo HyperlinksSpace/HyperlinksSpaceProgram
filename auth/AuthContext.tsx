@@ -11,6 +11,7 @@ import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
 import { rehydrateAuthenticatedHomeLeftNavFromStorage } from "../ui/authenticatedHomeLeftNavIndex";
 import { clearExplicitSignOut, markExplicitSignOut, readAuthHint, writeAuthHint } from "./authHint";
+import { hasTelegramMessagesExplicitDisconnect } from "./telegramMessagesDisconnectHint";
 import { applyServerDllrLedgerFromSession } from "../ui/pro/dllrBalanceStore";
 
 export type AuthContextValue = {
@@ -133,10 +134,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials: "include",
       });
       const json = (await response.json().catch(() => ({}))) as SessionJson;
-      const { authenticated, feedItems, telegramMessagesConnected } = parseSessionResponse(
-        json,
-        response.ok,
-      );
+      const { authenticated, feedItems, telegramMessagesConnected: parsedTelegramConnected } =
+        parseSessionResponse(json, response.ok);
+      const sessionUsername =
+        typeof json.telegram_username === "string" ? json.telegram_username : null;
+      const telegramMessagesConnected =
+        authenticated &&
+        parsedTelegramConnected === true &&
+        hasTelegramMessagesExplicitDisconnect(sessionUsername)
+          ? false
+          : parsedTelegramConnected;
       cacheSessionPayload(json, authenticated);
       // Kick gateway warmup before setState → Home commit (can block effects ~3s).
       if (authenticated && telegramMessagesConnected === true) {
@@ -215,9 +222,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const onSessionUpdated = () => {
       void refreshAuthSession();
     };
+    const onTelegramMessagesDisconnected = () => {
+      setSessionTelegramMessagesConnected(false);
+    };
     document.addEventListener("hsp-auth-session-updated", onSessionUpdated);
+    document.addEventListener("hsp-telegram-messages-disconnected", onTelegramMessagesDisconnected);
     return () => {
       document.removeEventListener("hsp-auth-session-updated", onSessionUpdated);
+      document.removeEventListener(
+        "hsp-telegram-messages-disconnected",
+        onTelegramMessagesDisconnected,
+      );
     };
   }, [refreshAuthSession]);
 

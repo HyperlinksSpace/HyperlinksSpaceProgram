@@ -11,6 +11,12 @@ import {
 import { buildApiUrl } from "../../api/_base";
 import { resetTelegramEmojiFetchCaches } from "../components/messages/fetchTelegramEmojiBytes";
 import { useAuth } from "../../auth/AuthContext";
+import {
+  clearTelegramMessagesExplicitDisconnect,
+  hasTelegramMessagesExplicitDisconnect,
+  markTelegramMessagesExplicitDisconnect,
+} from "../../auth/telegramMessagesDisconnectHint";
+import { getLastAuthSessionPayload } from "../../auth/lastAuthSessionCache";
 import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
@@ -75,6 +81,8 @@ type TelegramMessagesConnectionCtx = {
   submitMtprotoPassword: (password: string) => Promise<void>;
   switchToQrConnect: () => Promise<void>;
   disconnectTelegramMessages: () => Promise<void>;
+  /** True after the user taps Disconnect until the auth session reflects unlink. */
+  userDisconnectedTelegramMessages: boolean;
 };
 
 const TelegramMessagesConnectionContext = createContext<TelegramMessagesConnectionCtx | null>(null);
@@ -113,6 +121,7 @@ function isMidConnectAuth(state: MtprotoAuthState): boolean {
 export function TelegramMessagesConnectionProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, authReady, sessionTelegramMessagesConnected } = useAuth();
   const [isTelegramMessagesConnected, setConnected] = useState(false);
+  const [userDisconnectedTelegramMessages, setUserDisconnectedTelegramMessages] = useState(false);
   const [connectedTelegramUserId, setConnectedTelegramUserId] = useState<number | null>(null);
   const [emojiFetchEpoch, setEmojiFetchEpoch] = useState(0);
   const [connectPending, setConnectPending] = useState(false);
@@ -151,8 +160,20 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   useEffect(() => {
     sessionTelegramMessagesConnectedRef.current = sessionTelegramMessagesConnected;
+    const sessionUsername = getLastAuthSessionPayload()?.telegram_username ?? null;
     if (sessionTelegramMessagesConnected === false) {
       explicitDisconnectRef.current = false;
+      setUserDisconnectedTelegramMessages(false);
+      if (sessionUsername) {
+        clearTelegramMessagesExplicitDisconnect(sessionUsername);
+      }
+      return;
+    }
+    if (hasTelegramMessagesExplicitDisconnect(sessionUsername)) {
+      explicitDisconnectRef.current = true;
+      setUserDisconnectedTelegramMessages(true);
+      setConnected(false);
+      connectedRef.current = false;
     }
   }, [sessionTelegramMessagesConnected]);
 
@@ -239,6 +260,13 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       setConnected(false);
       setConnectedTelegramUserId(null);
       lastKnownTelegramUserIdRef.current = null;
+      return false;
+    }
+    const sessionUsername = getLastAuthSessionPayload()?.telegram_username ?? null;
+    if (hasTelegramMessagesExplicitDisconnect(sessionUsername)) {
+      setConnected(false);
+      lastKnownTelegramUserIdRef.current = null;
+      setConnectedTelegramUserId(null);
       return false;
     }
     const statusUrl = buildApiUrl("/api/telegram-messages-status");
@@ -504,7 +532,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       setConnectError(json.error ?? (json.ok === false ? "connect_failed" : null));
 
       if (state === "ready") {
-        if (explicitDisconnectRef.current) {
+        if (explicitDisconnectRef.current && !connectSheetVisibleRef.current) {
           logTelegramConnect("connect_success_ignored_after_disconnect");
           stopPolling();
           attemptIdRef.current = null;
@@ -515,6 +543,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         }
         notConnectedBackoffUntilRef.current = 0;
         explicitDisconnectRef.current = false;
+        setUserDisconnectedTelegramMessages(false);
+        const linkedUsername = getLastAuthSessionPayload()?.telegram_username;
+        if (linkedUsername) {
+          clearTelegramMessagesExplicitDisconnect(linkedUsername);
+        }
         connectedRef.current = true;
         setConnected(true);
         const userInitiatedConnect =
@@ -680,6 +713,10 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   const recoverTelegramMessagesSession = useCallback(async (): Promise<boolean> => {
     if (connectedRef.current) return true;
+    if (explicitDisconnectRef.current) {
+      logTelegramConnect("recover_session_skip_user_disconnect");
+      return false;
+    }
     if (connectSheetVisibleRef.current || isMidConnectAuth(connectAuthStateRef.current)) {
       logTelegramConnect("recover_session_skip_mid_connect", {
         authState: connectAuthStateRef.current,
@@ -728,7 +765,11 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
 
   const refreshStatus = useCallback(async (): Promise<void> => {
     const linked = await refreshStatusInner();
-    if (!linked && sessionTelegramMessagesConnected === true) {
+    if (
+      !linked &&
+      sessionTelegramMessagesConnected === true &&
+      !explicitDisconnectRef.current
+    ) {
       void recoverTelegramMessagesSession();
     } else if (linked && !connectedRef.current) {
       void silentWarmupSession();
@@ -739,6 +780,16 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     sessionTelegramMessagesConnected,
     silentWarmupSession,
   ]);
+
+  useEffect(() => {
+    if (!authReady) return;
+    const sessionUsername = getLastAuthSessionPayload()?.telegram_username ?? null;
+    if (!hasTelegramMessagesExplicitDisconnect(sessionUsername)) return;
+    explicitDisconnectRef.current = true;
+    setUserDisconnectedTelegramMessages(true);
+    setConnected(false);
+    connectedRef.current = false;
+  }, [authReady]);
 
   useEffect(() => {
     logTelegramConnect("provider_mount", { apiBase: getApiBaseUrl(), isAuthenticated, authReady });
@@ -769,15 +820,25 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       setConnected(false);
       return;
     }
+    if (userDisconnectedTelegramMessages || explicitDisconnectRef.current) {
+      setConnected(false);
+      return;
+    }
     if (sessionTelegramMessagesConnected === true) {
       void silentWarmupSession();
     } else if (sessionTelegramMessagesConnected === false) {
       setConnected(false);
     }
-  }, [isAuthenticated, sessionTelegramMessagesConnected, silentWarmupSession]);
+  }, [
+    isAuthenticated,
+    sessionTelegramMessagesConnected,
+    silentWarmupSession,
+    userDisconnectedTelegramMessages,
+  ]);
 
   useEffect(() => {
     if (!authReady || !isAuthenticated) return;
+    if (userDisconnectedTelegramMessages || explicitDisconnectRef.current) return;
     void (async () => {
       const connected = await refreshStatusInner();
       if (connected || sessionTelegramMessagesConnected === true) {
@@ -790,10 +851,12 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     refreshStatusInner,
     silentWarmupSession,
     sessionTelegramMessagesConnected,
+    userDisconnectedTelegramMessages,
   ]);
 
   useEffect(() => {
     if (!authReady || !isAuthenticated || sessionTelegramMessagesConnected !== true) return;
+    if (userDisconnectedTelegramMessages || explicitDisconnectRef.current) return;
     if (isTelegramMessagesConnected) return;
     const timer = setInterval(() => {
       if (warmupInFlightRef.current || reconnectInFlightRef.current) return;
@@ -806,6 +869,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     isTelegramMessagesConnected,
     sessionTelegramMessagesConnected,
     silentWarmupSession,
+    userDisconnectedTelegramMessages,
   ]);
 
   useEffect(() => () => stopPolling(), [stopPolling]);
@@ -819,9 +883,12 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     const authMethod: MtprotoAuthMethod = options?.authMethod === "phone" ? "phone" : "qr";
     const softPhoneStart = Boolean(options?.soft) && authMethod === "phone";
     const addAccount = Boolean(options?.addAccount) || connectAddAccountRef.current;
+    const userReconnectViaSheet =
+      explicitDisconnectRef.current && connectSheetVisibleRef.current;
     const useFresh =
       addAccount ||
       Boolean(options?.fresh) ||
+      userReconnectViaSheet ||
       (sessionTelegramMessagesConnectedRef.current !== true && !softPhoneStart);
     const current = connectAuthStateRef.current;
     if (
@@ -1198,6 +1265,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     logTelegramConnect("open_connect_sheet", { addAccount: Boolean(opts?.addAccount) });
     connectAddAccountRef.current = Boolean(opts?.addAccount);
     notConnectedBackoffUntilRef.current = 0;
+    connectSheetVisibleRef.current = true;
     setConnectSheetVisible(true);
     const current = connectAuthStateRef.current;
     if (!isMidConnectAuth(current) || opts?.addAccount) {
@@ -1282,6 +1350,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   const disconnectTelegramMessages = useCallback(async () => {
     logTelegramConnect("disconnect_start");
     explicitDisconnectRef.current = true;
+    setUserDisconnectedTelegramMessages(true);
     notConnectedBackoffUntilRef.current = Date.now() + 120_000;
     warmupInFlightRef.current = false;
     reconnectInFlightRef.current = false;
@@ -1309,14 +1378,36 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
     setConnectedTelegramUserId(null);
 
     try {
-      await fetch(buildApiUrl("/api/telegram-messages-disconnect"), {
+      const response = await fetch(buildApiUrl("/api/telegram-messages-disconnect"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        connected?: boolean;
+        link_cleared?: boolean;
+      };
+      const sessionUsername = getLastAuthSessionPayload()?.telegram_username;
+      if (sessionUsername) {
+        markTelegramMessagesExplicitDisconnect(sessionUsername);
+      }
+      if (typeof document !== "undefined") {
+        document.dispatchEvent(new CustomEvent("hsp-telegram-messages-disconnected"));
+      }
+      if (response.ok && json.connected === false) {
+        setConnected(false);
+        connectedRef.current = false;
+      }
     } catch {
-      /* ignore */
+      const sessionUsername = getLastAuthSessionPayload()?.telegram_username;
+      if (sessionUsername) {
+        markTelegramMessagesExplicitDisconnect(sessionUsername);
+      }
+      if (typeof document !== "undefined") {
+        document.dispatchEvent(new CustomEvent("hsp-telegram-messages-disconnected"));
+      }
     }
 
     if (typeof document !== "undefined") {
@@ -1352,6 +1443,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       submitMtprotoPassword,
       switchToQrConnect,
       disconnectTelegramMessages,
+      userDisconnectedTelegramMessages,
     }),
     [
       isTelegramMessagesConnected,
@@ -1378,6 +1470,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       submitMtprotoPassword,
       switchToQrConnect,
       disconnectTelegramMessages,
+      userDisconnectedTelegramMessages,
     ],
   );
 
