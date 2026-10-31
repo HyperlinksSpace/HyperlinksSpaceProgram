@@ -18,6 +18,7 @@ import {
 } from "../_lib/tdlib-gateway-debug.js";
 import { getTelegramApiCredentials } from "../../telegram/tdlib/env.js";
 import { isTelegramMessagesLinkRevoked } from "../../database/telegramMessages.js";
+import { mergeConnectPhoneSubmitDebug } from "../../shared/telegramConnectPhoneDebug.js";
 
 type NodeRes = {
   status: (code: number) => void;
@@ -444,6 +445,16 @@ export async function telegramMtprotoConnectPhoneHandler(
     });
     const authState = snap.authState ?? "wait_phone";
     const gatewayFailed = snap.httpStatus >= 400 || snap.error === "not_found" || snap.error === "attempt_not_found";
+    const phoneDebug = mergeConnectPhoneSubmitDebug({
+      gatewayPhoneDebug: snap.phoneDebug ?? null,
+      clientPhoneDebug: body.clientPhoneDebug ?? null,
+      phoneNumberSent: phoneNumber.trim(),
+      defaultCountry: parseCountryCodeHint(body.phoneDefaultCountry),
+      isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
+      authState,
+      error: snap.error ?? null,
+      codeDelivery: snap.codeDelivery ?? null,
+    });
     return finishJson(
       request,
       res,
@@ -461,7 +472,7 @@ export async function telegramMtprotoConnectPhoneHandler(
         chatCount: snap.chatCount ?? null,
         messengerSlot: snap.messengerSlot ?? null,
         codeDelivery: snap.codeDelivery ?? null,
-        phoneDebug: snap.phoneDebug ?? null,
+        phoneDebug,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );

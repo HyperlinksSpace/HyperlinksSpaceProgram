@@ -241,7 +241,7 @@ const en = {
   "messages.connectSheetCodeResend": "Resend code in Telegram",
   "messages.connectSheetCodeResendSms": "Send code via SMS instead",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "The login code appears only in the official Telegram service chat +42777 (t.me/+42777), on a device already logged into this number — not SMS. Use the button below (new tab). Do not submit your phone again — that invalidates the code. Use Resend, or connect via QR.",
+    "The code is not shown in this browser. Telegram sends it to the Telegram app (phone or desktop) already logged into this number — open the service chat \"Telegram\" / +42777 there. A new t.me tab only helps if web.telegram.org uses the same account. Do not submit your phone again. If nothing arrives in 2 minutes, use QR login instead.",
   "messages.connectSheetOpenTelegramServiceChat": "Open official chat +42777 (new tab)",
   "messages.connectSheetCodePlaceholder": "Login code",
   "messages.connectSheetCodeSubmit": "Continue",
@@ -1276,7 +1276,7 @@ const ru = {
   "messages.connectSheetCodeResend": "Отправить код снова в Telegram",
   "messages.connectSheetCodeResendSms": "Отправить код по SMS",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "Код входа появляется только в официальном служебном чате Telegram +42777 (t.me/+42777) на устройстве, где уже выполнен вход с этим номером — не SMS. Кнопка ниже откроет чат в новой вкладке. Не отправляйте номер повторно — это отменяет код. Можно нажать «Отправить снова» или войти по QR.",
+    "Код не появится в этом браузере. Telegram отправляет его в приложение Telegram (телефон или компьютер), где уже выполнен вход с этим номером — откройте служебный чат «Telegram» / +42777 там. Вкладка t.me поможет только если web.telegram.org открыт под тем же аккаунтом. Не отправляйте номер повторно. Если за 2 минуты ничего нет — войдите по QR.",
   "messages.connectSheetOpenTelegramServiceChat": "Открыть официальный чат +42777 (новая вкладка)",
   "messages.connectSheetCodePlaceholder": "Код входа",
   "messages.connectSheetCodeSubmit": "Продолжить",

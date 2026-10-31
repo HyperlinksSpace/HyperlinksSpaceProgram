@@ -65,6 +65,7 @@ export function logConnectPhoneDebugComplete(
     codeDelivery: body.codeDelivery ?? null,
     client: clientDebugBeforeRequest ?? phoneDebug?.client ?? null,
     telegram,
+    gatewayPhoneDebugFromTdlib: Boolean(body.phoneDebug?.telegram && body.phoneDebug?.telegram.connectionState != null),
     summary: telegram?.deliveryNote ?? null,
   });
   if (telegram?.deliveryNote) {

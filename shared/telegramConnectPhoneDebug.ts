@@ -117,9 +117,9 @@ export function describeTelegramCodeDeliveryForDebug(input: {
   }
   if (input.authState === "wait_code" && input.codeDeliveryType === "authenticationCodeTypeTelegramMessage") {
     const resend =
-      input.nextCodeType != null
-        ? `Alternate delivery later: ${input.nextCodeType}.`
-        : "No alternate delivery (Resend unavailable until Telegram allows it).";
+      input.nextType != null
+        ? `Alternate delivery later: ${input.nextType}.`
+        : "Resend is unavailable (Telegram set no next delivery type).";
     const match =
       input.phoneLast4MatchesSent === false
         ? " WARNING: Telegram's masked phone last digits do not match what we sent — check country code / formatting."
@@ -127,7 +127,9 @@ export function describeTelegramCodeDeliveryForDebug(input: {
           ? " Telegram reports the same phone last digits as sent."
           : "";
     return (
-      `Telegram accepted the number and chose in-app delivery (service chat on an existing session, not SMS). ` +
+      `Telegram accepted the number and queued an in-app login code (not SMS). ` +
+      `The code is delivered to the Telegram app on your phone/desktop already logged into this number — ` +
+      `open the service chat "Telegram" / +42777 there; a new browser tab only works if web.telegram.org uses the same account. ` +
       `${resend}${match}`
     );
   }
@@ -141,6 +143,61 @@ export function describeTelegramCodeDeliveryForDebug(input: {
     return "Telegram authorized immediately (session already valid).";
   }
   return `Auth state after phone submit: ${input.authState}.`;
+}
+
+export function mergeConnectPhoneSubmitDebug(input: {
+  gatewayPhoneDebug?: ConnectPhoneSubmitDebug | null;
+  clientPhoneDebug?: ConnectPhoneClientDebug | null;
+  phoneNumberSent: string;
+  defaultCountry?: CountryCode;
+  isCurrentPhoneNumber: boolean;
+  authState: string;
+  error: string | null;
+  codeDelivery: {
+    type: string;
+    nextType?: string | null;
+    timeoutSec?: number | null;
+    phoneMasked?: string | null;
+    codeLength?: number | null;
+  } | null;
+}): ConnectPhoneSubmitDebug | null {
+  if (input.gatewayPhoneDebug?.telegram) {
+    return {
+      client: input.gatewayPhoneDebug.client ?? input.clientPhoneDebug ?? null,
+      telegram: input.gatewayPhoneDebug.telegram,
+    };
+  }
+  if (input.authState !== "wait_code" && input.authState !== "wait_password" && input.authState !== "ready") {
+    return input.gatewayPhoneDebug ?? null;
+  }
+  return {
+    client: input.clientPhoneDebug ?? input.gatewayPhoneDebug?.client ?? null,
+    telegram: buildConnectPhoneTelegramReactionDebug({
+      receivedPhone: input.phoneNumberSent,
+      normalizedPhone: input.phoneNumberSent,
+      defaultCountry: input.defaultCountry,
+      isCurrentPhoneNumber: input.isCurrentPhoneNumber,
+      connectionState: null,
+      authStateAfter: input.authState,
+      invokeError: null,
+      authorizationStateType:
+        input.authState === "wait_code"
+          ? "authorizationStateWaitCode"
+          : input.authState === "wait_password"
+            ? "authorizationStateWaitPassword"
+            : null,
+      codeDelivery: input.codeDelivery
+        ? {
+            type: input.codeDelivery.type,
+            nextType: input.codeDelivery.nextType ?? null,
+            timeoutSec: input.codeDelivery.timeoutSec ?? null,
+            phoneMasked: input.codeDelivery.phoneMasked ?? null,
+            codeLength: input.codeDelivery.codeLength ?? null,
+          }
+        : null,
+      connectError: input.error,
+    }),
+  };
 }
 
 export function buildConnectPhoneTelegramReactionDebug(input: {
