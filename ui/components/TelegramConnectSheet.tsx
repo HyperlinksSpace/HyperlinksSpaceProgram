@@ -216,9 +216,12 @@ export function TelegramConnectSheet() {
     formatConnectCodeDeliveryHint(connectCodeDelivery, tf) ??
     (inTelegramApp ? t("messages.connectSheetCodeBody") : t("messages.connectSheetCodeBodyDesktop"));
 
-  const canResendCode =
-    connectCodeDelivery?.type !== "authenticationCodeTypeTelegramMessage" ||
-    Boolean(connectCodeDelivery?.nextType);
+  /** Phone login codes are delivered in the Telegram app only — no SMS resend path. */
+  const canResendCode = false;
+  const showTelegramAppCodeHint =
+    showCode &&
+    (connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" ||
+      connectCodeDelivery?.type == null);
 
   const sheetTitle = showSuccess
     ? t("messages.connectSheetSuccessTitle")
@@ -373,9 +376,7 @@ export function TelegramConnectSheet() {
               </Text>
             </Pressable>
           ) : null}
-          {showCode &&
-          connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" &&
-          !connectCodeDelivery?.nextType ? (
+          {showTelegramAppCodeHint ? (
             <Text style={[appModalSheetStyles.bodySupporting, { color: colors.secondary, marginTop: 10 }]}>
               {t("messages.connectSheetCodeTelegramOnlyHint")}
             </Text>

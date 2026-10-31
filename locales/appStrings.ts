@@ -228,20 +228,20 @@ const en = {
   "messages.connectSheetPhoneSubmit": "Send code",
   "messages.connectSheetCodeTitle": "Enter login code",
   "messages.connectSheetCodeBody":
-    "Check SMS on your phone or a Telegram message from Telegram with your login code, then enter it below.",
+    "Open the official Telegram chat on your phone (login code from Telegram) and enter the code below.",
   "messages.connectSheetCodeBodyDesktop":
-    "Login runs on a cloud server, not in this browser. Telegram often sends the code inside the official Telegram app (not SMS) — open Telegram on a phone already logged into that number, or check Settings → Devices. Do not resubmit your phone number (that cancels the code).",
+    "Login runs on a cloud server, not in this browser. The code is delivered only in the Telegram app — open Telegram on a phone logged into that number (official Telegram chat or Settings → Devices). Do not resubmit your phone number (that cancels the code).",
   "messages.connectSheetCodeSentTelegram":
     "Telegram accepted {phone}. The code is sent only inside the Telegram app (not SMS) — open the official Telegram chat (verified account, often 42777) on a device already logged into that number, or Settings → Devices → active login attempt.",
   "messages.connectSheetCodeSentSms": "Telegram sent a login code by SMS to {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram is sending a login code by phone call to {phone}.",
   "messages.connectSheetCodeSentGeneric":
-    "Telegram accepted {phone}. Check SMS or the Telegram app (official Telegram chat / Settings → Devices).",
+    "Telegram accepted {phone}. Open the Telegram app on that number (official Telegram chat or Settings → Devices) and enter the code below.",
   "messages.connectSheetCodePhoneUnknown": "your number",
   "messages.connectSheetCodeResend": "Resend code",
   "messages.connectSheetCodeResendSms": "Send code via SMS instead",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "No SMS is available for this attempt. If you do not see a code in Telegram on another device, close this and scan the QR code instead.",
+    "The login code is sent only in the Telegram app on your phone (not SMS). Open the official Telegram chat or Settings → Devices. You can also connect with the QR code above.",
   "messages.connectSheetCodePlaceholder": "Login code",
   "messages.connectSheetCodeSubmit": "Continue",
   "messages.connectErrorGatewayPhoneEndpoint":
@@ -1262,20 +1262,20 @@ const ru = {
   "messages.connectSheetPhoneSubmit": "Отправить код",
   "messages.connectSheetCodeTitle": "Код входа",
   "messages.connectSheetCodeBody":
-    "Проверьте SMS на телефоне или сообщение от Telegram с кодом входа и введите его ниже.",
+    "Откройте официальный чат Telegram на телефоне (код входа от Telegram) и введите код ниже.",
   "messages.connectSheetCodeBodyDesktop":
-    "Вход идёт через облачный сервер, а не в этом браузере. Часто код приходит только в приложении Telegram (не SMS) — откройте Telegram на телефоне с этим номером или Настройки → Устройства. Не отправляйте номер повторно — это отменяет код.",
+    "Вход идёт через облачный сервер, а не в этом браузере. Код приходит только в приложении Telegram — откройте Telegram на телефоне с этим номером (официальный чат Telegram или Настройки → Устройства). Не отправляйте номер повторно — это отменяет код.",
   "messages.connectSheetCodeSentTelegram":
     "Telegram принял номер {phone}. Код приходит только в приложении Telegram (не SMS) — откройте официальный чат Telegram (верифицированный аккаунт, часто 42777) на устройстве с этим номером или Настройки → Устройства → активная попытка входа.",
   "messages.connectSheetCodeSentSms": "Telegram отправил код входа по SMS на {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram отправляет код входа звонком на {phone}.",
   "messages.connectSheetCodeSentGeneric":
-    "Telegram принял номер {phone}. Проверьте SMS или приложение Telegram (чат Telegram / Настройки → Устройства).",
+    "Telegram принял номер {phone}. Откройте приложение Telegram с этим номером (официальный чат Telegram или Настройки → Устройства) и введите код ниже.",
   "messages.connectSheetCodePhoneUnknown": "ваш номер",
   "messages.connectSheetCodeResend": "Отправить код снова",
   "messages.connectSheetCodeResendSms": "Отправить код по SMS",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "Для этой попытки SMS недоступен. Если кода нет в Telegram на другом устройстве, закройте окно и войдите по QR-коду.",
+    "Код входа приходит только в приложении Telegram на телефоне (не SMS). Откройте официальный чат Telegram или Настройки → Устройства. Также можно войти по QR-коду выше.",
   "messages.connectSheetCodePlaceholder": "Код входа",
   "messages.connectSheetCodeSubmit": "Продолжить",
   "messages.connectErrorGatewayPhoneEndpoint":
@@ -2265,19 +2265,19 @@ const zh = {
   "messages.connectSheetPhonePlaceholder": "+1 415 555 2671",
   "messages.connectSheetPhoneSubmit": "发送验证码",
   "messages.connectSheetCodeTitle": "输入登录验证码",
-  "messages.connectSheetCodeBody": "请查看手机短信或 Telegram 发来的登录验证码，然后在下方输入。",
+  "messages.connectSheetCodeBody": "请在手机上打开官方 Telegram 聊天（Telegram 发来的登录验证码），然后在下方输入。",
   "messages.connectSheetCodeBodyDesktop":
-    "登录在云服务器上运行，而非本浏览器。Telegram 常常只在官方 Telegram 应用内发送验证码（不是短信）——请在已登录该号码的手机上打开 Telegram，或查看 设置 → 设备。请勿重新提交手机号（那会取消当前验证码）。",
+    "登录在云服务器上运行，而非本浏览器。验证码仅在 Telegram 应用内发送——请在已登录该号码的手机上打开 Telegram（官方 Telegram 聊天或 设置 → 设备）。请勿重新提交手机号（那会取消当前验证码）。",
   "messages.connectSheetCodeSentTelegram":
     "Telegram 已接受 {phone}。验证码仅在 Telegram 应用内发送（非短信）——请在已登录该号码的设备上打开官方 Telegram 聊天（已验证账号，常见为 42777），或前往 设置 → 设备 → 进行中的登录尝试。",
   "messages.connectSheetCodeSentSms": "Telegram 已通过短信向 {phone} 发送登录验证码。",
   "messages.connectSheetCodeSentCall": "Telegram 正在通过电话向 {phone} 发送登录验证码。",
-  "messages.connectSheetCodeSentGeneric": "Telegram 已接受 {phone}。请查看短信或 Telegram 应用（官方 Telegram 聊天 / 设置 → 设备）。",
+  "messages.connectSheetCodeSentGeneric": "Telegram 已接受 {phone}。请在该号码的 Telegram 应用中打开（官方 Telegram 聊天或 设置 → 设备），然后在下方输入验证码。",
   "messages.connectSheetCodePhoneUnknown": "你的号码",
   "messages.connectSheetCodeResend": "重新发送验证码",
   "messages.connectSheetCodeResendSms": "改为通过短信发送",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "本次尝试无法发送短信。如果另一台设备上的 Telegram 也没有验证码，请关闭此窗口并改用二维码。",
+    "登录验证码仅在手机 Telegram 应用内发送（非短信）。请打开官方 Telegram 聊天或 设置 → 设备。也可使用上方的二维码连接。",
   "messages.connectSheetCodePlaceholder": "登录验证码",
   "messages.connectSheetCodeSubmit": "继续",
   "messages.connectErrorGatewayPhoneEndpoint": "TDLib gateway 暂不支持手机号登录。请重启：停止 npm run tdlib:gateway，然后重新启动。",

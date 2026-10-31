@@ -871,18 +871,11 @@ export async function resendConnectCode(attemptId: string): Promise<ConnectAttem
   const record = attempts.get(attemptId);
   if (!record?.client) return record ? snapshot(record) : null;
   if (record.authState !== "wait_code") return snapshot(record);
-  record.error = null;
-  try {
-    await record.client.invoke({ _: "resendAuthenticationCode" });
-    await syncCodeDeliveryFromClient(record);
-    logConnectEvent(record, "connect_code_resent", {
-      codeType: record.codeDelivery?.type ?? null,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "resend_failed";
-    record.error = message;
-    logConnectEvent(record, "connect_code_resend_failed", { message });
-  }
+  record.error = "telegram_app_code_only";
+  logConnectEvent(record, "connect_code_resend_blocked", {
+    reason: "telegram_app_delivery_only",
+    codeType: record.codeDelivery?.type ?? null,
+  });
   return snapshot(record);
 }
 

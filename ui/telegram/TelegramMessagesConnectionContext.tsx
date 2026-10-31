@@ -1106,7 +1106,15 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           authState?: string;
           error?: string | null;
           chatCount?: number | null;
+          codeDelivery?: ConnectCodeDeliveryInfo | null;
         };
+        logTelegramConnect("connect_phone_response", {
+          status: response.status,
+          authState: json.authState ?? null,
+          error: json.error ?? null,
+          codeDeliveryType: json.codeDelivery?.type ?? null,
+          codeDeliveryNextType: json.codeDelivery?.nextType ?? null,
+        });
         if (!json.authState) {
           setConnectError(json.error || `HTTP_${response.status}`);
           startPolling();
@@ -1187,22 +1195,31 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         ok?: boolean;
         authState?: string;
         error?: string | null;
+        chatCount?: number | null;
+        codeDelivery?: ConnectCodeDeliveryInfo | null;
       };
       logTelegramConnect("connect_resend_response", {
         status: response.status,
         authState: json.authState ?? null,
         error: json.error ?? null,
+        codeDeliveryType: json.codeDelivery?.type ?? null,
+        codeDeliveryNextType: json.codeDelivery?.nextType ?? null,
       });
-      if (json.error) {
+      applyConnectSnapshot({ ...json, attemptId });
+      if (json.error && !response.ok) {
         setConnectError(json.error);
+      }
+      if (json.authState !== "ready" && json.authState !== "failed") {
+        startPolling();
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setConnectError(message.includes("Failed to fetch") ? "network_error" : message);
+      startPolling();
     } finally {
       setConnectPending(false);
     }
-  }, []);
+  }, [applyConnectSnapshot, startPolling]);
 
   const switchToQrConnect = useCallback(async () => {
     stopPolling();
