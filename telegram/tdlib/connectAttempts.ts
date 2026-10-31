@@ -17,6 +17,11 @@ import { logGateway } from "./gatewayLog.js";
 import { classifyTdlibSendError } from "../../shared/telegramSendError.js";
 import { isPlausibleE164Phone, normalizePhoneNumber } from "../../shared/normalizePhoneNumber.js";
 import type { CountryCode } from "libphonenumber-js";
+import {
+  buildConnectPhoneTelegramReactionDebug,
+  type ConnectPhoneClientDebug,
+  type ConnectPhoneSubmitDebug,
+} from "../../shared/telegramConnectPhoneDebug.js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import {
   persistMtprotoConnection,
@@ -89,6 +94,7 @@ export type ConnectAttemptSnapshot = {
   chatCount: number | null;
   codeDelivery: ConnectCodeDelivery | null;
   messengerSlot?: number;
+  phoneDebug?: ConnectPhoneSubmitDebug | null;
 };
 
 type AttemptRecord = ConnectAttemptSnapshot & {
@@ -218,6 +224,7 @@ function snapshot(record: AttemptRecord): ConnectAttemptSnapshot {
     chatCount: record.chatCount,
     codeDelivery: record.codeDelivery,
     messengerSlot: getMessengerSlot(record.telegramUsername),
+    phoneDebug: record.phoneDebug ?? null,
   };
 }
 
@@ -688,6 +695,7 @@ async function startConnectAttemptUnlocked(
     qrRequested: false,
     authMethod,
     watchdogTimer: null,
+    phoneDebug: null,
   };
 
   attempts.set(attemptId, record);
@@ -791,10 +799,67 @@ export async function abortConnectAttempt(attemptId: string): Promise<boolean> {
   return true;
 }
 
+async function attachPhoneSubmitDebug(
+  record: AttemptRecord,
+  input: {
+    receivedPhone: string;
+    normalizedPhone: string;
+    defaultCountry?: CountryCode;
+    isCurrentPhoneNumber: boolean;
+    invokeError: string | null;
+    clientPhoneDebug?: ConnectPhoneClientDebug | null;
+  },
+): Promise<void> {
+  let authorizationStateType: string | null = null;
+  if (record.client) {
+    try {
+      const state = (await record.client.invoke({ _: "getAuthorizationState" })) as {
+        _?: string;
+      };
+      authorizationStateType = state._ ?? null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logConnectEvent(record, "connect_phone_debug_auth_state_failed", { message });
+    }
+  }
+
+  record.phoneDebug = {
+    client: input.clientPhoneDebug ?? null,
+    telegram: buildConnectPhoneTelegramReactionDebug({
+      receivedPhone: input.receivedPhone,
+      normalizedPhone: input.normalizedPhone,
+      defaultCountry: input.defaultCountry,
+      isCurrentPhoneNumber: input.isCurrentPhoneNumber,
+      connectionState: record.connectionState,
+      authStateAfter: record.authState,
+      invokeError: input.invokeError,
+      authorizationStateType,
+      codeDelivery: record.codeDelivery
+        ? {
+            type: record.codeDelivery.type,
+            nextType: record.codeDelivery.nextType,
+            timeoutSec: record.codeDelivery.timeoutSec,
+            phoneMasked: record.codeDelivery.phoneMasked,
+            codeLength: record.codeDelivery.codeLength,
+          }
+        : null,
+      connectError: record.error,
+    }),
+  };
+
+  logConnectEvent(record, "connect_phone_telegram_reaction", {
+    ...record.phoneDebug.telegram,
+  });
+}
+
 export async function submitConnectPhoneNumber(
   attemptId: string,
   phoneNumber: string,
-  options?: { isCurrentPhoneNumber?: boolean; defaultCountry?: CountryCode },
+  options?: {
+    isCurrentPhoneNumber?: boolean;
+    defaultCountry?: CountryCode;
+    clientPhoneDebug?: ConnectPhoneClientDebug | null;
+  },
 ): Promise<ConnectAttemptSnapshot | null> {
   const record = attempts.get(attemptId);
   if (!record) return null;
@@ -825,6 +890,14 @@ export async function submitConnectPhoneNumber(
       phoneMasked: maskPhoneNumber(normalized || phoneNumber),
       defaultCountry: options?.defaultCountry ?? null,
     });
+    await attachPhoneSubmitDebug(record, {
+      receivedPhone: phoneNumber,
+      normalizedPhone: normalized,
+      defaultCountry: options?.defaultCountry,
+      isCurrentPhoneNumber: Boolean(options?.isCurrentPhoneNumber),
+      invokeError: "invalid_phone_number",
+      clientPhoneDebug: options?.clientPhoneDebug ?? null,
+    });
     return snapshot(record);
   }
 
@@ -853,6 +926,7 @@ export async function submitConnectPhoneNumber(
     });
   };
 
+  let invokeError: string | null = null;
   try {
     await waitForConnectionReady(record, 30_000);
     let lastError: Error | null = null;
@@ -897,6 +971,7 @@ export async function submitConnectPhoneNumber(
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "phone_rejected";
+    invokeError = message;
     if (record.authState === "wait_code") {
       await syncCodeDeliveryFromClient(record);
       record.error = null;
@@ -904,6 +979,14 @@ export async function submitConnectPhoneNumber(
         message,
         codeType: record.codeDelivery?.type ?? null,
         phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+      });
+      await attachPhoneSubmitDebug(record, {
+        receivedPhone: phoneNumber,
+        normalizedPhone: normalized,
+        defaultCountry: options?.defaultCountry,
+        isCurrentPhoneNumber: useCurrentPhone,
+        invokeError: message,
+        clientPhoneDebug: options?.clientPhoneDebug ?? null,
       });
       return snapshot(record);
     }
@@ -916,6 +999,14 @@ export async function submitConnectPhoneNumber(
     }
     logConnectEvent(record, "connect_phone_rejected", { message });
   }
+  await attachPhoneSubmitDebug(record, {
+    receivedPhone: phoneNumber,
+    normalizedPhone: normalized,
+    defaultCountry: options?.defaultCountry,
+    isCurrentPhoneNumber: useCurrentPhone,
+    invokeError,
+    clientPhoneDebug: options?.clientPhoneDebug ?? null,
+  });
   return snapshot(record);
 }
 

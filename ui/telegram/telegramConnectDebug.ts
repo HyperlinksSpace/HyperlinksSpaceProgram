@@ -1,5 +1,6 @@
 import { appLog } from "../../shared/appLog";
 import type { ConnectCodeDeliveryInfo } from "./formatConnectCodeDelivery";
+import type { ConnectPhoneSubmitDebug } from "../../shared/telegramConnectPhoneDebug";
 
 /** Filter DevTools console with `[telegram-connect]`. */
 export const TELEGRAM_CONNECT_LOG_PREFIX = "[telegram-connect]";
@@ -20,6 +21,7 @@ export type ConnectPhoneApiResponseBody = {
   messengerSlot?: number | null;
   qrLink?: string | null;
   codeDelivery?: ConnectCodeDeliveryInfo | null;
+  phoneDebug?: ConnectPhoneSubmitDebug | null;
 };
 
 /** Logs TDLib/Telegram auth outcome from POST /api/telegram-mtproto-connect-phone (DevTools: `[telegram-connect]`). */
@@ -38,6 +40,34 @@ export function logConnectPhoneTelegramResponse(
     telegramAuthState: body.authState ?? null,
     telegramError: body.error ?? null,
     telegramCodeDelivery: body.codeDelivery ?? null,
+    phoneDebug: body.phoneDebug ?? null,
     apiBody: body,
   });
+}
+
+/**
+ * One consolidated console record: what you typed → what we sent → Telegram/TDLib reaction.
+ * Filter DevTools with `[telegram-connect] connect_phone_debug_complete`.
+ */
+export function logConnectPhoneDebugComplete(
+  httpStatus: number,
+  body: ConnectPhoneApiResponseBody,
+  clientDebugBeforeRequest?: ConnectPhoneSubmitDebug["client"],
+): void {
+  const phoneDebug = body.phoneDebug ?? null;
+  const telegram = phoneDebug?.telegram ?? null;
+  logTelegramConnect("connect_phone_debug_complete", {
+    httpStatus,
+    attemptId: body.attemptId ?? null,
+    ok: body.ok ?? null,
+    authState: body.authState ?? null,
+    error: body.error ?? null,
+    codeDelivery: body.codeDelivery ?? null,
+    client: clientDebugBeforeRequest ?? phoneDebug?.client ?? null,
+    telegram,
+    summary: telegram?.deliveryNote ?? null,
+  });
+  if (telegram?.deliveryNote) {
+    logTelegramConnect("connect_phone_debug_summary", { message: telegram.deliveryNote });
+  }
 }

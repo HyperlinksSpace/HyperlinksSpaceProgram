@@ -423,6 +423,7 @@ export async function telegramMtprotoConnectPhoneHandler(
     phoneNumber?: string;
     isCurrentPhoneNumber?: boolean;
     phoneDefaultCountry?: string;
+    clientPhoneDebug?: import("../../shared/telegramConnectPhoneDebug.js").ConnectPhoneClientDebug | null;
   }>(request);
   const attemptId = (body.attemptId || "").trim();
   const phoneNumber = body.phoneNumber || "";
@@ -439,6 +440,7 @@ export async function telegramMtprotoConnectPhoneHandler(
     const snap = await gatewayConnectPhone(attemptId, phoneNumber, {
       isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
       defaultCountry: parseCountryCodeHint(body.phoneDefaultCountry),
+      clientPhoneDebug: body.clientPhoneDebug ?? null,
     });
     const authState = snap.authState ?? "wait_phone";
     const gatewayFailed = snap.httpStatus >= 400 || snap.error === "not_found" || snap.error === "attempt_not_found";
@@ -459,6 +461,7 @@ export async function telegramMtprotoConnectPhoneHandler(
         chatCount: snap.chatCount ?? null,
         messengerSlot: snap.messengerSlot ?? null,
         codeDelivery: snap.codeDelivery ?? null,
+        phoneDebug: snap.phoneDebug ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
     );

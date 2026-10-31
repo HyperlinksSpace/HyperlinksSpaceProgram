@@ -20,7 +20,8 @@ import { getLastAuthSessionPayload } from "../../auth/lastAuthSessionCache";
 import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
-import { logConnectPhoneTelegramResponse, logTelegramConnect } from "./telegramConnectDebug";
+import { logConnectPhoneDebugComplete, logConnectPhoneTelegramResponse, logTelegramConnect } from "./telegramConnectDebug";
+import { buildConnectPhoneClientDebug } from "../../shared/telegramConnectPhoneDebug";
 import {
   isPlausibleE164Phone,
   normalizeTelegramAuthPhone,
@@ -1087,13 +1088,23 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
       const phoneCtx = resolveTelegramAuthPhoneContext(hints?.appLocale);
       const defaultCountry =
         parseCountryCodeHint(hints?.phoneDefaultCountry) ?? phoneCtx.defaultCountry;
+      const clientPhoneDebug = buildConnectPhoneClientDebug(phoneNumber, {
+        languageTags: phoneCtx.languageTags,
+        appLocale: hints?.appLocale,
+        defaultCountry,
+      });
       const normalized = normalizeTelegramAuthPhone(phoneNumber, {
         languageTags: phoneCtx.languageTags,
         appLocale: hints?.appLocale,
         defaultCountry,
       });
+      logTelegramConnect("connect_phone_input_debug", { client: clientPhoneDebug, normalizedMasked: clientPhoneDebug.normalizedE164Masked });
       if (!isPlausibleE164Phone(normalized)) {
         setConnectError("invalid_phone_number");
+        logTelegramConnect("connect_phone_debug_summary", {
+          message:
+            "Phone could not be normalized to plausible E.164 before contacting Telegram. See connect_phone_input_debug for defaultCountry, libPhoneValid, and normalizedE164Masked.",
+        });
         return;
       }
       if (connectAuthStateRef.current === "wait_code" || connectAuthStateRef.current === "wait_password") {
@@ -1103,6 +1114,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
         authState: connectAuthStateRef.current,
         authMethod: connectAuthMethodRef.current,
         hasAttemptId: Boolean(attemptIdRef.current),
+        client: clientPhoneDebug,
       });
       setConnectPending(true);
       setConnectError(null);
@@ -1174,6 +1186,7 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
             phoneNumber: normalized,
             phoneDefaultCountry: defaultCountry ?? null,
             isCurrentPhoneNumber: mtprotoUseCurrentPhoneNumberForCode(),
+            clientPhoneDebug,
           }),
         });
         const json = (await response.json().catch(() => ({}))) as {
@@ -1185,15 +1198,17 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           messengerSlot?: number | null;
           qrLink?: string | null;
           codeDelivery?: ConnectCodeDeliveryInfo | null;
+          phoneDebug?: import("../../shared/telegramConnectPhoneDebug").ConnectPhoneSubmitDebug | null;
         };
         logConnectPhoneTelegramResponse(response.status, json, {
           attemptId,
           phoneSentMasked:
             json.codeDelivery?.phoneMasked ??
-            (normalized.length >= 4 ? `+***${normalized.replace(/\D/g, "").slice(-4)}` : "***"),
+            clientPhoneDebug.normalizedE164Masked,
           phoneDefaultCountry: defaultCountry ?? null,
           isCurrentPhoneNumber: mtprotoUseCurrentPhoneNumberForCode(),
         });
+        logConnectPhoneDebugComplete(response.status, json, clientPhoneDebug);
         logTelegramConnect("connect_phone_response", {
           status: response.status,
           authState: json.authState ?? null,

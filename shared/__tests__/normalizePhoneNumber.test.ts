@@ -79,6 +79,10 @@ check("51234567", "+37251234567", "EE");
 assert.equal(resolveDefaultPhoneCountry({ languageTags: ["ru-RU"] }), "RU");
 assert.equal(resolveDefaultPhoneCountry({ languageTags: ["en-US"] }), "US");
 assert.equal(resolveDefaultPhoneCountry({ appLocale: "ru" }), "RU");
+assert.equal(
+  resolveDefaultPhoneCountry({ appLocale: "ru", languageTags: ["en-US", "ru-RU"] }),
+  "RU",
+);
 
 assert.equal(
   normalizeTelegramAuthPhone("916 123 45 67", { appLocale: "ru" }),

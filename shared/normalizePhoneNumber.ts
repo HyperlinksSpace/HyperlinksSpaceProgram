@@ -44,13 +44,34 @@ const LOCALE_BASE_TO_COUNTRY: Partial<Record<string, CountryCode>> = {
   fa: "IR",
 };
 
+/** Infer ISO 3166-1 alpha-2 from one BCP-47 tag (region suffix, then language base map). */
+function countryFromBcp47Tag(tag: string): CountryCode | undefined {
+  const parts = tag.split(/[-_]/);
+  if (parts.length >= 2) {
+    const region = parts[parts.length - 1]!.toUpperCase();
+    if (region.length === 2 && /^[A-Z]{2}$/.test(region)) {
+      return region as CountryCode;
+    }
+  }
+  const base = parts[0]?.toLowerCase();
+  if (base && LOCALE_BASE_TO_COUNTRY[base]) {
+    return LOCALE_BASE_TO_COUNTRY[base];
+  }
+  return undefined;
+}
+
 /** Infer ISO 3166-1 alpha-2 from BCP-47 tags and optional app locale (e.g. ru → RU). */
 export function resolveDefaultPhoneCountry(input?: {
   languageTags?: readonly string[];
   appLocale?: string;
 }): CountryCode | undefined {
+  // App locale wins over browser `en-US` when UI is e.g. ru but OS languages list English first.
+  if (input?.appLocale?.trim()) {
+    const fromApp = countryFromBcp47Tag(input.appLocale.trim());
+    if (fromApp) return fromApp;
+  }
+
   const tags: string[] = [];
-  if (input?.appLocale?.trim()) tags.push(input.appLocale.trim());
   if (input?.languageTags) {
     for (const tag of input.languageTags) {
       if (typeof tag === "string" && tag.trim()) tags.push(tag.trim());

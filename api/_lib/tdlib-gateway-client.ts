@@ -22,6 +22,7 @@ export type GatewayConnectSnapshot = {
     phoneMasked?: string | null;
     codeLength?: number | null;
   } | null;
+  phoneDebug?: import("../../shared/telegramConnectPhoneDebug.js").ConnectPhoneSubmitDebug | null;
 };
 
 type GatewayVoiceVideoInfo = {
@@ -183,7 +184,11 @@ export async function gatewayConnectPassword(
 export async function gatewayConnectPhone(
   attemptId: string,
   phoneNumber: string,
-  options?: { isCurrentPhoneNumber?: boolean; defaultCountry?: string },
+  options?: {
+    isCurrentPhoneNumber?: boolean;
+    defaultCountry?: string;
+    clientPhoneDebug?: import("../../shared/telegramConnectPhoneDebug.js").ConnectPhoneClientDebug | null;
+  },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/phone", {
     method: "POST",
@@ -192,6 +197,7 @@ export async function gatewayConnectPhone(
       phoneNumber,
       isCurrentPhoneNumber: Boolean(options?.isCurrentPhoneNumber),
       phoneDefaultCountry: options?.defaultCountry ?? null,
+      clientPhoneDebug: options?.clientPhoneDebug ?? null,
     }),
   });
   return { ...json, httpStatus: response.status };
