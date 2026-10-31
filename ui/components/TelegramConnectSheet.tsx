@@ -236,6 +236,7 @@ export function TelegramConnectSheet() {
   const canResendCode =
     showCode &&
     !resendWouldUseSms &&
+    connectCodeDelivery?.nextType != null &&
     (connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" ||
       connectCodeDelivery?.type == null);
   const showTelegramAppCodeHint =

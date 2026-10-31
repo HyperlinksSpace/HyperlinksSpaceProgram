@@ -200,13 +200,21 @@ async function syncCodeDeliveryFromClient(record: AttemptRecord): Promise<void> 
   }
 }
 
+function sanitizeSnapshotError(record: AttemptRecord): string | null {
+  const error = record.error;
+  if (!error || record.authState !== "wait_code") return error;
+  if (/authentication code can't be resend/i.test(error)) return null;
+  if (error === "telegram_app_code_only") return null;
+  return error;
+}
+
 function snapshot(record: AttemptRecord): ConnectAttemptSnapshot {
   return {
     attemptId: record.attemptId,
     telegramUsername: record.telegramUsername,
     authState: record.authState,
     qrLink: record.qrLink,
-    error: record.error,
+    error: sanitizeSnapshotError(record),
     chatCount: record.chatCount,
     codeDelivery: record.codeDelivery,
     messengerSlot: getMessengerSlot(record.telegramUsername),
@@ -931,6 +939,15 @@ export async function resendConnectCode(attemptId: string): Promise<ConnectAttem
     });
     return snapshot(record);
   }
+  if (!record.codeDelivery?.nextType) {
+    record.error = null;
+    logConnectEvent(record, "connect_code_resend_blocked", {
+      reason: "no_next_code_type",
+      codeType: record.codeDelivery?.type ?? null,
+      nextCodeType: null,
+    });
+    return snapshot(record);
+  }
 
   record.error = null;
   try {
@@ -953,10 +970,15 @@ export async function resendConnectCode(attemptId: string): Promise<ConnectAttem
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "resend_failed";
-    record.error = /not found|authorization_closed|session/i.test(message)
-      ? "session_expired_restart"
-      : message;
-    logConnectEvent(record, "connect_code_resend_failed", { message: record.error });
+    if (/authentication code can't be resend/i.test(message)) {
+      record.error = null;
+      logConnectEvent(record, "connect_code_resend_failed", { message, benign: true });
+    } else {
+      record.error = /not found|authorization_closed|session/i.test(message)
+        ? "session_expired_restart"
+        : message;
+      logConnectEvent(record, "connect_code_resend_failed", { message: record.error });
+    }
   }
   return snapshot(record);
 }
