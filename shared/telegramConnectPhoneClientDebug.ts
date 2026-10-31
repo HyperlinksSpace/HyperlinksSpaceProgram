@@ -2,8 +2,8 @@ import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js"
 import {
   isPlausibleE164Phone,
   normalizeTelegramAuthPhone,
-} from "./normalizePhoneNumber.js";
-import { maskPhoneForConnectLog, type ConnectPhoneClientDebug } from "./telegramConnectPhoneDebug.js";
+} from "./normalizePhoneNumber";
+import { maskPhoneForConnectLog, type ConnectPhoneClientDebug } from "./telegramConnectPhoneDebug";
 
 export type { ConnectPhoneClientDebug };
 
