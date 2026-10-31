@@ -117,8 +117,8 @@ export function describeTelegramCodeDeliveryForDebug(input: {
   }
   if (input.authState === "wait_code" && input.codeDeliveryType === "authenticationCodeTypeTelegramMessage") {
     const resend =
-      input.nextType != null
-        ? `Alternate delivery later: ${input.nextType}.`
+      input.nextCodeType != null
+        ? `Alternate delivery later: ${input.nextCodeType}.`
         : "Resend is unavailable (Telegram set no next delivery type).";
     const match =
       input.phoneLast4MatchesSent === false
