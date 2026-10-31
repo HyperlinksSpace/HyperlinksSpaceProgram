@@ -616,12 +616,16 @@ async function startConnectAttemptUnlocked(
         }
         if (
           existing.authState === "wait_qr" &&
-          authMethod === "phone" &&
-          !options?.fresh
+          authMethod === "phone"
         ) {
-          logConnectEvent(existing, "connect_switch_qr_to_phone", {});
+          logConnectEvent(existing, "connect_switch_qr_to_phone", {
+            fresh: Boolean(options?.fresh),
+          });
           writeStoredAuthMethod(telegramUsername, "phone");
           await disposeAttemptAsync(existingId);
+          if (!options?.fresh) {
+            await purgeTdlibUserData(telegramUsername);
+          }
         } else if (isMidConnectAttempt(existing)) {
           pinConnectAuth(existing);
           logConnectEvent(existing, "connect_reuse_mid_auth", {

@@ -1018,20 +1018,31 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   }, [applyConnectSnapshot, isAuthenticated, startPolling]);
 
   const waitForPhoneGatewayReady = useCallback(
-    async (timeoutMs: number): Promise<boolean> => {
+    async (timeoutMs: number): Promise<"ready" | "failed" | "stuck_qr" | "timeout"> => {
       const deadline = Date.now() + timeoutMs;
       while (Date.now() < deadline) {
-        if (connectAuthStateRef.current === "failed") return false;
+        if (connectAuthStateRef.current === "failed") return "failed";
         if (attemptIdRef.current) {
           await pollConnectStatus();
-          if (connectAuthStateRef.current === "wait_phone") return true;
-          if (connectAuthStateRef.current === "failed") return false;
+          if (connectAuthStateRef.current === "wait_phone") return "ready";
+          if (connectAuthStateRef.current === "failed") return "failed";
+          if (
+            connectAuthMethodRef.current === "phone" &&
+            connectAuthStateRef.current === "wait_qr"
+          ) {
+            return "stuck_qr";
+          }
         }
         await new Promise((r) => setTimeout(r, 400));
       }
-      return (
-        Boolean(attemptIdRef.current) && connectAuthStateRef.current === "wait_phone"
-      );
+      if (connectAuthStateRef.current === "wait_phone") return "ready";
+      if (
+        connectAuthMethodRef.current === "phone" &&
+        connectAuthStateRef.current === "wait_qr"
+      ) {
+        return "stuck_qr";
+      }
+      return "timeout";
     },
     [pollConnectStatus],
   );
@@ -1083,28 +1094,34 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
             setConnectAuthMethod("phone");
             connectAuthMethodRef.current = "phone";
             const switchingFromQr = connectAuthStateRef.current === "wait_qr";
-            await beginMtprotoConnect({
-              fresh:
-                !switchingFromQr &&
-                (!attemptIdRef.current || connectAuthStateRef.current === "failed"),
-              authMethod: "phone",
-              soft: true,
-            });
-            if (connectAuthStateRef.current === "wait_qr") {
-              logTelegramConnect("connect_phone_retry_force_fresh_after_qr_stuck");
-              await beginMtprotoConnect({ fresh: true, authMethod: "phone", soft: true });
+            let phoneGatewayReady: Awaited<ReturnType<typeof waitForPhoneGatewayReady>> = "timeout";
+            for (let startTry = 0; startTry < 2; startTry++) {
+              const useFresh =
+                switchingFromQr ||
+                startTry > 0 ||
+                !attemptIdRef.current ||
+                connectAuthStateRef.current === "failed";
+              await beginMtprotoConnect({
+                fresh: useFresh,
+                authMethod: "phone",
+                soft: startTry === 0 && !useFresh,
+              });
+              phoneGatewayReady = await waitForPhoneGatewayReady(useFresh ? 45_000 : 25_000);
+              if (phoneGatewayReady === "ready") break;
+              if (phoneGatewayReady === "failed") break;
+              if (phoneGatewayReady === "stuck_qr" && startTry === 0) {
+                logTelegramConnect("connect_phone_retry_force_fresh_after_qr_stuck");
+                continue;
+              }
+              break;
             }
-            if (connectAuthStateRef.current === "wait_qr") {
-              setConnectError("telegram_network_unreachable");
-              return;
-            }
-            setConnectPending(true);
-            const ready = await waitForPhoneGatewayReady(45_000);
-            if (!ready) {
+            if (phoneGatewayReady !== "ready") {
               setConnectError(
                 connectAuthStateRef.current === "failed"
                   ? "session_expired_restart"
-                  : "telegram_network_unreachable",
+                  : phoneGatewayReady === "stuck_qr"
+                    ? "telegram_network_unreachable"
+                    : "telegram_network_unreachable",
               );
               return;
             }
