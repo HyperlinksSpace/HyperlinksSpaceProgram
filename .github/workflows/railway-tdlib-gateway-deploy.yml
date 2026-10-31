@@ -1,0 +1,43 @@
+# Deploy TDLib gateway to Railway (requires repo secret RAILWAY_TOKEN).
+# Create token: Railway dashboard → Account Settings → Tokens → Create.
+# Add secret: gh secret set RAILWAY_TOKEN -R HyperlinksSpace/HyperlinksSpaceProgram
+name: Railway TDLib Gateway Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "railway.toml"
+      - "deploy/railway/**"
+      - "telegram/tdlib/**"
+      - "shared/**"
+      - "scripts/run-tdlib-gateway.ts"
+      - "scripts/load-env.ts"
+      - "database/telegramMessages.ts"
+      - "database/telegramMtproto.ts"
+      - "database/start.ts"
+      - ".github/workflows/railway-tdlib-gateway-deploy.yml"
+
+concurrency:
+  group: railway-tdlib-gateway
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@4.68.0
+
+      - name: Deploy tdlib-gateway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not set. Add it in GitHub repo secrets."
+            exit 1
+          fi
+          railway up --detach

@@ -48,6 +48,8 @@
     "tdlib:public": "npx concurrently -n gateway,tunnel -c blue,green \"npm run tdlib:gateway\" \"npx --yes localtunnel --port 8787\"",
     "gcp:tdlib-gateway": "bash deploy/gcp/provision.sh",
     "deploy:railway:tdlib-gateway": "npx --yes @railway/cli@4.68.0 up --detach",
+    "railway:login": "npx --yes @railway/cli@4.68.0 login",
+    "railway:status": "npx --yes @railway/cli@4.68.0 status",
     "set-webhook": "npx tsx scripts/set-webhook.ts",
     "db:migrate": "npx tsx scripts/migrate-db.ts",
     "build:vercel": "npm run db:migrate && npx tsx scripts/vercel-export-web.ts && npx tsx scripts/set-webhook.ts",

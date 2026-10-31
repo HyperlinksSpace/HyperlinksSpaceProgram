@@ -8,6 +8,18 @@ Dashboard: [railway.app/dashboard](https://railway.app/dashboard)
 
 One-time: `npx railway login` and `npx railway link` (select project → **tdlib-gateway** service).
 
+Use the pinned CLI (do **not** run bare `npx railway login` — a broken global `@railway/cli` install can break login):
+
+```bash
+npm run railway:login
+npm run railway:status   # Linked service must not be None
+npm run deploy:railway:tdlib-gateway
+```
+
+If login says `invalid_grant`, run `npm run railway:login` again and complete browser auth.
+
+**GitHub Actions (optional):** add repo secret `RAILWAY_TOKEN` (Railway → Account → Tokens), then run workflow **Railway TDLib Gateway Deploy** or push to `main` under `telegram/tdlib/**`.
+
 ```bash
 npm run deploy:railway:tdlib-gateway
 ```
