@@ -2,7 +2,7 @@ import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js"
 import {
   isPlausibleE164Phone,
   normalizeTelegramAuthPhone,
-} from "./normalizePhoneNumber";
+} from "./normalizePhoneNumber.js";
 
 /** Mask E.164 for DevTools: +***3911 (last 4 digits visible). */
 export function maskPhoneForConnectLog(phone: string | undefined | null): string | null {
