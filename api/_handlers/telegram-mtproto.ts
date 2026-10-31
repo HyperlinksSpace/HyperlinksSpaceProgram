@@ -5,6 +5,7 @@ import {
   gatewayConnectCode,
   gatewayConnectPassword,
   gatewayConnectPhone,
+  gatewayConnectAbort,
   gatewayConnectResendCode,
   gatewayConnectStart,
   gatewayConnectStatus,
@@ -456,6 +457,7 @@ export async function telegramMtprotoConnectPhoneHandler(
         qrLink: snap.qrLink ?? null,
         error: snap.error ?? null,
         chatCount: snap.chatCount ?? null,
+        messengerSlot: snap.messengerSlot ?? null,
         codeDelivery: snap.codeDelivery ?? null,
       },
       snap.httpStatus >= 400 ? snap.httpStatus : 200,
@@ -574,5 +576,47 @@ export async function telegramMtprotoConnectResendCodeHandler(
   } catch (err) {
     const message = err instanceof Error ? err.message : "gateway_error";
     return finishJson(request, res, { ok: false, error: message, authState: "wait_code" }, 503);
+  }
+}
+
+export async function telegramMtprotoConnectAbortHandler(
+  request: AnyRequest,
+  res?: NodeRes,
+): Promise<Response | void> {
+  const preflight = authApiPreflightResponse(request);
+  if (preflight) return finishPreflight(request, res, preflight);
+  if (requestMethod(request) !== "POST") {
+    return finishJson(request, res, { ok: false, error: "method_not_allowed" }, 405);
+  }
+
+  const userOrRes = await requireUser(request);
+  if (userOrRes instanceof Response) {
+    if (res) {
+      res.status(userOrRes.status);
+      userOrRes.headers.forEach((v, k) => res.setHeader(k, v));
+      res.end(await userOrRes.text());
+      return;
+    }
+    return userOrRes;
+  }
+
+  const body = await parseRequestBody<{ attemptId?: string }>(request);
+  const attemptId = (body.attemptId || "").trim();
+  if (!attemptId) {
+    return finishJson(request, res, { ok: false, error: "attempt_id_required" }, 400);
+  }
+
+  try {
+    const result = await gatewayConnectAbort(attemptId);
+    logTdlibGatewayApi("connect_abort", { attemptId, httpStatus: result.httpStatus, ok: result.ok });
+    return finishJson(
+      request,
+      res,
+      { ok: result.ok, error: result.error ?? null },
+      result.httpStatus >= 400 ? result.httpStatus : 200,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "gateway_error";
+    return finishJson(request, res, { ok: false, error: message }, 503);
   }
 }

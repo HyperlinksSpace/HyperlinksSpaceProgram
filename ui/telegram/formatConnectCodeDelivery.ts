@@ -3,6 +3,7 @@ export type ConnectCodeDeliveryInfo = {
   nextType?: string | null;
   timeoutSec?: number | null;
   phoneMasked?: string | null;
+  codeLength?: number | null;
 };
 
 type AppStringFn = (key: string, vars?: Record<string, string | number | boolean>) => string;

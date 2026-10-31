@@ -97,6 +97,7 @@ import {
   telegramMtprotoConnectPasswordHandler,
   telegramMtprotoConnectPhoneHandler,
   telegramMtprotoConnectResendCodeHandler,
+  telegramMtprotoConnectAbortHandler,
   telegramMtprotoConnectStartHandler,
   telegramMtprotoConnectStatusHandler,
 } from './_handlers/telegram-mtproto.js';
@@ -205,6 +206,7 @@ const ROUTES: Record<string, ApiHandler> = {
   'telegram-mtproto-connect-phone': telegramMtprotoConnectPhoneHandler as ApiHandler,
   'telegram-mtproto-connect-code': telegramMtprotoConnectCodeHandler as ApiHandler,
   'telegram-mtproto-connect-resend-code': telegramMtprotoConnectResendCodeHandler as ApiHandler,
+  'telegram-mtproto-connect-abort': telegramMtprotoConnectAbortHandler as ApiHandler,
 };
 
 function routeKeyFromUrl(request: Request): string {

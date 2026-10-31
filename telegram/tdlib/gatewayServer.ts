@@ -40,7 +40,8 @@ import {
   discardPrivateCallForSession,
   acceptPrivateCallForSession,
   sendPrivateCallSignalingForSession,
-  getConnectAttempt,
+  refreshConnectAttemptSnapshot,
+  abortConnectAttempt,
   getLiveChatList,
   getLiveChatListRevision,
   getUserConnectSnapshot,
@@ -2710,12 +2711,28 @@ export function startTdlibGatewayServer(): http.Server {
             sendJson(res, 400, { ok: false, error: "attempt_id_required" });
             return;
           }
-          const snap = getConnectAttempt(attemptId);
+          const snap = await refreshConnectAttemptSnapshot(attemptId);
           if (!snap) {
             sendJson(res, 404, { ok: false, error: "attempt_not_found" });
             return;
           }
           sendJson(res, 200, { ok: true, ...snap });
+          return;
+        }
+
+        if (req.method === "POST" && pathname === "/v1/connect/abort") {
+          const body = (await readJson(req)) as { attemptId?: string };
+          const attemptId = (body.attemptId || "").trim();
+          if (!attemptId) {
+            sendJson(res, 400, { ok: false, error: "attempt_id_required" });
+            return;
+          }
+          const aborted = await abortConnectAttempt(attemptId);
+          if (!aborted) {
+            sendJson(res, 404, { ok: false, error: "attempt_not_found" });
+            return;
+          }
+          sendJson(res, 200, { ok: true });
           return;
         }
 

@@ -20,6 +20,7 @@ export type GatewayConnectSnapshot = {
     nextType?: string | null;
     timeoutSec?: number | null;
     phoneMasked?: string | null;
+    codeLength?: number | null;
   } | null;
 };
 
@@ -204,6 +205,20 @@ export async function gatewayConnectResendCode(
     body: JSON.stringify({ attemptId }),
   });
   return { ...json, httpStatus: response.status };
+}
+
+export async function gatewayConnectAbort(
+  attemptId: string,
+): Promise<{ ok: boolean; httpStatus: number; error?: string }> {
+  const { response, json } = await gatewayFetch("/v1/connect/abort", {
+    method: "POST",
+    body: JSON.stringify({ attemptId }),
+  });
+  return {
+    ok: Boolean((json as { ok?: boolean }).ok) && response.ok,
+    httpStatus: response.status,
+    error: (json as { error?: string }).error,
+  };
 }
 
 export async function gatewayConnectCode(

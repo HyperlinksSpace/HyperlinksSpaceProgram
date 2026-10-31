@@ -77,6 +77,7 @@ export type ConnectCodeDelivery = {
   nextType: string | null;
   timeoutSec: number | null;
   phoneMasked: string | null;
+  codeLength: number | null;
 };
 
 export type ConnectAttemptSnapshot = {
@@ -162,7 +163,7 @@ function maskPhoneNumber(phone: string | undefined | null): string | null {
 }
 
 type TdCodeInfo = {
-  type?: { _?: string };
+  type?: { _?: string; length?: number };
   next_type?: { _?: string };
   timeout?: number;
   phone_number?: string;
@@ -170,11 +171,16 @@ type TdCodeInfo = {
 
 function applyCodeInfo(record: AttemptRecord, codeInfo: TdCodeInfo | undefined): void {
   if (!codeInfo) return;
+  const codeLength =
+    typeof codeInfo.type?.length === "number" && Number.isFinite(codeInfo.type.length)
+      ? codeInfo.type.length
+      : null;
   record.codeDelivery = {
     type: codeInfo.type?._ ?? "unknown",
     nextType: codeInfo.next_type?._ ?? null,
     timeoutSec: typeof codeInfo.timeout === "number" ? codeInfo.timeout : null,
     phoneMasked: maskPhoneNumber(codeInfo.phone_number),
+    codeLength,
   };
 }
 
@@ -346,9 +352,7 @@ function attachAuthListener(record: AttemptRecord): void {
         nextCodeType: record.codeDelivery?.nextType ?? null,
         codeTimeoutSec: record.codeDelivery?.timeoutSec ?? null,
         phoneMasked: record.codeDelivery?.phoneMasked ?? null,
-        codeLength:
-          (update.authorization_state as { code_info?: { type?: { length?: number } } })?.code_info
-            ?.type?.length ?? null,
+        codeLength: record.codeDelivery?.codeLength ?? null,
       });
       return;
     }
@@ -750,6 +754,35 @@ export function getConnectAttempt(attemptId: string): ConnectAttemptSnapshot | n
   return snapshot(record);
 }
 
+/** Status polls: refresh code_info from TDLib while waiting for login code. */
+export async function refreshConnectAttemptSnapshot(
+  attemptId: string,
+): Promise<ConnectAttemptSnapshot | null> {
+  const record = attempts.get(attemptId);
+  if (!record) return null;
+  if (record.authState === "wait_code") {
+    await syncCodeDeliveryFromClient(record);
+  }
+  if (isMidConnectAttempt(record)) {
+    pinConnectAuth(record);
+  } else {
+    touchGatewayUserActivity(record.telegramUsername);
+  }
+  return snapshot(record);
+}
+
+export async function abortConnectAttempt(attemptId: string): Promise<boolean> {
+  const record = attempts.get(attemptId);
+  if (!record) return false;
+  logConnectEvent(record, "connect_abort", {
+    authState: record.authState,
+    codeType: record.codeDelivery?.type ?? null,
+    phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+  });
+  await disposeAttemptAsync(attemptId);
+  return true;
+}
+
 export async function submitConnectPhoneNumber(
   attemptId: string,
   phoneNumber: string,
@@ -847,7 +880,11 @@ export async function submitConnectPhoneNumber(
       logConnectEvent(record, "connect_phone_code_sent", {
         isCurrentPhone: useCurrentPhone,
         codeType: record.codeDelivery?.type ?? null,
+        nextCodeType: record.codeDelivery?.nextType ?? null,
+        codeTimeoutSec: record.codeDelivery?.timeoutSec ?? null,
+        codeLength: record.codeDelivery?.codeLength ?? null,
         phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+        connectionState: record.connectionState,
       });
     }
   } catch (err) {

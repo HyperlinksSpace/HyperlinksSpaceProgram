@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographyFixedRow40Label, useColors } from "../theme";
+import { TELEGRAM_LOGIN_CODE_CHAT_URL } from "../telegram/telegramLoginCodeChatUrl";
 import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
@@ -244,7 +245,8 @@ export function TelegramConnectSheet() {
       connectCodeDelivery?.type == null);
 
   const onOpenTelegramServiceChat = useCallback(() => {
-    void Linking.openURL("https://t.me/Telegram");
+    logTelegramConnect("connect_open_telegram_code_chat", { url: TELEGRAM_LOGIN_CODE_CHAT_URL });
+    void Linking.openURL(TELEGRAM_LOGIN_CODE_CHAT_URL);
   }, []);
 
   const sheetTitle = showSuccess
