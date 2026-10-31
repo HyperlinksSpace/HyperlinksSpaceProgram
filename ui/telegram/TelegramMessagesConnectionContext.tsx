@@ -21,7 +21,7 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
 import { logConnectPhoneDebugComplete, logConnectPhoneTelegramResponse, logTelegramConnect } from "./telegramConnectDebug";
-import { buildConnectPhoneClientDebug } from "../../shared/telegramConnectPhoneDebug";
+import { buildConnectPhoneClientDebug } from "../../shared/telegramConnectPhoneClientDebug";
 import {
   isPlausibleE164Phone,
   normalizeTelegramAuthPhone,
