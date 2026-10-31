@@ -228,21 +228,21 @@ const en = {
   "messages.connectSheetPhoneSubmit": "Send code",
   "messages.connectSheetCodeTitle": "Enter login code",
   "messages.connectSheetCodeBody":
-    "Open the official Telegram chat on your phone (login code from Telegram) and enter the code below.",
+    "Open the official Telegram service chat (+42777, t.me/+42777) on a device already logged into your number and enter the code below.",
   "messages.connectSheetCodeBodyDesktop":
-    "Login runs on a cloud server, not in this browser. The code is delivered only in the Telegram app — open Telegram on a phone logged into that number (official Telegram chat or Settings → Devices). Do not resubmit your phone number (that cancels the code).",
+    "Login runs on a cloud server, not in this browser. The code arrives only in the official Telegram app chat +42777 (t.me/+42777) on a phone or desktop already logged into that number. Do not resubmit your phone number (that cancels the code).",
   "messages.connectSheetCodeSentTelegram":
-    "Telegram accepted {phone}. The login code is sent only inside the Telegram app (not SMS). On a phone or desktop already logged into that number, open the verified Telegram chat (t.me/Telegram) or Settings → Devices → active login attempt.",
+    "Telegram accepted {phone}. The login code is sent only in the official verified chat +42777 (not SMS). Open t.me/+42777 in a new tab with the button below on a session already logged into that number. Tap Resend if nothing arrives within a minute.",
   "messages.connectSheetCodeSentSms": "Telegram sent a login code by SMS to {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram is sending a login code by phone call to {phone}.",
   "messages.connectSheetCodeSentGeneric":
-    "Telegram accepted {phone}. Open the Telegram app on that number (verified Telegram chat or Settings → Devices) and enter the code below.",
+    "Telegram accepted {phone}. Open the official chat t.me/+42777 (button below, new tab) on a device logged into that number, then enter the code below.",
   "messages.connectSheetCodePhoneUnknown": "your number",
   "messages.connectSheetCodeResend": "Resend code in Telegram",
   "messages.connectSheetCodeResendSms": "Send code via SMS instead",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "The login code appears only in the Telegram app on a device already logged into this number (not SMS). Open the verified Telegram chat (t.me/Telegram) or Settings → Devices. Do not submit your phone number again — that invalidates the code. You can also connect by scanning the QR code in the connect dialog.",
-  "messages.connectSheetOpenTelegramServiceChat": "Open Telegram service chat",
+    "The login code appears only in the official Telegram service chat +42777 (t.me/+42777), on a device already logged into this number — not SMS. Use the button below (new tab). Do not submit your phone again — that invalidates the code. Use Resend, or connect via QR.",
+  "messages.connectSheetOpenTelegramServiceChat": "Open official chat +42777 (new tab)",
   "messages.connectSheetCodePlaceholder": "Login code",
   "messages.connectSheetCodeSubmit": "Continue",
   "messages.connectErrorGatewayPhoneEndpoint":
@@ -1263,21 +1263,21 @@ const ru = {
   "messages.connectSheetPhoneSubmit": "Отправить код",
   "messages.connectSheetCodeTitle": "Код входа",
   "messages.connectSheetCodeBody":
-    "Откройте официальный чат Telegram на телефоне (код входа от Telegram) и введите код ниже.",
+    "Откройте официальный служебный чат Telegram +42777 (t.me/+42777) на устройстве, где уже выполнен вход с вашим номером, и введите код ниже.",
   "messages.connectSheetCodeBodyDesktop":
-    "Вход идёт через облачный сервер, а не в этом браузере. Код приходит только в приложении Telegram — откройте Telegram на телефоне с этим номером (официальный чат Telegram или Настройки → Устройства). Не отправляйте номер повторно — это отменяет код.",
+    "Вход идёт через облачный сервер, а не в этом браузере. Код приходит только в официальный чат +42777 (t.me/+42777) в приложении Telegram на телефоне или компьютере с этим номером. Не отправляйте номер повторно — это отменяет код.",
   "messages.connectSheetCodeSentTelegram":
-    "Telegram принял номер {phone}. Код приходит только в приложении Telegram (не SMS). На телефоне или компьютере с этим номером откройте верифицированный чат Telegram (t.me/Telegram) или Настройки → Устройства → активная попытка входа.",
+    "Telegram принял номер {phone}. Код входа приходит только в официальный верифицированный чат +42777 (не SMS). На устройстве с этим номером откройте t.me/+42777 кнопкой ниже (новая вкладка). Нажмите «Отправить снова», если код не пришёл в течение минуты.",
   "messages.connectSheetCodeSentSms": "Telegram отправил код входа по SMS на {phone}.",
   "messages.connectSheetCodeSentCall": "Telegram отправляет код входа звонком на {phone}.",
   "messages.connectSheetCodeSentGeneric":
-    "Telegram принял номер {phone}. Откройте приложение Telegram с этим номером (верифицированный чат Telegram или Настройки → Устройства) и введите код ниже.",
+    "Telegram принял номер {phone}. Откройте официальный чат t.me/+42777 (кнопка ниже, новая вкладка) на устройстве с этим номером и введите код ниже.",
   "messages.connectSheetCodePhoneUnknown": "ваш номер",
   "messages.connectSheetCodeResend": "Отправить код снова в Telegram",
   "messages.connectSheetCodeResendSms": "Отправить код по SMS",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "Код входа появляется только в приложении Telegram на устройстве, где уже выполнен вход с этим номером (не SMS). Откройте верифицированный чат Telegram (t.me/Telegram) или Настройки → Устройства. Не отправляйте номер повторно — это отменяет код. Также можно войти по QR-коду в окне подключения.",
-  "messages.connectSheetOpenTelegramServiceChat": "Открыть чат Telegram",
+    "Код входа появляется только в официальном служебном чате Telegram +42777 (t.me/+42777) на устройстве, где уже выполнен вход с этим номером — не SMS. Кнопка ниже откроет чат в новой вкладке. Не отправляйте номер повторно — это отменяет код. Можно нажать «Отправить снова» или войти по QR.",
+  "messages.connectSheetOpenTelegramServiceChat": "Открыть официальный чат +42777 (новая вкладка)",
   "messages.connectSheetCodePlaceholder": "Код входа",
   "messages.connectSheetCodeSubmit": "Продолжить",
   "messages.connectErrorGatewayPhoneEndpoint":
@@ -2267,20 +2267,20 @@ const zh = {
   "messages.connectSheetPhonePlaceholder": "+1 415 555 2671",
   "messages.connectSheetPhoneSubmit": "发送验证码",
   "messages.connectSheetCodeTitle": "输入登录验证码",
-  "messages.connectSheetCodeBody": "请在手机上打开官方 Telegram 聊天（Telegram 发来的登录验证码），然后在下方输入。",
+  "messages.connectSheetCodeBody": "请在已登录该号码的设备上打开 Telegram 官方服务聊天 +42777（t.me/+42777），然后在下方输入验证码。",
   "messages.connectSheetCodeBodyDesktop":
-    "登录在云服务器上运行，而非本浏览器。验证码仅在 Telegram 应用内发送——请在已登录该号码的手机上打开 Telegram（官方 Telegram 聊天或 设置 → 设备）。请勿重新提交手机号（那会取消当前验证码）。",
+    "登录在云服务器上运行，而非本浏览器。验证码只会出现在已登录该号码的设备上的 Telegram 官方聊天 +42777（t.me/+42777）。请勿重新提交手机号（那会取消当前验证码）。",
   "messages.connectSheetCodeSentTelegram":
-    "Telegram 已接受 {phone}。验证码仅在 Telegram 应用内发送（非短信）。请在已登录该号码的手机或电脑上打开已验证的 Telegram 聊天（t.me/Telegram），或前往 设置 → 设备 → 进行中的登录尝试。",
+    "Telegram 已接受 {phone}。登录验证码只会发送到官方已验证聊天 +42777（非短信）。请在已登录该号码的设备上用下方按钮在新标签页打开 t.me/+42777。若一分钟内未收到，请点「重新发送」。",
   "messages.connectSheetCodeSentSms": "Telegram 已通过短信向 {phone} 发送登录验证码。",
   "messages.connectSheetCodeSentCall": "Telegram 正在通过电话向 {phone} 发送登录验证码。",
-  "messages.connectSheetCodeSentGeneric": "Telegram 已接受 {phone}。请在该号码的 Telegram 应用中打开（已验证的 Telegram 聊天或 设置 → 设备），然后在下方输入验证码。",
+  "messages.connectSheetCodeSentGeneric": "Telegram 已接受 {phone}。请在已登录该号码的设备上用下方按钮在新标签页打开官方聊天 t.me/+42777，然后输入验证码。",
   "messages.connectSheetCodePhoneUnknown": "你的号码",
   "messages.connectSheetCodeResend": "在 Telegram 中重新发送验证码",
   "messages.connectSheetCodeResendSms": "改为通过短信发送",
   "messages.connectSheetCodeTelegramOnlyHint":
-    "登录验证码只会出现在已登录该号码的设备上的 Telegram 应用中（非短信）。请打开已验证的 Telegram 聊天（t.me/Telegram）或 设置 → 设备。请勿再次提交手机号——那会作废当前验证码。也可在连接对话框中扫描二维码登录。",
-  "messages.connectSheetOpenTelegramServiceChat": "打开 Telegram 官方聊天",
+    "登录验证码只会出现在已登录该号码的设备上的 Telegram 官方服务聊天 +42777（t.me/+42777），非短信。请用下方按钮在新标签页打开。请勿再次提交手机号——那会作废当前验证码。可点「重新发送」或使用 QR 登录。",
+  "messages.connectSheetOpenTelegramServiceChat": "打开官方聊天 +42777（新标签页）",
   "messages.connectSheetCodePlaceholder": "登录验证码",
   "messages.connectSheetCodeSubmit": "继续",
   "messages.connectErrorGatewayPhoneEndpoint": "TDLib gateway 暂不支持手机号登录。请重启：停止 npm run tdlib:gateway，然后重新启动。",

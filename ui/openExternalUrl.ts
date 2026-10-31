@@ -1,4 +1,5 @@
 import * as Linking from "expo-linking";
+import { Platform } from "react-native";
 import { logPageDisplay } from "./pageDisplayLog";
 import { getApiBaseUrl } from "../api/_base";
 import { getDesktopOAuthBridge, isDesktopAppShell } from "./appShell";
@@ -115,4 +116,35 @@ export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
 
   void Linking.openURL(url);
   return "linking";
+}
+
+/** Always open in a new top-level tab/window on web (never replace current tab). */
+export function openUrlInNewTabStrict(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const popup = window.open(trimmed, "_blank", "noopener,noreferrer");
+    if (popup) {
+      try {
+        popup.opener = null;
+      } catch {
+        /* ignore */
+      }
+      return true;
+    }
+    if (typeof document !== "undefined") {
+      const anchor = document.createElement("a");
+      anchor.href = trimmed;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      return true;
+    }
+  }
+
+  void Linking.openURL(trimmed);
+  return true;
 }

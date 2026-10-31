@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
-import * as Linking from "expo-linking";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographyFixedRow40Label, useColors } from "../theme";
-import { TELEGRAM_LOGIN_CODE_CHAT_URL } from "../telegram/telegramLoginCodeChatUrl";
+import { TELEGRAM_LOGIN_CODE_CHAT_URL, openTelegramLoginCodeChat } from "../telegram/telegramLoginCodeChatUrl";
 import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
@@ -245,8 +244,7 @@ export function TelegramConnectSheet() {
       connectCodeDelivery?.type == null);
 
   const onOpenTelegramServiceChat = useCallback(() => {
-    logTelegramConnect("connect_open_telegram_code_chat", { url: TELEGRAM_LOGIN_CODE_CHAT_URL });
-    void Linking.openURL(TELEGRAM_LOGIN_CODE_CHAT_URL);
+    openTelegramLoginCodeChat();
   }, []);
 
   const sheetTitle = showSuccess
