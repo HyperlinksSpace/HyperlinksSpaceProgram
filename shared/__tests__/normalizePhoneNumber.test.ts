@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
-import { isPlausibleE164Phone, normalizePhoneNumber } from "../normalizePhoneNumber.js";
+import {
+  isPlausibleE164Phone,
+  normalizePhoneNumber,
+  normalizeTelegramAuthPhone,
+  resolveDefaultPhoneCountry,
+} from "../normalizePhoneNumber.js";
 
 function check(input: string, expected: string, defaultCountry?: Parameters<typeof normalizePhoneNumber>[1]): void {
   assert.equal(
@@ -61,6 +66,24 @@ check("0061 412 345 678", "+61412345678");
 // UAE
 check("+971 50 123 4567", "+971501234567");
 check("00971 50 123 4567", "+971501234567");
+
+// Russia: 7XXXXXXXXXX without +
+check("79161234567", "+79161234567");
+
+// National format with default country (UI locale / region hint)
+check("916 123 45 67", "+79161234567", "RU");
+check("9263922263", "+79263922263", "RU");
+check("4155552671", "+14155552671", "US");
+check("51234567", "+37251234567", "EE");
+
+assert.equal(resolveDefaultPhoneCountry({ languageTags: ["ru-RU"] }), "RU");
+assert.equal(resolveDefaultPhoneCountry({ languageTags: ["en-US"] }), "US");
+assert.equal(resolveDefaultPhoneCountry({ appLocale: "ru" }), "RU");
+
+assert.equal(
+  normalizeTelegramAuthPhone("916 123 45 67", { appLocale: "ru" }),
+  "+79161234567",
+);
 
 // Empty / garbage / bare national without country code
 check("", "");

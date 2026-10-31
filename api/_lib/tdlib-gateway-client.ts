@@ -182,7 +182,7 @@ export async function gatewayConnectPassword(
 export async function gatewayConnectPhone(
   attemptId: string,
   phoneNumber: string,
-  options?: { isCurrentPhoneNumber?: boolean },
+  options?: { isCurrentPhoneNumber?: boolean; defaultCountry?: string },
 ): Promise<GatewayConnectSnapshot & { httpStatus: number }> {
   const { response, json } = await gatewayFetch("/v1/connect/phone", {
     method: "POST",
@@ -190,6 +190,7 @@ export async function gatewayConnectPhone(
       attemptId,
       phoneNumber,
       isCurrentPhoneNumber: Boolean(options?.isCurrentPhoneNumber),
+      phoneDefaultCountry: options?.defaultCountry ?? null,
     }),
   });
   return { ...json, httpStatus: response.status };

@@ -21,6 +21,12 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { TelegramConnectSheet } from "../components/TelegramConnectSheet";
 import { getApiBaseUrl } from "../../api/_base";
 import { logTelegramConnect } from "./telegramConnectDebug";
+import {
+  isPlausibleE164Phone,
+  normalizeTelegramAuthPhone,
+  parseCountryCodeHint,
+  resolveTelegramAuthPhoneContext,
+} from "../../shared/normalizePhoneNumber";
 import { mtprotoUseCurrentPhoneNumberForCode } from "./mtprotoPhoneCodeDelivery";
 import { type ConnectCodeDeliveryInfo } from "./formatConnectCodeDelivery";
 import {
@@ -75,7 +81,10 @@ type TelegramMessagesConnectionCtx = {
   switchMessengerAccount: (slot: number) => Promise<boolean>;
   /** Current TDLib messenger slot after connect / switch. */
   activeMessengerSlot: number;
-  submitMtprotoPhone: (phoneNumber: string) => Promise<void>;
+  submitMtprotoPhone: (
+    phoneNumber: string,
+    hints?: { phoneDefaultCountry?: string; appLocale?: string },
+  ) => Promise<void>;
   submitMtprotoCode: (code: string) => Promise<void>;
   resendMtprotoCode: () => Promise<void>;
   submitMtprotoPassword: (password: string) => Promise<void>;
@@ -1028,8 +1037,23 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
   );
 
   const submitMtprotoPhone = useCallback(
-    async (phoneNumber: string) => {
+    async (
+      phoneNumber: string,
+      hints?: { phoneDefaultCountry?: string; appLocale?: string },
+    ) => {
       if (!phoneNumber.trim()) return;
+      const phoneCtx = resolveTelegramAuthPhoneContext(hints?.appLocale);
+      const defaultCountry =
+        parseCountryCodeHint(hints?.phoneDefaultCountry) ?? phoneCtx.defaultCountry;
+      const normalized = normalizeTelegramAuthPhone(phoneNumber, {
+        languageTags: phoneCtx.languageTags,
+        appLocale: hints?.appLocale,
+        defaultCountry,
+      });
+      if (!isPlausibleE164Phone(normalized)) {
+        setConnectError("invalid_phone_number");
+        return;
+      }
       if (connectAuthStateRef.current === "wait_code" || connectAuthStateRef.current === "wait_password") {
         return;
       }
@@ -1060,12 +1084,14 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
             connectAuthMethodRef.current = "phone";
             const switchingFromQr = connectAuthStateRef.current === "wait_qr";
             await beginMtprotoConnect({
-              fresh: switchingFromQr || !attemptIdRef.current || connectAuthStateRef.current === "failed",
+              fresh:
+                !switchingFromQr &&
+                (!attemptIdRef.current || connectAuthStateRef.current === "failed"),
               authMethod: "phone",
               soft: true,
             });
             if (connectAuthStateRef.current === "wait_qr") {
-              logTelegramConnect("connect_phone_retry_force_fresh_after_qr_reuse");
+              logTelegramConnect("connect_phone_retry_force_fresh_after_qr_stuck");
               await beginMtprotoConnect({ fresh: true, authMethod: "phone", soft: true });
             }
             if (connectAuthStateRef.current === "wait_qr") {
@@ -1097,7 +1123,8 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             attemptId,
-            phoneNumber,
+            phoneNumber: normalized,
+            phoneDefaultCountry: defaultCountry ?? null,
             isCurrentPhoneNumber: mtprotoUseCurrentPhoneNumberForCode(),
           }),
         });

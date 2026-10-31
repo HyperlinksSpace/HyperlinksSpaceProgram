@@ -1,4 +1,5 @@
 import { applyAuthApiCors, authApiPreflightResponse } from "../_lib/auth-cors.js";
+import { parseCountryCodeHint } from "../../shared/normalizePhoneNumber.js";
 import { telegramUsernameFromSessionCookie } from "../_lib/session-auth.js";
 import {
   gatewayConnectCode,
@@ -420,6 +421,7 @@ export async function telegramMtprotoConnectPhoneHandler(
     attemptId?: string;
     phoneNumber?: string;
     isCurrentPhoneNumber?: boolean;
+    phoneDefaultCountry?: string;
   }>(request);
   const attemptId = (body.attemptId || "").trim();
   const phoneNumber = body.phoneNumber || "";
@@ -435,6 +437,7 @@ export async function telegramMtprotoConnectPhoneHandler(
   try {
     const snap = await gatewayConnectPhone(attemptId, phoneNumber, {
       isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
+      defaultCountry: parseCountryCodeHint(body.phoneDefaultCountry),
     });
     const authState = snap.authState ?? "wait_phone";
     const gatewayFailed = snap.httpStatus >= 400 || snap.error === "not_found" || snap.error === "attempt_not_found";

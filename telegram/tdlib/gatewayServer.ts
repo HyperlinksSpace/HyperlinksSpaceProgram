@@ -1,5 +1,6 @@
 import http from "http";
 import { URL } from "url";
+import { parseCountryCodeHint } from "../../shared/normalizePhoneNumber.js";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp.js";
 import { getGatewayBindHost, getGatewayPort, getGatewaySecret, getTdlibDbRoot } from "./env.js";
 import { logGateway } from "./gatewayLog.js";
@@ -2738,6 +2739,7 @@ export function startTdlibGatewayServer(): http.Server {
             attemptId?: string;
             phoneNumber?: string;
             isCurrentPhoneNumber?: boolean;
+            phoneDefaultCountry?: string;
           };
           const attemptId = (body.attemptId || "").trim();
           const phoneNumber = body.phoneNumber || "";
@@ -2747,6 +2749,7 @@ export function startTdlibGatewayServer(): http.Server {
           }
           const snap = await submitConnectPhoneNumber(attemptId, phoneNumber, {
             isCurrentPhoneNumber: Boolean(body.isCurrentPhoneNumber),
+            defaultCountry: parseCountryCodeHint(body.phoneDefaultCountry),
           });
           if (!snap) {
             sendJson(res, 404, { ok: false, error: "attempt_not_found" });

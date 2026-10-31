@@ -16,6 +16,7 @@ import {
 import { logGateway } from "./gatewayLog.js";
 import { classifyTdlibSendError } from "../../shared/telegramSendError.js";
 import { isPlausibleE164Phone, normalizePhoneNumber } from "../../shared/normalizePhoneNumber.js";
+import type { CountryCode } from "libphonenumber-js";
 import { TELEGRAM_THREAD_NO_AVATAR } from "../../shared/telegramThreadConstants.js";
 import {
   persistMtprotoConnection,
@@ -748,7 +749,7 @@ export function getConnectAttempt(attemptId: string): ConnectAttemptSnapshot | n
 export async function submitConnectPhoneNumber(
   attemptId: string,
   phoneNumber: string,
-  options?: { isCurrentPhoneNumber?: boolean },
+  options?: { isCurrentPhoneNumber?: boolean; defaultCountry?: CountryCode },
 ): Promise<ConnectAttemptSnapshot | null> {
   const record = attempts.get(attemptId);
   if (!record) return null;
@@ -772,11 +773,12 @@ export async function submitConnectPhoneNumber(
     return snapshot(record);
   }
 
-  const normalized = normalizePhoneNumber(phoneNumber);
+  const normalized = normalizePhoneNumber(phoneNumber, options?.defaultCountry);
   if (!isPlausibleE164Phone(normalized)) {
     record.error = "invalid_phone_number";
     logConnectEvent(record, "connect_phone_invalid", {
       phoneMasked: maskPhoneNumber(normalized || phoneNumber),
+      defaultCountry: options?.defaultCountry ?? null,
     });
     return snapshot(record);
   }
@@ -787,6 +789,7 @@ export async function submitConnectPhoneNumber(
     phoneMasked: maskPhoneNumber(normalized),
     rawMasked: maskPhoneNumber(phoneNumber),
     isCurrentPhone: useCurrentPhone,
+    defaultCountry: options?.defaultCountry ?? null,
   });
   const invokePhone = async (): Promise<void> => {
     await record.client!.invoke({
@@ -867,15 +870,53 @@ export async function submitConnectPhoneNumber(
   return snapshot(record);
 }
 
+function wouldResendSwitchToSms(record: AttemptRecord): boolean {
+  const nextType = record.codeDelivery?.nextType ?? "";
+  return /Sms/i.test(nextType);
+}
+
 export async function resendConnectCode(attemptId: string): Promise<ConnectAttemptSnapshot | null> {
   const record = attempts.get(attemptId);
   if (!record?.client) return record ? snapshot(record) : null;
   if (record.authState !== "wait_code") return snapshot(record);
-  record.error = "telegram_app_code_only";
-  logConnectEvent(record, "connect_code_resend_blocked", {
-    reason: "telegram_app_delivery_only",
-    codeType: record.codeDelivery?.type ?? null,
-  });
+
+  await syncCodeDeliveryFromClient(record);
+  if (wouldResendSwitchToSms(record)) {
+    record.error = "telegram_app_code_only";
+    logConnectEvent(record, "connect_code_resend_blocked", {
+      reason: "would_switch_to_sms",
+      codeType: record.codeDelivery?.type ?? null,
+      nextCodeType: record.codeDelivery?.nextType ?? null,
+    });
+    return snapshot(record);
+  }
+
+  record.error = null;
+  try {
+    await record.client.invoke({ _: "resendAuthenticationCode" });
+    await waitForAuthState(record, ["wait_code", "wait_password", "ready", "failed"], 15_000);
+    await syncCodeDeliveryFromClient(record);
+    if (wouldResendSwitchToSms(record)) {
+      record.error = "telegram_app_code_only";
+      logConnectEvent(record, "connect_code_resend_blocked", {
+        reason: "resend_would_switch_to_sms",
+        codeType: record.codeDelivery?.type ?? null,
+        nextCodeType: record.codeDelivery?.nextType ?? null,
+      });
+      return snapshot(record);
+    }
+    logConnectEvent(record, "connect_code_resent", {
+      codeType: record.codeDelivery?.type ?? null,
+      nextCodeType: record.codeDelivery?.nextType ?? null,
+      phoneMasked: record.codeDelivery?.phoneMasked ?? null,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "resend_failed";
+    record.error = /not found|authorization_closed|session/i.test(message)
+      ? "session_expired_restart"
+      : message;
+    logConnectEvent(record, "connect_code_resend_failed", { message: record.error });
+  }
   return snapshot(record);
 }
 

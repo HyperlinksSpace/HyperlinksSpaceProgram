@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import * as Linking from "expo-linking";
 import { getApiBaseUrl } from "../../api/_base";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { typographyFixedRow40Label, useColors } from "../theme";
@@ -7,7 +8,11 @@ import { openTelegramDeepLink } from "../telegram/openTelegramDeepLink";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { formatConnectCodeDeliveryHint } from "../telegram/formatConnectCodeDelivery";
 import { logTelegramConnect } from "../telegram/telegramConnectDebug";
-import { isPlausibleE164Phone, normalizePhoneNumber } from "../../shared/normalizePhoneNumber";
+import {
+  isPlausibleE164Phone,
+  normalizeTelegramAuthPhone,
+  resolveTelegramAuthPhoneContext,
+} from "../../shared/normalizePhoneNumber";
 import { isActuallyInTelegram } from "./telegramWebApp";
 import { AppModalSheet, appModalSheetStyles } from "./AppModalSheet";
 import { WelcomeAuthFormField } from "./WelcomeAuthFormField";
@@ -75,6 +80,9 @@ function connectErrorMessage(error: string | null, t: (key: string) => string): 
   if (error === "not_found" || error === "session_not_ready") {
     return t("messages.connectErrorGatewayPhoneEndpoint");
   }
+  if (error === "telegram_app_code_only") {
+    return t("messages.connectSheetCodeTelegramOnlyHint");
+  }
   return error;
 }
 
@@ -96,7 +104,7 @@ function ConnectMethodSection({
 
 export function TelegramConnectSheet() {
   const colors = useColors();
-  const { t, tf } = useAppStrings();
+  const { t, tf, locale } = useAppStrings();
   const {
     connectSheetVisible,
     closeConnectSheet,
@@ -164,16 +172,23 @@ export function TelegramConnectSheet() {
     void submitMtprotoPassword(password);
   }, [password, submitMtprotoPassword]);
 
+  const phoneAuthContext = useMemo(() => resolveTelegramAuthPhoneContext(locale), [locale]);
+
   const onSubmitPhone = useCallback(() => {
-    const normalized = normalizePhoneNumber(phoneNumber);
+    const normalized = normalizeTelegramAuthPhone(phoneNumber, {
+      ...phoneAuthContext,
+      appLocale: locale,
+    });
     if (!isPlausibleE164Phone(normalized)) {
       setPhoneInvalid(true);
       return;
     }
     setPhoneNumber(normalized);
     setPhoneInvalid(false);
-    void submitMtprotoPhone(normalized);
-  }, [phoneNumber, submitMtprotoPhone]);
+    void submitMtprotoPhone(normalized, {
+      phoneDefaultCountry: phoneAuthContext.defaultCountry ?? undefined,
+    });
+  }, [phoneNumber, submitMtprotoPhone, phoneAuthContext, locale]);
 
   const onResendCode = useCallback(() => {
     void resendMtprotoCode();
@@ -216,12 +231,21 @@ export function TelegramConnectSheet() {
     formatConnectCodeDeliveryHint(connectCodeDelivery, tf) ??
     (inTelegramApp ? t("messages.connectSheetCodeBody") : t("messages.connectSheetCodeBodyDesktop"));
 
-  /** Phone login codes are delivered in the Telegram app only — no SMS resend path. */
-  const canResendCode = false;
+  const resendWouldUseSms =
+    connectCodeDelivery?.nextType != null && /Sms/i.test(connectCodeDelivery.nextType);
+  const canResendCode =
+    showCode &&
+    !resendWouldUseSms &&
+    (connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" ||
+      connectCodeDelivery?.type == null);
   const showTelegramAppCodeHint =
     showCode &&
     (connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" ||
       connectCodeDelivery?.type == null);
+
+  const onOpenTelegramServiceChat = useCallback(() => {
+    void Linking.openURL("https://t.me/Telegram");
+  }, []);
 
   const sheetTitle = showSuccess
     ? t("messages.connectSheetSuccessTitle")
@@ -343,6 +367,21 @@ export function TelegramConnectSheet() {
           <Text style={[appModalSheetStyles.bodySupporting, { color: colors.secondary }]}>
             {codeDeliveryHint}
           </Text>
+          {showTelegramAppCodeHint ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenTelegramServiceChat}
+              style={[
+                appModalSheetStyles.button,
+                appModalSheetStyles.primaryButton,
+                { backgroundColor: colors.undercover, alignSelf: "stretch", marginTop: 10 },
+              ]}
+            >
+              <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
+                {t("messages.connectSheetOpenTelegramServiceChat")}
+              </Text>
+            </Pressable>
+          ) : null}
           <WelcomeAuthFormField
             value={loginCode}
             onChangeText={setLoginCode}
@@ -369,10 +408,7 @@ export function TelegramConnectSheet() {
               disabled={connectPending}
             >
               <Text style={[typographyFixedRow40Label, { color: colors.primary }]}>
-                {connectCodeDelivery?.type === "authenticationCodeTypeTelegramMessage" &&
-                /Sms/i.test(connectCodeDelivery?.nextType ?? "")
-                  ? t("messages.connectSheetCodeResendSms")
-                  : t("messages.connectSheetCodeResend")}
+                {t("messages.connectSheetCodeResend")}
               </Text>
             </Pressable>
           ) : null}
