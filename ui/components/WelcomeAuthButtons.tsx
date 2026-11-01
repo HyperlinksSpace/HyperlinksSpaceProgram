@@ -237,7 +237,8 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
         if (openResult.sessionToken) {
           setDesktopSessionToken(openResult.sessionToken);
           dispatchAuthSessionUpdated();
-          signIn();
+          // Wait for /api/auth/session before Home — avoids welcome↔home flash when refresh fails.
+          signIn({ optimistic: false });
         } else if (openResult.error && openResult.error !== "oauth_window_closed") {
           Alert.alert(
             alertTitle,

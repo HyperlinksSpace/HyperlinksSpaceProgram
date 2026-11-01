@@ -36,6 +36,19 @@ export type DesktopOAuthBridge = {
       timeoutMs?: number;
     },
   ) => Promise<DesktopSwapCoffeeFetchResult>;
+  fetchProgramApi?: (
+    url: string,
+    init?: {
+      method?: string;
+      headers?: Record<string, string>;
+      body?: string;
+      bearerToken?: string;
+      timeoutMs?: number;
+    },
+  ) => Promise<
+    | { ok: true; status: number; body: string; debug?: { bearer?: boolean; sessionCookie?: boolean } }
+    | { ok: false; error: string }
+  >;
   /** Set by windows/preload.cjs in the Electron shell. */
   isElectronShell?: boolean;
 };

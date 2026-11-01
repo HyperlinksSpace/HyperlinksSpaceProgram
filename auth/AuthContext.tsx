@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "../api/_base";
-import { clearDesktopSessionToken } from "./desktopSessionToken";
+import { clearDesktopSessionToken, getDesktopSessionToken } from "./desktopSessionToken";
 import { installDesktopAuthFetch } from "./installDesktopAuthFetch";
 import {
   clearAuthSessionPayloadCache,
@@ -9,6 +9,7 @@ import {
 import { kickEagerTelegramMessagesWarmup } from "./eagerTelegramMessagesWarmup";
 import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
+import { isDesktopAppShell } from "../ui/appShell";
 import { rehydrateAuthenticatedHomeLeftNavFromStorage } from "../ui/authenticatedHomeLeftNavIndex";
 import { clearExplicitSignOut, markExplicitSignOut, readAuthHint, writeAuthHint } from "./authHint";
 import { hasTelegramMessagesExplicitDisconnect } from "./telegramMessagesDisconnectHint";
@@ -172,6 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         elapsedMs: Date.now() - startedAt,
         feedItemCount: feedItems?.length ?? null,
         skipFeed: true,
+        desktopShell: isDesktopAppShell(),
+        hasDesktopToken: Boolean(getDesktopSessionToken()),
       });
       return authenticated;
     } catch (error) {

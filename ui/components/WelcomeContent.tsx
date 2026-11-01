@@ -9,7 +9,7 @@ import {
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
-import { hasWelcomeBrowserAuthContext } from "../appShell";
+import { hasWelcomeBrowserAuthContext, isDesktopAppShell } from "../appShell";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 import { WelcomeLanguageSwitcher } from "./WelcomeLanguageSwitcher";
 import { isActuallyInTelegram } from "./telegramWebApp";
@@ -148,7 +148,7 @@ export function WelcomeContent() {
             source,
             elapsedMs: Date.now() - startedAt,
           });
-          signIn();
+          signIn({ optimistic: !isDesktopAppShell() });
         }
       } catch (error) {
         logPageDisplay("welcome_telegram_oidc_session_probe_error", {

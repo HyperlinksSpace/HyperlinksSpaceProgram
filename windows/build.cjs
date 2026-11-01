@@ -34,6 +34,10 @@ const {
   registerSwapCoffeeFetchIpc,
   installSwapCoffeeRendererFetchShim,
 } = require("./swap-coffee-fetch.cjs");
+const {
+  registerProgramApiFetchIpc,
+  installProgramApiRendererFetchShim,
+} = require("./program-api-fetch.cjs");
 const { registerZoomMenu } = require("./zoom-menu-row.cjs");
 const {
   registerOsScreenshotPassthrough,
@@ -3303,7 +3307,22 @@ registerOAuthIpc({
   log,
 });
 
+function getDesktopApiOrigin() {
+  try {
+    const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+    if (fromEnv) return new URL(fromEnv).origin;
+  } catch (_) {}
+  return "https://program.hyperlinks.space";
+}
+
 registerSwapCoffeeFetchIpc({ ipcMain, net, log });
+registerProgramApiFetchIpc({
+  ipcMain,
+  net,
+  session,
+  log,
+  getApiOrigin: getDesktopApiOrigin,
+});
 
 const zoomMenuApi = registerZoomMenu({
   getMainWindow: () => mainWindowRef,
@@ -3623,6 +3642,7 @@ async function createWindow() {
   }
   if (!isDev) {
     installSwapCoffeeRendererFetchShim(mainWindow.webContents, log);
+    installProgramApiRendererFetchShim(mainWindow.webContents, log, getDesktopApiOrigin);
   }
   zoomMenuApi.attachMainWindowZoomHooks(mainWindow);
   ensureBrowserWindowAllowsOsCapture(mainWindow, log);
@@ -3836,11 +3856,7 @@ registerOsScreenshotPassthrough(app, { BrowserWindow, clipboard }, log);
  */
 function installDesktopApiCorsReflect() {
   try {
-    let apiOrigin = "https://program.hyperlinks.space";
-    try {
-      const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-      if (fromEnv) apiOrigin = new URL(fromEnv).origin;
-    } catch (_) {}
+    const apiOrigin = getDesktopApiOrigin();
     const filter = {
       urls: [
         `${apiOrigin}/*`,
