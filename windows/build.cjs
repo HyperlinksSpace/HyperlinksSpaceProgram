@@ -3848,13 +3848,22 @@ function installDesktopApiCorsReflect() {
         "https://backend.swap.coffee/*",
       ],
     };
+    const swapCoffeeOrigins = new Set(["https://tokens.swap.coffee", "https://backend.swap.coffee"]);
     session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
       try {
         const headers = { ...(details.requestHeaders || {}) };
-        const drop = ["Cookie", "Authorization"];
-        for (const name of drop) {
-          const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
-          if (key) delete headers[key];
+        // Only strip creds on swap.coffee — our API needs Authorization: Bearer from the
+        // desktop shell (app:// cannot send hs_auth_session cookies cross-site).
+        let origin = "";
+        try {
+          origin = new URL(details.url || "").origin;
+        } catch (_) {}
+        if (swapCoffeeOrigins.has(origin)) {
+          const drop = ["Cookie", "Authorization"];
+          for (const name of drop) {
+            const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
+            if (key) delete headers[key];
+          }
         }
         callback({ requestHeaders: headers });
       } catch (_) {

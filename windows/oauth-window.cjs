@@ -116,8 +116,15 @@ function openOAuthBrowserWindow({ authUrl, apiOrigin, parentWindow, log }) {
           url: `${apiOriginNormalized}/`,
           name: SESSION_COOKIE,
         });
-        const value = cookies[0]?.value;
-        return typeof value === "string" && value.trim() ? value.trim() : null;
+        let value = cookies[0]?.value;
+        if (typeof value !== "string" || !value.trim()) return null;
+        value = value.trim();
+        try {
+          value = decodeURIComponent(value);
+        } catch (_) {
+          /* use raw value */
+        }
+        return value.trim() || null;
       } catch (e) {
         log?.(`oauth readSessionToken: ${e?.message || e}`);
         return null;
