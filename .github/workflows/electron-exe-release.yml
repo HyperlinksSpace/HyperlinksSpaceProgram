@@ -193,6 +193,7 @@ jobs:
           printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
+            --latest \
             --title "Hyperlinks Space Program ${{ steps.preflight.outputs.app_version }}" \
             --notes "Windows ${{ steps.preflight.outputs.app_version }} (workflow run ${{ github.run_id }}). Assets: NSIS installer, latest.yml, portable zip (in-app quick update), optional zip-latest.yml."
           release_url="https://github.com/${{ github.repository }}/releases/tag/$rid"

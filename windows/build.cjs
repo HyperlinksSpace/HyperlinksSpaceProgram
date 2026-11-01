@@ -202,10 +202,10 @@ function buildWindowsApplyLauncherCommand(ps1Path, planPath) {
 
 /**
  * Prefer zip-latest.yml (has sha512 for the zip). If missing (404), use latest.yml + inferred zip name.
- * @returns {{ version: string, fileName: string, sha512: string | null, source: string }}
+ * Uses GitHub's "Latest" release only (/releases/latest/download/…).
+ * @returns {Promise<WindowsZipSidecarMeta>}
  */
-async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
-  logUpdater("meta", `resolve sidecar manifests (current=${currentVersion})`);
+async function resolveWindowsZipSidecarMetaFromLatestRelease(netFetch, currentVersion) {
   const zipLatestUrl = githubLatestAssetUrl(ZIP_LATEST_YML);
   const zlRes = await netFetch(zipLatestUrl);
   if (zlRes.ok) {
@@ -253,6 +253,134 @@ async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
     size: null,
     source: "latest.yml+inferred",
   };
+}
+
+/**
+ * @typedef {object} WindowsZipSidecarMeta
+ * @property {string} version
+ * @property {string} fileName
+ * @property {string | null} sha512
+ * @property {number | null} [size]
+ * @property {string} source
+ * @property {string} [releaseTag]
+ * @property {string} [zipDownloadUrl]
+ */
+
+/** Semver from tag v53.0.1590 or v53.0.1590_forge (null if not parseable). */
+function parseSemverFromReleaseTag(tagName) {
+  const raw = String(tagName || "").trim().replace(/_forge$/i, "");
+  const m = /^v?(\d+\.\d+\.\d+)$/i.exec(raw);
+  return m ? m[1] : null;
+}
+
+/**
+ * When GitHub's "Latest" flag lags behind the highest semver release, pick the newest
+ * release that ships a portable zip (same rules as windows/resolve-next-app-version.cjs).
+ * @returns {Promise<WindowsZipSidecarMeta | null>}
+ */
+async function fetchNewestWindowsReleaseMetaViaApi(netFetch, currentVersion) {
+  const apiUrl = `https://api.github.com/repos/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases?per_page=40`;
+  logUpdater("github-api", "list releases (semver scan for zip sidecar)");
+  const res = await netFetch(apiUrl, { headers: GITHUB_API_HEADERS });
+  if (!res.ok) {
+    log(`[updater] GitHub API GET releases: HTTP ${res.status}`);
+    return null;
+  }
+  let releases;
+  try {
+    releases = await res.json();
+  } catch (_) {
+    return null;
+  }
+  if (!Array.isArray(releases)) return null;
+
+  const zipVersionRe = new RegExp(
+    `${WIN_PORTABLE_ZIP_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+\\.\\d+\\.\\d+)\\.zip$`,
+    "i",
+  );
+
+  /** @type {WindowsZipSidecarMeta | null} */
+  let best = null;
+
+  for (const rel of releases) {
+    if (!rel || rel.draft) continue;
+    const tagName = rel.tag_name || rel.tagName || "";
+    const assets = Array.isArray(rel.assets) ? rel.assets : [];
+    let relVersion = parseSemverFromReleaseTag(tagName);
+    for (const asset of assets) {
+      const name = asset?.name || "";
+      const zm = zipVersionRe.exec(name);
+      if (zm) {
+        const v = zm[1];
+        if (!relVersion || compareSemverLike(v, relVersion) > 0) relVersion = v;
+      }
+    }
+    if (!relVersion || compareSemverLike(relVersion, currentVersion) <= 0) continue;
+
+    const zipAsset =
+      assets.find((a) => a?.name === `${WIN_PORTABLE_ZIP_PREFIX}${relVersion}.zip`) ||
+      assets.find((a) => typeof a?.name === "string" && zipVersionRe.test(a.name));
+    if (!zipAsset?.browser_download_url) continue;
+
+    const zipYmlAsset = assets.find((a) => a?.name === ZIP_LATEST_YML);
+    let sha512 = null;
+    let size = null;
+    let fileName = zipAsset.name;
+    if (zipYmlAsset?.browser_download_url) {
+      try {
+        const yRes = await netFetch(zipYmlAsset.browser_download_url);
+        if (yRes.ok) {
+          const parsed = parseSimpleUpdateYml(await yRes.text());
+          if (parsed.version && compareSemverLike(parsed.version, relVersion) >= 0) {
+            relVersion = parsed.version;
+          }
+          if (parsed.fileName) fileName = parsed.fileName;
+          sha512 = parsed.sha512;
+          size = parsed.size;
+        }
+      } catch (_) {}
+    }
+
+    if (!best || compareSemverLike(relVersion, best.version) > 0) {
+      best = {
+        version: relVersion,
+        fileName,
+        sha512,
+        size,
+        source: "github-api-newest-semver",
+        releaseTag: tagName,
+        zipDownloadUrl: zipAsset.browser_download_url,
+      };
+    }
+  }
+
+  if (best) {
+    logUpdater(
+      "meta",
+      `API newest semver version=${best.version} tag=${best.releaseTag} file=${best.fileName}`,
+    );
+  }
+  return best;
+}
+
+/**
+ * Prefer zip-latest.yml on Latest release; if not newer than installed, scan all releases for highest semver.
+ * @returns {Promise<WindowsZipSidecarMeta>}
+ */
+async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
+  logUpdater("meta", `resolve sidecar manifests (current=${currentVersion})`);
+  try {
+    return await resolveWindowsZipSidecarMetaFromLatestRelease(netFetch, currentVersion);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    if (!/not newer than current/i.test(msg)) throw e;
+    logUpdater("meta", `Latest release feed not newer (${msg}); scanning all GitHub releases`);
+  }
+  const fromApi = await fetchNewestWindowsReleaseMetaViaApi(netFetch, currentVersion);
+  if (!fromApi) {
+    throw new Error("no Windows release newer than current app");
+  }
+  return fromApi;
 }
 
 function compareSemverLike(a, b) {
@@ -773,6 +901,12 @@ function parseSimpleUpdateYml(text) {
 function githubLatestAssetUrl(fileName) {
   const enc = encodeURIComponent(fileName).replace(/%20/g, "%20");
   return `https://github.com/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases/latest/download/${enc}`;
+}
+
+function githubReleaseAssetDownloadUrl(releaseTag, fileName) {
+  const tagEnc = encodeURIComponent(releaseTag);
+  const fileEnc = encodeURIComponent(fileName);
+  return `https://github.com/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases/download/${tagEnc}/${fileEnc}`;
 }
 
 const GITHUB_API_HEADERS = {
@@ -2026,8 +2160,16 @@ function setupAutoUpdater() {
           }
         }
 
-        const primaryZipUrl = githubLatestAssetUrl(meta.fileName);
-        logUpdater("prepare", `download primaryURL asset=${meta.fileName}`);
+        const primaryZipUrl =
+          meta.zipDownloadUrl ||
+          (meta.releaseTag
+            ? githubReleaseAssetDownloadUrl(meta.releaseTag, meta.fileName)
+            : null) ||
+          githubLatestAssetUrl(meta.fileName);
+        logUpdater(
+          "prepare",
+          `download primaryURL asset=${meta.fileName}${meta.releaseTag ? ` tag=${meta.releaseTag}` : ""}`,
+        );
         let lastZipPush = 0;
         const onZipProgress = (received, total) => {
           const now = Date.now();
@@ -2783,17 +2925,48 @@ function setupAutoUpdater() {
     autoUpdater.on("update-not-available", () => {
       log("[updater] update-not-available");
       logUpdater("event", `update-not-available current=${currentVersion}`);
-      if (manualCheckInProgress) {
+      const wasManual = manualCheckInProgress;
+      if (wasManual) {
         manualCheckInProgress = false;
         manualDownloadInProgress = false;
-        openOrFocusUpdateDialog({
-          text: "You are already on the latest version.",
-          percent: 0,
-          showProgress: false,
-          showActions: true,
-          installEnabled: false,
-        });
       }
+      void (async () => {
+        if (useWinVersionsSidecar && !zipPrepareInFlight) {
+          try {
+            const meta = await resolveWindowsZipSidecarMeta((u) => net.fetch(u), currentVersion);
+            logUpdater(
+              "event",
+              `sidecar newer than feed version=${meta.version} source=${meta.source}`,
+            );
+            if (wasManual) {
+              manualDownloadInProgress = true;
+              openOrFocusUpdateDialog({
+                text: `Downloading and preparing version ${meta.version}…`,
+                percent: 0,
+                showProgress: true,
+                showActions: true,
+                installEnabled: false,
+              });
+            }
+            await tryBeginVersionsPrepare({ version: meta.version }, { uiManual: wasManual });
+            return;
+          } catch (e) {
+            logUpdater(
+              "event",
+              `sidecar semver scan: no newer release (${e?.message || e})`,
+            );
+          }
+        }
+        if (wasManual) {
+          openOrFocusUpdateDialog({
+            text: "You are already on the latest version.",
+            percent: 0,
+            showProgress: false,
+            showActions: true,
+            installEnabled: false,
+          });
+        }
+      })();
     });
     let downloadProgressLoggedSample = false;
     autoUpdater.on("download-progress", (progress) => {

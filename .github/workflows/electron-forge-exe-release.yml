@@ -202,6 +202,7 @@ jobs:
           printf 'Assets:\n- %s\n' "${upload[@]}"
           gh release create "$rid" "${upload[@]}" \
             --repo "${{ github.repository }}" \
+            --latest \
             --title "Hyperlinks Space Program ${{ steps.preflight.outputs.app_version }} (Forge)" \
             --notes "Windows Forge build on GitHub Actions (workflow run ${{ github.run_id }}). Same asset names as electron-builder; tag ends with _forge."
           release_url="https://github.com/${{ github.repository }}/releases/tag/$rid"
