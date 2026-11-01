@@ -283,7 +283,7 @@ function parseSemverFromReleaseTag(tagName) {
  * @returns {Promise<WindowsZipSidecarMeta | null>}
  */
 async function fetchNewestWindowsReleaseMetaViaApi(netFetch, currentVersion) {
-  const apiUrl = `https://api.github.com/repos/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases?per_page=40`;
+  const apiUrl = `https://api.github.com/repos/${UPDATE_GITHUB_OWNER}/${UPDATE_GITHUB_REPO}/releases?per_page=100`;
   logUpdater("github-api", "list releases (semver scan for zip sidecar)");
   const res = await netFetch(apiUrl, { headers: GITHUB_API_HEADERS });
   if (!res.ok) {
@@ -368,23 +368,60 @@ async function fetchNewestWindowsReleaseMetaViaApi(netFetch, currentVersion) {
 }
 
 /**
- * Prefer zip-latest.yml on Latest release; if not newer than installed, scan all releases for highest semver.
+ * Prefer zip-latest.yml on Latest release, then merge with a full release semver scan
+ * so the client jumps to the newest build (not the next chronological Latest feed).
  * @returns {Promise<WindowsZipSidecarMeta>}
  */
 async function resolveWindowsZipSidecarMeta(netFetch, currentVersion) {
   logUpdater("meta", `resolve sidecar manifests (current=${currentVersion})`);
+
+  /** @type {WindowsZipSidecarMeta | null} */
+  let fromLatest = null;
   try {
-    return await resolveWindowsZipSidecarMetaFromLatestRelease(netFetch, currentVersion);
+    fromLatest = await resolveWindowsZipSidecarMetaFromLatestRelease(netFetch, currentVersion);
+    logUpdater("meta", `Latest release feed version=${fromLatest.version} source=${fromLatest.source}`);
   } catch (e) {
     const msg = String(e?.message || e);
-    if (!/not newer than current/i.test(msg)) throw e;
-    logUpdater("meta", `Latest release feed not newer (${msg}); scanning all GitHub releases`);
+    if (/not newer than current/i.test(msg)) {
+      logUpdater("meta", `Latest release feed not newer (${msg})`);
+    } else {
+      logUpdater("meta", `Latest release feed unavailable: ${msg}`);
+    }
   }
+
   const fromApi = await fetchNewestWindowsReleaseMetaViaApi(netFetch, currentVersion);
-  if (!fromApi) {
-    throw new Error("no Windows release newer than current app");
+
+  if (fromLatest && fromApi) {
+    const cmp = compareSemverLike(fromApi.version, fromLatest.version);
+    if (cmp > 0) {
+      logUpdater(
+        "meta",
+        `semver scan wins ${fromApi.version} over Latest feed ${fromLatest.version} (source=${fromApi.source})`,
+      );
+      return fromApi;
+    }
+    if (cmp < 0) {
+      logUpdater(
+        "meta",
+        `Latest feed wins ${fromLatest.version} over semver scan ${fromApi.version}`,
+      );
+      return fromLatest;
+    }
+    // Same version: prefer Latest feed (zip-latest.yml on /releases/latest is canonical sha512).
+    if (fromLatest.sha512 && !fromApi.sha512) {
+      logUpdater("meta", `same version ${fromLatest.version}; using Latest feed sha512`);
+      return fromLatest;
+    }
+    if (fromApi.sha512 && !fromLatest.sha512) {
+      logUpdater("meta", `same version ${fromApi.version}; using release asset sha512`);
+      return fromApi;
+    }
+    logUpdater("meta", `same version ${fromLatest.version}; using Latest feed`);
+    return fromLatest;
   }
-  return fromApi;
+  if (fromApi) return fromApi;
+  if (fromLatest) return fromLatest;
+  throw new Error("no Windows release newer than current app");
 }
 
 function compareSemverLike(a, b) {
@@ -1961,6 +1998,26 @@ function setupAutoUpdater() {
 
     const getVersionsStagingRoot = () => path.join(app.getPath("userData"), "pending-update-versions");
 
+    /** Drop in-progress staging older than the target semver (jump to latest, not stair-step). */
+    const purgeSupersededVersionStaging = (targetVersion) => {
+      if (!targetVersion) return;
+      const root = getVersionsStagingRoot();
+      if (!fs.existsSync(root)) return;
+      for (const name of fs.readdirSync(root)) {
+        if (compareSemverLike(name, currentVersion) <= 0) continue;
+        if (compareSemverLike(name, targetVersion) >= 0) continue;
+        try {
+          fs.rmSync(path.join(root, name), { recursive: true, force: true });
+          logUpdater("staging", `removed superseded staged ${name} (target=${targetVersion})`);
+        } catch (_) {}
+      }
+      if (zipReadyVersion && compareSemverLike(zipReadyVersion, targetVersion) < 0) {
+        zipReadyVersion = null;
+        zipStagingContentPath = null;
+        logUpdater("staging", `cleared ready pointer (was below target ${targetVersion})`);
+      }
+    };
+
     const findStagedContentForVersion = (version) => {
       if (!version) return null;
       try {
@@ -2140,8 +2197,15 @@ function setupAutoUpdater() {
       try {
         meta = await resolveWindowsZipSidecarMeta((u) => net.fetch(u), currentVersion);
         if (meta.version !== remoteV) {
-          log(`[updater] sidecar version ${meta.version} vs feed ${remoteV} (using sidecar manifest)`);
+          log(
+            `[updater] sidecar target ${meta.version} vs electron-updater feed ${remoteV} (using sidecar)`,
+          );
+          logUpdater(
+            "prepare",
+            `semver target ${meta.version} beats feed ${remoteV || "?"} (source=${meta.source})`,
+          );
         }
+        purgeSupersededVersionStaging(meta.version);
         log(`[updater] sidecar source: ${meta.source} → ${meta.fileName}`);
         if (adoptStagedExtract(meta.version, "skip download — sidecar extract already on disk")) {
           versionsPrepareOk = true;
@@ -2966,10 +3030,43 @@ function setupAutoUpdater() {
       if (manualCheckInProgress) {
         manualCheckInProgress = false;
         manualDownloadInProgress = true;
-        const prepText = useWinVersionsSidecar
-          ? `Downloading and preparing version ${info?.version || "new"}…`
-          : `Downloading version ${info?.version || "new"}...`;
-        // Log before UI so Activity log is never behind the progress bar on first paint.
+      }
+      if (useWinVersionsSidecar) {
+        void (async () => {
+          let displayVersion = info?.version || "new";
+          try {
+            const meta = await resolveWindowsZipSidecarMeta((u) => net.fetch(u), currentVersion);
+            displayVersion = meta.version;
+            if (info?.version && compareSemverLike(meta.version, info.version) > 0) {
+              logUpdater(
+                "event",
+                `update-available feed ${info.version} → sidecar target ${meta.version}`,
+              );
+            }
+          } catch (_) {}
+          const prepText = `Downloading and preparing version ${displayVersion}…`;
+          if (wasManual) {
+            logUpdater("ui", prepText);
+            openOrFocusUpdateDialog({
+              text: prepText,
+              percent: 0,
+              showProgress: true,
+              showActions: true,
+              installEnabled: false,
+            });
+          }
+          await tryBeginVersionsPrepare(info, { uiManual: wasManual });
+          try {
+            logUpdater("event", "downloadUpdate NSIS (full replace on install)");
+            await autoUpdater.downloadUpdate();
+          } catch (e) {
+            logUpdater("event", `downloadUpdate failed: ${e?.message || e}`);
+          }
+        })();
+        return;
+      }
+      if (wasManual) {
+        const prepText = `Downloading version ${info?.version || "new"}...`;
         logUpdater("ui", prepText);
         openOrFocusUpdateDialog({
           text: prepText,
@@ -2978,17 +3075,6 @@ function setupAutoUpdater() {
           showActions: true,
           installEnabled: false,
         });
-      }
-      if (useWinVersionsSidecar) {
-        void tryBeginVersionsPrepare(info, { uiManual: wasManual });
-        void (async () => {
-          try {
-            logUpdater("event", "downloadUpdate NSIS (full replace on install)");
-            await autoUpdater.downloadUpdate();
-          } catch (e) {
-            logUpdater("event", `downloadUpdate failed: ${e?.message || e}`);
-          }
-        })();
       }
     });
 
@@ -3117,6 +3203,35 @@ function setupAutoUpdater() {
           showActions: false,
           installEnabled: false,
         });
+        if (useWinVersionsSidecar) {
+          try {
+            const meta = await resolveWindowsZipSidecarMeta((u) => net.fetch(u), currentVersion);
+            logUpdater(
+              "ipc",
+              `checkNow sidecar-first target=${meta.version} source=${meta.source} (skip stair-step feed)`,
+            );
+            manualDownloadInProgress = true;
+            openOrFocusUpdateDialog({
+              text: `Downloading and preparing version ${meta.version}…`,
+              percent: 0,
+              showProgress: true,
+              showActions: true,
+              installEnabled: false,
+            });
+            manualCheckInProgress = false;
+            await tryBeginVersionsPrepare({ version: meta.version }, { uiManual: true });
+            void checkForUpdatesWithRetry().catch((e) => {
+              logUpdater("check", `background checkForUpdates after sidecar: ${e?.message || e}`);
+            });
+            logUpdaterStateSnapshot("checkNow/sidecar-first-done");
+            return;
+          } catch (e) {
+            const msg = String(e?.message || e);
+            if (!/no Windows release newer/i.test(msg)) {
+              logUpdater("ipc", `checkNow sidecar-first failed: ${msg}`);
+            }
+          }
+        }
         updaterCheckRetrying = true;
         try {
           await checkForUpdatesWithRetry();

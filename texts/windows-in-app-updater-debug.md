@@ -11,7 +11,7 @@ The main process now (see `windows/build.cjs`):
 1. **Clears Chromium session cache** when `app.getVersion()` changes (marker file `hsp-client-cache-version.txt` in user data), so the next launch does not reuse HTTP-style caches from the previous build.
 2. Serves **`app://` assets with `Cache-Control: no-store`** via streaming file reads instead of `net.fetch(file:…)`, so the embedded Expo web bundle is less likely to stick on old JS/CSS after an in-place update.
 
-If the UI is still old, verify the **GitHub release** for your version includes the portable zip and matching **`latest.yml` / `zip-latest.yml`**. The client reads **`/releases/latest/download/…` first**, then scans the **newest semver** among recent GitHub releases if the “Latest” flag or yml version lags behind a newer tag.
+If the UI is still old, verify the **GitHub release** for your version includes the portable zip and matching **`latest.yml` / `zip-latest.yml`**. The client merges **`/releases/latest/download/…`** with a **semver scan across recent GitHub releases** and downloads the **highest** version newer than the installed app (not the next chronological Latest feed only). Staging folders for skipped intermediate versions under `pending-update-versions` are removed when a higher target is chosen.
 
 ## 1. Log and data locations (on your PC)
 
