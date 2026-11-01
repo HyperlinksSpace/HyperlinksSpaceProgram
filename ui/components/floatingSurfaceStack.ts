@@ -48,3 +48,30 @@ export function bringFloatingSurfaceToFront(id: string, minZ = FLOATING_SURFACE_
   zById.set(id, topZ);
   return topZ;
 }
+
+/** Scroll thumbs portaled to `document.body` must stay within their dialog’s stack band. */
+export function floatingDialogScrollIndicatorZ(dialogStackZ: number): number {
+  return dialogStackZ + 1;
+}
+
+const FLOATING_STACK_Z_DATA_ATTR = "data-hsp-floating-stack-z";
+
+/** Read stack z from a dialog sheet/body node (set on {@link FloatingDialogShell} portal root). */
+export function readFloatingDialogStackZFromElement(start: Element | null): number | null {
+  if (!start || typeof (start as Element).closest !== "function") return null;
+  let el: Element | null = start;
+  while (el) {
+    const raw =
+      el.getAttribute(FLOATING_STACK_Z_DATA_ATTR) ??
+      (el as HTMLElement).dataset?.hspFloatingStackZ ??
+      null;
+    if (raw) {
+      const n = parseInt(String(raw), 10);
+      if (Number.isFinite(n)) return n;
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+export { FLOATING_STACK_Z_DATA_ATTR };

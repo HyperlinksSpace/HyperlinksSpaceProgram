@@ -339,6 +339,11 @@ export function FloatingDialogShell({
     if (visible) raiseToFront();
   }, [raiseToFront, visible]);
 
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web") return;
+    notifyFloatingDialogGeometryChanged();
+  }, [stackZ, visible]);
+
   const viewportInsets = useMemo(
     () =>
       resolveFloatingDialogViewportInsets({
@@ -878,6 +883,7 @@ export function FloatingDialogShell({
               dataSet: {
                 [`${String(testId).replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())}Root`]:
                   "1",
+                hspFloatingStackZ: String(stackZ),
               },
             } as object)
           : {})}

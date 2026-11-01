@@ -1,4 +1,7 @@
 import { getApiBaseUrl } from "../../api/_base";
+import { getDesktopSessionToken } from "./desktopSessionToken";
+import { getDesktopOAuthBridge, isDesktopAppShell } from "../ui/appShell";
+import { logPageDisplay } from "../ui/pageDisplayLog";
 
 const AUTH_AUDIO_PATH_MARKERS = [
   "/api/telegram-messages-profile-audio",
@@ -48,6 +51,95 @@ export function revokeMusicPlaybackObjectUrl(objectUrl: string | null | undefine
   }
 }
 
+function decodeBase64ToArrayBuffer(b64: string): ArrayBuffer {
+  if (typeof Buffer !== "undefined") {
+    const buf = Buffer.from(b64, "base64");
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  }
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+function assertLikelyAudioBody(bytes: Uint8Array): void {
+  if (bytes.byteLength < 16) {
+    throw new Error("AUDIO_TOO_SMALL");
+  }
+  const head = String.fromCharCode(...bytes.slice(0, Math.min(12, bytes.length)));
+  const trimmed = head.trimStart();
+  if (trimmed.startsWith("{") || trimmed.startsWith("<!") || trimmed.startsWith("<html")) {
+    throw new Error("NOT_AUDIO_BODY");
+  }
+}
+
+function normalizeAudioMime(raw: string | null | undefined): string {
+  const mime =
+    (raw || "audio/mpeg").split(";")[0]?.trim().toLowerCase() || "audio/mpeg";
+  if (mime.startsWith("audio/") || mime === "application/octet-stream") return mime;
+  return "audio/mpeg";
+}
+
+async function fetchMusicAudioBytes(apiUrl: string): Promise<{ buffer: ArrayBuffer; mime: string }> {
+  const bridge = getDesktopOAuthBridge();
+  if (isDesktopAppShell() && bridge?.fetchProgramApi) {
+    const token = getDesktopSessionToken();
+    const result = await bridge.fetchProgramApi(apiUrl, {
+      method: "GET",
+      bearerToken: token ?? undefined,
+      responseType: "arrayBuffer",
+      timeoutMs: 120_000,
+    });
+    if (!result.ok) {
+      throw new Error(result.error || "program_api_fetch_failed");
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`HTTP_${result.status}`);
+    }
+    const b64 = "bodyBase64" in result ? result.bodyBase64 : null;
+    if (!b64) {
+      throw new Error("MISSING_BINARY_BODY");
+    }
+    const buffer = decodeBase64ToArrayBuffer(b64);
+    const bytes = new Uint8Array(buffer);
+    assertLikelyAudioBody(bytes);
+    const mime = normalizeAudioMime(
+      "contentType" in result ? result.contentType : null,
+    );
+    logPageDisplay("music_playback_fetch_ok", {
+      transport: "ipc_program_api",
+      bytes: bytes.byteLength,
+      mime,
+      status: result.status,
+    });
+    return { buffer, mime };
+  }
+
+  const response = await fetch(apiUrl, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP_${response.status}`);
+  }
+  const contentType = response.headers.get("Content-Type");
+  if (contentType?.includes("application/json")) {
+    throw new Error("NOT_AUDIO_JSON");
+  }
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  assertLikelyAudioBody(bytes);
+  const mime = normalizeAudioMime(contentType);
+  logPageDisplay("music_playback_fetch_ok", {
+    transport: "renderer_fetch",
+    bytes: bytes.byteLength,
+    mime,
+    status: response.status,
+  });
+  return { buffer, mime };
+}
+
 /**
  * Fetch profile/chat audio with session cookies and return a blob URL for `<audio>`.
  * Cached by API URL so replays and seek retries do not re-download.
@@ -64,21 +156,9 @@ export async function resolveMusicPlaybackObjectUrl(
   if (pending) return (await pending).objectUrl;
 
   const promise = (async (): Promise<CachedPlayback> => {
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP_${response.status}`);
-    }
-    const blob = await response.blob();
-    const mime =
-      (blob.type || response.headers.get("Content-Type") || "audio/mpeg").split(";")[0]?.trim() ||
-      "audio/mpeg";
-    const typed =
-      blob.type && blob.type.length > 0 ? blob : new Blob([await blob.arrayBuffer()], { type: mime });
-    const objectUrl = URL.createObjectURL(typed);
+    const { buffer, mime } = await fetchMusicAudioBytes(apiUrl);
+    const blob = new Blob([buffer], { type: mime });
+    const objectUrl = URL.createObjectURL(blob);
     const entry: CachedPlayback = { objectUrl, mime };
     playbackCache.set(cacheId, entry);
     return entry;

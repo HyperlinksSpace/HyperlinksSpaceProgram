@@ -13,14 +13,15 @@ import {
 } from "../scrollIndicatorPx";
 import { layout } from "../theme";
 import { HSP_FLOATING_DIALOG_GEOMETRY_EVENT } from "./floatingDialogGeometry";
-import { peekTopFloatingSurfaceZ } from "./floatingSurfaceStack";
+import {
+  floatingDialogScrollIndicatorZ,
+  readFloatingDialogStackZFromElement,
+} from "./floatingSurfaceStack";
 import { ScrollIndicatorDragHandle } from "./ScrollIndicatorDragHandle";
 import { useTelegram } from "./Telegram";
 import { useAuthenticatedHomeSplitLayoutMetrics } from "./AuthenticatedHomeSplitLayoutMetricsContext";
 
 const SEAM_OVERLAY_Z = layout.authenticatedHome.scrollIndicatorOverlayZIndex;
-/** Keep above FloatingDialogShell stack (Pro Access uses minZ 12050; raise-to-front climbs). */
-const DIALOG_BODY_PORTAL_Z_FLOOR = 200_000;
 /** Match FloatingDialogShell east chrome (1 CSS px frame stroke). */
 const DIALOG_THUMB_CROSS_AXIS_PX = 1;
 /** Split-pane remounts often leave shell height/width at 0 for several frames. */
@@ -476,7 +477,14 @@ export function HspVerticalScrollIndicator({
             }
           : dialogChrome?.box ?? null;
     if (box) {
-      const portalZ = Math.max(DIALOG_BODY_PORTAL_Z_FLOOR, peekTopFloatingSurfaceZ() + 1);
+      const dialogStackZ =
+        readFloatingDialogStackZFromElement(sheet) ??
+        readFloatingDialogStackZFromElement(body) ??
+        readFloatingDialogStackZFromElement(shellDomNow);
+      const portalZ =
+        dialogStackZ != null
+          ? floatingDialogScrollIndicatorZ(dialogStackZ)
+          : SEAM_OVERLAY_Z;
       const portalLeft = snapScrollIndicatorCoordPx(box.rightPx - DIALOG_THUMB_CROSS_AXIS_PX);
       const portal: ReactNode = (
         <View

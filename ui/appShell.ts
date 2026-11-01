@@ -44,9 +44,18 @@ export type DesktopOAuthBridge = {
       body?: string;
       bearerToken?: string;
       timeoutMs?: number;
+      responseType?: "text" | "arrayBuffer";
+      binary?: boolean;
     },
   ) => Promise<
-    | { ok: true; status: number; body: string; debug?: { bearer?: boolean; sessionCookie?: boolean } }
+    | {
+        ok: true;
+        status: number;
+        body?: string;
+        bodyBase64?: string;
+        contentType?: string;
+        debug?: { bearer?: boolean; sessionCookie?: boolean; bytes?: number };
+      }
     | { ok: false; error: string }
   >;
   /** Set by windows/preload.cjs in the Electron shell. */

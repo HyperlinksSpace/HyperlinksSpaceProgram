@@ -87,6 +87,34 @@ function registerProgramApiFetchIpc({ ipcMain, net, session, log, getApiOrigin }
         signal: controller.signal,
         session: session.defaultSession,
       });
+      const contentType = res.headers.get("content-type") || "";
+      const wantBinary =
+        payload?.responseType === "arrayBuffer" ||
+        payload?.binary === true ||
+        /^audio\//i.test(contentType) ||
+        /\/api\/telegram-messages-(profile-audio|media)/i.test(pathForLog);
+
+      if (wantBinary) {
+        const ab = await res.arrayBuffer();
+        const bodyBase64 = Buffer.from(ab).toString("base64");
+        try {
+          log(
+            `[program-api-fetch] ${payload?.method || "GET"} ${pathForLog} status=${res.status} binary=${ab.byteLength}B bearer=${Boolean(bearer)} sessionCookie=${Boolean(sessionCookieValue)}`,
+          );
+        } catch (_) {}
+        return {
+          ok: true,
+          status: res.status,
+          bodyBase64,
+          contentType,
+          debug: {
+            bearer: Boolean(bearer),
+            sessionCookie: Boolean(sessionCookieValue),
+            bytes: ab.byteLength,
+          },
+        };
+      }
+
       const body = await res.text();
       try {
         log(
