@@ -7,6 +7,11 @@ import {
 import { logPageDisplay } from "../pageDisplayLog";
 import { getMusicAudioElement } from "./musicAudioElement";
 import {
+  musicPlaybackNeedsAuthenticatedFetch,
+  resolveMusicPlaybackObjectUrl,
+  revokeMusicPlaybackObjectUrl,
+} from "./musicPlaybackFetch";
+import {
   consumeMusicSeek,
   getMusicPlayer,
   handleMusicEnded,
@@ -19,6 +24,7 @@ import {
 
 const MEDIA_ERR_NETWORK = 2;
 const MEDIA_ERR_DECODE = 3;
+const MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
 const MAX_RECOVER_ATTEMPTS = 3;
 
 function mediaDurationSec(audio: HTMLAudioElement, fallback: number): number {
@@ -69,17 +75,40 @@ export function MusicPlayerEngine(): null {
     const audio = getMusicAudioElement();
     if (!audio) return;
     audioRef.current = audio;
-    audio.crossOrigin = "use-credentials";
     audio.preload = "auto";
 
     const revokeBlobUrl = () => {
-      if (!blobUrlRef.current) return;
-      try {
-        URL.revokeObjectURL(blobUrlRef.current);
-      } catch {
-        // ignore
-      }
+      revokeMusicPlaybackObjectUrl(blobUrlRef.current);
       blobUrlRef.current = null;
+    };
+
+    const setAudioCrossOriginForSrc = (playSrc: string) => {
+      if (playSrc.startsWith("blob:") || playSrc.startsWith("data:")) {
+        audio.removeAttribute("crossorigin");
+        return;
+      }
+      audio.crossOrigin = "use-credentials";
+    };
+
+    const beginTrackLoad = (seq: number, key: string, playSrc: string) => {
+      if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
+      setAudioCrossOriginForSrc(playSrc);
+      audio.pause();
+      audio.src = playSrc;
+      if (playSrc.startsWith("blob:")) {
+        blobUrlRef.current = playSrc;
+      }
+      audio.load();
+      attachReadyOnce(seq, () => {
+        logPageDisplay("music_track_canplay", {
+          key,
+          elapsedMs: Date.now() - loadStartedAtRef.current,
+          readyState: audio.readyState,
+        });
+        reportBuffer();
+        applyPlayback();
+      });
+      tryPlay();
     };
 
     let appliedVolume = audio.volume;
@@ -236,13 +265,21 @@ export function MusicPlayerEngine(): null {
       const seq = ++loadSeqRef.current;
       loadStartedAtRef.current = Date.now();
       const baseSrc = musicTrackPlaybackUrl(track);
+      const bustSrc = withCacheBust(baseSrc, attempt);
 
       try {
         audio.pause();
         revokeBlobUrl();
-        // Prefer progressive stream reload — waiting for a full blob download
-        // pauses playback until the entire file arrives (unlike YouTube).
-        audio.src = withCacheBust(baseSrc, attempt);
+        if (musicPlaybackNeedsAuthenticatedFetch(baseSrc)) {
+          const objectUrl = await resolveMusicPlaybackObjectUrl(bustSrc, `${key}:recover:${attempt}`);
+          if (seq !== loadSeqRef.current) return false;
+          setAudioCrossOriginForSrc(objectUrl);
+          audio.src = objectUrl;
+          blobUrlRef.current = objectUrl;
+        } else {
+          setAudioCrossOriginForSrc(bustSrc);
+          audio.src = bustSrc;
+        }
         audio.load();
         attachReadyOnce(seq, () => {
           logPageDisplay("music_track_canplay", {
@@ -288,7 +325,9 @@ export function MusicPlayerEngine(): null {
 
       const snap = getMusicPlayer();
       const recoverable =
-        (code === MEDIA_ERR_NETWORK || code === MEDIA_ERR_DECODE) &&
+        (code === MEDIA_ERR_NETWORK ||
+          code === MEDIA_ERR_DECODE ||
+          code === MEDIA_ERR_SRC_NOT_SUPPORTED) &&
         snap.playing &&
         snap.visible &&
         Boolean(key) &&
@@ -349,9 +388,11 @@ export function MusicPlayerEngine(): null {
         revokeBlobUrl();
         loadStartedAtRef.current = Date.now();
         const src = musicTrackPlaybackUrl(track);
+        const needsFetch = musicPlaybackNeedsAuthenticatedFetch(src);
         logPageDisplay("music_track_load_start", {
           key,
           playing: snap.playing,
+          needsAuthenticatedFetch: needsFetch,
           srcHost: (() => {
             try {
               return new URL(src, window.location.href).host;
@@ -360,22 +401,22 @@ export function MusicPlayerEngine(): null {
             }
           })(),
         });
-        audio.pause();
-        // Always assign + load so a prior unlock/silent src cannot stick.
-        // Progressive HTTP stream — play as soon as canplay (do not wait for full file).
-        audio.src = src;
-        audio.load();
-        attachReadyOnce(seq, () => {
-          logPageDisplay("music_track_canplay", {
-            key,
-            elapsedMs: Date.now() - loadStartedAtRef.current,
-            readyState: audio.readyState,
-          });
-          reportBuffer();
-          applyPlayback();
-        });
-        // Optimistic play — browsers start as soon as enough bytes arrive.
-        tryPlay();
+        if (needsFetch) {
+          void resolveMusicPlaybackObjectUrl(src, key)
+            .then((objectUrl) => {
+              beginTrackLoad(seq, key, objectUrl);
+            })
+            .catch((err: unknown) => {
+              if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
+              logPageDisplay("music_playback_fetch_failed", {
+                key,
+                message: err instanceof Error ? err.message : String(err),
+              });
+              setMusicPlaying(false);
+            });
+        } else {
+          beginTrackLoad(seq, key, src);
+        }
         return;
       }
 

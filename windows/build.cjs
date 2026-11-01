@@ -3834,10 +3834,19 @@ registerOsScreenshotPassthrough(app, { BrowserWindow, clipboard }, log);
  * any URL containing "/api/"). Reflect app://. so credentialed requests still work,
  * and preflights succeed from the Electron shell.
  */
-function installSwapCoffeeCorsReflect() {
+function installDesktopApiCorsReflect() {
   try {
+    let apiOrigin = "https://program.hyperlinks.space";
+    try {
+      const fromEnv = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+      if (fromEnv) apiOrigin = new URL(fromEnv).origin;
+    } catch (_) {}
     const filter = {
-      urls: ["https://tokens.swap.coffee/*", "https://backend.swap.coffee/*"],
+      urls: [
+        `${apiOrigin}/*`,
+        "https://tokens.swap.coffee/*",
+        "https://backend.swap.coffee/*",
+      ],
     };
     session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
       try {
@@ -3869,16 +3878,16 @@ function installSwapCoffeeCorsReflect() {
           setHeader("Access-Control-Allow-Origin", "app://.");
           setHeader("Access-Control-Allow-Credentials", "true");
         }
-        setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, X-Api-Key, Authorization");
+        setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, X-Api-Key, Authorization, Range");
         setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
         callback({ responseHeaders: headers });
       } catch (_) {
         callback({ responseHeaders: details.responseHeaders });
       }
     });
-    log("[net] swap.coffee CORS reflect for app://. installed");
+    log(`[net] desktop API CORS reflect for app://. installed (${apiOrigin})`);
   } catch (e) {
-    log(`[net] swap.coffee CORS reflect failed: ${e?.message || e}`);
+    log(`[net] desktop API CORS reflect failed: ${e?.message || e}`);
   }
 }
 
@@ -3887,7 +3896,7 @@ app.whenReady().then(async () => {
     // Dark native chrome (title bar / menu area) so the OS-drawn separator under the menu reads closer to #111111.
     nativeTheme.themeSource = "dark";
   }
-  installSwapCoffeeCorsReflect();
+  installDesktopApiCorsReflect();
   // Voice chat screen share — Chromium getDisplayMedia needs an Electron handler.
   try {
     registerDisplayMediaHandler({
