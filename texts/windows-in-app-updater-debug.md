@@ -1,6 +1,6 @@
 # Windows in-app updater: debugging failed “quick update”
 
-The packaged Windows app uses a **custom zip sidecar** path in `windows/build.cjs`. The in-app **“Update with reload”** flow stages a **portable ZIP** from GitHub, unpacks it under user data, then applies it with a helper script. It does **not** use the NSIS `.exe` download from `electron-updater`’s `update-downloaded` event on Windows (that event is ignored when the zip path is active).
+The packaged Windows app uses a **custom zip sidecar** path in `windows/build.cjs` to stage portable zips, and **electron-updater’s NSIS installer** for **Update with reload** when the full `.exe` has finished downloading (silent install — replaces the install tree via `installer-hooks.nsi` purge). The zip path remains a fallback if the NSIS download fails.
 
 If the UI still behaves like an old build after you used the updater dialog, use the sections below.
 

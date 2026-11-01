@@ -199,12 +199,13 @@ Function HspKillBeforeCopy
 FunctionEnd
 
 ; Remove old app payload before extracting a new build (keep Uninstall*.exe).
+; Junction `current` and tree `versions` must use cmd rmdir — Remove-Item can hang on reparse points.
 Function HspPurgeInstallPayload
   IfFileExists "$INSTDIR" 0 hspPurgeInstallDone
   !insertmacro HspInstallDetailPrint "[installer] purge old app payload (preserve uninstaller)"
   Call HspResolvePowerShellExe
   Call HspSetEnvInstDir
-  nsExec::Exec `"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { $dst = $env:HSP_INSTDIR; if (-not $dst -or -not (Test-Path -LiteralPath $dst)) { exit 0 }; Get-ChildItem -LiteralPath $dst -Force | Where-Object { $_.Name -notlike 'Uninstall*.exe' } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }"`
+  nsExec::Exec `"$R5" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& { $dst = $env:HSP_INSTDIR; if (-not $dst -or -not (Test-Path -LiteralPath $dst)) { exit 0 }; $cur = Join-Path $dst 'current'; if (Test-Path -LiteralPath $cur) { & $env:ComSpec /c ('rmdir \"' + $cur.Replace('\"','\"\"') + '\"') | Out-Null }; $ver = Join-Path $dst 'versions'; if (Test-Path -LiteralPath $ver) { & $env:ComSpec /c ('rmdir /s /q \"' + $ver.Replace('\"','\"\"') + '\"') | Out-Null }; Get-ChildItem -LiteralPath $dst -Force | Where-Object { $_.Name -notlike 'Uninstall*.exe' } | ForEach-Object { try { if ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) { & $env:ComSpec /c ('rmdir \"' + $_.FullName.Replace('\"','\"\"') + '\"') | Out-Null } else { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } } catch {} } }"`
   Pop $R4
   Call HspClearEnvInstDir
 hspPurgeInstallDone:

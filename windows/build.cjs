@@ -1887,12 +1887,14 @@ function setupAutoUpdater() {
     let zipPrepareInFlight = false;
     let zipReadyVersion = null;
     let zipStagingContentPath = null;
+    /** Full NSIS installer from electron-updater; preferred for Update with reload (replaces install tree). */
+    let nsisInstallerReady = false;
     /** Last in-flight prepare UI so Check now can attach instead of restarting at 0%. */
     const prepareUiSnapshot = { text: "", percent: 0 };
 
     autoUpdater.autoDownload = !useWinVersionsSidecar;
-    // Windows: never install a downloaded NSIS on quit — in-app Update uses staged zip + robocopy only.
-    autoUpdater.autoInstallOnAppQuit = !useWinVersionsSidecar;
+    // Windows: in-app Update runs the downloaded NSIS (silent) — not autoInstallOnAppQuit.
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.autoRunAppAfterInstall = true;
     log(
       `[updater] initialized (github, winVersions=${useWinVersionsSidecar}, autoDownload=${autoUpdater.autoDownload})`,
@@ -1932,10 +1934,25 @@ function setupAutoUpdater() {
       }
     };
 
-    refreshUpdaterDialogIfStagedReady = () => {
+    const syncUpdateReadyUi = () => {
+      if (nsisInstallerReady) {
+        const ver = zipReadyVersion ? ` ${zipReadyVersion}` : "";
+        openOrFocusUpdateDialog({
+          text: `Update${ver} is ready. Click "Update with reload" to run the full installer and replace the installed app.`,
+          percent: 100,
+          showProgress: true,
+          showActions: true,
+          installEnabled: true,
+        });
+        return;
+      }
       if (!useWinVersionsSidecar || !zipReadyVersion || !zipStagingContentPath) return;
       if (!stagingHasMainExe(zipStagingContentPath)) return;
       syncZipReadyUi(zipReadyVersion);
+    };
+
+    refreshUpdaterDialogIfStagedReady = () => {
+      syncUpdateReadyUi();
     };
 
     const getVersionsStagingRoot = () => path.join(app.getPath("userData"), "pending-update-versions");
@@ -1981,6 +1998,7 @@ function setupAutoUpdater() {
         stagedExeOk: zipStagingContentPath ? stagingHasMainExe(zipStagingContentPath) : false,
         stagedVersions,
         installRequested,
+        nsisInstallerReady,
         dialogOpen: Boolean(updateDialogState.window && !updateDialogState.window.isDestroyed()),
         installEnabled: Boolean(updateDialogState.installEnabled),
         ...extra,
@@ -2304,7 +2322,7 @@ function setupAutoUpdater() {
         logUpdaterStateSnapshot("prepare/complete", { preparedVersion: meta.version });
         try {
           openOrFocusUpdateDialog();
-          syncZipReadyUi(meta.version);
+          syncUpdateReadyUi();
           if (!uiActive && process.platform === "win32" && Notification.isSupported()) {
             new Notification({
               title: brand.productDisplayName,
@@ -2545,6 +2563,17 @@ function setupAutoUpdater() {
         "  Write-FileProbe 'post-copy dst asar' $dstAsar",
         "  Write-FileProbe 'post-copy dst exe' $dstExe",
         '  Write-ApplyLog "post-copy probes done; beginning junction switch"',
+        "  if ($plan.useVersionedLayout -and $plan.appRoot -and $plan.appliedVersion) {",
+        "    $versionsRoot = Join-Path ([string]$plan.appRoot) 'versions'",
+        "    if ([System.IO.Directory]::Exists($versionsRoot)) {",
+        "      Get-ChildItem -LiteralPath $versionsRoot -Directory -ErrorAction SilentlyContinue | ForEach-Object {",
+        "        if ($_.Name -eq [string]$plan.appliedVersion) { return }",
+        '        Write-ApplyLog ("removing old versions folder: " + $_.FullName)',
+        "        $rdOld = 'rd /s /q \"' + $_.FullName.Replace('\"', '\"\"') + '\"'",
+        "        Start-Process -FilePath $env:ComSpec -ArgumentList '/c', $rdOld -Wait -WindowStyle Hidden",
+        "      }",
+        "    }",
+        "  }",
         "  if ($plan.useVersionedLayout) {",
         "    # Never Remove-Item / Test-Path a Program Files junction — both can hang",
         "    # (esp. while a prior elevated apply is stuck on Remove-Item). Use cmd only.",
@@ -2614,7 +2643,7 @@ function setupAutoUpdater() {
         "    $flatDst = [string]$plan.appRoot",
         "    $flatLog = $LogFile",
         "    $rcArgs = @(",
-        "      $flatSrc, $flatDst, '/E', '/MT:8', '/J', '/R:0', '/W:0', '/XD', 'versions', 'current', '/NFL', '/NDL', '/NJH', '/NJS'",
+        "      $flatSrc, $flatDst, '/MIR', '/MT:8', '/J', '/R:0', '/W:0', '/XD', 'versions', 'current', '/NFL', '/NDL', '/NJH', '/NJS'",
         "    )",
         "    # Elevated apply helper: child Start-Process without -Verb RunAs drops admin and cannot",
         "    # write Program Files — flat tree stays stale and taskbar keeps launching the old build.",
@@ -2763,6 +2792,35 @@ function setupAutoUpdater() {
 
       suppressQuitForUpdateInstall = true;
 
+      if (useWinVersionsSidecar && nsisInstallerReady) {
+        logUpdater("ipc", "requestInstallNow using NSIS full installer (replaces install tree)");
+        closeUpdateDialog();
+        try {
+          if (process.platform === "win32" && Notification.isSupported()) {
+            const n = new Notification({
+              title: brand.productDisplayName,
+              body: "Installing update… The app will restart when finished.",
+            });
+            n.show();
+          }
+        } catch (_) {}
+        for (const win of BrowserWindow.getAllWindows()) {
+          try {
+            win.removeAllListeners("close");
+            win.destroy();
+          } catch (_) {}
+        }
+        try {
+          log("[updater] invoking quitAndInstall(isSilent=true, isForceRunAfter=true) — full NSIS replace");
+          autoUpdater.quitAndInstall(true, true);
+        } catch (e) {
+          log(`quitAndInstall failed: ${e?.message || e}`);
+          suppressQuitForUpdateInstall = false;
+          nsisInstallerReady = false;
+        }
+        return;
+      }
+
       const useVersionsApply = canApplyVersionsStaging();
       const semverNewer =
         zipReadyVersion && compareSemverLike(zipReadyVersion, currentVersion) > 0;
@@ -2873,10 +2931,10 @@ function setupAutoUpdater() {
       log("[updater] update-downloaded");
       logUpdater("event", "update-downloaded (NSIS installer file ready on disk)");
       manualDownloadInProgress = false;
-      // Windows uses zip sidecar only; ignore NSIS installer download for in-app UX.
       if (useWinVersionsSidecar) {
-        log("[updater] update-downloaded: ignored on Windows (NSIS not used for Update button)");
-        logUpdater("event", "update-downloaded ignored (Windows uses zip sidecar only)");
+        nsisInstallerReady = true;
+        logUpdater("event", "update-downloaded NSIS ready (Update with reload runs full installer)");
+        syncUpdateReadyUi();
         return;
       }
       openOrFocusUpdateDialog({
@@ -2919,6 +2977,14 @@ function setupAutoUpdater() {
       }
       if (useWinVersionsSidecar) {
         void tryBeginVersionsPrepare(info, { uiManual: wasManual });
+        void (async () => {
+          try {
+            logUpdater("event", "downloadUpdate NSIS (full replace on install)");
+            await autoUpdater.downloadUpdate();
+          } catch (e) {
+            logUpdater("event", `downloadUpdate failed: ${e?.message || e}`);
+          }
+        })();
       }
     });
 
