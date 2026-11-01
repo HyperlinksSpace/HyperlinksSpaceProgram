@@ -54,6 +54,7 @@ import {
   HEADER_ACTION_MENU_CLEARANCE_PX,
   HEADER_AMOUNT_FONT_MAX_PX,
   HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
+  HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX,
   HEADER_IDENTITY_ROW_SAFE_GAP_PX,
   pickHeaderDisplayName,
   shouldUseHeaderIdentityOverflow,
@@ -691,12 +692,16 @@ export function HomeAuthenticatedHeaderRow({
   // Collapse to the more chip only when even this minimized cluster cannot fit with the safe gap.
   const minIdentityClusterPx =
     (trimmed ? minSnippet.length * monoCharWidthPx : 0) + explorerChromePx;
-  // Amount reservation still leaves room for a one-letter name when present + safe gap.
-  const identityReservePx =
-    minIdentityClusterPx +
-    (nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0);
-  // Compact: reserve amount width at the font size that still leaves room for the
-  // minimized identity (or the overflow chip) plus the safe gap to the right cluster.
+  const nameChromeForFitPx = headerIdentity.fullName
+    ? Math.max(
+        nameFloorPx > 0 ? nameFloorPx + HEADER_IDENTITY_GAP_PX : 0,
+        firstNameWidthPx > 0 ? firstNameWidthPx + HEADER_IDENTITY_GAP_PX : 0,
+      )
+    : 0;
+  /** Name + address + Tonviewer — used for amount budget and ⋮ overflow gate. */
+  const identityOverflowClusterPx =
+    minIdentityClusterPx + nameChromeForFitPx + HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX;
+  const identityReservePx = identityOverflowClusterPx;
   const compactAmountBudgetPx = Math.max(
     0,
     innerContentW -
@@ -704,30 +709,38 @@ export function HomeAuthenticatedHeaderRow({
       HEADER_IDENTITY_ROW_SAFE_GAP_PX -
       Math.max(identityReservePx, HEADER_CONTROL_ROW_PX),
   );
-  const compactAmountFontPx = fitHeaderAmountFontSize(
+  let amountFontSizePx = fitHeaderAmountFontSize(
     naturalAmountWidthPx,
     compactAmountBudgetPx,
   );
-  const compactAmountWidthPx =
+  const renderedAmountWidthPx =
     naturalAmountWidthPx > 0
-      ? Math.ceil(
-          naturalAmountWidthPx * (compactAmountFontPx / HEADER_AMOUNT_FONT_MAX_PX),
-        )
+      ? Math.ceil(naturalAmountWidthPx * (amountFontSizePx / HEADER_AMOUNT_FONT_MAX_PX))
       : 0;
+  const leftBandOccupancyPx = chipClusterWidthPx + renderedAmountWidthPx;
   // Wide fit budget is the fair side share around the menu — not the intrinsic
   // right column’s onLayout width (that shrink-wraps and collapses fit).
   const wideSideBudgetPx = estimatedWideSidePx;
-  const nameSlotPx = atOrAboveFirstBreakpoint
-    ? wideSideBudgetPx
-    : Math.max(
-        0,
-        leftSlotWidthPx > 0
-          ? innerContentW - leftSlotWidthPx - HEADER_IDENTITY_ROW_SAFE_GAP_PX
-          : innerContentW -
-              chipClusterWidthPx -
-              compactAmountWidthPx -
-              HEADER_IDENTITY_ROW_SAFE_GAP_PX,
-      );
+  const nameSlotFromBalancePx = Math.max(
+    0,
+    innerContentW -
+      (atOrAboveFirstBreakpoint ? wideMenuStripWidth : 0) -
+      leftBandOccupancyPx -
+      HEADER_IDENTITY_ROW_SAFE_GAP_PX,
+  );
+  let nameSlotPx = atOrAboveFirstBreakpoint
+    ? Math.min(wideSideBudgetPx, nameSlotFromBalancePx)
+    : nameSlotFromBalancePx;
+  if (leftSlotWidthPx > 0) {
+    const nameSlotFromMeasuredLeftPx = Math.max(
+      0,
+      innerContentW -
+        (atOrAboveFirstBreakpoint ? wideMenuStripWidth : 0) -
+        leftSlotWidthPx -
+        HEADER_IDENTITY_ROW_SAFE_GAP_PX,
+    );
+    nameSlotPx = Math.min(nameSlotPx, nameSlotFromMeasuredLeftPx);
+  }
   // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
   const addressTailLength = trimmed
     ? fitHeaderAddressTailLength({
@@ -742,7 +755,7 @@ export function HomeAuthenticatedHeaderRow({
     Boolean(trimmed || headerIdentity.fullName) &&
     shouldUseHeaderIdentityOverflow({
       identitySlotPx: nameSlotPx,
-      minClusterPx: minIdentityClusterPx,
+      minClusterPx: identityOverflowClusterPx,
       overflowChipPx: HEADER_CONTROL_ROW_PX,
       collapseSlackPx: HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
     });
@@ -778,12 +791,17 @@ export function HomeAuthenticatedHeaderRow({
     ? Math.max(0, leftSlotWidthPx - chipClusterWidthPx)
     : Math.max(
         0,
-        innerContentW -
-          chipClusterWidthPx -
-          identityChromePx -
-          HEADER_IDENTITY_ROW_SAFE_GAP_PX,
+        identityOverflow
+          ? innerContentW -
+              chipClusterWidthPx -
+              HEADER_CONTROL_ROW_PX -
+              HEADER_IDENTITY_ROW_SAFE_GAP_PX
+          : innerContentW -
+              chipClusterWidthPx -
+              identityChromePx -
+              HEADER_IDENTITY_ROW_SAFE_GAP_PX,
       );
-  const amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
+  amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
   const actionIconsAvailablePx = Math.max(
     0,
     (atOrAboveFirstBreakpoint
@@ -950,7 +968,7 @@ export function HomeAuthenticatedHeaderRow({
           flexGrow: 0,
           flexShrink: 1,
           minWidth: 0,
-          maxWidth: "100%",
+          maxWidth: nameSlotPx > 0 ? nameSlotPx : "100%",
         }}
       >
         <Pressable
@@ -993,11 +1011,9 @@ export function HomeAuthenticatedHeaderRow({
             style={[
               ...headerMonoLineStyle,
               {
-                // Do not set maxWidth here — on web it expands the text box past the
-                // glyphs and leaves “Morgan” inset from the trailing edge. Label choice
-                // already respects availableNamePx via pickHeaderDisplayName.
                 flexGrow: 0,
-                flexShrink: 0,
+                flexShrink: 1,
+                minWidth: 0,
               },
             ]}
           >
@@ -1418,6 +1434,7 @@ export function HomeAuthenticatedHeaderRow({
                   <HeaderBandSlots
                     centerReservePx={0}
                     leftGrows={false}
+                    onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
                     left={balanceButton}
                     right={walletAddressRow}
                   />
@@ -1483,6 +1500,7 @@ export function HomeAuthenticatedHeaderRow({
                   <HeaderBandSlots
                     centerReservePx={0}
                     leftGrows={false}
+                    onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
                     left={balanceButton}
                     right={walletAddressRow}
                   />

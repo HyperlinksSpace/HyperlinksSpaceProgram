@@ -118,6 +118,8 @@ export const HEADER_ACTION_MENU_CLEARANCE_PX = 20;
 export const HEADER_IDENTITY_ROW_SAFE_GAP_PX = 16;
 /** Tiny slack only — do not keep identity when it would violate the safe gap. */
 export const HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX = 0;
+/** Collapse to ⋮ slightly before the row would visually touch the balance. */
+export const HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX = 16;
 
 /** Shrink copy/edit/key/language/exit together so they track width instead of clipping. */
 export function fitHeaderActionIconSize(
