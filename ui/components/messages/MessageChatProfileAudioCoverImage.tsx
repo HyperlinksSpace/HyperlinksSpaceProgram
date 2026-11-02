@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
 import { Platform } from "react-native";
+import { cacheableDisplayUrlFromBlob, revokeDisplayUrlIfObjectUrl } from "../../media/binaryDisplayUrl";
+import { isDesktopAppShell } from "../../appShell";
 import { runQueuedNetworkFetch, type NetworkFetchPriority } from "./networkFetchQueue";
 
 function needsAuthenticatedFetch(uri: string): boolean {
@@ -36,7 +38,13 @@ function getCoverCacheRevision(): number {
 
 function readCachedDisplayUri(uri: string): string | null {
   if (!needsAuthenticatedFetch(uri)) return uri;
-  return coverBlobCache.get(uri) ?? null;
+  const cached = coverBlobCache.get(uri);
+  if (cached && isDesktopAppShell() && cached.startsWith("blob:")) {
+    revokeDisplayUrlIfObjectUrl(cached);
+    coverBlobCache.delete(uri);
+    return null;
+  }
+  return cached ?? null;
 }
 
 function enqueueCoverFetch(
@@ -98,10 +106,11 @@ async function fetchCoverBlobOnce(uri: string): Promise<string | null> {
     return null;
   }
   const blob = await response.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  coverBlobCache.set(uri, objectUrl);
+  const mime = (response.headers.get("content-type") || "").split(";")[0].trim();
+  const displayUrl = await cacheableDisplayUrlFromBlob(blob, mime || "image/jpeg");
+  coverBlobCache.set(uri, displayUrl);
   notifyCoverCacheListeners();
-  return objectUrl;
+  return displayUrl;
 }
 
 type Props = {

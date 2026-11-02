@@ -30,13 +30,10 @@ export function musicPlaybackNeedsAuthenticatedFetch(src: string): boolean {
 
 /**
  * Prefer `<audio src="https://…/api/…">` so the browser buffers and plays while downloading.
- * Full blob prefetch is reserved for error recovery on web, and is the normal path on desktop
- * (`app://`) where `<audio>` cannot rely on credentialed cross-origin streaming.
+ * Electron attaches session auth via webRequest; full blob prefetch is fallback when streaming fails.
  */
 export function musicPlaybackUseStreamingElementSrc(src: string): boolean {
-  if (!isAuthenticatedMusicApiUrl(src)) return false;
-  if (isDesktopAppShell()) return false;
-  return true;
+  return isAuthenticatedMusicApiUrl(src);
 }
 
 type CachedPlayback = {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Image } from "expo-image";
 import type { ImageStyle, StyleProp } from "react-native";
 import { Platform, StyleSheet } from "react-native";
+import { cacheableDisplayUrlFromBlob, revokeDisplayUrlIfObjectUrl } from "../../media/binaryDisplayUrl";
+import { isDesktopAppShell } from "../../appShell";
 import { runQueuedNetworkFetch, type NetworkFetchPriority } from "./networkFetchQueue";
 import { isVoiceDialogUiOpen, subscribeVoiceDialogUiOpen } from "./voiceDialogUiGate";
 
@@ -54,7 +56,7 @@ function purgeAvatarCacheEntries(match: (uri: string, ids: { userId: string | nu
     const ids = avatarProxyQueryIds(key);
     if (!ids || !match(key, ids)) continue;
     const blob = avatarBlobCache.get(key);
-    if (blob) URL.revokeObjectURL(blob);
+    if (blob) revokeDisplayUrlIfObjectUrl(blob);
     avatarBlobCache.delete(key);
     changed = true;
   }
@@ -82,7 +84,13 @@ export function invalidateMessageChatAvatarCacheForChat(chatId: number): void {
 
 function readCachedDisplayUri(uri: string): string | null {
   if (!needsAuthenticatedFetch(uri)) return uri;
-  return avatarBlobCache.get(uri) ?? null;
+  const cached = avatarBlobCache.get(uri);
+  if (cached && isDesktopAppShell() && cached.startsWith("blob:")) {
+    revokeDisplayUrlIfObjectUrl(cached);
+    avatarBlobCache.delete(uri);
+    return null;
+  }
+  return cached ?? null;
 }
 
 export function isMessageChatAvatarBlobCached(uri: string): boolean {
@@ -126,12 +134,10 @@ async function fetchAvatarBlobOnce(uri: string): Promise<string | null> {
   }
   const raw = await response.blob();
   const mime = (response.headers.get("content-type") || "").split(";")[0].trim();
-  const blob =
-    mime && raw.type !== mime ? new Blob([await raw.arrayBuffer()], { type: mime }) : raw;
-  const objectUrl = URL.createObjectURL(blob);
-  avatarBlobCache.set(uri, objectUrl);
+  const displayUrl = await cacheableDisplayUrlFromBlob(raw, mime || "image/jpeg");
+  avatarBlobCache.set(uri, displayUrl);
   notifyAvatarCacheListeners();
-  return objectUrl;
+  return displayUrl;
 }
 
 async function fetchAvatarBlob(uri: string): Promise<string | null> {

@@ -92,18 +92,24 @@ export function MusicPlayerEngine(): null {
       audio.crossOrigin = "use-credentials";
     };
 
-    const beginTrackLoad = (seq: number, key: string, playSrc: string) => {
-      if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
+    const beginTrackLoad = (seq: number, key: string, trackIndex: number, playSrc: string) => {
+      if (seq !== loadSeqRef.current) return;
+      loadedKeyRef.current = key;
+      loadedIndexRef.current = trackIndex;
       setAudioCrossOriginForSrc(playSrc);
       audio.pause();
       audio.src = playSrc;
       if (playSrc.startsWith("blob:")) {
         blobUrlRef.current = playSrc;
+      } else {
+        blobUrlRef.current = null;
       }
       audio.load();
       attachReadyOnce(seq, () => {
+        if (seq !== loadSeqRef.current) return;
         logPageDisplay("music_track_canplay", {
           key,
+          trackIndex,
           elapsedMs: Date.now() - loadStartedAtRef.current,
           readyState: audio.readyState,
           bufferedSec: (() => {
@@ -119,6 +125,63 @@ export function MusicPlayerEngine(): null {
         applyPlayback();
       });
       tryPlay();
+    };
+
+    const clearAudioForTrackSwap = () => {
+      audio.pause();
+      revokeBlobUrl();
+      audio.removeAttribute("src");
+      audio.load();
+      loadedKeyRef.current = "";
+      loadedIndexRef.current = -1;
+    };
+
+    const loadTrack = (snap: ReturnType<typeof getMusicPlayer>, track: NonNullable<(typeof snap.tracks)[number]>) => {
+      const key = musicTrackPlaybackKey(track);
+      const trackIndex = snap.index;
+      const seq = ++loadSeqRef.current;
+      loadStartedAtRef.current = Date.now();
+      recoverAttemptsRef.current = 0;
+      recoveringRef.current = false;
+      lastGoodTimeRef.current = 0;
+      clearAudioForTrackSwap();
+      const src = musicTrackPlaybackUrl(track);
+      const streamSrc = musicPlaybackUseStreamingElementSrc(src);
+      logPageDisplay("music_track_load_start", {
+        key,
+        trackIndex,
+        playing: snap.playing,
+        streamingElementSrc: streamSrc,
+        needsAuthenticatedFetch: musicPlaybackNeedsAuthenticatedFetch(src),
+        srcHost: (() => {
+          try {
+            return new URL(src, window.location.href).host;
+          } catch {
+            return null;
+          }
+        })(),
+      });
+      if (streamSrc) {
+        beginTrackLoad(seq, key, trackIndex, src);
+        return;
+      }
+      if (musicPlaybackNeedsAuthenticatedFetch(src)) {
+        void resolveMusicPlaybackObjectUrl(src, `${key}#${trackIndex}`)
+          .then((objectUrl) => {
+            beginTrackLoad(seq, key, trackIndex, objectUrl);
+          })
+          .catch((err: unknown) => {
+            if (seq !== loadSeqRef.current) return;
+            logPageDisplay("music_playback_fetch_failed", {
+              key,
+              trackIndex,
+              message: err instanceof Error ? err.message : String(err),
+            });
+            setMusicPlaying(false);
+          });
+        return;
+      }
+      beginTrackLoad(seq, key, trackIndex, src);
     };
 
     let appliedVolume = audio.volume;
@@ -187,8 +250,14 @@ export function MusicPlayerEngine(): null {
     };
     const onPlaying = () => {
       if (!loadStartedAtRef.current) return;
+      const snap = getMusicPlayer();
+      const track = snap.tracks[snap.index] ?? null;
+      if (!track) return;
+      const key = musicTrackPlaybackKey(track);
+      if (loadedKeyRef.current !== key || loadedIndexRef.current !== snap.index) return;
       logPageDisplay("music_playback_started", {
         key: loadedKeyRef.current,
+        trackIndex: loadedIndexRef.current,
         elapsedMs: Date.now() - loadStartedAtRef.current,
         readyState: audio.readyState,
         networkState: audio.networkState,
@@ -197,9 +266,17 @@ export function MusicPlayerEngine(): null {
     };
 
     let lastSeekSeq = -1;
+    const trackMatchesLoadedElement = (snap: ReturnType<typeof getMusicPlayer>): boolean => {
+      const track = snap.tracks[snap.index] ?? null;
+      if (!track) return false;
+      const key = musicTrackPlaybackKey(track);
+      return loadedKeyRef.current === key && loadedIndexRef.current === snap.index;
+    };
+
     const tryPlay = () => {
       const snap = getMusicPlayer();
       if (!snap.playing || !snap.visible) return;
+      if (!trackMatchesLoadedElement(snap)) return;
       const playResult = audio.play();
       if (playResult && typeof playResult.catch === "function") {
         playResult.catch((err: unknown) => {
@@ -215,6 +292,7 @@ export function MusicPlayerEngine(): null {
     const applyPlayback = () => {
       if (recoveringRef.current) return;
       const snap = getMusicPlayer();
+      if (!trackMatchesLoadedElement(snap)) return;
       audio.playbackRate = snap.speed;
       audio.loop = snap.loopMode === "one";
 
@@ -375,106 +453,25 @@ export function MusicPlayerEngine(): null {
     const apply = () => {
       const snap = getMusicPlayer();
       const track = snap.tracks[snap.index] ?? null;
-      const key = track ? musicTrackPlaybackKey(track) : "";
 
       if (!snap.visible || !track) {
         if (loadedKeyRef.current) {
-          audio.pause();
-          audio.removeAttribute("src");
-          audio.load();
-          loadedKeyRef.current = "";
-          loadedIndexRef.current = -1;
+          clearAudioForTrackSwap();
           recoverAttemptsRef.current = 0;
           recoveringRef.current = false;
           lastGoodTimeRef.current = 0;
-          revokeBlobUrl();
         }
         return;
       }
 
-      const indexChanged = loadedIndexRef.current !== snap.index;
-      const keyChanged = loadedKeyRef.current !== key;
-
-      if (keyChanged) {
-        const seq = ++loadSeqRef.current;
-        loadedKeyRef.current = key;
-        loadedIndexRef.current = snap.index;
-        recoverAttemptsRef.current = 0;
-        recoveringRef.current = false;
-        lastGoodTimeRef.current = 0;
-        revokeBlobUrl();
-        loadStartedAtRef.current = Date.now();
-        const src = musicTrackPlaybackUrl(track);
-        const streamSrc = musicPlaybackUseStreamingElementSrc(src);
-        logPageDisplay("music_track_load_start", {
-          key,
-          playing: snap.playing,
-          streamingElementSrc: streamSrc,
-          needsAuthenticatedFetch: musicPlaybackNeedsAuthenticatedFetch(src),
-          srcHost: (() => {
-            try {
-              return new URL(src, window.location.href).host;
-            } catch {
-              return null;
-            }
-          })(),
-        });
-        if (streamSrc) {
-          beginTrackLoad(seq, key, src);
-        } else if (musicPlaybackNeedsAuthenticatedFetch(src)) {
-          void resolveMusicPlaybackObjectUrl(src, key)
-            .then((objectUrl) => {
-              beginTrackLoad(seq, key, objectUrl);
-            })
-            .catch((err: unknown) => {
-              if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
-              logPageDisplay("music_playback_fetch_failed", {
-                key,
-                message: err instanceof Error ? err.message : String(err),
-              });
-              setMusicPlaying(false);
-            });
-        } else {
-          beginTrackLoad(seq, key, src);
-        }
-        return;
-      }
-
-      if (indexChanged) {
-        loadedIndexRef.current = snap.index;
-        recoverAttemptsRef.current = 0;
-        lastGoodTimeRef.current = 0;
-        revokeBlobUrl();
-        const seq = ++loadSeqRef.current;
-        loadStartedAtRef.current = Date.now();
-        const src = musicTrackPlaybackUrl(track);
-        const streamSrc = musicPlaybackUseStreamingElementSrc(src);
-        if (streamSrc) {
-          beginTrackLoad(seq, key, src);
-        } else if (musicPlaybackNeedsAuthenticatedFetch(src)) {
-          void resolveMusicPlaybackObjectUrl(src, `${key}@${snap.index}`)
-            .then((objectUrl) => {
-              beginTrackLoad(seq, key, objectUrl);
-            })
-            .catch((err: unknown) => {
-              if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
-              logPageDisplay("music_playback_fetch_failed", {
-                key,
-                message: err instanceof Error ? err.message : String(err),
-              });
-              setMusicPlaying(false);
-            });
-        } else {
-          beginTrackLoad(seq, key, src);
-        }
+      const key = musicTrackPlaybackKey(track);
+      if (loadedKeyRef.current !== key || loadedIndexRef.current !== snap.index) {
+        loadTrack(snap, track);
         return;
       }
 
       if (!recoveringRef.current) applyPlayback();
     };
-
-    audio.addEventListener("canplay", applyPlayback);
-    audio.addEventListener("canplaythrough", applyPlayback);
 
     const unsubscribe = subscribeMusicPlayer(apply);
     apply();
@@ -493,8 +490,6 @@ export function MusicPlayerEngine(): null {
       audio.removeEventListener("error", onError);
       audio.removeEventListener("seeked", onSeeked);
       audio.removeEventListener("playing", onPlaying);
-      audio.removeEventListener("canplay", applyPlayback);
-      audio.removeEventListener("canplaythrough", applyPlayback);
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
