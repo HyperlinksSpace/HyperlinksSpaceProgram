@@ -1,7 +1,7 @@
 import { getApiBaseUrl } from "../../api/_base";
-import { getDesktopSessionToken } from "./desktopSessionToken";
-import { getDesktopOAuthBridge, isDesktopAppShell } from "../ui/appShell";
-import { logPageDisplay } from "../ui/pageDisplayLog";
+import { getDesktopSessionToken } from "../../auth/desktopSessionToken";
+import { getDesktopOAuthBridge, isDesktopAppShell } from "../appShell";
+import { logPageDisplay } from "../pageDisplayLog";
 
 const AUTH_AUDIO_PATH_MARKERS = [
   "/api/telegram-messages-profile-audio",
