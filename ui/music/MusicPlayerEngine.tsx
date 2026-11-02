@@ -392,7 +392,6 @@ export function MusicPlayerEngine(): null {
         return;
       }
 
-      const key = track ? musicTrackPlaybackKey(track) : "";
       const indexChanged = loadedIndexRef.current !== snap.index;
       const keyChanged = loadedKeyRef.current !== key;
 
