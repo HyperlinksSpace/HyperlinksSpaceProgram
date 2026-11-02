@@ -154,6 +154,20 @@ export function startMusicPlaylist(
   });
 }
 
+/** Expand the in-memory queue when the UI has the full profile playlist but the player does not. */
+export function mergeMusicPlayerPlaylist(tracks: TelegramProfileAudioTrack[]): void {
+  if (tracks.length === 0) return;
+  const snap = snapshot;
+  if (!snap.visible || snap.tracks.length >= tracks.length) return;
+  const current = snap.tracks[snap.index];
+  if (!current) return;
+  const inList = tracks.some(
+    (row) => row.file_id === current.file_id && row.user_id === current.user_id,
+  );
+  if (!inList) return;
+  setMusicTracks(tracks, current.file_id);
+}
+
 export function setMusicTracks(tracks: TelegramProfileAudioTrack[], keepFileId?: number): void {
   if (tracks.length === 0) {
     setSnapshot({ tracks: [], order: [], index: 0, playing: false, visible: false });
@@ -203,12 +217,18 @@ export function setMusicPlaying(playing: boolean): void {
 
 export function playMusicIndex(index: number): void {
   if (!snapshot.visible || snapshot.tracks.length === 0) return;
-  const next = Math.max(0, Math.min(Math.trunc(index), snapshot.tracks.length - 1));
+  commitTrackIndex(index);
+}
+
+function commitTrackIndex(nextIndex: number): void {
+  const { tracks } = snapshot;
+  if (tracks.length === 0) return;
+  const index = Math.max(0, Math.min(Math.trunc(nextIndex), tracks.length - 1));
   setSnapshot({
-    index: next,
+    index,
     playing: true,
     currentTime: 0,
-    duration: snapshot.tracks[next]?.duration_sec ?? 0,
+    duration: tracks[index]?.duration_sec ?? 0,
     bufferedRatio: 0,
     bufferedEndSec: 0,
     seekTo: 0,
@@ -216,34 +236,55 @@ export function playMusicIndex(index: number): void {
   });
 }
 
-function stepTrack(delta: number): void {
-  const { tracks, order, index, loopMode } = snapshot;
+function pickRandomTrackIndex(current: number, length: number): number {
+  if (length <= 1) return 0;
+  let picked = current;
+  while (picked === current) {
+    picked = Math.floor(Math.random() * length);
+  }
+  return picked;
+}
+
+/** Next / previous in playlist list order (not shuffle queue). */
+function stepTrackLinear(delta: number): void {
+  const { tracks, index, loopMode } = snapshot;
   if (tracks.length === 0) return;
-  const queue = order.length === tracks.length ? order : linearOrder(tracks.length);
-  const pos = queue.indexOf(index);
-  const at = pos >= 0 ? pos : 0;
-  let nextPos = at + delta;
+  let nextIndex = index + delta;
   if (loopMode === "all") {
-    nextPos = ((nextPos % queue.length) + queue.length) % queue.length;
-  } else if (nextPos < 0 || nextPos >= queue.length) {
-    setSnapshot({ playing: false, currentTime: delta > 0 ? snapshot.duration : 0 });
+    nextIndex = ((nextIndex % tracks.length) + tracks.length) % tracks.length;
+    commitTrackIndex(nextIndex);
     return;
   }
-  const nextIndex = queue[nextPos] ?? index;
-  setSnapshot({
-    index: nextIndex,
-    playing: true,
-    currentTime: 0,
-    duration: tracks[nextIndex]?.duration_sec ?? 0,
-    bufferedRatio: 0,
-    bufferedEndSec: 0,
-    seekTo: 0,
-    seekSeq: snapshot.seekSeq + 1,
-  });
+  if (nextIndex < 0 || nextIndex >= tracks.length) {
+    setSnapshot({
+      playing: false,
+      currentTime: delta > 0 ? snapshot.duration : 0,
+    });
+    return;
+  }
+  commitTrackIndex(nextIndex);
+}
+
+function stepTrackShuffleNext(): void {
+  const { tracks, index, loopMode } = snapshot;
+  if (tracks.length === 0) return;
+  if (tracks.length === 1) {
+    if (loopMode === "all" || loopMode === "one") {
+      commitTrackIndex(0);
+    } else {
+      setSnapshot({ playing: false, currentTime: snapshot.duration });
+    }
+    return;
+  }
+  commitTrackIndex(pickRandomTrackIndex(index, tracks.length));
 }
 
 export function playMusicNext(): void {
-  stepTrack(1);
+  if (snapshot.shuffle) {
+    stepTrackShuffleNext();
+    return;
+  }
+  stepTrackLinear(1);
 }
 
 export function playMusicPrev(): void {
@@ -255,7 +296,7 @@ export function playMusicPrev(): void {
     });
     return;
   }
-  stepTrack(-1);
+  stepTrackLinear(-1);
 }
 
 export function handleMusicEnded(): void {
@@ -268,7 +309,11 @@ export function handleMusicEnded(): void {
     });
     return;
   }
-  stepTrack(1);
+  if (snapshot.shuffle) {
+    stepTrackShuffleNext();
+    return;
+  }
+  stepTrackLinear(1);
 }
 
 export function cycleMusicLoopMode(): void {

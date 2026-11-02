@@ -37,6 +37,49 @@ function getAvatarCacheRevision(): number {
   return avatarCacheRevision;
 }
 
+function avatarProxyQueryIds(uri: string): { userId: string | null; chatId: string | null } | null {
+  if (!needsAuthenticatedFetch(uri)) return null;
+  const qIndex = uri.indexOf("?");
+  if (qIndex < 0) return { userId: null, chatId: null };
+  const params = new URLSearchParams(uri.slice(qIndex + 1));
+  return {
+    userId: params.get("user_id"),
+    chatId: params.get("chat_id"),
+  };
+}
+
+function purgeAvatarCacheEntries(match: (uri: string, ids: { userId: string | null; chatId: string | null }) => boolean): void {
+  let changed = false;
+  for (const key of [...avatarBlobCache.keys()]) {
+    const ids = avatarProxyQueryIds(key);
+    if (!ids || !match(key, ids)) continue;
+    const blob = avatarBlobCache.get(key);
+    if (blob) URL.revokeObjectURL(blob);
+    avatarBlobCache.delete(key);
+    changed = true;
+  }
+  for (const key of [...avatarFailedUrls]) {
+    const ids = avatarProxyQueryIds(key);
+    if (!ids || !match(key, ids)) continue;
+    avatarFailedUrls.delete(key);
+    avatarFailedAtMs.delete(key);
+    changed = true;
+  }
+  if (changed) notifyAvatarCacheListeners();
+}
+
+export function invalidateMessageChatAvatarCacheForUser(userId: number): void {
+  if (!Number.isFinite(userId) || userId === 0) return;
+  const id = String(Math.trunc(userId));
+  purgeAvatarCacheEntries((_uri, ids) => ids.userId === id);
+}
+
+export function invalidateMessageChatAvatarCacheForChat(chatId: number): void {
+  if (!Number.isFinite(chatId) || chatId === 0) return;
+  const id = String(Math.trunc(chatId));
+  purgeAvatarCacheEntries((_uri, ids) => ids.chatId === id);
+}
+
 function readCachedDisplayUri(uri: string): string | null {
   if (!needsAuthenticatedFetch(uri)) return uri;
   return avatarBlobCache.get(uri) ?? null;

@@ -1332,6 +1332,15 @@ function avatarCacheKey(telegramUsername: string, id: number): string {
   return `${telegramUsername}:${id}`;
 }
 
+/** Drop cached avatar bytes after TDLib reports a new profile / chat photo. */
+export function invalidateTelegramAvatarImageCache(telegramUsername: string, id: number): void {
+  if (!Number.isFinite(id) || id === 0) return;
+  const key = avatarCacheKey(telegramUsername, Math.trunc(id));
+  userAvatarCache.delete(key);
+  userAvatarAnimationCache.delete(`${key}:anim`);
+  chatAvatarCache.delete(key);
+}
+
 /** Active in-memory connect attempt for a user, if any. */
 export function getUserConnectSnapshot(telegramUsername: string): ConnectAttemptSnapshot | null {
   const record = getActiveRecord(telegramUsername);

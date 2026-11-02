@@ -16,7 +16,7 @@ import { MessageChatBotWebAppProvider } from "../components/messages/MessageChat
 import { MessageChatProfilePlaylistSheet } from "../components/messages/MessageChatProfilePlaylistSheet";
 import { ActiveVoiceCallDock } from "../components/messages/ActiveVoiceCallDock";
 import { GlobalMusicControlBar } from "../components/music/GlobalMusicControlBar";
-import { getMusicPlayer } from "../music/musicPlayerStore";
+import { getMusicPlayer, mergeMusicPlayerPlaylist } from "../music/musicPlayerStore";
 import type { TelegramProfileAudioTrack } from "../telegram/fetchTelegramUserProfile";
 import { MusicPlayerEngine } from "../music/MusicPlayerEngine";
 import { PrivateCallLoadingShell } from "../components/messages/PrivateCallLoadingShell";
@@ -148,6 +148,9 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     // Must ignore non-arrays: Pressable onPress={openMusicPlaylistSheet} would pass the event.
     const rows = Array.isArray(tracks) ? tracks : getMusicPlayer().tracks;
     if (!Array.isArray(rows) || rows.length === 0) return;
+    if (Array.isArray(tracks)) {
+      mergeMusicPlayerPlaylist(tracks);
+    }
     setPlaylistSheetTracks(rows);
     setMusicPlaylistSheetVisible(true);
   }, []);

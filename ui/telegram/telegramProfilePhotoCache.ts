@@ -1,7 +1,11 @@
 import {
   normalizeTelegramProfilePhotoMarkup,
+  telegramProfilePhotoMarkupEqual,
   type TelegramProfilePhotoMarkup,
 } from "../../shared/telegramProfilePhoto";
+import {
+  invalidateMessageChatAvatarCacheForUser,
+} from "../components/messages/MessageChatAvatarImage";
 
 const markupByUserId = new Map<number, TelegramProfilePhotoMarkup>();
 const listeners = new Set<() => void>();
@@ -23,13 +27,11 @@ export function rememberTelegramProfilePhotoMarkup(
   const next = normalizeTelegramProfilePhotoMarkup(markup);
   if (id == null || !next) return;
   const prev = markupByUserId.get(id);
-  if (
-    prev &&
-    prev.custom_emoji_id === next.custom_emoji_id &&
-    prev.has_animation === next.has_animation &&
-    JSON.stringify(prev.fill) === JSON.stringify(next.fill)
-  ) {
+  if (prev && telegramProfilePhotoMarkupEqual(prev, next)) {
     return;
+  }
+  if (prev && prev.added_at !== next.added_at) {
+    invalidateMessageChatAvatarCacheForUser(id);
   }
   markupByUserId.set(id, next);
   notify();

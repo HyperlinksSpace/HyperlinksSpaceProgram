@@ -3980,11 +3980,54 @@ function installDesktopApiCorsReflect() {
       ],
     };
     const swapCoffeeOrigins = new Set(["https://tokens.swap.coffee", "https://backend.swap.coffee"]);
+    const SESSION_COOKIE = "hs_auth_session";
+
+    async function attachProgramApiSessionHeaders(requestUrl, headers, apiOriginNormalized) {
+      let origin = "";
+      try {
+        origin = new URL(String(requestUrl || "")).origin;
+      } catch (_) {
+        return;
+      }
+      if (origin !== apiOriginNormalized || swapCoffeeOrigins.has(origin)) return;
+
+      const hasAuth = Object.keys(headers).some((k) => k.toLowerCase() === "authorization");
+      let token = null;
+      try {
+        const cookies = await session.defaultSession.cookies.get({
+          url: `${apiOriginNormalized}/`,
+          name: SESSION_COOKIE,
+        });
+        token = cookies[0]?.value ?? null;
+        if (typeof token === "string" && token.trim()) {
+          try {
+            token = decodeURIComponent(token.trim());
+          } catch (_) {
+            token = token.trim();
+          }
+        } else {
+          token = null;
+        }
+      } catch (_) {
+        token = null;
+      }
+      if (!token) return;
+
+      if (!hasAuth) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+      const cookieKey = Object.keys(headers).find((k) => k.toLowerCase() === "cookie");
+      const existing = cookieKey ? headers[cookieKey] : "";
+      const pair = `${SESSION_COOKIE}=${encodeURIComponent(token)}`;
+      if (!String(existing).includes(`${SESSION_COOKIE}=`)) {
+        if (cookieKey) delete headers[cookieKey];
+        headers.Cookie = existing ? `${existing}; ${pair}` : pair;
+      }
+    }
+
     session.defaultSession.webRequest.onBeforeSendHeaders(filter, (details, callback) => {
       try {
         const headers = { ...(details.requestHeaders || {}) };
-        // Only strip creds on swap.coffee — our API needs Authorization: Bearer from the
-        // desktop shell (app:// cannot send hs_auth_session cookies cross-site).
         let origin = "";
         try {
           origin = new URL(details.url || "").origin;
@@ -3995,8 +4038,12 @@ function installDesktopApiCorsReflect() {
             const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
             if (key) delete headers[key];
           }
+          callback({ requestHeaders: headers });
+          return;
         }
-        callback({ requestHeaders: headers });
+        void attachProgramApiSessionHeaders(details.url, headers, apiOrigin).then(() => {
+          callback({ requestHeaders: headers });
+        });
       } catch (_) {
         callback({ requestHeaders: details.requestHeaders });
       }

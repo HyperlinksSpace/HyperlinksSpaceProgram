@@ -42,4 +42,10 @@ export function unlockMusicAutoplay(): void {
     audio.src = SILENT_WAV;
   }
   void audio.play().catch(() => undefined);
+  // Keep the real music element inside the same user-gesture window (Electron is stricter
+  // than Chrome when play() runs after an async IPC blob fetch on track skip).
+  const music = getMusicAudioElement();
+  if (music?.src) {
+    void music.play().catch(() => undefined);
+  }
 }

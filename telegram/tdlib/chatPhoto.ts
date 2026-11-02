@@ -52,6 +52,13 @@ export function profilePhotoMarkupFromTdChatPhoto(
   return markupFromChatPhoto(asRecord(photo));
 }
 
+export function profilePhotoMarkupFromTdUser(user: unknown): TelegramProfilePhotoMarkup | null {
+  const row = asRecord(user);
+  if (!row) return null;
+  const photo = asRecord(row.profile_photo ?? row.profilePhoto);
+  return markupFromChatPhoto(photo);
+}
+
 function recordHasAnimationFlag(photo: Record<string, unknown> | null): boolean {
   if (!photo) return false;
   return photo.has_animation === true || photo.hasAnimation === true;

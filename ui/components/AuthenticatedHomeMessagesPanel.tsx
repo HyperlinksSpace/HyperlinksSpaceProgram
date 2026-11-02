@@ -13,6 +13,14 @@ import { buildApiUrl } from "../../api/_base";
 import { normalizeFormattedTextSegments, type FormattedTextSegment } from "../../shared/formattedTextSegments";
 import { isSavedMessagesPeer, savedMessagesQueryMatches } from "../../shared/savedMessages";
 import { normalizeTelegramGroupCallId } from "../../shared/telegramGroupCallSdp";
+import {
+  normalizeTelegramProfilePhotoMarkup,
+  telegramProfilePhotoMarkupEqual,
+} from "../../shared/telegramProfilePhoto";
+import { rememberTelegramProfilePhotoMarkup } from "../telegram/telegramProfilePhotoStore";
+import {
+  invalidateMessageChatAvatarCacheForChat,
+} from "./messages/MessageChatAvatarImage";
 import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useProfileSheet } from "../profile/ProfileContext";
@@ -402,7 +410,16 @@ function normalizeChat(raw: unknown): MessageChatRowData | null {
       return ids.length > 0 ? ids : null;
     })(),
     is_saved_messages: Boolean(row.is_saved_messages),
+    profile_photo: normalizeTelegramProfilePhotoMarkup(row.profile_photo),
   };
+}
+
+function ingestChatRowProfilePhoto(prev: MessageChatRowData | undefined, next: MessageChatRowData): void {
+  if (telegramProfilePhotoMarkupEqual(prev?.profile_photo, next.profile_photo)) return;
+  invalidateMessageChatAvatarCacheForChat(next.telegram_chat_id);
+  if (next.peer_user_id != null && next.profile_photo) {
+    rememberTelegramProfilePhotoMarkup(next.peer_user_id, next.profile_photo);
+  }
 }
 
 function subtitleSegmentsEqual(
@@ -447,6 +464,7 @@ function chatsChanged(prev: MessageChatRowData[], next: MessageChatRowData[]): b
       a.last_message_at !== b.last_message_at ||
       a.unread_count !== b.unread_count ||
       a.avatar_url !== b.avatar_url ||
+      !telegramProfilePhotoMarkupEqual(a.profile_photo, b.profile_photo) ||
       a.peer_emoji_status_custom_emoji_id !== b.peer_emoji_status_custom_emoji_id ||
       a.peer_accent_color_light !== b.peer_accent_color_light ||
       a.peer_accent_color_dark !== b.peer_accent_color_dark ||
@@ -485,7 +503,11 @@ function reuseChatRowIfEqual(
   prev: MessageChatRowData | undefined,
   next: MessageChatRowData,
 ): MessageChatRowData {
-  if (!prev || prev.telegram_chat_id !== next.telegram_chat_id) return next;
+  if (!prev || prev.telegram_chat_id !== next.telegram_chat_id) {
+    ingestChatRowProfilePhoto(prev, next);
+    return next;
+  }
+  ingestChatRowProfilePhoto(prev, next);
   if (
     prev.title === next.title &&
     prev.subtitle === next.subtitle &&
@@ -493,6 +515,7 @@ function reuseChatRowIfEqual(
     prev.last_message_at === next.last_message_at &&
     prev.unread_count === next.unread_count &&
     prev.avatar_url === next.avatar_url &&
+    telegramProfilePhotoMarkupEqual(prev.profile_photo, next.profile_photo) &&
     prev.peer_emoji_status_custom_emoji_id === next.peer_emoji_status_custom_emoji_id &&
     prev.peer_accent_color_light === next.peer_accent_color_light &&
     prev.peer_accent_color_dark === next.peer_accent_color_dark &&

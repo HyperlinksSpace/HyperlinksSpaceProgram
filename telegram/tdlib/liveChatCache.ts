@@ -40,6 +40,7 @@ import { chatListTier, shouldIncludeChatInList, type ChatListTier } from "./chat
 import { isSavedMessagesPeer } from "../../shared/savedMessages.js";
 import type { FormattedTextSegment } from "../../shared/formattedTextSegments.js";
 import type { TelegramProfilePhotoMarkup } from "../../shared/telegramProfilePhoto.js";
+import { telegramProfilePhotoMarkupEqual } from "../../shared/telegramProfilePhoto.js";
 import { profilePhotoMarkupFromTdChatPhoto } from "./chatPhoto.js";
 
 export type LiveChatRow = {
@@ -390,14 +391,24 @@ export function patchLiveChatFromTdlib(
   const chatEmojiStatusId = isPrivateTdChat(chat)
     ? null
     : emojiStatusCustomIdFromChat(chat);
+  const nextProfilePhoto =
+    profilePhotoMarkupFromTdChatPhoto(chat.photo) ?? existing?.profile_photo ?? null;
+  const profilePhotoChanged = !telegramProfilePhotoMarkupEqual(
+    existing?.profile_photo ?? null,
+    nextProfilePhoto,
+  );
+  let avatar_url =
+    input.avatar_url !== undefined ? input.avatar_url : (existing?.avatar_url ?? null);
+  if (profilePhotoChanged && input.avatar_url === undefined) {
+    avatar_url = null;
+  }
   const row: Omit<LiveChatRow, "revision"> = {
     telegram_chat_id: chat.id,
     title: chatTitle(chat),
     subtitle,
     ...(subtitleSegments ? { subtitle_segments: subtitleSegments } : { subtitle_segments: null }),
-    avatar_url: input.avatar_url !== undefined ? input.avatar_url : (existing?.avatar_url ?? null),
-    profile_photo:
-      profilePhotoMarkupFromTdChatPhoto(chat.photo) ?? existing?.profile_photo ?? null,
+    avatar_url,
+    profile_photo: nextProfilePhoto,
     last_message_at: lastMessageAtIso(chat, lastMessage),
     unread_count: normalizeUnreadCount(chat),
     peer_user_id: existing?.peer_user_id ?? peerUserIdFromChat(chat),
@@ -669,6 +680,28 @@ export function patchLiveChatPresence(
     });
   }
   return null;
+}
+
+/** TDLib `updateUser` — refresh private-chat rows when the peer changes profile photo. */
+export function patchLiveChatPeerProfilePhoto(
+  telegramUsername: string,
+  peerUserId: number,
+  profilePhoto: TelegramProfilePhotoMarkup | null,
+): LiveChatRow | null {
+  const cache = caches.get(telegramUsername);
+  if (!cache) return null;
+  let last: LiveChatRow | null = null;
+  for (const row of cache.chats.values()) {
+    if (row.peer_user_id !== peerUserId) continue;
+    if (telegramProfilePhotoMarkupEqual(row.profile_photo ?? null, profilePhoto)) continue;
+    const { revision: _ignored, ...rest } = row;
+    last = upsertLiveChatRow(telegramUsername, {
+      ...rest,
+      profile_photo: profilePhoto,
+      avatar_url: null,
+    });
+  }
+  return last;
 }
 
 export function patchLiveChatEmojiStatus(

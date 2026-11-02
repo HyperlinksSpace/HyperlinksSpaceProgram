@@ -1,7 +1,7 @@
 import type { Client } from "tdl";
 import { safeTelegramUserIdForLog } from "../../shared/appLog.js";
 import { logGateway } from "./gatewayLog.js";
-import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatChatEmojiStatus, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPresence, patchLiveChatVideoChat, bumpLiveChatRevision, removeLiveChatRow, removeLiveChatsByPeerUserId } from "./liveChatCache.js";
+import { clearLiveChatCache, getLiveChatList, patchLiveChatAction, patchLiveChatChatEmojiStatus, patchLiveChatEmojiStatus, patchLiveChatFromTdlib, patchLiveChatPeerProfilePhoto, patchLiveChatPresence, patchLiveChatVideoChat, bumpLiveChatRevision, removeLiveChatRow, removeLiveChatsByPeerUserId } from "./liveChatCache.js";
 import { bumpLiveChatMessageRevision, clearLiveChatMessageRevisions } from "./liveChatMessageRevisionNotify.js";
 import { noteLiveChatMessageDeletes } from "./liveChatDeletedMessages.js";
 import { chatActionFromTdlib, presenceFromTdlibStatus, isGenericMessagePreviewLabel, isPrivateTdChat, peerUserIdFromChat, previewFromMessage, resolveLastMessagePreviewPayload, usernameFromTdUser, voiceChatFromTdChat, type TdChat, type TdMessage } from "./chatPreview.js";
@@ -20,6 +20,8 @@ import {
 } from "./voiceParticipants.js";
 import { ingestNewGroupCallMessage } from "./voiceCallMessages.js";
 import { ingestChatFoldersUpdate } from "./chatFolderCache.js";
+import { profilePhotoMarkupFromTdUser } from "./chatPhoto.js";
+import { invalidateTelegramAvatarImageCache } from "./connectAttempts.js";
 
 const CHAT_REFRESH_DEBOUNCE_MS = 800;
 
@@ -351,6 +353,9 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
       return;
     }
     const profile = userProfileFromTdUser(user);
+    const photoMarkup = profilePhotoMarkupFromTdUser(user);
+    patchLiveChatPeerProfilePhoto(record.telegramUsername, userId, photoMarkup);
+    invalidateTelegramAvatarImageCache(record.telegramUsername, userId);
     patchLiveChatEmojiStatus(
       record.telegramUsername,
       userId,
@@ -472,6 +477,9 @@ async function applyLiveUpdate(record: LiveSyncRecord, update: Record<string, un
   try {
     const chat = (await client.invoke({ _: "getChat", chat_id: chatId })) as TdChat;
     patchLiveChatFromTdlib(record.telegramUsername, chat, { last_message: chat.last_message ?? null });
+    if (type === "updateChatPhoto") {
+      invalidateTelegramAvatarImageCache(record.telegramUsername, chatId);
+    }
     const voice = voiceChatFromTdChat(chat);
     if (voice.voice_chat_group_call_id != null) {
       await verifyAndPatchVideoChat(record, chatId, voice);

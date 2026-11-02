@@ -26,6 +26,10 @@ import { useTelegram } from "../Telegram";
 import { openAuthenticatedHomeChatHistory } from "../../authenticatedHomeSelectedChat";
 import { buildApiUrl } from "../../../api/_base";
 import {
+  buildTelegramMessagesAvatarProxyPath,
+  telegramProfilePhotoCacheVersion,
+} from "../../../shared/telegramAvatarProxyUrl";
+import {
   blockTelegramUser,
   fetchTelegramUserProfile,
   fetchTelegramUserProfileExtras,
@@ -522,19 +526,35 @@ export function MessageChatProfileSheet({
   const playlist = profile?.playlist ?? [];
   const channel = profile?.channel ?? null;
   const media = profile?.media ?? null;
-  const iconUrl = chat ? resolveTelegramThreadAvatarUrl(chat) : null;
+  const iconUrl = useMemo(() => {
+    if (chat) return resolveTelegramThreadAvatarUrl(chat);
+    const userId = profile?.user_id ?? null;
+    if (userId == null || !Number.isFinite(userId) || userId === 0) return null;
+    const path = buildTelegramMessagesAvatarProxyPath({
+      userId,
+      cacheVersion: telegramProfilePhotoCacheVersion(profile?.profile_photo),
+    });
+    return path ? buildApiUrl(path) : null;
+  }, [chat, profile?.profile_photo, profile?.user_id]);
   const avatarInitials = useMemo(() => extractChatAvatarInitials(title), [title]);
-  const profilePhoto = profile?.profile_photo ?? null;
+  const profilePhoto = profile?.profile_photo ?? chat?.profile_photo ?? null;
   const animatedIconUrl = useMemo(() => {
     const userId = profile?.user_id ?? chat?.peer_user_id ?? null;
     if (userId == null || !Number.isFinite(userId) || userId === 0) return null;
-    return buildApiUrl(
-      `/api/telegram-messages-avatar?user_id=${encodeURIComponent(String(userId))}&animated=1`,
-    );
-  }, [chat?.peer_user_id, profile?.user_id]);
-  const channelAvatarUrl = channel
-    ? `/api/telegram-messages-avatar?chat_id=${encodeURIComponent(String(channel.chat_id))}`
-    : null;
+    const path = buildTelegramMessagesAvatarProxyPath({
+      userId,
+      animated: true,
+      cacheVersion: telegramProfilePhotoCacheVersion(profilePhoto),
+    });
+    return path ? buildApiUrl(path) : null;
+  }, [chat?.peer_user_id, profile?.user_id, profilePhoto]);
+  const channelAvatarUrl = useMemo(() => {
+    if (!channel) return null;
+    const path = buildTelegramMessagesAvatarProxyPath({
+      chatId: channel.chat_id,
+    });
+    return path ? buildApiUrl(path) : null;
+  }, [channel]);
   const channelInitials = useMemo(
     () => extractChatAvatarInitials(channel?.title ?? ""),
     [channel?.title],

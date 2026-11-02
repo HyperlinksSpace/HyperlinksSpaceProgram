@@ -13,6 +13,7 @@ import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
 import { unlockMusicAutoplay } from "../../music/musicAudioElement";
 import {
   getMusicPlayer,
+  mergeMusicPlayerPlaylist,
   setMusicTracks,
   startMusicPlaylist,
   subscribeMusicPlayer,
@@ -277,6 +278,11 @@ export function MessageChatProfilePlaylistSheet({
     // Refresh once when the sheet opens; full list comes from profile API (may exceed player queue).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open-once refresh keyed on visible
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || localTracks.length <= 1) return;
+    mergeMusicPlayerPlaylist(localTracks);
+  }, [localTracks, visible]);
 
   const coverFetchWindow = useMemo(() => {
     const layoutH = scrollLayoutH > 0 ? scrollLayoutH : 480;

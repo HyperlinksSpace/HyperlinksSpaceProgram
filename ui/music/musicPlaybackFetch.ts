@@ -28,6 +28,17 @@ export function musicPlaybackNeedsAuthenticatedFetch(src: string): boolean {
   }
 }
 
+/**
+ * Prefer `<audio src="https://…/api/…">` so the browser buffers and plays while downloading.
+ * Full blob prefetch is reserved for error recovery on web, and is the normal path on desktop
+ * (`app://`) where `<audio>` cannot rely on credentialed cross-origin streaming.
+ */
+export function musicPlaybackUseStreamingElementSrc(src: string): boolean {
+  if (!isAuthenticatedMusicApiUrl(src)) return false;
+  if (isDesktopAppShell()) return false;
+  return true;
+}
+
 type CachedPlayback = {
   objectUrl: string;
   mime: string;
@@ -141,8 +152,7 @@ async function fetchMusicAudioBytes(apiUrl: string): Promise<{ buffer: ArrayBuff
 }
 
 /**
- * Fetch profile/chat audio with session cookies and return a blob URL for `<audio>`.
- * Cached by API URL so replays and seek retries do not re-download.
+ * Full-file download → blob URL (recovery / legacy). Normal playback uses streaming element src.
  */
 export async function resolveMusicPlaybackObjectUrl(
   apiUrl: string,

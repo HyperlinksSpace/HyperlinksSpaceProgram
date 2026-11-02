@@ -138,3 +138,17 @@ export function normalizeTelegramProfilePhotoMarkup(
     added_at: addedAt,
   };
 }
+
+export function telegramProfilePhotoMarkupEqual(
+  a: TelegramProfilePhotoMarkup | null | undefined,
+  b: TelegramProfilePhotoMarkup | null | undefined,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return !a && !b;
+  return (
+    a.custom_emoji_id === b.custom_emoji_id &&
+    a.has_animation === b.has_animation &&
+    (a.added_at ?? null) === (b.added_at ?? null) &&
+    JSON.stringify(a.fill) === JSON.stringify(b.fill)
+  );
+}

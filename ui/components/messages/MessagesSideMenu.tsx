@@ -9,6 +9,10 @@ import {
   View,
 } from "react-native";
 import { buildApiUrl } from "../../../api/_base";
+import {
+  buildTelegramMessagesAvatarProxyPath,
+  telegramProfilePhotoCacheVersion,
+} from "../../../shared/telegramAvatarProxyUrl";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import type { AppStringKey } from "../../../locales/appStrings";
 import { FONT_UI_SANS_REGULAR, WEB_UI_SANS_STACK } from "../../fonts";
@@ -24,6 +28,9 @@ import { openAuthenticatedHomeChatHistory } from "../../authenticatedHomeSelecte
 import { findSavedMessagesChat } from "../../telegram/telegramChatDirectory";
 import { fetchTelegramUserProfile } from "../../telegram/fetchTelegramUserProfile";
 import type { TelegramProfilePhotoMarkup } from "../../../shared/telegramProfilePhoto";
+import {
+  useTelegramProfilePhotoMarkup,
+} from "../../telegram/telegramProfilePhotoStore";
 import {
   clearSelfTelegramProfileCache,
   getCachedSelfTelegramProfile,
@@ -401,16 +408,24 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
   /** Telegram first + last name only — username stays on the subtitle line. */
   const profileTitle = telegramDisplayName?.trim() || t("messages.sideMenu.myProfile");
   const avatarInitials = useMemo(() => extractChatAvatarInitials(profileTitle), [profileTitle]);
+  const selfPhotoMarkup = useTelegramProfilePhotoMarkup(connectedTelegramUserId, profilePhoto);
   const selfAvatarUrl = useMemo(() => {
     if (connectedTelegramUserId == null) return null;
-    return buildApiUrl(
-      `/api/telegram-messages-avatar?user_id=${encodeURIComponent(String(connectedTelegramUserId))}`,
-    );
-  }, [connectedTelegramUserId]);
+    const path = buildTelegramMessagesAvatarProxyPath({
+      userId: connectedTelegramUserId,
+      cacheVersion: telegramProfilePhotoCacheVersion(selfPhotoMarkup),
+    });
+    return path ? buildApiUrl(path) : null;
+  }, [connectedTelegramUserId, selfPhotoMarkup]);
   const selfAnimatedAvatarUrl = useMemo(() => {
     if (connectedTelegramUserId == null || !selfAvatarUrl) return null;
-    return `${selfAvatarUrl}&animated=1`;
-  }, [connectedTelegramUserId, selfAvatarUrl]);
+    const path = buildTelegramMessagesAvatarProxyPath({
+      userId: connectedTelegramUserId,
+      animated: true,
+      cacheVersion: telegramProfilePhotoCacheVersion(selfPhotoMarkup),
+    });
+    return path ? buildApiUrl(path) : null;
+  }, [connectedTelegramUserId, selfAvatarUrl, selfPhotoMarkup]);
 
   const handleDisconnect = useCallback(() => {
     const active = storedAccounts.find((a) => a.active);

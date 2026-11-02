@@ -8,6 +8,7 @@ import { logPageDisplay } from "../pageDisplayLog";
 import { getMusicAudioElement } from "./musicAudioElement";
 import {
   musicPlaybackNeedsAuthenticatedFetch,
+  musicPlaybackUseStreamingElementSrc,
   resolveMusicPlaybackObjectUrl,
   revokeMusicPlaybackObjectUrl,
 } from "./musicPlaybackFetch";
@@ -62,6 +63,7 @@ function withCacheBust(src: string, attempt: number): string {
 export function MusicPlayerEngine(): null {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadedKeyRef = useRef<string>("");
+  const loadedIndexRef = useRef(-1);
   const loadSeqRef = useRef(0);
   const loadStartedAtRef = useRef(0);
   const lastGoodTimeRef = useRef(0);
@@ -104,6 +106,14 @@ export function MusicPlayerEngine(): null {
           key,
           elapsedMs: Date.now() - loadStartedAtRef.current,
           readyState: audio.readyState,
+          bufferedSec: (() => {
+            try {
+              const b = audio.buffered;
+              return b?.length ? b.end(b.length - 1) : 0;
+            } catch {
+              return 0;
+            }
+          })(),
         });
         reportBuffer();
         applyPlayback();
@@ -270,7 +280,9 @@ export function MusicPlayerEngine(): null {
       try {
         audio.pause();
         revokeBlobUrl();
-        if (musicPlaybackNeedsAuthenticatedFetch(baseSrc)) {
+        const useBlobRecover =
+          attempt >= 2 && musicPlaybackNeedsAuthenticatedFetch(baseSrc);
+        if (useBlobRecover) {
           const objectUrl = await resolveMusicPlaybackObjectUrl(bustSrc, `${key}:recover:${attempt}`);
           if (seq !== loadSeqRef.current) return false;
           setAudioCrossOriginForSrc(objectUrl);
@@ -371,6 +383,7 @@ export function MusicPlayerEngine(): null {
           audio.removeAttribute("src");
           audio.load();
           loadedKeyRef.current = "";
+          loadedIndexRef.current = -1;
           recoverAttemptsRef.current = 0;
           recoveringRef.current = false;
           lastGoodTimeRef.current = 0;
@@ -379,20 +392,26 @@ export function MusicPlayerEngine(): null {
         return;
       }
 
-      if (loadedKeyRef.current !== key) {
+      const key = track ? musicTrackPlaybackKey(track) : "";
+      const indexChanged = loadedIndexRef.current !== snap.index;
+      const keyChanged = loadedKeyRef.current !== key;
+
+      if (keyChanged) {
         const seq = ++loadSeqRef.current;
         loadedKeyRef.current = key;
+        loadedIndexRef.current = snap.index;
         recoverAttemptsRef.current = 0;
         recoveringRef.current = false;
         lastGoodTimeRef.current = 0;
         revokeBlobUrl();
         loadStartedAtRef.current = Date.now();
         const src = musicTrackPlaybackUrl(track);
-        const needsFetch = musicPlaybackNeedsAuthenticatedFetch(src);
+        const streamSrc = musicPlaybackUseStreamingElementSrc(src);
         logPageDisplay("music_track_load_start", {
           key,
           playing: snap.playing,
-          needsAuthenticatedFetch: needsFetch,
+          streamingElementSrc: streamSrc,
+          needsAuthenticatedFetch: musicPlaybackNeedsAuthenticatedFetch(src),
           srcHost: (() => {
             try {
               return new URL(src, window.location.href).host;
@@ -401,8 +420,40 @@ export function MusicPlayerEngine(): null {
             }
           })(),
         });
-        if (needsFetch) {
+        if (streamSrc) {
+          beginTrackLoad(seq, key, src);
+        } else if (musicPlaybackNeedsAuthenticatedFetch(src)) {
           void resolveMusicPlaybackObjectUrl(src, key)
+            .then((objectUrl) => {
+              beginTrackLoad(seq, key, objectUrl);
+            })
+            .catch((err: unknown) => {
+              if (seq !== loadSeqRef.current || loadedKeyRef.current !== key) return;
+              logPageDisplay("music_playback_fetch_failed", {
+                key,
+                message: err instanceof Error ? err.message : String(err),
+              });
+              setMusicPlaying(false);
+            });
+        } else {
+          beginTrackLoad(seq, key, src);
+        }
+        return;
+      }
+
+      if (indexChanged) {
+        loadedIndexRef.current = snap.index;
+        recoverAttemptsRef.current = 0;
+        lastGoodTimeRef.current = 0;
+        revokeBlobUrl();
+        const seq = ++loadSeqRef.current;
+        loadStartedAtRef.current = Date.now();
+        const src = musicTrackPlaybackUrl(track);
+        const streamSrc = musicPlaybackUseStreamingElementSrc(src);
+        if (streamSrc) {
+          beginTrackLoad(seq, key, src);
+        } else if (musicPlaybackNeedsAuthenticatedFetch(src)) {
+          void resolveMusicPlaybackObjectUrl(src, `${key}@${snap.index}`)
             .then((objectUrl) => {
               beginTrackLoad(seq, key, objectUrl);
             })
@@ -451,6 +502,7 @@ export function MusicPlayerEngine(): null {
       revokeBlobUrl();
       audioRef.current = null;
       loadedKeyRef.current = "";
+      loadedIndexRef.current = -1;
       recoveringRef.current = false;
     };
   }, []);
