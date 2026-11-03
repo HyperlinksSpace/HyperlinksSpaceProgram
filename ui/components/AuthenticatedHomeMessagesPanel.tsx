@@ -1197,25 +1197,25 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     const params = new URLSearchParams();
     const pageOffset = Math.max(0, options?.pageOffset ?? 0);
+    const listFullyLoaded =
+      chatListTotalCountRef.current > 0 &&
+      chatsCountRef.current >= chatListTotalCountRef.current;
     const usingSinceRevision =
       options?.silent === true &&
       !options?.forceFull &&
+      options?.fromScroll !== true &&
+      pageOffset === 0 &&
+      listFullyLoaded &&
       lastLiveRevisionRef.current != null &&
       lastLiveRevisionRef.current > 0;
     if (usingSinceRevision) {
       params.set("since_revision", String(lastLiveRevisionRef.current));
     }
-    const wantsPagedFetch =
-      !options?.forceFull &&
-      !usingSinceRevision &&
-      (pageOffset > 0 ||
-        !initialChatListRevealedRef.current ||
-        chatsCountRef.current < chatListTotalCountRef.current);
+    // One scroll/catalog page per request (25 rows). Full list only on explicit forceFull.
+    const wantsPagedFetch = !options?.forceFull && !usingSinceRevision;
     if (wantsPagedFetch) {
       params.set("limit", String(CHAT_LIST_API_PAGE_SIZE));
-      if (pageOffset > 0) {
-        params.set("offset", String(pageOffset));
-      }
+      params.set("offset", String(pageOffset));
     }
     const query = params.toString();
     const url = buildApiUrl(query ? `/api/telegram-messages-chats?${query}` : "/api/telegram-messages-chats");
@@ -1279,7 +1279,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           emptyUnchangedForceRef.current = true;
           setEmptyListConfirmed(false);
           queueMicrotask(() => {
-            void loadChatsRef.current({ silent: false, forceFull: true });
+            void loadChatsRef.current({ silent: false, pageOffset: 0 });
           });
         } else if (
           archiveRevealPendingRef.current &&
@@ -1315,6 +1315,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }
       const missingPreviewCount = rows.filter((row) => !row.subtitle.trim()).length;
       const missingAvatarFieldCount = rows.filter((row) => !row.avatar_url).length;
+      if (wantsPagedFetch && rows.length > CHAT_LIST_API_PAGE_SIZE) {
+        logPageDisplay("messages_chats_page_overshoot", {
+          received: rows.length,
+          cap: CHAT_LIST_API_PAGE_SIZE,
+          offset: pageOffset,
+        });
+        rows.splice(CHAT_LIST_API_PAGE_SIZE);
+      }
       const totalCount =
         typeof json.totalCount === "number" && Number.isFinite(json.totalCount)
           ? Math.max(0, Math.trunc(json.totalCount))
@@ -1442,6 +1450,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           if (
             rows.length > 0 &&
             syncReady &&
+            pageOffset === 0 &&
             (!initialChatListRevealedRef.current || awaitingOrderedReseedRef.current)
           ) {
             const firstPaint = applyOpenChatUnreadToRows(sortChatRowsTierAware(rows));
@@ -1538,7 +1547,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         applyChats();
       } else if (
         initialChatListRevealedRef.current &&
-        (rows.length >= 24 || Boolean(options?.silent))
+        (rows.length >= CHAT_LIST_API_PAGE_SIZE || Boolean(options?.silent))
       ) {
         startTransition(applyChats);
       } else {
@@ -2819,7 +2828,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (archiveRevealPendingRef.current) return;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
     if (serverTotal > 0 && chats.length < serverTotal) {
-      if (chatListFetchBusyRef.current) return;
+      if (chatListFetchBusyRef.current || chatListFetchingMore) return;
       void loadChatsRef.current({
         silent: true,
         pageOffset: chats.length,
@@ -2842,6 +2851,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     needsTier3Page,
     requestLoadMoreChats,
     listSearchActive,
+    chatListFetchingMore,
   ]);
 
   useEffect(() => {

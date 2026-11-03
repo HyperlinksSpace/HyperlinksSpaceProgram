@@ -584,7 +584,7 @@ export async function gatewayFetchLiveChats(
   if (
     options?.offset != null &&
     Number.isFinite(options.offset) &&
-    options.offset > 0
+    options.offset >= 0
   ) {
     params.set("offset", String(Math.trunc(options.offset)));
   }

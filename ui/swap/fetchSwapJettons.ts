@@ -1,11 +1,11 @@
-import { isDesktopAppShell } from "../appShell";
+import { LIST_SCROLL_PAGE_SIZE } from "../listScrollPageSize";
 import { logPageDisplay } from "../pageDisplayLog";
 import { mapSwapCoffeeHybridSearchPage } from "./mapSwapCoffeeHybridSearch";
 import { SWAP_COFFEE_TOKENS_API_BASE } from "./swapChartConstants";
 import { swapCoffeeFetch } from "./swapCoffeeFetch";
 import type { SwapAccountJettonsResponse, SwapJetton } from "./swapJettonsTypes";
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = LIST_SCROLL_PAGE_SIZE;
 const MAX_PAGES = 100;
 
 type CatalogQuery = {
