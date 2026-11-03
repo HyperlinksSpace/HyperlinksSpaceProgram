@@ -11,7 +11,7 @@ export const CHAT_LIST_EXPAND_BY = 2000;
 /** Unused: reveal is immediate. Kept so existing imports keep compiling. */
 export const CHAT_LIST_AUTO_REVEAL_MS = 0;
 /** Rows per GET /api/telegram-messages-chats page (same cadence as swap jettons PAGE_SIZE). */
-export const CHAT_LIST_API_PAGE_SIZE = 100;
+export const CHAT_LIST_API_PAGE_SIZE = 24;
 /** Gateway first-paint main-list cap — matches INITIAL_MAIN_CHAT_SYNC_LIMIT. */
 export const CHAT_LIST_INITIAL_SYNC_LIMIT = 2000;
 

@@ -5,7 +5,7 @@ import { SWAP_COFFEE_TOKENS_API_BASE } from "./swapChartConstants";
 import { swapCoffeeFetch } from "./swapCoffeeFetch";
 import type { SwapAccountJettonsResponse, SwapJetton } from "./swapJettonsTypes";
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 24;
 const MAX_PAGES = 100;
 
 type CatalogQuery = {
