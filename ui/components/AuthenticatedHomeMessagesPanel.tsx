@@ -2954,6 +2954,50 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     prevChatListSyncRef.current = inProgress;
   }, [chatListSync?.cachedCount, chatListSync?.inProgress]);
 
+  const queueChatListScrollPageFetch = useCallback(() => {
+    const prev = chatListFetchQueuedRef.current;
+    chatListFetchQueuedRef.current = {
+      allowAvatarResync: prev?.allowAvatarResync,
+      silent: true,
+      forceFull: false,
+      priority: false,
+      fromScroll: true,
+      rankingRefreshPage: prev?.rankingRefreshPage,
+    };
+  }, []);
+
+  const requestChatListNextPage = useCallback(() => {
+    if (listSearchActive) return;
+    if (isVoiceDialogUiOpen()) return;
+    if (isOpenChatFocusHoldActive()) return;
+    if (archiveRevealPendingRef.current) return;
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    const loadedThrough = getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE;
+    if (
+      serverTotal <= 0 ||
+      loadedThrough >= serverTotal ||
+      !chatListScrollHasMore()
+    ) {
+      return;
+    }
+    if (isChatListScrollPageFetchInFlight()) {
+      return;
+    }
+    if (chatListFetchBusyRef.current || chatListFetchingMore) {
+      queueChatListScrollPageFetch();
+      return;
+    }
+    void loadChatsRef.current({
+      silent: true,
+      fromScroll: true,
+    });
+  }, [
+    cachedChatCount,
+    chatListTotalCount,
+    listSearchActive,
+    queueChatListScrollPageFetch,
+  ]);
+
   const handleChatListNearBottom = useCallback(() => {
     chatListAtBottomRef.current = true;
     if (canExpandChatListReveal) {
@@ -2971,17 +3015,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       loadedThrough < serverTotal &&
       chatListScrollHasMore()
     ) {
-      if (
-        chatListFetchBusyRef.current ||
-        chatListFetchingMore ||
-        isChatListScrollPageFetchInFlight()
-      ) {
-        return;
-      }
-      void loadChatsRef.current({
-        silent: true,
-        fromScroll: true,
-      });
+      requestChatListNextPage();
       return;
     }
     if (needsPositionedPage) {
@@ -2998,7 +3032,34 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     needsTier3Page,
     requestLoadMoreChats,
     listSearchActive,
-    chatListFetchingMore,
+    requestChatListNextPage,
+  ]);
+
+  const chatListScrollPrefetchLeadRows = 5;
+  useEffect(() => {
+    if (listSearchActive || searchListReplacesMain) return;
+    if (!initialChatListRevealed) return;
+    if (isVoiceDialogUiOpen() || archiveRevealPendingRef.current) return;
+    const loadedChatRows = displayChats.length;
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    if (loadedChatRows <= 0 || serverTotal <= 0) return;
+    if (getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE >= serverTotal) return;
+    if (!chatListScrollHasMore()) return;
+    if (!chatListVirtualWindow.enabled) return;
+    const tailIndex = loadedChatRows - 1;
+    if (chatListVirtualWindow.endIndex >= tailIndex - chatListScrollPrefetchLeadRows) {
+      requestChatListNextPage();
+    }
+  }, [
+    cachedChatCount,
+    chatListTotalCount,
+    chatListVirtualWindow.enabled,
+    chatListVirtualWindow.endIndex,
+    displayChats.length,
+    initialChatListRevealed,
+    listSearchActive,
+    requestChatListNextPage,
+    searchListReplacesMain,
   ]);
 
   useEffect(() => {
@@ -3401,14 +3462,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           </View>
         );
       })}
-      {chatListVirtualWindow.enabled && chatListVirtualWindow.bottomSpacerPx > 0 ? (
-        <View style={{ height: chatListVirtualWindow.bottomSpacerPx }} />
-      ) : null}
       {!listSearchActive ? (
         <ChatListBottomSentinel
           enabled={listModeChats.length > 0 && !listSearchActive}
           onNearBottom={handleChatListNearBottom}
         />
+      ) : null}
+      {chatListVirtualWindow.enabled && chatListVirtualWindow.bottomSpacerPx > 0 ? (
+        <View style={{ height: chatListVirtualWindow.bottomSpacerPx }} />
       ) : null}
     </>
   );

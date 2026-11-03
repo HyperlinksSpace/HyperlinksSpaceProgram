@@ -4,7 +4,8 @@ import { debounceLeading } from "../../util/debounceLeading";
 import { useElementVisible } from "./useElementVisible";
 
 const CHAT_LIST_SENTINEL_ROOT_MARGIN_PX = "240px";
-const CHAT_LIST_SENTINEL_DEBOUNCE_MS = 200;
+/** Match swap catalog responsiveness — one leading fire per scroll approach. */
+const CHAT_LIST_SENTINEL_DEBOUNCE_MS = 0;
 
 type Props = {
   enabled: boolean;
