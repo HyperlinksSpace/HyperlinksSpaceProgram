@@ -1,3 +1,4 @@
+import { isDesktopAppShell } from "../appShell";
 import { LIST_SCROLL_PAGE_SIZE } from "../listScrollPageSize";
 import { logPageDisplay } from "../pageDisplayLog";
 import { mapSwapCoffeeHybridSearchPage } from "./mapSwapCoffeeHybridSearch";

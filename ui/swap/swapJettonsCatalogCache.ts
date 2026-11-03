@@ -53,12 +53,51 @@ function rebuildSnapshot(): void {
 }
 
 function dedupeAppend(batch: SwapJetton[]): void {
+  upsertJettonsBatch(batch);
+}
+
+/** Merge batch into catalog so market-cap / price stats can re-rank existing rows. */
+function upsertJettonsBatch(batch: SwapJetton[]): void {
   for (const jetton of batch) {
     const key = jetton.address?.toLowerCase();
-    if (!key || seenAddresses.has(key)) continue;
-    seenAddresses.add(key);
-    jettons.push(jetton);
+    if (!key) continue;
+    const index = jettons.findIndex((existing) => existing.address?.toLowerCase() === key);
+    if (index >= 0) {
+      jettons[index] = jetton;
+    } else {
+      seenAddresses.add(key);
+      jettons.push(jetton);
+    }
   }
+}
+
+const MAX_RANKING_REFRESH_PAGES = 8;
+let rankingRefreshPromise: Promise<void> | null = null;
+
+async function refreshLoadedCatalogRankings(): Promise<void> {
+  if (jettons.length === 0) return;
+  const generation = loadGeneration;
+  const loadedPages = Math.max(1, nextPage - 1);
+  const pages = Math.min(loadedPages, MAX_RANKING_REFRESH_PAGES);
+  for (let page = 1; page <= pages; page += 1) {
+    if (generation !== loadGeneration) return;
+    const { items } = await fetchPage(page);
+    if (items.length === 0) continue;
+    upsertJettonsBatch(items);
+    scheduleFlush();
+  }
+  flushNow();
+}
+
+function scheduleRankingRefresh(): void {
+  if (rankingRefreshPromise) return;
+  rankingRefreshPromise = refreshLoadedCatalogRankings()
+    .catch(() => {
+      /* keep cached rows */
+    })
+    .finally(() => {
+      rankingRefreshPromise = null;
+    });
 }
 
 function notifyListeners(): void {
@@ -147,6 +186,7 @@ async function runCatalogLoad(fromScroll = false): Promise<void> {
         });
       } else {
         scheduleFlush();
+        scheduleRankingRefresh();
       }
 
       if (!hasMore) break;
@@ -218,7 +258,13 @@ export function getSwapJettonsCatalogSnapshot(): CatalogSnapshot {
 
 /** First catalog page; more pages load when the currency table scrolls near the end. */
 export function ensureSwapJettonsCatalogLoading(): void {
-  if (isCacheFresh() && !hasMore) return;
+  if (isCacheFresh() && !hasMore) {
+    scheduleRankingRefresh();
+    return;
+  }
+  if (isCacheFresh() && hasMore) {
+    scheduleRankingRefresh();
+  }
   if (loadPromise) return;
   // Empty + sticky error means upstream failed hard; do not spin reset→retry loops.
   if (jettons.length === 0 && error && !hasMore) return;

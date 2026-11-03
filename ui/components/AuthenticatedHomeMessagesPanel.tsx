@@ -650,6 +650,14 @@ function mergeChatRows(
   if (incoming.length >= prev.length) {
     const prevIdSet = new Set(prev.map((row) => row.telegram_chat_id));
     const hasNewIds = sortedIncoming.some((row) => !prevIdSet.has(row.telegram_chat_id));
+    // Scroll page: disjoint ids, same page size — append instead of replacing the list.
+    if (
+      hasNewIds &&
+      sortedIncoming.every((row) => !prevIdSet.has(row.telegram_chat_id)) &&
+      incoming.length <= CHAT_LIST_API_PAGE_SIZE
+    ) {
+      return appendChatListPage(prev, sortedIncoming);
+    }
     // In-place field merge only when order is identical — otherwise chats never
     // bubble (top id can stay put while #2/#3 swap on new messages).
     if (
@@ -698,6 +706,32 @@ function mergeChatRows(
   }
 
   return sortChatRowsTierAware(merged);
+}
+
+/** Append a server slice (offset > 0). Preserves global list order; patches overlap by id. */
+function appendChatListPage(
+  prev: MessageChatRowData[],
+  pageRows: MessageChatRowData[],
+): MessageChatRowData[] {
+  if (pageRows.length === 0) return prev;
+  const prevIds = new Set(prev.map((row) => row.telegram_chat_id));
+  const merged = prev.slice();
+  for (const row of pageRows) {
+    const id = row.telegram_chat_id;
+    if (prevIds.has(id)) {
+      const index = merged.findIndex((existing) => existing.telegram_chat_id === id);
+      if (index >= 0) {
+        merged[index] = mergeChatRowFields(merged[index]!, row);
+      }
+      continue;
+    }
+    merged.push({
+      ...row,
+      unread_count: resolveAuthenticatedHomeOpenChatUnread(row.unread_count, id),
+    });
+    prevIds.add(id);
+  }
+  return merged;
 }
 
 const MESSAGES_POLL_FAST_MS = 2_000;
@@ -1489,7 +1523,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             awaitingOrderedReseedRef.current = true;
             return prev;
           }
-          const next = mergeChatRows(prev, rows);
+          const next =
+            wantsPagedFetch && pageOffset > 0
+              ? appendChatListPage(prev, rows)
+              : mergeChatRows(prev, rows);
           const hasArchive = next.some((row) => Boolean(row.in_archive));
           chatsHaveArchiveRef.current = hasArchive;
           if (hasArchive) {
@@ -1543,7 +1580,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         archiveRevealPendingRef.current &&
         (json.chatListSync?.archiveListReady === true ||
           rows.some((row) => Boolean(row.in_archive)));
-      if (chatsCountRef.current === 0 || archiveRevealNeedsUrgentPaint) {
+      if (
+        chatsCountRef.current === 0 ||
+        archiveRevealNeedsUrgentPaint ||
+        wantsPagedFetch
+      ) {
         applyChats();
       } else if (
         initialChatListRevealedRef.current &&
