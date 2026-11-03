@@ -1811,24 +1811,29 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       // gateway resync to finish enriching the whole list.
       paintPollTimer = setTimeout(() => {
         void paintPoll();
-      }, 250);
+      }, initialChatListRevealedRef.current ? 250 : 150);
     };
 
     void (async () => {
-      // Kick resync and first paint poll in parallel. Resync seeds the ordered
-      // top page; paint poll reveals it as soon as stableTopReady flips.
-      // One resync per connected epoch — gateway also coalesces concurrent calls.
-      if (bootstrapEpoch === initialBootstrapEpochRef.current) {
+      // Poll once before resync — server restore may already have stableTopReady.
+      // Eager resync wipes that cache and forces another ~30s TDLib walk in TMA.
+      await loadChatsRef.current({ silent: true, forceFull: true });
+      if (cancelled) return;
+      if (initialChatListRevealedRef.current) {
+        setListBootstrapPending(false);
+        return;
+      }
+      const syncAfterPoll = getChatListSyncStatus();
+      const alreadySeeded =
+        syncAfterPoll?.stableTopReady === true && chatsCountRef.current > 0;
+      if (!alreadySeeded && bootstrapEpoch === initialBootstrapEpochRef.current) {
         void triggerGatewayResyncRef.current("initial_mount");
       }
-      await paintPoll();
-      if (cancelled) return;
-      const sync = getChatListSyncStatus();
-      if (sync?.stableTopReady === true && chatsCountRef.current > 0) {
-        setInitialChatListRevealed(true);
-        setGatewayWarming(false);
+      if (initialChatListRevealedRef.current) {
         setListBootstrapPending(false);
+        return;
       }
+      void paintPoll();
     })();
 
     return () => {

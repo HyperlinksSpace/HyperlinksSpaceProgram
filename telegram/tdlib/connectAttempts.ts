@@ -1957,8 +1957,11 @@ async function runResyncUserChats(
       if (inflightTop) {
         attachLiveChatSync(record);
         logConnectEvent(record, "connect_resync_join_stable_top", {});
-        const chatCount = await inflightTop;
-        record.chatCount = chatCount;
+        const cachedCount = existing?.length ?? record.chatCount ?? 0;
+        record.chatCount = cachedCount;
+        void inflightTop.then((chatCount) => {
+          record.chatCount = chatCount;
+        });
         const client = record.client;
         void (async () => {
           try {
@@ -1980,7 +1983,7 @@ async function runResyncUserChats(
             logConnectEvent(record, "connect_resync_full_warning", { message, joinedStableTop: true });
           }
         })();
-        return { chatCount, backfillCount: 0, error: null };
+        return { chatCount: cachedCount, backfillCount: 0, error: null };
       }
       if (isStableTopReady(telegramUsername) && (existing?.length ?? 0) > 0) {
         attachLiveChatSync(record);
@@ -2023,27 +2026,21 @@ async function runResyncUserChats(
     attachLiveChatSync(record);
 
     // Ordered top page first — same as connect — so clients paint Desktop order.
-    try {
-      const topCount = await syncChatThreads(record.client, telegramUsername, {
-        maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
-        includeArchive: false,
-        includeSupplementarySearch: false,
-        skipMemberCounts: true,
-        replaceCache: true,
-      });
-      record.chatCount = topCount;
-      logConnectEvent(record, "connect_resync_top_page_ok", { chatCount: topCount });
-    } catch (topErr) {
-      const message = topErr instanceof Error ? topErr.message : "resync_top_page_failed";
-      logConnectEvent(record, "connect_resync_top_page_warning", { message });
-    }
-
-    // Full main/archive/folder sync in background — do not block HTTP on it.
-    // Telegram Desktop/Web paints the visible top page immediately.
-    const client = record.client;
+    // Do not block HTTP on the full TDLib walk; paint polls read stableTopReady as
+    // soon as onFirstPaint seeds the ordered head.
+    const resyncClient = record.client;
     void (async () => {
       try {
-        const count = await syncChatThreads(client, telegramUsername, {
+        const topCount = await syncChatThreads(resyncClient, telegramUsername, {
+          maxMainChats: STABLE_TOP_CHAT_PAGE_LIMIT,
+          includeArchive: false,
+          includeSupplementarySearch: false,
+          skipMemberCounts: true,
+          replaceCache: true,
+        });
+        record.chatCount = topCount;
+        logConnectEvent(record, "connect_resync_top_page_ok", { chatCount: topCount });
+        const count = await syncChatThreads(resyncClient, telegramUsername, {
           maxMainChats: null,
           includeArchive: false,
           includeSupplementarySearch: false,
@@ -2051,18 +2048,24 @@ async function runResyncUserChats(
           replaceCache: true,
         });
         const active = getActiveRecord(telegramUsername);
-        if (active?.client === client) {
+        if (active?.client === resyncClient) {
           active.chatCount = count;
-          scheduleBackgroundChatSync(client, telegramUsername);
+          scheduleBackgroundChatSync(resyncClient, telegramUsername);
         }
         logConnectEvent(record, "connect_resync_ok", { chatCount: count });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "sync_failed";
-        logConnectEvent(record, "connect_resync_full_warning", { message });
+      } catch (topErr) {
+        const message = topErr instanceof Error ? topErr.message : "resync_top_page_failed";
+        logConnectEvent(record, "connect_resync_top_page_warning", { message });
       }
     })();
 
-    return { chatCount: record.chatCount ?? 0, backfillCount: 0, error: null };
+    const { getLiveChatList: readLiveList } = await import("./liveChatCache.js");
+    const liveCount = readLiveList(telegramUsername)?.length ?? 0;
+    return {
+      chatCount: Math.max(liveCount, record.chatCount ?? 0),
+      backfillCount: 0,
+      error: null,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "sync_failed";
     logConnectEvent(record, "connect_resync_failed", { message });

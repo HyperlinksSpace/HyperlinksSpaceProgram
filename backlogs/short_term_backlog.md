@@ -1,3 +1,4 @@
+Avatars on Windows Desktop
 phone telegram connect
 AI responce formatting on responce generation.
 Search in swap, amounts calculation

@@ -107,6 +107,8 @@ export const STABLE_TOP_CHAT_PAGE_LIMIT = 50;
  * visible viewport paints without waiting for the full top page (~27s cold).
  */
 export const STABLE_TOP_FIRST_PAINT = 16;
+/** Minimum ordered rows before flipping stableTopReady (do not wait for full page). */
+export const STABLE_TOP_MIN_FIRST_PAINT = 3;
 /**
  * Enrich this many top rows after first paint so the visible edge gets
  * titles+previews while the rest of the page fills in background.
@@ -342,8 +344,12 @@ async function loadPinnedAndPositionedChats(
     listExhausted: boolean,
   ): Promise<OrderedMainBatch> => {
     // Hydrate only a buffer above the target — never walk every id with getChat.
+    const hydrateCap =
+      options?.onFirstPaint && !firstPaintSent
+        ? Math.min(maxPositioned, firstPaintTarget + 16)
+        : maxPositioned + 40;
     const hydrated = await hydrateChatsByIds(client, snap.chatIds, {
-      maxChats: maxPositioned + 40,
+      maxChats: hydrateCap,
     });
     const byId = new Map<number, TdChat>();
     for (const chat of hydrated) byId.set(chat.id, chat);
@@ -372,10 +378,15 @@ async function loadPinnedAndPositionedChats(
     };
   };
 
+  const minFirstPaintRows = Math.min(
+    STABLE_TOP_MIN_FIRST_PAINT,
+    firstPaintTarget,
+  );
   const maybeFirstPaint = (visible: TdChat[]) => {
     if (firstPaintSent || !options?.onFirstPaint || visible.length === 0) return;
-    // Viewport-sized ordered head is enough — do not wait for the full top page.
-    if (visible.length < Math.min(firstPaintTarget, 8)) return;
+    // Paint as soon as TDLib exposes a few ordered rows — waiting for 8+ let cold
+    // loadChats rounds block TMA for ~30s before stableTopReady flipped.
+    if (visible.length < minFirstPaintRows) return;
     firstPaintSent = true;
     options.onFirstPaint(visible.slice(0, Math.min(visible.length, firstPaintTarget)));
   };
