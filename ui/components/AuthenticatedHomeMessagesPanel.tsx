@@ -77,6 +77,8 @@ import {
   noteChatListPageLoaded,
   rankingRefreshOffsetForPage,
   rankingRefreshPageCount,
+  repairChatListPaginationFromClient,
+  chatListPaginationFullyLoaded,
   resetChatListScrollPagination,
   resolveChatListFetchOffset,
   syncChatListPaginationAfterFullLoad,
@@ -1291,6 +1293,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setLoading(true);
       setError(null);
     }
+    repairChatListPaginationFromClient(
+      chatsCountRef.current,
+      chatListTotalCountRef.current,
+    );
     const params = new URLSearchParams();
     const pageOffset = resolveChatListFetchOffset({
       fromScroll: options?.fromScroll,
@@ -1299,15 +1305,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           ? rankingRefreshOffsetForPage(options.rankingRefreshPage)
           : options?.pageOffset,
     });
-    const listFullyLoaded =
-      chatListTotalCountRef.current > 0 &&
-      chatsCountRef.current >= chatListTotalCountRef.current;
+    const listFullyLoaded = chatListPaginationFullyLoaded(
+      chatsCountRef.current,
+      chatListTotalCountRef.current,
+    );
+    const partialListPainted =
+      chatsCountRef.current > CHAT_LIST_API_PAGE_SIZE && !listFullyLoaded;
     const usingSinceRevision =
       options?.silent === true &&
       !options?.forceFull &&
       options?.fromScroll !== true &&
       pageOffset === 0 &&
-      listFullyLoaded &&
+      (listFullyLoaded || partialListPainted) &&
       lastLiveRevisionRef.current != null &&
       lastLiveRevisionRef.current > 0;
     if (usingSinceRevision) {
@@ -1606,6 +1615,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               : mergeChatRows(prev, rows);
           if (!wantsPagedFetch && !rankingRefresh) {
             syncChatListPaginationAfterFullLoad(next.length, syncedTotal);
+          } else if (!rankingRefresh) {
+            repairChatListPaginationFromClient(next.length, syncedTotal);
           }
           const hasArchive = next.some((row) => Boolean(row.in_archive));
           chatsHaveArchiveRef.current = hasArchive;
@@ -1660,10 +1671,19 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         archiveRevealPendingRef.current &&
         (json.chatListSync?.archiveListReady === true ||
           rows.some((row) => Boolean(row.in_archive)));
+      const urgentSilentPartial =
+        Boolean(options?.silent) &&
+        chatsCountRef.current > CHAT_LIST_API_PAGE_SIZE &&
+        !chatListPaginationFullyLoaded(
+          chatsCountRef.current,
+          chatListTotalCountRef.current,
+        );
       if (
         chatsCountRef.current === 0 ||
         archiveRevealNeedsUrgentPaint ||
-        wantsPagedFetch
+        wantsPagedFetch ||
+        options?.fromScroll === true ||
+        urgentSilentPartial
       ) {
         applyChats();
       } else if (
@@ -2906,14 +2926,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (selectedChatId != null && Number.isFinite(selectedChatId)) {
       ids.add(selectedChatId);
     }
-    const topVisibleCount = Math.min(12, visibleChats.length);
-    if (topVisibleCount === 0) return ids;
-    const topFirst = searchListReplacesMain
-      ? visibleChats.slice(-topVisibleCount)
-      : visibleChats.slice(0, topVisibleCount);
-    for (const row of topFirst) ids.add(row.telegram_chat_id);
+    for (const row of visibleChats) {
+      ids.add(row.telegram_chat_id);
+    }
     return ids;
-  }, [searchListReplacesMain, selectedChatId, visibleChatIdsKey]);
+  }, [selectedChatId, visibleChatIdsKey]);
 
   // tdesktop: keep neighbors warm so the next switch paints from cache.
   useEffect(() => {
@@ -2972,6 +2989,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (isOpenChatFocusHoldActive()) return;
     if (archiveRevealPendingRef.current) return;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    repairChatListPaginationFromClient(chatsCountRef.current, serverTotal);
     const loadedThrough = getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE;
     if (
       serverTotal <= 0 ||
@@ -2990,6 +3008,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     void loadChatsRef.current({
       silent: true,
       fromScroll: true,
+      allowAvatarResync: true,
     });
   }, [
     cachedChatCount,
@@ -3621,9 +3640,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         contentContainerStyle={{ ...listShellStyle, flexGrow: 1 }}
         onScrollBeginDrag={handleClearSelection}
       >
-        {searchField}
         {searchEmpty}
-        {renderChatRows(visibleChats, visibleChatStartIndex)}
+        {renderListItems(visibleListItems, visibleChatStartIndex)}
         <Pressable style={{ flexGrow: 1, minHeight: 1 }} onPress={handleClearSelection} />
       </ScrollView>
       {chatListMenuEl}

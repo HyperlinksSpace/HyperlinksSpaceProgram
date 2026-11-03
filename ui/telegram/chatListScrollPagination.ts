@@ -36,9 +36,46 @@ export function resolveChatListFetchOffset(options?: {
   pageOffset?: number;
 }): number {
   if (options?.fromScroll === true) {
-    return Math.max(0, (nextPage - 1) * CHAT_LIST_API_PAGE_SIZE);
+    if (loadedPages >= 1 && nextPage <= 1) {
+      nextPage = loadedPages + 1;
+    }
+    let offset = Math.max(0, (nextPage - 1) * CHAT_LIST_API_PAGE_SIZE);
+    if (offset === 0 && loadedPages >= 1) {
+      nextPage = loadedPages + 1;
+      offset = loadedPages * CHAT_LIST_API_PAGE_SIZE;
+    }
+    return offset;
   }
   return Math.max(0, options?.pageOffset ?? 0);
+}
+
+/** Keep page indices aligned when the React list grew via merge/gateway sync. */
+export function repairChatListPaginationFromClient(
+  loadedChatCount: number,
+  totalCount: number,
+): void {
+  if (loadedChatCount <= 0) return;
+  const pagesFromRows = Math.max(1, Math.ceil(loadedChatCount / CHAT_LIST_API_PAGE_SIZE));
+  if (pagesFromRows > loadedPages) {
+    loadedPages = pagesFromRows;
+    nextPage = Math.max(nextPage, loadedPages + 1);
+  }
+  const loadedThrough = loadedPages * CHAT_LIST_API_PAGE_SIZE;
+  hasMore =
+    totalCount > 0
+      ? loadedThrough < totalCount
+      : loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
+}
+
+export function chatListPaginationFullyLoaded(
+  loadedChatCount: number,
+  totalCount: number,
+): boolean {
+  if (totalCount <= 0) return !hasMore;
+  return (
+    loadedChatCount >= totalCount ||
+    getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE >= totalCount
+  );
 }
 
 export function beginChatListScrollPageFetch(): boolean {
