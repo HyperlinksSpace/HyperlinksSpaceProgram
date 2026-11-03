@@ -552,10 +552,15 @@ export type ChatListSyncStatus = {
 
 export async function gatewayFetchLiveChats(
   telegramUsername: string,
-  options?: { sinceRevision?: number | null },
+  options?: {
+    sinceRevision?: number | null;
+    limit?: number | null;
+    offset?: number | null;
+  },
 ): Promise<{
   chats: Record<string, unknown>[];
   revision: number;
+  totalCount?: number;
   unchanged?: boolean;
   chatListSync?: ChatListSyncStatus;
 } | null> {
@@ -568,6 +573,20 @@ export async function gatewayFetchLiveChats(
     options.sinceRevision > 0
   ) {
     params.set("sinceRevision", String(options.sinceRevision));
+  }
+  if (
+    options?.limit != null &&
+    Number.isFinite(options.limit) &&
+    options.limit > 0
+  ) {
+    params.set("limit", String(Math.trunc(options.limit)));
+  }
+  if (
+    options?.offset != null &&
+    Number.isFinite(options.offset) &&
+    options.offset > 0
+  ) {
+    params.set("offset", String(Math.trunc(options.offset)));
   }
   const url = `${base}/v1/chats/list?${params.toString()}`;
   const started = Date.now();
@@ -595,6 +614,7 @@ export async function gatewayFetchLiveChats(
       unchanged?: boolean;
       chats?: Record<string, unknown>[];
       revision?: number;
+      totalCount?: number;
       chatListSync?: ChatListSyncStatus;
     };
     const chatListSync = json.chatListSync;
@@ -631,8 +651,20 @@ export async function gatewayFetchLiveChats(
       elapsedMs: Date.now() - started,
       revision: Number(json.revision) || 0,
       count: json.chats.length,
+      totalCount:
+        typeof json.totalCount === "number" && Number.isFinite(json.totalCount)
+          ? json.totalCount
+          : undefined,
     });
-    return { chats: json.chats, revision: Number(json.revision) || 0, chatListSync };
+    return {
+      chats: json.chats,
+      revision: Number(json.revision) || 0,
+      totalCount:
+        typeof json.totalCount === "number" && Number.isFinite(json.totalCount)
+          ? json.totalCount
+          : undefined,
+      chatListSync,
+    };
   } catch (err) {
     logTdlibGatewayApi("gateway_fetch_error", {
       path: "/v1/chats/list",

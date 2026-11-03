@@ -427,6 +427,20 @@ export async function telegramMessagesChatsHandler(
   const sinceRevisionRaw = url.searchParams.get("since_revision");
   const sinceRevision =
     sinceRevisionRaw != null && sinceRevisionRaw.trim() !== "" ? Number(sinceRevisionRaw) : null;
+  const limitRaw = url.searchParams.get("limit");
+  const offsetRaw = url.searchParams.get("offset");
+  const parsedLimit =
+    limitRaw != null && limitRaw.trim() !== "" ? Number(limitRaw) : null;
+  const parsedOffset =
+    offsetRaw != null && offsetRaw.trim() !== "" ? Number(offsetRaw) : null;
+  const limit =
+    parsedLimit != null && Number.isFinite(parsedLimit) && parsedLimit > 0
+      ? Math.min(Math.trunc(parsedLimit), 500)
+      : null;
+  const offset =
+    parsedOffset != null && Number.isFinite(parsedOffset) && parsedOffset >= 0
+      ? Math.trunc(parsedOffset)
+      : null;
 
   const started = Date.now();
   const live = await gatewayFetchLiveChats(userOrRes, {
@@ -434,6 +448,8 @@ export async function telegramMessagesChatsHandler(
       sinceRevision != null && Number.isFinite(sinceRevision) && sinceRevision > 0
         ? sinceRevision
         : null,
+    limit,
+    offset,
   });
 
   if (live?.unchanged) {
@@ -466,7 +482,10 @@ export async function telegramMessagesChatsHandler(
   logTelegramMessagesApi("messages_chats_served", {
     telegramUsername: userOrRes,
     count: mapped.chats.length,
+    totalCount: live?.totalCount ?? mapped.chats.length,
     revision: mapped.revision,
+    limit,
+    offset,
     source: live ? "live" : "live_empty",
     missingPreviewCount,
     missingAvatarCount,
@@ -484,6 +503,7 @@ export async function telegramMessagesChatsHandler(
       source: "live",
       revision: mapped.revision,
       chats: mapped.chats,
+      totalCount: live?.totalCount ?? mapped.chats.length,
       chatListSync: live?.chatListSync,
     },
     200,

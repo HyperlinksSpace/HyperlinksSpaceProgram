@@ -663,15 +663,35 @@ export function startTdlibGatewayServer(): http.Server {
           const serveChats = chatListSync.archiveListReady
             ? seeded
             : seeded.filter((row) => !row.in_archive);
+          const totalCount = serveChats.length;
+          const limitRaw = url.searchParams.get("limit");
+          const offsetRaw = url.searchParams.get("offset");
+          const parsedLimit =
+            limitRaw != null && limitRaw.trim() !== "" ? Number(limitRaw) : null;
+          const parsedOffset =
+            offsetRaw != null && offsetRaw.trim() !== "" ? Number(offsetRaw) : 0;
+          const limit =
+            parsedLimit != null && Number.isFinite(parsedLimit) && parsedLimit > 0
+              ? Math.min(Math.trunc(parsedLimit), 500)
+              : null;
+          const offset =
+            parsedOffset != null && Number.isFinite(parsedOffset) && parsedOffset >= 0
+              ? Math.trunc(parsedOffset)
+              : 0;
+          const pagedChats =
+            limit != null ? serveChats.slice(offset, offset + limit) : serveChats;
           const currentRevision = getLiveChatListRevision(telegramUsername);
-          const missingPreviewCount = serveChats.filter(
+          const missingPreviewCount = pagedChats.filter(
             (row) => typeof row.subtitle !== "string" || row.subtitle.trim().length === 0,
           ).length;
-          const missingAvatarCount = serveChats.filter((row) => !row.avatar_url).length;
-          const first = serveChats[0];
+          const missingAvatarCount = pagedChats.filter((row) => !row.avatar_url).length;
+          const first = pagedChats[0];
           logGateway("chats_list_served", {
             telegramUsername,
-            count: serveChats.length,
+            count: pagedChats.length,
+            totalCount,
+            limit,
+            offset,
             revision: currentRevision,
             missingPreviewCount,
             missingAvatarCount,
@@ -687,7 +707,8 @@ export function startTdlibGatewayServer(): http.Server {
             ok: true,
             source: "live",
             revision: currentRevision,
-            chats: serveChats,
+            chats: pagedChats,
+            totalCount,
             chatListSync,
             warming:
               (needsWake && serveChats.length === 0) ||
