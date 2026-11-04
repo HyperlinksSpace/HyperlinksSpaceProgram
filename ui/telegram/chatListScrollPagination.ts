@@ -49,22 +49,39 @@ export function resolveChatListFetchOffset(options?: {
   return Math.max(0, options?.pageOffset ?? 0);
 }
 
-/** Keep page indices aligned when the React list grew via merge/gateway sync. */
+/** Keep next-page cursor aligned — never infer loaded pages from row count (poll merges). */
 export function repairChatListPaginationFromClient(
   loadedChatCount: number,
   totalCount: number,
 ): void {
   if (loadedChatCount <= 0) return;
-  const pagesFromRows = Math.max(1, Math.ceil(loadedChatCount / CHAT_LIST_API_PAGE_SIZE));
-  if (pagesFromRows > loadedPages) {
-    loadedPages = pagesFromRows;
-    nextPage = Math.max(nextPage, loadedPages + 1);
+  if (loadedPages <= 0) {
+    loadedPages = 1;
+    nextPage = 2;
+  }
+  if (loadedPages >= 1 && nextPage <= loadedPages) {
+    nextPage = loadedPages + 1;
   }
   const loadedThrough = loadedPages * CHAT_LIST_API_PAGE_SIZE;
   hasMore =
     totalCount > 0
       ? loadedThrough < totalCount
-      : loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
+      : loadedPages * CHAT_LIST_API_PAGE_SIZE <= loadedChatCount &&
+        loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
+}
+
+/** True while scroll catalog still has unfetched pages (jettons-style paging). */
+export function chatListScrollCatalogPartial(
+  loadedChatCount: number,
+  totalCount: number,
+): boolean {
+  if (totalCount <= 0) return hasMore && loadedPages >= 1;
+  return (
+    loadedPages >= 1 &&
+    hasMore &&
+    loadedChatCount < totalCount &&
+    loadedPages * CHAT_LIST_API_PAGE_SIZE < totalCount
+  );
 }
 
 export function chatListPaginationFullyLoaded(

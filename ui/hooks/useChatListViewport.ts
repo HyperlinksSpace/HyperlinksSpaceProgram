@@ -1,9 +1,8 @@
 import { startTransition, useCallback, useEffect, useState } from "react";
 
 /**
- * Virtualization already mounts only the visible band (telegram-tt / Desktop).
- * Do not drip-feed the data window — that makes a cached 200+ list feel lazy
- * and resets to 30 rows after search.
+ * Virtualization paints the visible band (telegram-tt / Desktop).
+ * Scroll catalog: one GET page per near-bottom (messages.chatsSlice), not the full mailbox.
  */
 export const CHAT_LIST_SLICE = 2000;
 /** Rows added per near-bottom expansion when the window is still capped. */

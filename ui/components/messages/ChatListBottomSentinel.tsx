@@ -12,7 +12,7 @@ type Props = {
   onNearBottom: () => void;
 };
 
-/** Intersection-observer sentinel for chat-list near-bottom expansion (telegram-tt style). */
+/** Intersection-observer sentinel for chat-list near-bottom (telegram-tt / TDLib loadChats). */
 export function ChatListBottomSentinel({ enabled, onNearBottom }: Props) {
   const ref = useRef<View>(null);
   const onNearBottomRef = useRef(onNearBottom);

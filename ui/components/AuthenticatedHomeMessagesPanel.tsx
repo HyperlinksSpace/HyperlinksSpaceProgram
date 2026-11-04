@@ -79,11 +79,17 @@ import {
   rankingRefreshPageCount,
   repairChatListPaginationFromClient,
   chatListPaginationFullyLoaded,
+  chatListScrollCatalogPartial,
   resetChatListScrollPagination,
   resolveChatListFetchOffset,
   syncChatListPaginationAfterFullLoad,
   chatListScrollPaginationGeneration,
 } from "../telegram/chatListScrollPagination";
+import {
+  chatListGatewayLoadMoreAllowed,
+  registerChatListScrollPageLoader,
+  requestChatListCatalogNextPage,
+} from "../telegram/chatListCatalogScroll";
 import {
   getChatListSyncStatus,
   setChatListSyncStatus,
@@ -666,6 +672,14 @@ function mergeChatRows(
   if (incoming.length >= prev.length) {
     const prevIdSet = new Set(prev.map((row) => row.telegram_chat_id));
     const hasNewIds = sortedIncoming.some((row) => !prevIdSet.has(row.telegram_chat_id));
+    // Telegram Web: partial catalog must grow only via scroll append, not poll replace.
+    if (
+      prev.length >= CHAT_LIST_API_PAGE_SIZE &&
+      incoming.length > CHAT_LIST_API_PAGE_SIZE &&
+      incoming.length > prev.length + CHAT_LIST_API_PAGE_SIZE
+    ) {
+      return mergeChatRowsPollPatch(prev, sortedIncoming);
+    }
     // Scroll page: disjoint ids, same page size — append instead of replacing the list.
     if (
       hasNewIds &&
@@ -722,6 +736,26 @@ function mergeChatRows(
   }
 
   return sortChatRowsTierAware(merged);
+}
+
+/** Poll / since_revision during scroll paging — patch loaded rows only (no full-catalog replace). */
+function mergeChatRowsPollPatch(
+  prev: MessageChatRowData[],
+  incoming: MessageChatRowData[],
+): MessageChatRowData[] {
+  if (incoming.length === 0 || prev.length === 0) return prev;
+  const byId = new Map(incoming.map((row) => [row.telegram_chat_id, row]));
+  let changed = false;
+  const next = prev.map((row) => {
+    const fresh = byId.get(row.telegram_chat_id);
+    if (!fresh) return row;
+    const merged = mergeChatRowFields(row, fresh);
+    if (merged !== row) changed = true;
+    return merged;
+  });
+  const resorted = sortChatRowsTierAware(next);
+  if (!changed && chatListOrderMatches(prev, resorted)) return prev;
+  return resorted;
 }
 
 /** Append a server slice (offset > 0). Preserves global list order; patches overlap by id. */
@@ -1116,6 +1150,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         // would still omit them and used to confirm empty.
         return;
       }
+      if (
+        chatListScrollCatalogPartial(
+          chatsCountRef.current,
+          chatListTotalCountRef.current,
+        )
+      ) {
+        return;
+      }
       void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
     } catch {
       /* poll / SSE will pick up archive rows */
@@ -1309,14 +1351,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       chatsCountRef.current,
       chatListTotalCountRef.current,
     );
-    const partialListPainted =
-      chatsCountRef.current > CHAT_LIST_API_PAGE_SIZE && !listFullyLoaded;
     const usingSinceRevision =
       options?.silent === true &&
       !options?.forceFull &&
       options?.fromScroll !== true &&
       pageOffset === 0 &&
-      (listFullyLoaded || partialListPainted) &&
+      listFullyLoaded &&
       lastLiveRevisionRef.current != null &&
       lastLiveRevisionRef.current > 0;
     if (usingSinceRevision) {
@@ -1466,6 +1506,25 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           total: syncedTotal,
           elapsedMs: Date.now() - started,
         });
+        if (options?.fromScroll === true) {
+          logPageDisplay("messages_chats_load_more", {
+            offset: pageOffset,
+            limit: CHAT_LIST_API_PAGE_SIZE,
+            sliceItems: rows.length,
+            serverCount: syncedTotal,
+            loadedThrough: pageOffset + rows.length,
+            elapsedMs: Date.now() - started,
+          });
+        }
+      } else if (wantsPagedFetch && pageOffset === 0 && rows.length > 0 && options?.fromScroll === true) {
+        logPageDisplay("messages_chats_load_more", {
+          offset: pageOffset,
+          limit: CHAT_LIST_API_PAGE_SIZE,
+          sliceItems: rows.length,
+          serverCount: syncedTotal,
+          loadedThrough: rows.length,
+          elapsedMs: Date.now() - started,
+        });
       }
       if (json.source === "live" && typeof json.revision === "number") {
         lastLiveRevisionRef.current = json.revision;
@@ -1609,11 +1668,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             awaitingOrderedReseedRef.current = true;
             return prev;
           }
+          const scrollCatalogPartial =
+            !options?.forceFull &&
+            !rankingRefresh &&
+            chatListScrollCatalogPartial(
+              prev.length,
+              chatListTotalCountRef.current,
+            );
+          const pollPatchOnly =
+            scrollCatalogPartial &&
+            !wantsPagedFetch &&
+            rows.length > CHAT_LIST_API_PAGE_SIZE;
           const next =
             wantsPagedFetch && pageOffset > 0 && !rankingRefresh
               ? appendChatListPage(prev, rows)
-              : mergeChatRows(prev, rows);
-          if (!wantsPagedFetch && !rankingRefresh) {
+              : pollPatchOnly
+                ? mergeChatRowsPollPatch(prev, rows)
+                : mergeChatRows(prev, rows);
+          if (!wantsPagedFetch && !rankingRefresh && !scrollCatalogPartial) {
             syncChatListPaginationAfterFullLoad(next.length, syncedTotal);
           } else if (!rankingRefresh) {
             repairChatListPaginationFromClient(next.length, syncedTotal);
@@ -1673,8 +1745,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           rows.some((row) => Boolean(row.in_archive)));
       const urgentSilentPartial =
         Boolean(options?.silent) &&
-        chatsCountRef.current > CHAT_LIST_API_PAGE_SIZE &&
-        !chatListPaginationFullyLoaded(
+        chatListScrollCatalogPartial(
           chatsCountRef.current,
           chatListTotalCountRef.current,
         );
@@ -1767,6 +1838,17 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     loadChatsRef.current = loadChats;
   }, [loadChats]);
 
+  useEffect(() => {
+    registerChatListScrollPageLoader(async (options) => {
+      await loadChatsRef.current({
+        silent: true,
+        fromScroll: true,
+        allowAvatarResync: options.allowAvatarResync,
+      });
+    });
+    return () => registerChatListScrollPageLoader(null);
+  }, []);
+
   const streamRevisionPendingRef = useRef<number | null>(null);
   const streamLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1793,13 +1875,25 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     pollInFlightRef.current = true;
     const pendingAtStart = streamRevisionPendingRef.current;
     try {
-      const pages = rankingRefreshPageCount();
-      if (pages > 1) {
+      const loadedPages = getChatListLoadedPages();
+      const partialCatalog = chatListScrollCatalogPartial(
+        chatsCountRef.current,
+        chatListTotalCountRef.current,
+      );
+      if (partialCatalog && loadedPages >= 1) {
+        const pages = Math.min(loadedPages, rankingRefreshPageCount());
         for (let page = 1; page <= pages; page += 1) {
           await loadChats({ silent: true, allowAvatarResync: false, rankingRefreshPage: page });
         }
       } else {
-        await loadChats({ silent: true, allowAvatarResync: false });
+        const pages = rankingRefreshPageCount();
+        if (pages > 1) {
+          for (let page = 1; page <= pages; page += 1) {
+            await loadChats({ silent: true, allowAvatarResync: false, rankingRefreshPage: page });
+          }
+        } else {
+          await loadChats({ silent: true, allowAvatarResync: false });
+        }
       }
     } finally {
       pollInFlightRef.current = false;
@@ -2100,7 +2194,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       pollInFlightRef.current = true;
       pollCountRef.current += 1;
       try {
-        await loadChats({ silent: true, allowAvatarResync: false });
+        const loadedPages = getChatListLoadedPages();
+        const partialCatalog = chatListScrollCatalogPartial(
+          chatsCountRef.current,
+          chatListTotalCountRef.current,
+        );
+        if (partialCatalog && loadedPages >= 1) {
+          const pages = Math.min(loadedPages, rankingRefreshPageCount());
+          for (let page = 1; page <= pages; page += 1) {
+            await loadChats({
+              silent: true,
+              allowAvatarResync: false,
+              rankingRefreshPage: page,
+            });
+          }
+        } else {
+          await loadChats({ silent: true, allowAvatarResync: false });
+        }
       } finally {
         pollInFlightRef.current = false;
       }
@@ -2892,13 +3002,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const needsPositionedPage = !positionedComplete || (listBehindCache && syncInProgress);
   const needsTier3Page = positionedComplete && !listBehindCache && tier3Available;
   const mayHaveMoreOnServer =
-    needsPositionedPage || needsTier3Page || syncInProgress || tier3InProgress;
+    chatListGatewayLoadMoreAllowed(displayChats.length, Math.max(chatListTotalCount, cachedChatCount)) &&
+    (needsPositionedPage || needsTier3Page || syncInProgress || tier3InProgress);
   const showBottomLoader =
     !searchNeedle &&
     !recentsMode &&
     (chatListFetchingMore ||
-      syncInProgress ||
-      tier3InProgress ||
+      ((!chatListScrollCatalogPartial(displayChats.length, Math.max(chatListTotalCount, cachedChatCount)) &&
+        (syncInProgress || tier3InProgress)) ||
       (chatListAtBottomRef.current && (hasMoreChatPages || mayHaveMoreOnServer)));
 
   const visibleListItems = chatListVirtualWindow.enabled
@@ -2988,26 +3099,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (isVoiceDialogUiOpen()) return;
     if (isOpenChatFocusHoldActive()) return;
     if (archiveRevealPendingRef.current) return;
-    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    repairChatListPaginationFromClient(chatsCountRef.current, serverTotal);
-    const loadedThrough = getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE;
-    if (
-      serverTotal <= 0 ||
-      loadedThrough >= serverTotal ||
-      !chatListScrollHasMore()
-    ) {
-      return;
-    }
-    if (isChatListScrollPageFetchInFlight()) {
-      return;
-    }
     if (chatListFetchBusyRef.current || chatListFetchingMore) {
       queueChatListScrollPageFetch();
       return;
     }
-    void loadChatsRef.current({
-      silent: true,
-      fromScroll: true,
+    if (isChatListScrollPageFetchInFlight()) return;
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    requestChatListCatalogNextPage(chatsCountRef.current, serverTotal, {
       allowAvatarResync: true,
     });
   }, [
@@ -3025,16 +3123,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
     if (isOpenChatFocusHoldActive()) return;
-    // While archive reveal is painting, do not compete for TDLib / fetch slots.
     if (archiveRevealPendingRef.current) return;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    const loadedThrough = getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE;
-    if (
-      serverTotal > 0 &&
-      loadedThrough < serverTotal &&
-      chatListScrollHasMore()
-    ) {
+    const partialCatalog = chatListScrollCatalogPartial(
+      chatsCountRef.current,
+      serverTotal,
+    );
+
+    // telegram-tt / TDLib loadChats: one chatsSlice batch per near-bottom until caught up.
+    if (partialCatalog || chatListScrollHasMore()) {
       requestChatListNextPage();
+      return;
+    }
+
+    if (
+      !chatListGatewayLoadMoreAllowed(chatsCountRef.current, serverTotal)
+    ) {
       return;
     }
     if (needsPositionedPage) {
