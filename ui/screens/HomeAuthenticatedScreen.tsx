@@ -67,7 +67,10 @@ import {
   invokeChatListNearTop,
   setChatListArchiveRevealLatchResetHandler,
 } from "../components/messages/chatListNearTop";
-import { setChatListScrollMetrics } from "../components/messages/chatListScrollMetrics";
+import {
+  registerChatListScrollPreserveHandle,
+  setChatListScrollMetrics,
+} from "../components/messages/chatListScrollMetrics";
 import { setChatListSearchScrollToEndHandler } from "../components/messages/chatListSearchScrollAnchor";
 import { MessageChatWriteBottomBar } from "../components/messages/MessageChatWriteBottomBar";
 import { GetPanelContent } from "../components/get/GetPanelContent";
@@ -662,6 +665,29 @@ function HomeAuthenticatedScreenMain() {
   );
   const showChatListBottomLoader = chatListBottomLoaderActive && homeNavIndex === 1;
   const homeLeftScrollRef = useRef<HspScrollColumnHandle | null>(null);
+  useEffect(() => {
+    registerChatListScrollPreserveHandle({
+      captureScrollTop: () => {
+        const el = homeLeftScrollRef.current?.getScrollElement();
+        if (el) return el.scrollTop;
+        const metrics = homeLeftScrollRef.current?.getMetrics();
+        return metrics ? metrics.scrollY : null;
+      },
+      restoreScrollTop: (scrollTop: number) => {
+        const el = homeLeftScrollRef.current?.getScrollElement();
+        const maxTop = el
+          ? Math.max(0, el.scrollHeight - el.clientHeight)
+          : undefined;
+        const target =
+          maxTop != null
+            ? Math.max(0, Math.min(scrollTop, maxTop))
+            : Math.max(0, scrollTop);
+        homeLeftScrollRef.current?.scrollToY(target);
+        homeLeftScrollRef.current?.clearNearBottomLatch();
+      },
+    });
+    return () => registerChatListScrollPreserveHandle(null);
+  }, []);
   const [compactHeaderScrollY, setCompactHeaderScrollY] = useState(0);
   const [compactCollapsibleHeightPx, setCompactCollapsibleHeightPx] = useState(0);
   const compactHeaderDragStartYRef = useRef<number | null>(null);

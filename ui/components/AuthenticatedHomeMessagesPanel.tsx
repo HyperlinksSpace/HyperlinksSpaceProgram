@@ -67,6 +67,7 @@ import {
 } from "../messages/messagesArchiveOpen";
 import { ChatListBottomSentinel } from "./messages/ChatListBottomSentinel";
 import { ChatListTopSentinel } from "./messages/ChatListTopSentinel";
+import { LIST_SCROLL_PREFETCH_LEAD_ROWS } from "../listScrollPageSize";
 import { CHAT_LIST_API_PAGE_SIZE, useChatListViewport } from "../hooks/useChatListViewport";
 import {
   beginChatListScrollPageFetch,
@@ -107,7 +108,9 @@ import {
   setChatListSearchScrollToEndHandler,
 } from "./messages/chatListSearchScrollAnchor";
 import {
+  captureChatListScrollPreserveTop,
   getChatListScrollMetrics,
+  restoreChatListScrollPreserveTop,
   subscribeChatListScrollMetrics,
 } from "./messages/chatListScrollMetrics";
 import {
@@ -1679,12 +1682,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             scrollCatalogPartial &&
             !wantsPagedFetch &&
             rows.length > CHAT_LIST_API_PAGE_SIZE;
-          const next =
-            wantsPagedFetch && pageOffset > 0 && !rankingRefresh
-              ? appendChatListPage(prev, rows)
-              : pollPatchOnly
-                ? mergeChatRowsPollPatch(prev, rows)
-                : mergeChatRows(prev, rows);
+          const scrollAppend =
+            wantsPagedFetch && pageOffset > 0 && !rankingRefresh;
+          const patchLoadedRowsOnly = scrollCatalogPartial && !scrollAppend;
+          const next = scrollAppend
+            ? appendChatListPage(prev, rows)
+            : patchLoadedRowsOnly || pollPatchOnly || rankingRefresh
+              ? mergeChatRowsPollPatch(prev, rows)
+              : mergeChatRows(prev, rows);
           if (!wantsPagedFetch && !rankingRefresh && !scrollCatalogPartial) {
             syncChatListPaginationAfterFullLoad(next.length, syncedTotal);
           } else if (!rankingRefresh) {
@@ -1749,6 +1754,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           chatsCountRef.current,
           chatListTotalCountRef.current,
         );
+      const preserveScrollOnAppend =
+        wantsPagedFetch &&
+        pageOffset > 0 &&
+        !rankingRefresh &&
+        options?.fromScroll === true;
+      const scrollPreserveTop = preserveScrollOnAppend
+        ? captureChatListScrollPreserveTop()
+        : null;
       if (
         chatsCountRef.current === 0 ||
         archiveRevealNeedsUrgentPaint ||
@@ -1757,6 +1770,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         urgentSilentPartial
       ) {
         applyChats();
+        if (scrollPreserveTop != null) {
+          restoreChatListScrollPreserveTop(scrollPreserveTop);
+        }
       } else if (
         initialChatListRevealedRef.current &&
         (rows.length >= CHAT_LIST_API_PAGE_SIZE || Boolean(options?.silent))
@@ -1817,7 +1833,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setListBootstrapPending(false);
       chatListFetchBusyRef.current = false;
       if (scheduleRankingAfterScroll) {
-        scheduleChatListRankingRefreshRef.current?.();
+        if (
+          !chatListScrollCatalogPartial(
+            chatsCountRef.current,
+            chatListTotalCountRef.current,
+          )
+        ) {
+          scheduleChatListRankingRefreshRef.current?.();
+        }
       }
       const queued = chatListFetchQueuedRef.current;
       if (queued) {
@@ -1870,6 +1893,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           void flushStreamChatLoad();
         }, 1_500);
       }
+      return;
+    }
+    if (
+      !initialChatListRevealedRef.current &&
+      (chatListFetchBusyRef.current || chatsCountRef.current === 0)
+    ) {
       return;
     }
     pollInFlightRef.current = true;
@@ -3161,7 +3190,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     requestChatListNextPage,
   ]);
 
-  const chatListScrollPrefetchLeadRows = 5;
+  const chatListScrollPrefetchLeadRows = LIST_SCROLL_PREFETCH_LEAD_ROWS;
   useEffect(() => {
     if (listSearchActive || searchListReplacesMain) return;
     if (!initialChatListRevealed) return;
