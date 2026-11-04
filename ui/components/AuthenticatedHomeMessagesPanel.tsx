@@ -3004,12 +3004,15 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const mayHaveMoreOnServer =
     chatListGatewayLoadMoreAllowed(displayChats.length, Math.max(chatListTotalCount, cachedChatCount)) &&
     (needsPositionedPage || needsTier3Page || syncInProgress || tier3InProgress);
+  const catalogPartial = chatListScrollCatalogPartial(
+    displayChats.length,
+    Math.max(chatListTotalCount, cachedChatCount),
+  );
   const showBottomLoader =
     !searchNeedle &&
     !recentsMode &&
     (chatListFetchingMore ||
-      ((!chatListScrollCatalogPartial(displayChats.length, Math.max(chatListTotalCount, cachedChatCount)) &&
-        (syncInProgress || tier3InProgress)) ||
+      (!catalogPartial && (syncInProgress || tier3InProgress)) ||
       (chatListAtBottomRef.current && (hasMoreChatPages || mayHaveMoreOnServer)));
 
   const visibleListItems = chatListVirtualWindow.enabled
