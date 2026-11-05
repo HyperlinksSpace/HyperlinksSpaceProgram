@@ -128,6 +128,7 @@ import {
   chatListRowStridePx,
   chatListShellTopInsetPx,
   homeListShellStyle,
+  MESSAGE_ROW_HEIGHT_PX,
 } from "./messages/messageListLayout";
 import {
   isVoiceDialogUiOpen,
@@ -762,9 +763,10 @@ function mergeChatRowsPollPatch(
     if (merged !== row) changed = true;
     return merged;
   });
-  const resorted = sortChatRowsTierAware(next);
-  if (!changed && chatListOrderMatches(prev, resorted)) return prev;
-  return resorted;
+  if (!changed) return prev;
+  // Partial poll/ranking slices must not re-sort the painted catalog — that
+  // remounts rows mid-scroll and causes virtual-window / scrollTop oscillation.
+  return next;
 }
 
 /** Append a server slice (offset > 0). Preserves global list order; patches overlap by id. */
@@ -970,6 +972,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   } | null>(null);
   const scheduleChatListRankingRefreshRef = useRef<(() => void) | null>(null);
   const chatListRankingRefreshInflightRef = useRef(false);
+  const chatListRankingRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chatListStreamFlushAtRef = useRef(0);
   const unchangedPollStreakRef = useRef(0);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** SSE open + recent ready/ping/revision — gates the 60s safety poll. */
@@ -1015,6 +1019,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     startIndex: number;
     endIndex: number;
   } | null>(null);
+  const chatListVirtualScrollSyncRef = useRef({ topSpacerPx: 0, startIndex: 0 });
   const chatListAppendRestoreAnchorRef = useRef<HspScrollAnchor | null>(null);
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
   const loadChatsRef = useRef<
@@ -1030,25 +1035,32 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   >(async () => {});
 
   const scheduleChatListRankingRefresh = useCallback(() => {
-    if (chatListRankingRefreshInflightRef.current) return;
     if (rankingRefreshPageCount() <= 1) return;
-    chatListRankingRefreshInflightRef.current = true;
-    const generation = chatListScrollPaginationGeneration();
-    void (async () => {
-      try {
-        const pages = rankingRefreshPageCount();
-        for (let page = 1; page <= pages; page += 1) {
-          if (generation !== chatListScrollPaginationGeneration()) return;
-          await loadChatsRef.current({
-            silent: true,
-            allowAvatarResync: false,
-            rankingRefreshPage: page,
-          });
+    if (chatListRankingRefreshTimerRef.current != null) return;
+    chatListRankingRefreshTimerRef.current = setTimeout(() => {
+      chatListRankingRefreshTimerRef.current = null;
+      if (chatListRankingRefreshInflightRef.current) return;
+      if (isChatListScrollPageFetchInFlight()) return;
+      const metrics = getChatListScrollMetrics();
+      if (metrics.scrollY > MESSAGE_ROW_HEIGHT_PX * 4) return;
+      chatListRankingRefreshInflightRef.current = true;
+      const generation = chatListScrollPaginationGeneration();
+      void (async () => {
+        try {
+          const pages = rankingRefreshPageCount();
+          for (let page = 1; page <= pages; page += 1) {
+            if (generation !== chatListScrollPaginationGeneration()) return;
+            await loadChatsRef.current({
+              silent: true,
+              allowAvatarResync: false,
+              rankingRefreshPage: page,
+            });
+          }
+        } finally {
+          chatListRankingRefreshInflightRef.current = false;
         }
-      } finally {
-        chatListRankingRefreshInflightRef.current = false;
-      }
-    })();
+      })();
+    }, 1_800);
   }, []);
 
   useEffect(() => {
@@ -1331,6 +1343,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     if (options?.forceFull) {
       resetChatListScrollPagination();
+    }
+    const partialCatalogPainted = chatListScrollCatalogPartial(
+      chatsCountRef.current,
+      chatListTotalCountRef.current,
+    );
+    if (
+      options?.forceFull &&
+      partialCatalogPainted &&
+      !options?.priority
+    ) {
+      chatListFetchBusyRef.current = false;
+      return;
     }
     chatListFetchBusyRef.current = true;
     const fromScroll = options?.fromScroll === true;
@@ -1704,13 +1728,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             awaitingOrderedReseedRef.current = true;
             return prev;
           }
-          const scrollCatalogPartial =
-            !options?.forceFull &&
-            !rankingRefresh &&
-            chatListScrollCatalogPartial(
-              prev.length,
-              chatListTotalCountRef.current,
-            );
+      const scrollCatalogPartial =
+        !options?.forceFull &&
+        chatListScrollCatalogPartial(
+          prev.length,
+          chatListTotalCountRef.current,
+        );
           const pollPatchOnly =
             scrollCatalogPartial &&
             !wantsPagedFetch &&
@@ -1787,6 +1810,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           chatsCountRef.current,
           chatListTotalCountRef.current,
         );
+      const rankingPatchWhileScrolling =
+        rankingRefresh &&
+        urgentSilentPartial &&
+        getChatListScrollMetrics().scrollY > MESSAGE_ROW_HEIGHT_PX * 2;
       const scrollAppend =
         wantsPagedFetch && pageOffset > 0 && !rankingRefresh;
       const preserveScrollOnAppend = scrollAppend;
@@ -1799,25 +1826,28 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           endIndex: chatListVirtualStickyRef.current.endIndex,
         };
       }
-      if (
-        chatsCountRef.current === 0 ||
-        archiveRevealNeedsUrgentPaint ||
-        wantsPagedFetch ||
-        options?.fromScroll === true ||
-        urgentSilentPartial
-      ) {
+      const runApplyChats = () => {
         applyChats();
         if (scrollPreserveAnchor) {
           chatListAppendRestoreAnchorRef.current = scrollPreserveAnchor;
           restoreChatListScrollPreserveAnchor(scrollPreserveAnchor);
         }
+      };
+      if (
+        chatsCountRef.current === 0 ||
+        archiveRevealNeedsUrgentPaint ||
+        wantsPagedFetch ||
+        options?.fromScroll === true ||
+        (urgentSilentPartial && !rankingPatchWhileScrolling)
+      ) {
+        runApplyChats();
       } else if (
         initialChatListRevealedRef.current &&
         (rows.length >= CHAT_LIST_API_PAGE_SIZE || Boolean(options?.silent))
       ) {
-        startTransition(applyChats);
+        startTransition(runApplyChats);
       } else {
-        applyChats();
+        runApplyChats();
       }
       if (!options?.silent) {
         logPageDisplay("messages_chats_loaded", {
@@ -1951,13 +1981,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         chatListTotalCountRef.current,
       );
       if (partialCatalog && loadedPages >= 1) {
-        // Keep the metronome light — full multi-page rank refresh runs via
-        // scheduleChatListRankingRefresh (SSE / after scroll append).
+        const now = Date.now();
+        const metrics = getChatListScrollMetrics();
+        const minGapMs =
+          metrics.scrollY > MESSAGE_ROW_HEIGHT_PX * 4 ? 2_500 : 1_200;
+        if (now - chatListStreamFlushAtRef.current < minGapMs) {
+          return;
+        }
+        chatListStreamFlushAtRef.current = now;
+        // Keep stream flush light — multi-page rank refresh is debounced separately.
         await loadChats({
           silent: true,
           allowAvatarResync: false,
           rankingRefreshPage: 1,
         });
+        if (metrics.scrollY <= MESSAGE_ROW_HEIGHT_PX * 4) {
+          scheduleChatListRankingRefreshRef.current?.();
+        }
       } else {
         await loadChats({ silent: true, allowAvatarResync: false });
       }
@@ -1996,8 +2036,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         clearTimeout(streamLoadTimerRef.current);
       }
       // Busy chats emit revisions faster than a large apply can finish.
-      // ~450ms keeps previews flowing; voice sheet still coalesces harder.
-      const debounceMs = isVoiceDialogUiOpen() ? 12_000 : 450;
+      // Slow down while the user is paging the catalog to avoid list flash.
+      const scrollY = getChatListScrollMetrics().scrollY;
+      const debounceMs = isVoiceDialogUiOpen()
+        ? 12_000
+        : scrollY > MESSAGE_ROW_HEIGHT_PX * 4
+          ? 2_000
+          : 450;
       streamLoadTimerRef.current = setTimeout(() => {
         streamLoadTimerRef.current = null;
         if (isVoiceDialogUiOpen()) {
@@ -2271,7 +2316,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             allowAvatarResync: false,
             rankingRefreshPage: 1,
           });
-          scheduleChatListRankingRefreshRef.current?.();
         } else {
           await loadChats({ silent: true, allowAvatarResync: false });
         }
@@ -3056,6 +3100,40 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     searchListReplacesMain,
   ]);
   chatListVirtualWindowRef.current = chatListVirtualWindow;
+
+  useLayoutEffect(() => {
+    if (!chatListVirtualWindow.enabled) {
+      chatListVirtualScrollSyncRef.current = {
+        topSpacerPx: 0,
+        startIndex: 0,
+      };
+      return;
+    }
+    const prev = chatListVirtualScrollSyncRef.current;
+    const deltaTop = chatListVirtualWindow.topSpacerPx - prev.topSpacerPx;
+    if (
+      deltaTop !== 0 &&
+      Math.abs(deltaTop) <= chatListRowStride * 2 &&
+      chatListVirtualWindow.startIndex > prev.startIndex
+    ) {
+      const anchor = captureChatListScrollPreserveAnchor();
+      if (anchor) {
+        restoreChatListScrollPreserveAnchor({
+          ...anchor,
+          scrollTop: anchor.scrollTop + deltaTop,
+        });
+      }
+    }
+    chatListVirtualScrollSyncRef.current = {
+      topSpacerPx: chatListVirtualWindow.topSpacerPx,
+      startIndex: chatListVirtualWindow.startIndex,
+    };
+  }, [
+    chatListRowStride,
+    chatListVirtualWindow.enabled,
+    chatListVirtualWindow.startIndex,
+    chatListVirtualWindow.topSpacerPx,
+  ]);
 
   const chatListVirtualLogRef = useRef({
     enabled: false,
