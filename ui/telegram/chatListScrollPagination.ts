@@ -131,8 +131,9 @@ export function noteChatListPageLoaded(
   }
   const loadedThrough = pageOffset + rowCount;
   hasMore =
-    rowCount >= CHAT_LIST_API_PAGE_SIZE &&
-    (totalCount <= 0 || loadedThrough < totalCount);
+    totalCount <= 0
+      ? rowCount >= CHAT_LIST_API_PAGE_SIZE
+      : loadedThrough < totalCount;
 }
 
 export function syncChatListPaginationAfterFullLoad(

@@ -828,6 +828,7 @@ function HomeAuthenticatedScreenMain() {
       setChatListScrollMetrics({
         scrollY: metrics.scrollY,
         layoutH: metrics.layoutH,
+        contentH: metrics.contentH,
         contentTopInsetPx: compactChromeHeightPx,
       });
     },

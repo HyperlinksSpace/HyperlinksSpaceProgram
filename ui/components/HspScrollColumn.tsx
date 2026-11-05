@@ -755,9 +755,12 @@ export function HspScrollColumn({
     }
     const layoutH = scrollMetricsRef.current.layoutH;
     const contentH = ch > 0 ? ch : scrollMetricsRef.current.contentH;
-    if (onNearBottom && layoutH > 0 && contentH > layoutH + 0.5) {
-      const maxScroll = contentH - layoutH;
-      if (y >= maxScroll - nearBottomThresholdPx) {
+    if (onNearBottom && layoutH > 0) {
+      const maxScroll = Math.max(0, contentH - layoutH);
+      const nearBottom =
+        contentH <= layoutH + 0.5 ||
+        (contentH > layoutH + 0.5 && y >= maxScroll - nearBottomThresholdPx);
+      if (nearBottom) {
         if (!nearBottomFiredRef.current) {
           nearBottomFiredRef.current = true;
           onNearBottom();
@@ -851,8 +854,11 @@ export function HspScrollColumn({
               nearTopFiredRef.current = false;
             }
           }
-          if (onNearBottom && layoutH > 0 && contentH > layoutH + 0.5) {
-            if (clamped >= maxScroll - nearBottomThresholdPx) {
+          if (onNearBottom && layoutH > 0) {
+            const nearBottom =
+              contentH <= layoutH + 0.5 ||
+              (contentH > layoutH + 0.5 && clamped >= maxScroll - nearBottomThresholdPx);
+            if (nearBottom) {
               if (!nearBottomFiredRef.current) {
                 nearBottomFiredRef.current = true;
                 onNearBottom();
@@ -887,9 +893,12 @@ export function HspScrollColumn({
           nearTopFiredRef.current = false;
         }
       }
-      if (onNearBottom && layoutH > 0 && contentH > layoutH + 0.5) {
+      if (onNearBottom && layoutH > 0) {
         const maxScroll = Math.max(0, contentH - layoutH);
-        if (clamped >= maxScroll - nearBottomThresholdPx) {
+        const nearBottom =
+          contentH <= layoutH + 0.5 ||
+          (contentH > layoutH + 0.5 && clamped >= maxScroll - nearBottomThresholdPx);
+        if (nearBottom) {
           if (!nearBottomFiredRef.current) {
             nearBottomFiredRef.current = true;
             onNearBottom();

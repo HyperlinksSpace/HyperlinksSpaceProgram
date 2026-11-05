@@ -2,11 +2,18 @@
 export type ChatListScrollMetrics = {
   scrollY: number;
   layoutH: number;
+  /** ScrollView content height (includes header chrome + list). */
+  contentH: number;
   /** Extra content above chat rows in the same scroller (compact collapsing header + nav). */
   contentTopInsetPx: number;
 };
 
-let currentMetrics: ChatListScrollMetrics = { scrollY: 0, layoutH: 0, contentTopInsetPx: 0 };
+let currentMetrics: ChatListScrollMetrics = {
+  scrollY: 0,
+  layoutH: 0,
+  contentH: 0,
+  contentTopInsetPx: 0,
+};
 const listeners = new Set<() => void>();
 
 type ChatListScrollPreserveHandle = {
@@ -42,6 +49,7 @@ export function setChatListScrollMetrics(metrics: ChatListScrollMetrics): void {
   if (
     currentMetrics.scrollY === metrics.scrollY &&
     currentMetrics.layoutH === metrics.layoutH &&
+    currentMetrics.contentH === (metrics.contentH ?? 0) &&
     currentMetrics.contentTopInsetPx === (metrics.contentTopInsetPx ?? 0)
   ) {
     return;
@@ -49,6 +57,7 @@ export function setChatListScrollMetrics(metrics: ChatListScrollMetrics): void {
   currentMetrics = {
     scrollY: metrics.scrollY,
     layoutH: metrics.layoutH,
+    contentH: metrics.contentH ?? 0,
     contentTopInsetPx: metrics.contentTopInsetPx ?? 0,
   };
   for (const listener of listeners) {

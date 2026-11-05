@@ -115,6 +115,7 @@ import {
 } from "./messages/chatListScrollMetrics";
 import {
   CHAT_LIST_VIRTUALIZE_MIN_ROWS,
+  chatListCatalogTailWithinPrefetch,
   resolveChatListTier,
   resolveChatListVirtualWindow,
   sortChatRowsTierAware,
@@ -1102,6 +1103,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           grew,
           stillPaging,
         });
+        repairChatListPaginationFromClient(
+          chatsCountRef.current,
+          Math.max(chatListTotalCountRef.current, cached),
+        );
+        if (
+          chatListScrollHasMore() &&
+          chatListScrollCatalogPartial(
+            chatsCountRef.current,
+            Math.max(chatListTotalCountRef.current, cached),
+          )
+        ) {
+          requestChatListCatalogNextPage(chatsCountRef.current, Math.max(chatListTotalCountRef.current, cached), {
+            allowAvatarResync: true,
+          });
+        } else if (grew) {
+          void loadChatsRef.current({ silent: true, allowAvatarResync: false });
+        }
       }
     } catch {
       /* poll / SSE will pick up background pages */
@@ -3142,9 +3160,87 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     });
   }, [
     cachedChatCount,
+    chatListFetchingMore,
     chatListTotalCount,
     listSearchActive,
     queueChatListScrollPageFetch,
+  ]);
+
+  const chatListScrollPrefetchLeadPx =
+    chatListRowStride * LIST_SCROLL_PREFETCH_LEAD_ROWS;
+
+  const shouldLoadChatListCatalogFromScroll = useCallback(() => {
+    if (listSearchActive || searchListReplacesMain) return false;
+    if (!initialChatListRevealed) return false;
+    if (isVoiceDialogUiOpen() || archiveRevealPendingRef.current) return false;
+    if (isOpenChatFocusHoldActive()) return false;
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    if (serverTotal <= 0 && !chatListScrollHasMore()) return false;
+    const partialCatalog = chatListScrollCatalogPartial(
+      chatsCountRef.current,
+      serverTotal,
+    );
+    if (!partialCatalog && !chatListScrollHasMore()) return false;
+    const metrics = getChatListScrollMetrics();
+    const layoutH =
+      metrics.layoutH > 0 ? metrics.layoutH : chatListEffectiveLayoutH;
+    if (layoutH <= 0) return false;
+    const listShellTop =
+      chatListShellTopInset + (metrics.contentTopInsetPx ?? 0);
+    const tailWithinPrefetch = chatListCatalogTailWithinPrefetch(
+      chatListVirtualTotalCount,
+      { scrollY: metrics.scrollY, layoutH },
+      {
+        rowStridePx: chatListRowStride,
+        contentTopInsetPx: listShellTop,
+        prefetchPx: chatListScrollPrefetchLeadPx,
+      },
+    );
+    const listFitsViewport =
+      metrics.contentH > 0 && metrics.contentH <= layoutH + 12;
+    return tailWithinPrefetch || listFitsViewport;
+  }, [
+    cachedChatCount,
+    chatListEffectiveLayoutH,
+    chatListRowStride,
+    chatListScrollPrefetchLeadPx,
+    chatListShellTopInset,
+    chatListTotalCount,
+    chatListVirtualTotalCount,
+    initialChatListRevealed,
+    listSearchActive,
+    searchListReplacesMain,
+  ]);
+
+  const tryLoadChatListCatalogFromScroll = useCallback(() => {
+    if (!shouldLoadChatListCatalogFromScroll()) return;
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    const partialCatalog = chatListScrollCatalogPartial(
+      chatsCountRef.current,
+      serverTotal,
+    );
+    if (partialCatalog || chatListScrollHasMore()) {
+      requestChatListNextPage();
+      return;
+    }
+    if (
+      chatListGatewayLoadMoreAllowed(chatsCountRef.current, serverTotal) &&
+      (needsPositionedPage || needsTier3Page)
+    ) {
+      if (needsPositionedPage) {
+        void requestLoadMoreChats("positioned");
+      } else if (needsTier3Page) {
+        void requestLoadMoreChats("unpositioned");
+      }
+    }
+  }, [
+    cachedChatCount,
+    chatListTotalCount,
+    needsPositionedPage,
+    needsTier3Page,
+    requestChatListNextPage,
+    requestLoadMoreChats,
+    shouldLoadChatListCatalogFromScroll,
   ]);
 
   const handleChatListNearBottom = useCallback(() => {
@@ -3152,69 +3248,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (canExpandChatListReveal) {
       expandChatListReveal();
     }
-    if (listSearchActive) return;
-    if (isVoiceDialogUiOpen()) return;
-    if (isOpenChatFocusHoldActive()) return;
-    if (archiveRevealPendingRef.current) return;
-    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    const partialCatalog = chatListScrollCatalogPartial(
-      chatsCountRef.current,
-      serverTotal,
-    );
+    tryLoadChatListCatalogFromScroll();
+  }, [canExpandChatListReveal, expandChatListReveal, tryLoadChatListCatalogFromScroll]);
 
-    // telegram-tt / TDLib loadChats: one chatsSlice batch per near-bottom until caught up.
-    if (partialCatalog || chatListScrollHasMore()) {
-      requestChatListNextPage();
-      return;
-    }
-
-    if (
-      !chatListGatewayLoadMoreAllowed(chatsCountRef.current, serverTotal)
-    ) {
-      return;
-    }
-    if (needsPositionedPage) {
-      void requestLoadMoreChats("positioned");
-    } else if (needsTier3Page) {
-      void requestLoadMoreChats("unpositioned");
-    }
-  }, [
-    cachedChatCount,
-    canExpandChatListReveal,
-    chatListTotalCount,
-    expandChatListReveal,
-    needsPositionedPage,
-    needsTier3Page,
-    requestLoadMoreChats,
-    listSearchActive,
-    requestChatListNextPage,
-  ]);
-
-  const chatListScrollPrefetchLeadRows = LIST_SCROLL_PREFETCH_LEAD_ROWS;
   useEffect(() => {
-    if (listSearchActive || searchListReplacesMain) return;
-    if (!initialChatListRevealed) return;
-    if (isVoiceDialogUiOpen() || archiveRevealPendingRef.current) return;
-    const loadedChatRows = displayChats.length;
-    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    if (loadedChatRows <= 0 || serverTotal <= 0) return;
-    if (getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE >= serverTotal) return;
-    if (!chatListScrollHasMore()) return;
-    if (!chatListVirtualWindow.enabled) return;
-    const tailIndex = loadedChatRows - 1;
-    if (chatListVirtualWindow.endIndex >= tailIndex - chatListScrollPrefetchLeadRows) {
-      requestChatListNextPage();
-    }
+    tryLoadChatListCatalogFromScroll();
   }, [
-    cachedChatCount,
+    chatListScrollTick,
+    chatListVirtualTotalCount,
     chatListTotalCount,
-    chatListVirtualWindow.enabled,
-    chatListVirtualWindow.endIndex,
-    displayChats.length,
+    cachedChatCount,
     initialChatListRevealed,
-    listSearchActive,
-    requestChatListNextPage,
-    searchListReplacesMain,
+    tryLoadChatListCatalogFromScroll,
   ]);
 
   useEffect(() => {
@@ -3617,14 +3662,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           </View>
         );
       })}
+      {chatListVirtualWindow.enabled && chatListVirtualWindow.bottomSpacerPx > 0 ? (
+        <View style={{ height: chatListVirtualWindow.bottomSpacerPx }} />
+      ) : null}
       {!listSearchActive ? (
         <ChatListBottomSentinel
           enabled={listModeChats.length > 0 && !listSearchActive}
           onNearBottom={handleChatListNearBottom}
         />
-      ) : null}
-      {chatListVirtualWindow.enabled && chatListVirtualWindow.bottomSpacerPx > 0 ? (
-        <View style={{ height: chatListVirtualWindow.bottomSpacerPx }} />
       ) : null}
     </>
   );

@@ -74,6 +74,27 @@ export function isChatListVirtualizationActive(count: number): boolean {
   return count >= CHAT_LIST_VIRTUALIZE_MIN_ROWS;
 }
 
+/**
+ * TDLib `loadChats` / Desktop `preloadRowsData`: prefetch when the viewport bottom
+ * approaches the catalog tail in scroll space (not only when a DOM sentinel intersects).
+ */
+export function chatListCatalogTailWithinPrefetch(
+  totalRowCount: number,
+  metrics: { scrollY: number; layoutH: number },
+  options: ChatListVirtualWindowOptions & { prefetchPx?: number } = {},
+): boolean {
+  if (totalRowCount <= 0 || metrics.layoutH <= 0) return false;
+  const rowStridePx = options.rowStridePx ?? MESSAGE_ROW_HEIGHT_PX;
+  const contentTopInsetPx = options.contentTopInsetPx ?? 0;
+  const prefetchPx = options.prefetchPx ?? rowStridePx * 8;
+  const totalHeight = contentTopInsetPx + totalRowCount * rowStridePx;
+  const maxScrollY = Math.max(0, totalHeight - metrics.layoutH);
+  const scrollY = Math.min(Math.max(0, metrics.scrollY), maxScrollY);
+  const viewportBottom = scrollY + metrics.layoutH;
+  const catalogTailY = contentTopInsetPx + totalRowCount * rowStridePx;
+  return viewportBottom >= catalogTailY - prefetchPx;
+}
+
 export type ChatListVirtualWindowOptions = {
   rowStridePx?: number;
   overscanPx?: number;
