@@ -31,11 +31,11 @@ export function useChatListViewport(
   );
 
   useEffect(() => {
+    if (autoReveal) return;
     setViewportCount((prev) => {
       if (totalCount <= 0) return 0;
       // Never shrink a painted window back to a tiny first slice (search exit).
       if (prev > totalCount) return totalCount;
-      if (autoReveal) return totalCount;
       if (prev <= 0) return totalCount;
       return prev;
     });
@@ -47,9 +47,13 @@ export function useChatListViewport(
     });
   }, [totalCount]);
 
+  // autoReveal must not lag one frame behind displayListItems growth — that
+  // sliced the catalog tail and delayed scroll prefetch (lazy batch loads).
+  const effectiveViewportCount = autoReveal ? totalCount : viewportCount;
+
   return {
-    viewportCount,
+    viewportCount: effectiveViewportCount,
     expandViewport,
-    canExpandViewport: viewportCount < totalCount,
+    canExpandViewport: effectiveViewportCount < totalCount,
   };
 }

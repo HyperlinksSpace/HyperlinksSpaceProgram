@@ -1519,12 +1519,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       );
       chatListTotalCountRef.current = syncedTotal;
       setChatListTotalCount(syncedTotal);
-      if (wantsPagedFetch) {
+      if (wantsPagedFetch && !rankingRefresh) {
         noteChatListPageLoaded(pageOffset, rows.length, syncedTotal);
         if (scrollPageOffsetReserved && rows.length > 0) {
           scrollPageOffsetCommitted = true;
         }
-        if (fromScroll && !rankingRefresh && rows.length > 0) {
+        if (fromScroll && rows.length > 0) {
           scheduleRankingAfterScroll = true;
         }
       }
@@ -1951,19 +1951,15 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         chatListTotalCountRef.current,
       );
       if (partialCatalog && loadedPages >= 1) {
-        const pages = Math.min(loadedPages, rankingRefreshPageCount());
-        for (let page = 1; page <= pages; page += 1) {
-          await loadChats({ silent: true, allowAvatarResync: false, rankingRefreshPage: page });
-        }
+        // Keep the metronome light — full multi-page rank refresh runs via
+        // scheduleChatListRankingRefresh (SSE / after scroll append).
+        await loadChats({
+          silent: true,
+          allowAvatarResync: false,
+          rankingRefreshPage: 1,
+        });
       } else {
-        const pages = rankingRefreshPageCount();
-        if (pages > 1) {
-          for (let page = 1; page <= pages; page += 1) {
-            await loadChats({ silent: true, allowAvatarResync: false, rankingRefreshPage: page });
-          }
-        } else {
-          await loadChats({ silent: true, allowAvatarResync: false });
-        }
+        await loadChats({ silent: true, allowAvatarResync: false });
       }
     } finally {
       pollInFlightRef.current = false;
@@ -2270,14 +2266,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           chatListTotalCountRef.current,
         );
         if (partialCatalog && loadedPages >= 1) {
-          const pages = Math.min(loadedPages, rankingRefreshPageCount());
-          for (let page = 1; page <= pages; page += 1) {
-            await loadChats({
-              silent: true,
-              allowAvatarResync: false,
-              rankingRefreshPage: page,
-            });
-          }
+          await loadChats({
+            silent: true,
+            allowAvatarResync: false,
+            rankingRefreshPage: 1,
+          });
+          scheduleChatListRankingRefreshRef.current?.();
         } else {
           await loadChats({ silent: true, allowAvatarResync: false });
         }
@@ -2996,7 +2990,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       return { phantomRows: 0, tailLoading: false, scrollHasMore: false };
     }
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    const partial = chatListScrollCatalogPartial(displayChats.length, serverTotal);
+    const loadedChatCount = mainSortedChats.length;
+    const partial = chatListScrollCatalogPartial(loadedChatCount, serverTotal);
     const scrollHasMore =
       partial ||
       (serverTotal > 0 &&
@@ -3004,18 +2999,21 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         chatListScrollHasMore());
     const tailLoading =
       scrollHasMore && (chatListFetchingMore || isChatListScrollPageFetchInFlight());
-    const phantomRows =
-      scrollHasMore && !tailLoading
-        ? chatListCatalogPhantomRowCount(displayChats.length, serverTotal)
+    const basePhantomRows =
+      scrollHasMore
+        ? chatListCatalogPhantomRowCount(loadedChatCount, serverTotal)
         : 0;
+    const phantomRows = tailLoading
+      ? Math.max(0, basePhantomRows - 1)
+      : basePhantomRows;
     return { phantomRows, tailLoading, scrollHasMore };
   }, [
     archiveOpen,
     cachedChatCount,
     chatListFetchingMore,
     chatListTotalCount,
-    displayChats.length,
     listSearchActive,
+    mainSortedChats.length,
     searchListReplacesMain,
   ]);
   const chatListVirtualTotalCount =
@@ -3251,7 +3249,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   ]);
 
   const chatListScrollPrefetchLeadPx =
-    chatListRowStride * LIST_SCROLL_PREFETCH_LEAD_ROWS;
+    chatListRowStride * Math.max(LIST_SCROLL_PREFETCH_LEAD_ROWS, CHAT_LIST_API_PAGE_SIZE);
 
   const shouldLoadChatListCatalogFromScroll = useCallback(() => {
     if (listSearchActive || searchListReplacesMain) return false;
