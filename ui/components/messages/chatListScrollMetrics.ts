@@ -1,4 +1,6 @@
 /** Scroll metrics for the home left column (chat list lives inside {@link HspScrollColumn}). */
+import type { HspScrollAnchor } from "../HspScrollColumn";
+
 export type ChatListScrollMetrics = {
   scrollY: number;
   layoutH: number;
@@ -17,32 +19,45 @@ let currentMetrics: ChatListScrollMetrics = {
 const listeners = new Set<() => void>();
 
 type ChatListScrollPreserveHandle = {
-  captureScrollTop: () => number | null;
-  restoreScrollTop: (scrollTop: number) => void;
+  captureScrollAnchor: () => HspScrollAnchor | null;
+  restoreScrollPositionOnAppend: (anchor: HspScrollAnchor) => void;
 };
 
 let scrollPreserveHandle: ChatListScrollPreserveHandle | null = null;
 
-/** Imperative scroll pin while catalog rows append (same idea as Swap list growth). */
+/** Imperative scroll pin while catalog rows append (same idea as swap ChooseCurrencyTable growth). */
 export function registerChatListScrollPreserveHandle(
   handle: ChatListScrollPreserveHandle | null,
 ): void {
   scrollPreserveHandle = handle;
 }
 
-export function captureChatListScrollPreserveTop(): number | null {
-  const top = scrollPreserveHandle?.captureScrollTop();
-  return typeof top === "number" && Number.isFinite(top) ? top : null;
+export function captureChatListScrollPreserveAnchor(): HspScrollAnchor | null {
+  const anchor = scrollPreserveHandle?.captureScrollAnchor();
+  if (!anchor || !Number.isFinite(anchor.scrollTop) || !Number.isFinite(anchor.scrollHeight)) {
+    return null;
+  }
+  return anchor;
 }
 
-export function restoreChatListScrollPreserveTop(scrollTop: number): void {
+/** @deprecated Prefer {@link captureChatListScrollPreserveAnchor}. */
+export function captureChatListScrollPreserveTop(): number | null {
+  return captureChatListScrollPreserveAnchor()?.scrollTop ?? null;
+}
+
+export function restoreChatListScrollPreserveAnchor(anchor: HspScrollAnchor): void {
   if (!scrollPreserveHandle) return;
-  const run = () => scrollPreserveHandle?.restoreScrollTop(scrollTop);
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => requestAnimationFrame(run));
-  } else {
-    queueMicrotask(run);
+  scrollPreserveHandle.restoreScrollPositionOnAppend(anchor);
+}
+
+/** @deprecated Prefer {@link restoreChatListScrollPreserveAnchor}. */
+export function restoreChatListScrollPreserveTop(scrollTop: number): void {
+  const anchor = captureChatListScrollPreserveAnchor();
+  if (anchor) {
+    restoreChatListScrollPreserveAnchor({ ...anchor, scrollTop });
+    return;
   }
+  restoreChatListScrollPreserveAnchor({ scrollTop, scrollHeight: 0 });
 }
 
 export function setChatListScrollMetrics(metrics: ChatListScrollMetrics): void {

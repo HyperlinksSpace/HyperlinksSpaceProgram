@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -71,6 +71,7 @@ import { LIST_SCROLL_PREFETCH_LEAD_ROWS } from "../listScrollPageSize";
 import { CHAT_LIST_API_PAGE_SIZE, useChatListViewport } from "../hooks/useChatListViewport";
 import {
   beginChatListScrollPageFetch,
+  rollbackChatListScrollFetchReservation,
   chatListScrollHasMore,
   endChatListScrollPageFetch,
   getChatListLoadedPages,
@@ -107,10 +108,11 @@ import {
   invokeChatListSearchScrollToEnd,
   setChatListSearchScrollToEndHandler,
 } from "./messages/chatListSearchScrollAnchor";
+import type { HspScrollAnchor } from "./HspScrollColumn";
 import {
-  captureChatListScrollPreserveTop,
+  captureChatListScrollPreserveAnchor,
   getChatListScrollMetrics,
-  restoreChatListScrollPreserveTop,
+  restoreChatListScrollPreserveAnchor,
   subscribeChatListScrollMetrics,
 } from "./messages/chatListScrollMetrics";
 import {
@@ -1006,6 +1008,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [chatListScrollTick, setChatListScrollTick] = useState(0);
   const chatListScrollRafRef = useRef<number | null>(null);
   const chatListVirtualStickyRef = useRef({ startIndex: 0, endIndex: 0 });
+  const chatListVirtualStickyFreezeRef = useRef<{
+    startIndex: number;
+    endIndex: number;
+  } | null>(null);
+  const chatListAppendRestoreAnchorRef = useRef<HspScrollAnchor | null>(null);
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
   const loadChatsRef = useRef<
     (options?: {
@@ -1405,6 +1412,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         nextPage: getChatListLoadedPages() + 1,
       });
     }
+    const scrollPageOffsetReserved = fromScroll && !rankingRefresh;
+    let scrollPageOffsetCommitted = false;
     try {
       const response = await fetch(url, { method: "GET", credentials: "include" });
       // Sheet may have opened while the request was in flight — skip JSON parse
@@ -1507,9 +1516,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       );
       chatListTotalCountRef.current = syncedTotal;
       setChatListTotalCount(syncedTotal);
-      if (wantsPagedFetch && !rankingRefresh) {
+      if (wantsPagedFetch) {
         noteChatListPageLoaded(pageOffset, rows.length, syncedTotal);
-        if (fromScroll && rows.length > 0) {
+        if (scrollPageOffsetReserved && rows.length > 0) {
+          scrollPageOffsetCommitted = true;
+        }
+        if (fromScroll && !rankingRefresh && rows.length > 0) {
           scheduleRankingAfterScroll = true;
         }
       }
@@ -1772,14 +1784,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           chatsCountRef.current,
           chatListTotalCountRef.current,
         );
-      const preserveScrollOnAppend =
-        wantsPagedFetch &&
-        pageOffset > 0 &&
-        !rankingRefresh &&
-        options?.fromScroll === true;
-      const scrollPreserveTop = preserveScrollOnAppend
-        ? captureChatListScrollPreserveTop()
+      const scrollAppend =
+        wantsPagedFetch && pageOffset > 0 && !rankingRefresh;
+      const preserveScrollOnAppend = scrollAppend;
+      const scrollPreserveAnchor = preserveScrollOnAppend
+        ? captureChatListScrollPreserveAnchor()
         : null;
+      if (scrollPreserveAnchor && chatListVirtualWindowRef.current?.enabled) {
+        chatListVirtualStickyFreezeRef.current = {
+          startIndex: chatListVirtualStickyRef.current.startIndex,
+          endIndex: chatListVirtualStickyRef.current.endIndex,
+        };
+      }
       if (
         chatsCountRef.current === 0 ||
         archiveRevealNeedsUrgentPaint ||
@@ -1788,8 +1804,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         urgentSilentPartial
       ) {
         applyChats();
-        if (scrollPreserveTop != null) {
-          restoreChatListScrollPreserveTop(scrollPreserveTop);
+        if (scrollPreserveAnchor) {
+          chatListAppendRestoreAnchorRef.current = scrollPreserveAnchor;
+          restoreChatListScrollPreserveAnchor(scrollPreserveAnchor);
         }
       } else if (
         initialChatListRevealedRef.current &&
@@ -1841,6 +1858,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         });
       }
     } finally {
+      if (scrollPageOffsetReserved && !scrollPageOffsetCommitted) {
+        rollbackChatListScrollFetchReservation();
+      }
       if (fromScroll && !rankingRefresh) {
         endChatListScrollPageFetch();
       }
@@ -2930,6 +2950,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListRowStride = chatListRowStridePx(wideListChrome);
   const chatListShellTopInset = chatListShellTopInsetPx(wideListChrome);
 
+  useLayoutEffect(() => {
+    const anchor = chatListAppendRestoreAnchorRef.current;
+    if (!anchor) return;
+    restoreChatListScrollPreserveAnchor(anchor);
+    chatListAppendRestoreAnchorRef.current = null;
+    chatListVirtualStickyFreezeRef.current = null;
+  }, [chats.length, revealedDisplayListItems.length]);
+
   useEffect(() => {
     return subscribeChatListScrollMetrics(() => {
       if (chatListScrollRafRef.current != null) return;
@@ -2954,18 +2982,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         bottomSpacerPx: 0,
       };
     }
+    const stickyFreeze = chatListVirtualStickyFreezeRef.current;
+    const stickyForWindow = stickyFreeze ?? chatListVirtualStickyRef.current;
     const next = resolveChatListVirtualWindow(chatListVirtualTotalCount, {
       scrollY: chatListScrollMetrics.scrollY,
       layoutH: chatListEffectiveLayoutH,
     }, {
       rowStridePx: chatListRowStride,
       contentTopInsetPx: chatListShellTopInset + (chatListScrollMetrics.contentTopInsetPx ?? 0),
-      stickyWindow: searchListReplacesMain ? undefined : chatListVirtualStickyRef.current,
+      stickyWindow: searchListReplacesMain ? undefined : stickyForWindow,
     });
-    chatListVirtualStickyRef.current = {
-      startIndex: next.startIndex,
-      endIndex: next.endIndex,
-    };
+    if (!stickyFreeze) {
+      chatListVirtualStickyRef.current = {
+        startIndex: next.startIndex,
+        endIndex: next.endIndex,
+      };
+    }
     return next;
   }, [
     chatListRowStride,
@@ -3153,7 +3185,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       queueChatListScrollPageFetch();
       return;
     }
-    if (isChatListScrollPageFetchInFlight()) return;
+    if (isChatListScrollPageFetchInFlight()) {
+      queueChatListScrollPageFetch();
+      return;
+    }
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
     requestChatListCatalogNextPage(chatsCountRef.current, serverTotal, {
       allowAvatarResync: true,

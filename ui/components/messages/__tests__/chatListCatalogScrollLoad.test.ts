@@ -7,7 +7,22 @@ import {
   noteChatListPageLoaded,
   resetChatListScrollPagination,
   chatListScrollHasMore,
+  takeChatListScrollFetchOffset,
+  getChatListLoadedPages,
 } from "../../../telegram/chatListScrollPagination.js";
+
+resetChatListScrollPagination();
+noteChatListPageLoaded(0, 25, 514);
+assert.equal(getChatListLoadedPages(), 1);
+assert.equal(takeChatListScrollFetchOffset(), 25);
+noteChatListPageLoaded(25, 25, 514);
+assert.equal(getChatListLoadedPages(), 2);
+assert.equal(takeChatListScrollFetchOffset(), 50);
+assert.equal(
+  chatListScrollHasMore(),
+  true,
+  "short final page must still hasMore when loadedThrough < totalCount",
+);
 
 resetChatListScrollPagination();
 noteChatListPageLoaded(25, 10, 40);

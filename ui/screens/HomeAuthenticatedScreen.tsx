@@ -667,22 +667,10 @@ function HomeAuthenticatedScreenMain() {
   const homeLeftScrollRef = useRef<HspScrollColumnHandle | null>(null);
   useEffect(() => {
     registerChatListScrollPreserveHandle({
-      captureScrollTop: () => {
-        const el = homeLeftScrollRef.current?.getScrollElement();
-        if (el) return el.scrollTop;
-        const metrics = homeLeftScrollRef.current?.getMetrics();
-        return metrics ? metrics.scrollY : null;
-      },
-      restoreScrollTop: (scrollTop: number) => {
-        const el = homeLeftScrollRef.current?.getScrollElement();
-        const maxTop = el
-          ? Math.max(0, el.scrollHeight - el.clientHeight)
-          : undefined;
-        const target =
-          maxTop != null
-            ? Math.max(0, Math.min(scrollTop, maxTop))
-            : Math.max(0, scrollTop);
-        homeLeftScrollRef.current?.scrollToY(target);
+      captureScrollAnchor: () =>
+        homeLeftScrollRef.current?.captureScrollAnchor() ?? null,
+      restoreScrollPositionOnAppend: (anchor) => {
+        homeLeftScrollRef.current?.restoreScrollPositionOnAppend(anchor);
         homeLeftScrollRef.current?.clearNearBottomLatch();
       },
     });

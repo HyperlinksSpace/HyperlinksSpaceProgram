@@ -42,7 +42,7 @@ export function requestChatListCatalogNextPage(
 
   if (scrollLoadPromise) {
     void scrollLoadPromise.finally(() => {
-      if (!chatListScrollHasMore() || scrollLoadPromise) return;
+      if (!chatListScrollHasMore()) return;
       scrollLoadPromise = run().finally(() => {
         scrollLoadPromise = null;
       });

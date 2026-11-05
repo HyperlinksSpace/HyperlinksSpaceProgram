@@ -87,7 +87,10 @@ export type HspScrollColumnHandle = {
   captureScrollAnchor: () => HspScrollAnchor | null;
   /** One synchronous scrollTop += scrollHeight delta — keeps the viewport fixed on prepend. */
   keepScrollPositionOnPrepend: (anchor: HspScrollAnchor) => boolean;
+  /** Pin scrollTop after rows append below the viewport (FlatList / swap catalog growth). */
+  keepScrollPositionOnAppend: (anchor: HspScrollAnchor) => boolean;
   restoreScrollAnchor: (anchor: HspScrollAnchor) => void;
+  restoreScrollPositionOnAppend: (anchor: HspScrollAnchor) => void;
   captureItemAnchor: (messageId: number) => HspItemAnchor | null;
   restoreItemAnchor: (anchor: HspItemAnchor) => boolean;
   /** Allow {@link onNearTop} to fire again after prepending content near the top. */
@@ -1109,6 +1112,48 @@ export function HspScrollColumn({
     return { scrollTop: metrics.scrollY, scrollHeight: metrics.contentH };
   }, [getScrollElement]);
 
+  const applyScrollAnchorRestoreAppend = useCallback(
+    (anchor: HspScrollAnchor) => {
+      if (Platform.OS === "web") {
+        const el = getScrollElement();
+        if (!el) return false;
+        const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        const nextTop = Math.max(0, Math.min(anchor.scrollTop, maxTop));
+        if (Math.abs(el.scrollTop - nextTop) < 0.5) {
+          commitScrollMetrics({
+            layoutH: el.clientHeight,
+            contentH: el.scrollHeight,
+            scrollY: el.scrollTop,
+          });
+          return true;
+        }
+        el.scrollTop = nextTop;
+        commitScrollMetrics({
+          layoutH: el.clientHeight,
+          contentH: el.scrollHeight,
+          scrollY: nextTop,
+        });
+        syncNearTopLatch(nextTop);
+        syncNearBottomLatch(nextTop, el.clientHeight, el.scrollHeight);
+        return true;
+      }
+      const metrics = scrollMetricsRef.current;
+      const maxY = Math.max(0, metrics.contentH - metrics.layoutH);
+      const nextTop = Math.max(0, Math.min(anchor.scrollTop, maxY));
+      if (Math.abs(metrics.scrollY - nextTop) < 0.5) return true;
+      scrollRef.current?.scrollTo({ y: nextTop, animated: false });
+      commitScrollMetrics({
+        layoutH: metrics.layoutH,
+        contentH: metrics.contentH,
+        scrollY: nextTop,
+      });
+      syncNearTopLatch(nextTop);
+      syncNearBottomLatch(nextTop, metrics.layoutH, metrics.contentH);
+      return true;
+    },
+    [commitScrollMetrics, getScrollElement, syncNearBottomLatch, syncNearTopLatch],
+  );
+
   const applyScrollAnchorRestore = useCallback(
     (anchor: HspScrollAnchor) => {
       if (Platform.OS === "web") {
@@ -1176,6 +1221,30 @@ export function HspScrollColumn({
     [applyScrollAnchorRestore],
   );
 
+  const keepScrollPositionOnAppend = useCallback(
+    (anchor: HspScrollAnchor) => applyScrollAnchorRestoreAppend(anchor),
+    [applyScrollAnchorRestoreAppend],
+  );
+
+  const restoreScrollPositionOnAppend = useCallback(
+    (anchor: HspScrollAnchor) => {
+      let attempts = 0;
+      const maxAttempts = 12;
+
+      const run = () => {
+        const restored = applyScrollAnchorRestoreAppend(anchor);
+        if (restored || ++attempts >= maxAttempts) return;
+        requestAnimationFrame(run);
+      };
+
+      requestAnimationFrame(() => {
+        run();
+        requestAnimationFrame(run);
+      });
+    },
+    [applyScrollAnchorRestoreAppend],
+  );
+
   const restoreScrollAnchor = useCallback(
     (anchor: HspScrollAnchor) => {
       let attempts = 0;
@@ -1229,7 +1298,9 @@ export function HspScrollColumn({
       },
       captureScrollAnchor,
       keepScrollPositionOnPrepend,
+      keepScrollPositionOnAppend,
       restoreScrollAnchor,
+      restoreScrollPositionOnAppend,
       captureItemAnchor,
       restoreItemAnchor,
       clearNearTopLatch: () => {
@@ -1246,7 +1317,21 @@ export function HspScrollColumn({
         scrollControllerRef.current = null;
       }
     };
-  }, [scrollControllerRef, scrollToEnd, scrollToY, applyInitialScroll, captureScrollAnchor, keepScrollPositionOnPrepend, restoreScrollAnchor, captureItemAnchor, restoreItemAnchor, getScrollElement, syncScrollMetricsFromDom]);
+  }, [
+    scrollControllerRef,
+    scrollToEnd,
+    scrollToY,
+    applyInitialScroll,
+    captureScrollAnchor,
+    keepScrollPositionOnPrepend,
+    keepScrollPositionOnAppend,
+    restoreScrollAnchor,
+    restoreScrollPositionOnAppend,
+    captureItemAnchor,
+    restoreItemAnchor,
+    getScrollElement,
+    syncScrollMetricsFromDom,
+  ]);
 
   useLayoutEffect(() => {
     if (initialScrollPosition !== "bottom" || didInitialBottomScrollRef.current) return;

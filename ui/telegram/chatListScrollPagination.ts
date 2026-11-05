@@ -36,17 +36,29 @@ export function resolveChatListFetchOffset(options?: {
   pageOffset?: number;
 }): number {
   if (options?.fromScroll === true) {
-    if (loadedPages >= 1 && nextPage <= 1) {
-      nextPage = loadedPages + 1;
-    }
-    let offset = Math.max(0, (nextPage - 1) * CHAT_LIST_API_PAGE_SIZE);
-    if (offset === 0 && loadedPages >= 1) {
-      nextPage = loadedPages + 1;
-      offset = loadedPages * CHAT_LIST_API_PAGE_SIZE;
-    }
-    return offset;
+    return takeChatListScrollFetchOffset();
   }
   return Math.max(0, options?.pageOffset ?? 0);
+}
+
+/**
+ * Reserve the next scroll page offset and advance the cursor immediately so
+ * queued scroll loads request offset 50, 75, … instead of repeating offset 25.
+ */
+export function takeChatListScrollFetchOffset(): number {
+  if (loadedPages >= 1 && nextPage <= loadedPages) {
+    nextPage = loadedPages + 1;
+  }
+  const pageToFetch = nextPage;
+  nextPage = pageToFetch + 1;
+  return Math.max(0, (pageToFetch - 1) * CHAT_LIST_API_PAGE_SIZE);
+}
+
+/** Undo {@link takeChatListScrollFetchOffset} when the scroll fetch did not succeed. */
+export function rollbackChatListScrollFetchReservation(): void {
+  if (nextPage > loadedPages + 1) {
+    nextPage -= 1;
+  }
 }
 
 /** Keep next-page cursor aligned — never infer loaded pages from row count (poll merges). */
@@ -126,9 +138,7 @@ export function noteChatListPageLoaded(
   }
   const pageIndex = Math.floor(pageOffset / CHAT_LIST_API_PAGE_SIZE) + 1;
   loadedPages = Math.max(loadedPages, pageIndex);
-  if (pageIndex >= nextPage - 1) {
-    nextPage = pageIndex + 1;
-  }
+  nextPage = Math.max(nextPage, loadedPages + 1);
   const loadedThrough = pageOffset + rowCount;
   hasMore =
     totalCount <= 0
