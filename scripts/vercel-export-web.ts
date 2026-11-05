@@ -9,15 +9,21 @@ function readDeployVersion(): string {
   return line && line.length > 0 ? line : "0";
 }
 
+/** Vercel injects `--max_old_space_size=8192` (underscores). Do not stack a second limit. */
+function normalizeNodeOptionsForMetroExport(raw: string): string {
+  const withoutHeap = raw.replace(/\s*--max[-_]old[-_]space[-_]size=\d+\b/gi, "").trim();
+  // Leave ~1 GB for Metro workers / OS on Vercel's 8 GB builders.
+  const heapMb = process.env.VERCEL ? "7168" : "6144";
+  return `${withoutHeap} --max-old-space-size=${heapMb}`.trim();
+}
+
 const deployVersion = readDeployVersion();
-const existingNodeOptions = process.env.NODE_OPTIONS ?? "";
+const nodeOptions = normalizeNodeOptionsForMetroExport(process.env.NODE_OPTIONS ?? "");
 const env = {
   ...process.env,
-  // Vercel build VMs are 8 GB. Metro has frozen at ~98% on this app, then the
-  // CLI/API canceled after ~10 min of silence. Keep a 6 GB heap for export.
-  NODE_OPTIONS: /\b--max-old-space-size=/.test(existingNodeOptions)
-    ? existingNodeOptions
-    : `${existingNodeOptions} --max-old-space-size=6144`.trim(),
+  NODE_OPTIONS: nodeOptions,
+  // Parallel Metro workers + dual web/λ bundles have frozen this app at ~98% on 8 GB VMs.
+  METRO_MAX_WORKERS: process.env.METRO_MAX_WORKERS ?? (process.env.VERCEL ? "2" : "4"),
   CI: process.env.CI ?? "1",
   EXPO_NO_TELEMETRY: process.env.EXPO_NO_TELEMETRY ?? "1",
   EXPO_PUBLIC_DEPLOY_VERSION: deployVersion,
@@ -25,7 +31,7 @@ const env = {
 };
 
 console.log(
-  `[vercel-export] EXPO_PUBLIC_DEPLOY_VERSION=${deployVersion} deploymentId=${env.EXPO_PUBLIC_VERCEL_DEPLOYMENT_ID || "(none)"} nodeOptions=${env.NODE_OPTIONS}`,
+  `[vercel-export] EXPO_PUBLIC_DEPLOY_VERSION=${deployVersion} deploymentId=${env.EXPO_PUBLIC_VERCEL_DEPLOYMENT_ID || "(none)"} nodeOptions=${env.NODE_OPTIONS} metroMaxWorkers=${env.METRO_MAX_WORKERS}`,
 );
 
 execSync("npx expo export -p web --output-dir .vercel/output/static", {
