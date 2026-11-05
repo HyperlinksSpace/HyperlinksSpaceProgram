@@ -58,6 +58,7 @@ import {
 } from "./messages/networkFetchQueue";
 import { MessageChatRow, type MessageChatRowData, type MessageChatKind } from "./messages/MessageChatRow";
 import { MessageChatListArchiveFolderRow } from "./messages/MessageChatListArchiveFolderRow";
+import { MessageChatListCatalogLoadingRow } from "./messages/MessageChatListCatalogLoadingRow";
 import { MessageChatListContextMenu } from "./messages/MessageChatListContextMenu";
 import { useMessagesChatListSearch, markChatListSearchRowPressPending } from "../messages/MessagesChatListSearchContext";
 import {
@@ -117,6 +118,7 @@ import {
 } from "./messages/chatListScrollMetrics";
 import {
   CHAT_LIST_VIRTUALIZE_MIN_ROWS,
+  chatListCatalogPhantomRowCount,
   chatListCatalogTailWithinPrefetch,
   resolveChatListTier,
   resolveChatListVirtualWindow,
@@ -252,7 +254,8 @@ type ChatListDisplayItem =
     }
   | { kind: "sectionHeader"; key: string; sectionId: string; title: string }
   | { kind: "messagesFooter"; key: string; count: number }
-  | { kind: "recentsFooter"; key: string };
+  | { kind: "recentsFooter"; key: string }
+  | { kind: "catalogLoading"; key: string };
 
 /** Chevron: closed → right; open → up (column-reverse search scrolls upward). */
 function SearchSectionChevron({ open, color }: { open: boolean; color: string }) {
@@ -2732,6 +2735,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [remoteDirectHits],
   );
 
+  const cachedChatCount = chatListSync?.cachedCount ?? chats.length;
+
   const displayListItems = useMemo((): ChatListDisplayItem[] => {
     // Search/recents use column-reverse: first array item sits nearest the search field (bottom).
     if (recentsMode && !recentsPending) {
@@ -2803,6 +2808,19 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           key: `chat-${row.telegram_chat_id}`,
           row,
         });
+      }
+      const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+      const catalogPartial = chatListScrollCatalogPartial(mainSortedChats.length, serverTotal);
+      const catalogScrollHasMore =
+        catalogPartial ||
+        (serverTotal > 0 &&
+          getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE < serverTotal &&
+          chatListScrollHasMore());
+      if (
+        catalogScrollHasMore &&
+        (chatListFetchingMore || isChatListScrollPageFetchInFlight())
+      ) {
+        items.push({ kind: "catalogLoading", key: "catalog-loading-tail" });
       }
       return items;
     }
@@ -2907,6 +2925,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveOpen,
     archiveRevealRequested,
     archiveSortedChats,
+    cachedChatCount,
+    chatListFetchingMore,
+    chatListTotalCount,
     chatListSync?.archiveListReady,
     collapsedSearchSections,
     connectedTelegramUserId,
@@ -2946,7 +2967,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     [revealedDisplayListItems],
   );
 
-  const cachedChatCount = chatListSync?.cachedCount ?? chats.length;
   const chatListRowStride = chatListRowStridePx(wideListChrome);
   const chatListShellTopInset = chatListShellTopInsetPx(wideListChrome);
 
@@ -2971,7 +2991,35 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const chatListScrollMetrics = getChatListScrollMetrics();
   const chatListEffectiveLayoutH =
     chatListScrollMetrics.layoutH > 0 ? chatListScrollMetrics.layoutH : 480;
-  const chatListVirtualTotalCount = revealedDisplayListItems.length;
+  const catalogScrollExtent = useMemo(() => {
+    if (searchListReplacesMain || listSearchActive || archiveOpen) {
+      return { phantomRows: 0, tailLoading: false, scrollHasMore: false };
+    }
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    const partial = chatListScrollCatalogPartial(displayChats.length, serverTotal);
+    const scrollHasMore =
+      partial ||
+      (serverTotal > 0 &&
+        getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE < serverTotal &&
+        chatListScrollHasMore());
+    const tailLoading =
+      scrollHasMore && (chatListFetchingMore || isChatListScrollPageFetchInFlight());
+    const phantomRows =
+      scrollHasMore && !tailLoading
+        ? chatListCatalogPhantomRowCount(displayChats.length, serverTotal)
+        : 0;
+    return { phantomRows, tailLoading, scrollHasMore };
+  }, [
+    archiveOpen,
+    cachedChatCount,
+    chatListFetchingMore,
+    chatListTotalCount,
+    displayChats.length,
+    listSearchActive,
+    searchListReplacesMain,
+  ]);
+  const chatListVirtualTotalCount =
+    revealedDisplayListItems.length + catalogScrollExtent.phantomRows;
   const chatListVirtualWindow = useMemo(() => {
     if (searchListReplacesMain) {
       return {
@@ -3090,6 +3138,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const showBottomLoader =
     !searchNeedle &&
     !recentsMode &&
+    !catalogScrollExtent.tailLoading &&
     (chatListFetchingMore ||
       (!catalogPartial && (syncInProgress || tier3InProgress)) ||
       (chatListAtBottomRef.current && (hasMoreChatPages || mayHaveMoreOnServer)));
@@ -3475,10 +3524,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       ) : null}
       {items.map((item, index) => {
         const absoluteIndex = startIndex + index;
+        const lastRevealed = revealedDisplayListItems[revealedDisplayListItems.length - 1];
         // column-reverse: first item is nearest the search field (visual bottom).
         const isVisualBottomEdge = searchListReplacesMain
           ? absoluteIndex === 0
-          : absoluteIndex === revealedDisplayListItems.length - 1 && !showBottomLoader;
+          : lastRevealed?.kind === "catalogLoading"
+            ? false
+            : absoluteIndex === revealedDisplayListItems.length - 1 && !showBottomLoader;
         if (item.kind === "archiveFolder") {
           return (
             <MessageChatListArchiveFolderRow
@@ -3534,6 +3586,15 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                 {item.title}
               </Text>
             </Pressable>
+          );
+        }
+        if (item.kind === "catalogLoading") {
+          return (
+            <MessageChatListCatalogLoadingRow
+              key={item.key}
+              colors={colors}
+              isLast={!searchListReplacesMain}
+            />
           );
         }
         if (item.kind === "recentsFooter") {

@@ -39,7 +39,8 @@ function avatarProxyUrl(params: {
 function preferFreshAvatarProxy(chat: MessageChatRowData): boolean {
   const raw = chat.avatar_url;
   if (!raw || raw === TELEGRAM_THREAD_NO_AVATAR) return true;
-  if (raw.startsWith("data:")) return true;
+  // Catalog rows often ship an embedded JPEG — use it instead of a proxy 404.
+  if (raw.startsWith("data:")) return false;
   if (raw.includes("/api/telegram-messages-avatar")) return true;
   return false;
 }
@@ -135,6 +136,16 @@ export function resolveTelegramThreadAnimatedAvatarUrl(
   if (inChannelThread || item?.sender_is_channel) return null;
   const markup = chat.profile_photo;
   const cacheVersion = telegramProfilePhotoCacheVersion(markup);
+  const storedRaw = chat.avatar_url;
+  if (
+    !item &&
+    storedRaw &&
+    storedRaw.startsWith("data:") &&
+    !markup?.has_animation &&
+    !markup?.custom_emoji_id
+  ) {
+    return null;
+  }
   // Custom-emoji faces loop via TGS/WebM emoji, not the MPEG4 avatar proxy.
   // Outgoing bubbles still animate the sender (self) — never skip is_outgoing.
   if (!item?.is_outgoing && markup?.custom_emoji_id && !markup.has_animation) return null;

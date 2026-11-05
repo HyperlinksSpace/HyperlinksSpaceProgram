@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  chatListCatalogPhantomRowCount,
   chatListCatalogTailWithinPrefetch,
   resolveChatListVirtualWindow,
 } from "../chatListVirtualWindow.js";
@@ -31,6 +32,12 @@ assert.equal(
   true,
   "short final page must still hasMore when loadedThrough < totalCount",
 );
+
+{
+  const phantom = chatListCatalogPhantomRowCount(88, 485);
+  assert.ok(phantom >= 25, "partial catalog should reserve phantom tail rows for prefetch");
+  assert.equal(chatListCatalogPhantomRowCount(485, 485), 0);
+}
 
 {
   const row = 55;
