@@ -12,6 +12,7 @@ import { TgsCanvasPlayer } from "./TgsCanvasPlayer.web";
 import { telegramEmojiDebug } from "./telegramEmojiDebug";
 import { useElementVisible } from "./useElementVisible";
 import { MESSAGE_INLINE_EMOJI_VERTICAL_ALIGN_CSS } from "./messageChatLayout";
+import { pinSafariInlineVideoElement } from "./pinSafariInlineVideoElement";
 
 type Props = {
   customEmojiId?: string;
@@ -327,6 +328,7 @@ export function MessageChatInlineTgsEmoji(props: Props) {
         <video
           ref={(node) => {
             if (!node) return;
+            pinSafariInlineVideoElement(node);
             if (shouldAnimate) {
               void node.play().catch(() => {});
             } else {

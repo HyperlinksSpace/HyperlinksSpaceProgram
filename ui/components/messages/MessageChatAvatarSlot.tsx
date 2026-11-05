@@ -20,6 +20,7 @@ import {
   prefetchTelegramProfilePhotoMarkup,
   useTelegramProfilePhotoMarkup,
 } from "../../telegram/telegramProfilePhotoStore";
+import { pinSafariInlineVideoElement } from "./pinSafariInlineVideoElement";
 
 function telegramUserIdFromAvatarUrl(url: string | null | undefined): number | null {
   if (!url || url.startsWith("data:")) return null;
@@ -150,11 +151,13 @@ const PROFILE_PHOTO_EMOJI_RATIO = 0.67;
 
 function AvatarAnimationLayer({
   uri,
+  sizePx,
   loadEnabled,
   onReady,
   onError,
 }: {
   uri: string;
+  sizePx: number;
   loadEnabled: boolean;
   onReady: () => void;
   onError: () => void;
@@ -162,6 +165,7 @@ function AvatarAnimationLayer({
   const [src, setSrc] = useState<string | null>(null);
   const onReadyRef = useRef(onReady);
   const onErrorRef = useRef(onError);
+  const unpinVideoRef = useRef<(() => void) | null>(null);
   onReadyRef.current = onReady;
   onErrorRef.current = onError;
 
@@ -185,9 +189,20 @@ function AvatarAnimationLayer({
     };
   }, [loadEnabled, uri]);
 
+  useEffect(() => {
+    return () => {
+      unpinVideoRef.current?.();
+      unpinVideoRef.current = null;
+    };
+  }, []);
+
   if (!src || Platform.OS !== "web") return null;
-  const kickPlay = (node: { play?: () => Promise<void> } | null) => {
-    if (node?.play) void node.play().catch(() => {});
+  const boxPx = Math.max(1, Math.round(sizePx));
+  const kickPlay = (node: HTMLVideoElement | null) => {
+    if (!node) return;
+    unpinVideoRef.current?.();
+    unpinVideoRef.current = pinSafariInlineVideoElement(node);
+    void node.play().catch(() => {});
   };
   return createElement("video", {
     src,
@@ -195,28 +210,30 @@ function AvatarAnimationLayer({
     loop: true,
     muted: true,
     playsInline: true,
-    playsinline: true,
-    "webkit-playsinline": "true",
     controls: false,
     disablePictureInPicture: true,
     preload: "auto",
     ref: kickPlay,
-    onCanPlay: (event: { currentTarget?: { play?: () => Promise<void> } }) => {
+    onCanPlay: (event: { currentTarget?: HTMLVideoElement | null }) => {
       kickPlay(event.currentTarget ?? null);
       onReadyRef.current();
     },
-    onLoadedData: (event: { currentTarget?: { play?: () => Promise<void> } }) => {
+    onLoadedData: (event: { currentTarget?: HTMLVideoElement | null }) => {
       kickPlay(event.currentTarget ?? null);
       onReadyRef.current();
     },
     onError: () => onErrorRef.current(),
     style: {
       position: "absolute",
-      inset: 0,
-      width: "100%",
-      height: "100%",
+      top: 0,
+      left: 0,
+      width: boxPx,
+      height: boxPx,
+      maxWidth: boxPx,
+      maxHeight: boxPx,
       objectFit: "cover",
       display: "block",
+      pointerEvents: "none",
     },
   });
 }
@@ -382,6 +399,7 @@ export function MessageChatAvatarSlot({
         >
           <AvatarAnimationLayer
             uri={animatedIconUrl}
+            sizePx={faceContentSizePx}
             loadEnabled={loadEnabled}
             onReady={() => {
               setVideoReady(true);

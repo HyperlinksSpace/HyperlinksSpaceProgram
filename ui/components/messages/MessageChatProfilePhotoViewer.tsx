@@ -23,6 +23,7 @@ import { extractChatAvatarInitials } from "./chatAvatarInitials";
 import { ChatAvatarFallback } from "./ChatAvatarFallback";
 import { loadMessageChatAvatarObjectUrl } from "./MessageChatAvatarImage";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
+import { pinSafariInlineVideoElement } from "./pinSafariInlineVideoElement";
 
 /** Above profile media sheet (10120) and playlist (10150). */
 const PROFILE_PHOTO_VIEWER_Z = 10200;
@@ -137,6 +138,16 @@ export function MessageChatProfilePhotoViewer({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose, visible]);
+
+  /** Safari back-forward cache can restore `photoViewerOpen` without remounting React state. */
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) onClose();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [onClose]);
 
   const handleDownload = useCallback(() => {
     if (!iconUrl) return;

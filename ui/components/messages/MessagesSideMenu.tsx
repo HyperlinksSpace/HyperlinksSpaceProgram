@@ -344,6 +344,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
     if (!visible) {
       setDrawerOpen(false);
       setAccountsExpanded(false);
+      setPhotoViewerOpen(false);
       const timer = setTimeout(() => setMounted(false), 220);
       return () => clearTimeout(timer);
     }
@@ -352,6 +353,15 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
     const frame = requestAnimationFrame(() => setDrawerOpen(true));
     return () => cancelAnimationFrame(frame);
   }, [raiseToFront, visible]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) setPhotoViewerOpen(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, []);
 
   useEffect(() => {
     if (!isTelegramMessagesConnected || connectedTelegramUserId == null) {
@@ -470,9 +480,10 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
   ]);
 
   const openSelfProfilePhoto = useCallback(() => {
+    if (!visible) return;
     if (!selfAvatarUrl && !profilePhoto) return;
     setPhotoViewerOpen(true);
-  }, [profilePhoto, selfAvatarUrl]);
+  }, [profilePhoto, selfAvatarUrl, visible]);
 
   const openMenuDialog = useCallback(
     (kind: Exclude<MessagesMenuDialogKind, null>) => {
@@ -747,7 +758,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
                   sizePx={AVATAR_PX}
                   colors={colors}
                   scheme={colorScheme}
-                  loadEnabled={visible && connectedTelegramUserId != null}
+                  loadEnabled={visible && drawerOpen && connectedTelegramUserId != null}
                   fetchPriority="critical"
                   profilePhoto={profilePhoto}
                   telegramUserId={connectedTelegramUserId}
@@ -863,7 +874,7 @@ export function MessagesSideMenu({ visible, onClose }: Props) {
                         sizePx={ACCOUNT_AVATAR_PX}
                         colors={colors}
                         scheme={colorScheme}
-                        loadEnabled={visible}
+                        loadEnabled={visible && drawerOpen}
                         fetchPriority="high"
                         profilePhoto={account.active ? profilePhoto : null}
                         telegramUserId={account.active ? connectedTelegramUserId : null}
