@@ -2495,17 +2495,6 @@ function HomeAuthenticatedScreenMain() {
               backAccessibilityLabel={t("messages.archive.back")}
             />
           </View>
-          {selectedMessageChat.chat_kind !== "channel" ? (
-            <View
-              style={
-                (Platform.OS === "web"
-                  ? { position: "sticky", bottom: 0, zIndex: 2, alignSelf: "stretch" }
-                  : { alignSelf: "stretch" }) as ViewStyle
-              }
-            >
-              <MessageChatWriteBottomBar />
-            </View>
-          ) : null}
         </View>
       ) : null}
       {walletCurrenciesOpen ? (

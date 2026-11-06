@@ -3936,59 +3936,6 @@ export function MessageChatMessageList({
     },
   };
 
-  // Compact/mobile: overlay is `position: fixed` and can mount before layout has a
-  // non-zero height — HspScrollColumn then stays at layoutH=0, open-scroll never
-  // settles, and the list stays opacity:0. Re-sync when the pane becomes visible.
-  useEffect(() => {
-    if (!panelVisible || !shouldLoadHistory) return;
-    if (Platform.OS !== "web") return;
-    const sync = () => {
-      scrollControllerRef.current?.syncScrollMetricsFromDom();
-      const m = scrollControllerRef.current?.getMetrics();
-      if (m && m.layoutH > 0) {
-        handleOpenScrollMetrics({ layoutH: m.layoutH, contentH: m.contentH });
-      }
-    };
-    const raf = requestAnimationFrame(sync);
-    const t = setTimeout(sync, 50);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t);
-    };
-  }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
-
-  // Compact overlay: iOS Safari can leave layoutH at 0 — force reveal after rows exist.
-  useEffect(() => {
-    if (!compactChatOverlay || !shouldLoadHistory) return;
-    if (chatScrollPaintReadyRef.current) return;
-    if (displayMessages.length === 0 && loadingInitial) return;
-    const t = setTimeout(() => {
-      if (chatScrollPaintReadyRef.current) return;
-      if (displayMessagesRef.current.length === 0 && !error) return;
-      logPageDisplay("messages_compact_overlay_paint_fallback", {
-        ...chatLogFields({
-          chatId: chat.telegram_chat_id,
-          peerUserId: chat.peer_user_id,
-          title: chat.title,
-        }),
-        displayCount: displayMessagesRef.current.length,
-        loadingInitial,
-      });
-      revealChatScroll();
-    }, 450);
-    return () => clearTimeout(t);
-  }, [
-    compactChatOverlay,
-    shouldLoadHistory,
-    displayMessages.length,
-    loadingInitial,
-    error,
-    chat.telegram_chat_id,
-    chat.peer_user_id,
-    chat.title,
-    revealChatScroll,
-  ]);
-
   const bumpVirtualLayoutFromMeasure = useCallback(
     (messageId: number, prevHeight: number, nextHeight: number) => {
       if (!isMessageListVirtualizationActive(displayMessagesRef.current.length)) return;
@@ -4066,6 +4013,60 @@ export function MessageChatMessageList({
       schedulePrependKeepFromLayout,
     ],
   );
+
+  // Compact/mobile: overlay is `position: fixed` and can mount before layout has a
+  // non-zero height — HspScrollColumn then stays at layoutH=0, open-scroll never
+  // settles, and the list stays opacity:0. Re-sync when the pane becomes visible.
+  // MUST run after `handleOpenScrollMetrics` exists (no const TDZ in render).
+  useEffect(() => {
+    if (!panelVisible || !shouldLoadHistory) return;
+    if (Platform.OS !== "web") return;
+    const sync = () => {
+      scrollControllerRef.current?.syncScrollMetricsFromDom();
+      const m = scrollControllerRef.current?.getMetrics();
+      if (m && m.layoutH > 0) {
+        handleOpenScrollMetrics({ layoutH: m.layoutH, contentH: m.contentH });
+      }
+    };
+    const raf = requestAnimationFrame(sync);
+    const t = setTimeout(sync, 50);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
+
+  // Compact overlay: iOS Safari can leave layoutH at 0 — force reveal after rows exist.
+  useEffect(() => {
+    if (!compactChatOverlay || !shouldLoadHistory) return;
+    if (chatScrollPaintReadyRef.current) return;
+    if (displayMessages.length === 0 && loadingInitial) return;
+    const t = setTimeout(() => {
+      if (chatScrollPaintReadyRef.current) return;
+      if (displayMessagesRef.current.length === 0 && !error) return;
+      logPageDisplay("messages_compact_overlay_paint_fallback", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        displayCount: displayMessagesRef.current.length,
+        loadingInitial,
+      });
+      revealChatScroll();
+    }, 450);
+    return () => clearTimeout(t);
+  }, [
+    compactChatOverlay,
+    shouldLoadHistory,
+    displayMessages.length,
+    loadingInitial,
+    error,
+    chat.telegram_chat_id,
+    chat.peer_user_id,
+    chat.title,
+    revealChatScroll,
+  ]);
 
   useEffect(() => {
     if (!shouldLoadHistory || displayMessages.length === 0) return;
@@ -7195,8 +7196,11 @@ export function MessageChatMessageList({
     !compactChatOverlay &&
     displayMessages.length > 0 &&
     !chatScrollPaintReady;
+  // Wide split: pill sits in the message column footer area. Compact overlay: same
+  // pill UX as two-column (placeholderPill / «Введите сообщение»), not GlobalBottomBar.
   const showComposeOverlay =
-    isTwoColumnWide && (chatKind ?? chat.chat_kind) !== "channel";
+    (isTwoColumnWide || compactChatOverlay) &&
+    (chatKind ?? chat.chat_kind) !== "channel";
   const bottomOverlayHeightPx = showComposeOverlay
     ? messageChatBottomOverlayHeightPx(composePillHeightPx)
     : 0;
