@@ -10,9 +10,21 @@ export function isBrowserPageZoomed(): boolean {
   return viewport != null && Math.abs(viewport.scale - 1) > 0.01;
 }
 
-export function syncWebDocumentOverflowForZoom(): void {
+export type SyncWebDocumentOverflowOptions = {
+  /**
+   * Narrow full-screen open chat (`compactChatOpen`): lock the document so only the in-app
+   * {@link HspScrollColumn} scrollport + custom thumb are active — not a second UA scrollbar.
+   * When false, zoom still enables document `overflow: auto` for panning zoomed pages.
+   */
+  lockDocumentScroll?: boolean;
+};
+
+export function syncWebDocumentOverflowForZoom(
+  options?: SyncWebDocumentOverflowOptions,
+): void {
   if (typeof document === "undefined") return;
-  const overflow = isBrowserPageZoomed() ? "auto" : "hidden";
+  const lock = options?.lockDocumentScroll === true;
+  const overflow = lock || !isBrowserPageZoomed() ? "hidden" : "auto";
   document.documentElement.style.overflow = overflow;
   document.body.style.overflow = overflow;
   const root = document.getElementById("root") ?? document.querySelector("[data-expo-root]");

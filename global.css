@@ -173,8 +173,13 @@ html {
   background-color: var(--tg-theme-bg-color, transparent);
 }
 body {
-  height: var(--tg-viewport-height, 100%);
-  min-height: var(--tg-viewport-height, 100%);
+  /*
+   * TMA: Telegram SDK sets --tg-viewport-height. In the mobile browser the var is absent;
+   * `100%` chains badly with nested scroll regions (RN column + document) and shows two
+   * scroll indicators — use dynamic viewport units as the fallback.
+   */
+  height: var(--tg-viewport-height, 100dvh);
+  min-height: var(--tg-viewport-height, 100dvh);
   overflow: auto;
   overscroll-behavior: auto;
   /* TMA: Telegram sets --tg-theme-bg-color early; fills gap before React shows the app (no dark flash). */
@@ -184,8 +189,8 @@ body {
 /* TMA: --tg-viewport-height is set and updated by TMA SDK viewport.bindCssVars() on viewport_changed only. */
 #root,
 [data-expo-root] {
-  height: var(--tg-viewport-height, 100%);
-  min-height: var(--tg-viewport-height, 100%);
+  height: var(--tg-viewport-height, 100dvh);
+  min-height: var(--tg-viewport-height, 100dvh);
   /* `overflow: hidden` on y blocked inner ScrollView + browser pan when zoomed; auto allows both axes when needed. */
   overflow: auto;
   min-width: 100%;

@@ -33,8 +33,25 @@ export function useElementVisible(
       return;
     }
 
+    /**
+     * Prefer the real RN-web scrollport (marked by {@link HspScrollColumn}).
+     * Walking only `overflow-y: auto` hits `body` / `#root` first on mobile Safari
+     * (`global.css` keeps them scrollable for pinch-zoom). Using the document as
+     * the IntersectionObserver root then leaves chat rows permanently
+     * non-intersecting — bubbles stay empty while date dividers still paint.
+     */
     const findScrollRoot = (start: Element): Element | null => {
       let el: Element | null = start.parentElement;
+      while (el) {
+        if (
+          el instanceof HTMLElement &&
+          el.classList.contains("hsp-main-scroll-hide-native-scrollbar")
+        ) {
+          return el;
+        }
+        el = el.parentElement;
+      }
+      el = start.parentElement;
       while (el) {
         const style = getComputedStyle(el);
         const overflowY = style.overflowY;

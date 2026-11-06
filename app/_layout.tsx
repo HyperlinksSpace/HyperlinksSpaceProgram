@@ -290,13 +290,16 @@ function RootContent() {
   }, [backgroundColor, colors.accent, shellPaintReady]);
 
   /** Panel routes + home: clip document scroll unless the page is zoomed (then allow pan). */
+  /** Full-screen chat: always lock document — only the chat column’s custom thumb should scroll. */
   useLayoutEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
 
-    syncWebDocumentOverflowForZoom();
+    const sync = () =>
+      syncWebDocumentOverflowForZoom({ lockDocumentScroll: compactChatOpen });
+    sync();
 
     const viewport = window.visualViewport;
-    const onViewportChange = () => syncWebDocumentOverflowForZoom();
+    const onViewportChange = () => sync();
     viewport?.addEventListener("resize", onViewportChange);
     viewport?.addEventListener("scroll", onViewportChange);
     window.addEventListener("resize", onViewportChange);
@@ -306,7 +309,7 @@ function RootContent() {
       viewport?.removeEventListener("scroll", onViewportChange);
       window.removeEventListener("resize", onViewportChange);
     };
-  }, [shellPaintReady]);
+  }, [shellPaintReady, compactChatOpen]);
 
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");
