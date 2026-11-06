@@ -190,6 +190,12 @@ type Props = {
    * invisible (opacity gated on compact/mobile web).
    */
   panelVisible?: boolean;
+  /**
+   * Full-screen mobile overlay (MessageChatPanel with back). Safari can report
+   * layoutH=0 briefly or stick there — hiding the scroller until open-scroll
+   * settles leaves a blank pane; wide layout keeps the anti-flash gate.
+   */
+  compactChatOverlay?: boolean;
 };
 
 /** Rows kept below the viewport before tail eviction while scrolled up. */
@@ -238,6 +244,7 @@ export function MessageChatMessageList({
   chat,
   colors,
   panelVisible = true,
+  compactChatOverlay = false,
 }: Props) {
   const { t } = useAppStrings();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
@@ -831,6 +838,7 @@ export function MessageChatMessageList({
       pinnedScrollYRef.current = 0;
       openScrollSettledYRef.current = null;
       pinnedLayoutHRef.current = 0;
+      setScrollViewportH(0);
       userScrollingUpRef.current = false;
       virtualTopSpacerPxRef.current = 0;
       layoutSettlingUntilRef.current = 0;
@@ -3928,6 +3936,59 @@ export function MessageChatMessageList({
     },
   };
 
+  // Compact/mobile: overlay is `position: fixed` and can mount before layout has a
+  // non-zero height — HspScrollColumn then stays at layoutH=0, open-scroll never
+  // settles, and the list stays opacity:0. Re-sync when the pane becomes visible.
+  useEffect(() => {
+    if (!panelVisible || !shouldLoadHistory) return;
+    if (Platform.OS !== "web") return;
+    const sync = () => {
+      scrollControllerRef.current?.syncScrollMetricsFromDom();
+      const m = scrollControllerRef.current?.getMetrics();
+      if (m && m.layoutH > 0) {
+        handleOpenScrollMetrics({ layoutH: m.layoutH, contentH: m.contentH });
+      }
+    };
+    const raf = requestAnimationFrame(sync);
+    const t = setTimeout(sync, 50);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
+
+  // Compact overlay: iOS Safari can leave layoutH at 0 — force reveal after rows exist.
+  useEffect(() => {
+    if (!compactChatOverlay || !shouldLoadHistory) return;
+    if (chatScrollPaintReadyRef.current) return;
+    if (displayMessages.length === 0 && loadingInitial) return;
+    const t = setTimeout(() => {
+      if (chatScrollPaintReadyRef.current) return;
+      if (displayMessagesRef.current.length === 0 && !error) return;
+      logPageDisplay("messages_compact_overlay_paint_fallback", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        displayCount: displayMessagesRef.current.length,
+        loadingInitial,
+      });
+      revealChatScroll();
+    }, 450);
+    return () => clearTimeout(t);
+  }, [
+    compactChatOverlay,
+    shouldLoadHistory,
+    displayMessages.length,
+    loadingInitial,
+    error,
+    chat.telegram_chat_id,
+    chat.peer_user_id,
+    chat.title,
+    revealChatScroll,
+  ]);
+
   const bumpVirtualLayoutFromMeasure = useCallback(
     (messageId: number, prevHeight: number, nextHeight: number) => {
       if (!isMessageListVirtualizationActive(displayMessagesRef.current.length)) return;
@@ -4005,27 +4066,6 @@ export function MessageChatMessageList({
       schedulePrependKeepFromLayout,
     ],
   );
-
-  // Compact/mobile: overlay is `position: fixed` and can mount before layout has a
-  // non-zero height — HspScrollColumn then stays at layoutH=0, open-scroll never
-  // settles, and the list stays opacity:0. Re-sync when the pane becomes visible.
-  useEffect(() => {
-    if (!panelVisible || !shouldLoadHistory) return;
-    if (Platform.OS !== "web") return;
-    const sync = () => {
-      scrollControllerRef.current?.syncScrollMetricsFromDom();
-      const m = scrollControllerRef.current?.getMetrics();
-      if (m && m.layoutH > 0) {
-        handleOpenScrollMetrics({ layoutH: m.layoutH, contentH: m.contentH });
-      }
-    };
-    const raf = requestAnimationFrame(sync);
-    const t = setTimeout(sync, 50);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(t);
-    };
-  }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
 
   useEffect(() => {
     if (!shouldLoadHistory || displayMessages.length === 0) return;
@@ -7152,7 +7192,9 @@ export function MessageChatMessageList({
     openScrollPlan.pinMessagesToBottom &&
     (isFollowingBottom || initialScrollInProgress);
   const hideScrollUntilSettled =
-    displayMessages.length > 0 && !chatScrollPaintReady;
+    !compactChatOverlay &&
+    displayMessages.length > 0 &&
+    !chatScrollPaintReady;
   const showComposeOverlay =
     isTwoColumnWide && (chatKind ?? chat.chat_kind) !== "channel";
   const bottomOverlayHeightPx = showComposeOverlay
