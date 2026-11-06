@@ -139,7 +139,13 @@ export function resolveChatListVirtualWindow(
 
   const totalHeight = contentTopInsetPx + totalCount * rowStridePx;
   const maxScrollY = Math.max(0, totalHeight - metrics.layoutH);
-  const scrollY = Math.min(Math.max(0, metrics.scrollY), maxScrollY);
+  let scrollY = Math.min(Math.max(0, metrics.scrollY), maxScrollY);
+  // Near the catalog tail, native scroll metrics often oscillate by ~one rowStridePx
+  // (e.g. layout/subpixel clamp vs sticky end hysteresis). Treat "within one row of
+  // maxScrollY" as fully bottom so start/end indices and spacers don't flip ±1 row.
+  if (maxScrollY > 0 && scrollY >= maxScrollY - rowStridePx + 1e-3) {
+    scrollY = maxScrollY;
+  }
   const rowScrollY = Math.max(0, scrollY - contentTopInsetPx);
 
   const viewportTop = Math.max(0, rowScrollY - overscanPx);

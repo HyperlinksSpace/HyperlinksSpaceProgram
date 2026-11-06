@@ -58,4 +58,33 @@ const LAYOUT = 480;
   assert.ok(jumped.startIndex > top.startIndex, "jumped window should advance");
 }
 
+// Tail sub-row oscillation (e.g. maxScroll clamp noise) must not change the window.
+{
+  const row = 55;
+  const total = 90;
+  const layout = 514;
+  const inset = 0;
+  const totalHeight = inset + total * row;
+  const maxScroll = totalHeight - layout;
+  const base = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScroll, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
+  );
+  const nudgeDown = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScroll - row + 10, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
+  );
+  const nudgeUp = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScroll - row + 20, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
+  );
+  assert.equal(nudgeDown.startIndex, base.startIndex, "tail snap keeps startIndex stable");
+  assert.equal(nudgeDown.endIndex, base.endIndex, "tail snap keeps endIndex stable");
+  assert.equal(nudgeUp.startIndex, base.startIndex);
+  assert.equal(nudgeUp.endIndex, base.endIndex);
+}
+
 console.log("chatListVirtualWindow.stickyJump.test.ts: ok");
