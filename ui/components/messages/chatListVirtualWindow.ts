@@ -1,4 +1,5 @@
 import {
+  LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS,
   LIST_SCROLL_PAGE_SIZE,
   LIST_SCROLL_PREFETCH_LEAD_ROWS,
 } from "../../listScrollPageSize";
@@ -93,21 +94,39 @@ export function chatListCatalogPhantomRowCount(
   return Math.min(remaining, lead);
 }
 
+/**
+ * True when the user has scrolled to within `tailLeadRows` of the bottom of the
+ * **loaded** chat rows (not the phantom tail). That matches "start the next GET
+ * when row ~20 is visible" for a 25-row page.
+ */
 export function chatListCatalogTailWithinPrefetch(
   totalRowCount: number,
+  loadedChatRowCount: number,
   metrics: { scrollY: number; layoutH: number },
-  options: ChatListVirtualWindowOptions & { prefetchPx?: number } = {},
+  options: ChatListVirtualWindowOptions & {
+    tailLeadRows?: number;
+    /** @deprecated Use tailLeadRows; px override if callers need custom slack. */
+    prefetchPx?: number;
+  } = {},
 ): boolean {
   if (totalRowCount <= 0 || metrics.layoutH <= 0) return false;
+  if (loadedChatRowCount <= 0) return false;
   const rowStridePx = options.rowStridePx ?? MESSAGE_ROW_HEIGHT_PX;
   const contentTopInsetPx = options.contentTopInsetPx ?? 0;
-  const prefetchPx = options.prefetchPx ?? rowStridePx * 8;
+  const tailLeadRows =
+    typeof options.tailLeadRows === "number" && Number.isFinite(options.tailLeadRows)
+      ? Math.max(0, options.tailLeadRows)
+      : LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS;
+  const prefetchPx =
+    typeof options.prefetchPx === "number" && Number.isFinite(options.prefetchPx)
+      ? options.prefetchPx
+      : tailLeadRows * rowStridePx;
   const totalHeight = contentTopInsetPx + totalRowCount * rowStridePx;
   const maxScrollY = Math.max(0, totalHeight - metrics.layoutH);
   const scrollY = Math.min(Math.max(0, metrics.scrollY), maxScrollY);
   const viewportBottom = scrollY + metrics.layoutH;
-  const catalogTailY = contentTopInsetPx + totalRowCount * rowStridePx;
-  return viewportBottom >= catalogTailY - prefetchPx;
+  const loadedTailY = contentTopInsetPx + loadedChatRowCount * rowStridePx;
+  return viewportBottom >= loadedTailY - prefetchPx;
 }
 
 export type ChatListVirtualWindowOptions = {
@@ -151,32 +170,43 @@ export function resolveChatListVirtualWindow(
   const viewportTop = Math.max(0, rowScrollY - overscanPx);
   const viewportBottom = rowScrollY + metrics.layoutH + overscanPx;
 
-  let startIndex = Math.max(0, Math.floor(viewportTop / rowStridePx));
+  let rawStartIndex = Math.max(0, Math.floor(viewportTop / rowStridePx));
+  let startIndex = rawStartIndex;
   let endIndex = Math.min(totalCount - 1, Math.ceil(viewportBottom / rowStridePx) - 1);
 
   const sticky = options.stickyWindow;
   // Large scrollbar jumps must not keep a stale sticky band — that leaves empty spacers.
   const stickyJumpPx =
     sticky != null
-      ? Math.abs(startIndex - sticky.startIndex) * rowStridePx
+      ? Math.abs(rawStartIndex - sticky.startIndex) * rowStridePx
       : 0;
   if (sticky && stickyJumpPx <= overscanPx) {
+    // Schmitt trigger on viewportTop (same space as startIndex = floor(viewportTop/row)).
+    // Old bug mixed rowScrollY with row-index thresholds and used min(sticky, raw) on retreat,
+    // so advance hysteresis never applied and startIndex oscillated ±1 at boundaries.
     const hysteresisPx = rowStridePx * 0.35;
-    if (startIndex > sticky.startIndex) {
-      const advanceAt = (sticky.startIndex + 1) * rowStridePx - hysteresisPx;
-      if (rowScrollY < advanceAt) {
-        startIndex = sticky.startIndex;
+    const s = sticky.startIndex;
+    const e = sticky.endIndex;
+    if (rawStartIndex !== s) {
+      if (rawStartIndex > s) {
+        startIndex =
+          viewportTop < (s + 1) * rowStridePx + hysteresisPx ? s : rawStartIndex;
+      } else {
+        // Hold sticky s while viewportTop is still below the upper edge of row s
+        // by less than hysteresis (retreat only after scrolling up past s*row - hyst).
+        startIndex =
+          viewportTop > s * rowStridePx - hysteresisPx ? s : rawStartIndex;
       }
-    } else if (startIndex < sticky.startIndex) {
-      startIndex = Math.min(sticky.startIndex, startIndex);
+    } else {
+      startIndex = s;
     }
-    if (endIndex < sticky.endIndex) {
-      const shrinkAt = sticky.endIndex * rowStridePx - metrics.layoutH + hysteresisPx;
+    if (endIndex < e) {
+      const shrinkAt = e * rowStridePx - metrics.layoutH + hysteresisPx;
       if (rowScrollY > shrinkAt) {
-        endIndex = sticky.endIndex;
+        endIndex = e;
       }
-    } else if (endIndex > sticky.endIndex) {
-      endIndex = Math.max(sticky.endIndex, endIndex);
+    } else if (endIndex > e) {
+      endIndex = Math.max(e, endIndex);
     }
     if (endIndex < startIndex) {
       endIndex = startIndex;

@@ -11,6 +11,7 @@ import {
   takeChatListScrollFetchOffset,
   getChatListLoadedPages,
 } from "../../../telegram/chatListScrollPagination.js";
+import { LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS } from "../../../listScrollPageSize.js";
 
 resetChatListScrollPagination();
 noteChatListPageLoaded(0, 25, 514);
@@ -43,21 +44,28 @@ assert.equal(
 
 {
   const row = 55;
-  const total = 100;
+  const loadedChats = 25;
+  const total = loadedChats + 25;
   const layout = 514;
   const inset = 0;
-  const totalHeight = inset + total * row;
-  const maxScroll = totalHeight - layout;
-  const nearTail = chatListCatalogTailWithinPrefetch(
+  const lead = LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS;
+  const thresholdY = loadedChats * row - lead * row;
+  const nearLoadedTail = chatListCatalogTailWithinPrefetch(
     total,
-    { scrollY: maxScroll - 100, layoutH: layout },
-    { rowStridePx: row, contentTopInsetPx: inset, prefetchPx: row * 9 },
+    loadedChats,
+    { scrollY: thresholdY - row, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
   );
-  assert.equal(nearTail, true, "viewport near catalog tail should prefetch");
+  assert.equal(
+    nearLoadedTail,
+    true,
+    "viewport bottom within tailLeadRows of last loaded row should prefetch",
+  );
   const far = chatListCatalogTailWithinPrefetch(
     total,
+    loadedChats,
     { scrollY: 0, layoutH: layout },
-    { rowStridePx: row, contentTopInsetPx: inset, prefetchPx: row * 9 },
+    { rowStridePx: row, contentTopInsetPx: inset },
   );
   assert.equal(far, false, "viewport at top should not prefetch tail");
 }

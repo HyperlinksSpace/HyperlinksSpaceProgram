@@ -68,7 +68,7 @@ import {
 } from "../messages/messagesArchiveOpen";
 import { ChatListBottomSentinel } from "./messages/ChatListBottomSentinel";
 import { ChatListTopSentinel } from "./messages/ChatListTopSentinel";
-import { LIST_SCROLL_PREFETCH_LEAD_ROWS } from "../listScrollPageSize";
+import { LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS } from "../listScrollPageSize";
 import { CHAT_LIST_API_PAGE_SIZE, useChatListViewport } from "../hooks/useChatListViewport";
 import {
   beginChatListScrollPageFetch,
@@ -3293,9 +3293,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     queueChatListScrollPageFetch,
   ]);
 
-  const chatListScrollPrefetchLeadPx =
-    chatListRowStride * Math.max(LIST_SCROLL_PREFETCH_LEAD_ROWS, CHAT_LIST_API_PAGE_SIZE);
-
   const shouldLoadChatListCatalogFromScroll = useCallback(() => {
     if (listSearchActive || searchListReplacesMain) return false;
     if (!initialChatListRevealed) return false;
@@ -3316,11 +3313,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       chatListShellTopInset + (metrics.contentTopInsetPx ?? 0);
     const tailWithinPrefetch = chatListCatalogTailWithinPrefetch(
       chatListVirtualTotalCount,
+      mainSortedChats.length,
       { scrollY: metrics.scrollY, layoutH },
       {
         rowStridePx: chatListRowStride,
         contentTopInsetPx: listShellTop,
-        prefetchPx: chatListScrollPrefetchLeadPx,
+        tailLeadRows: LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS,
       },
     );
     const listFitsViewport =
@@ -3330,8 +3328,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     cachedChatCount,
     chatListEffectiveLayoutH,
     chatListRowStride,
-    chatListScrollPrefetchLeadPx,
     chatListShellTopInset,
+    mainSortedChats.length,
     chatListTotalCount,
     chatListVirtualTotalCount,
     initialChatListRevealed,
