@@ -718,9 +718,11 @@ function HomeAuthenticatedScreenMain() {
     // Search/recents use bottom-anchored lists — do not page the main chat list.
     if (listSearchActive) return;
     invokeChatListNearBottom();
-    requestAnimationFrame(() => {
-      homeLeftScrollRef.current?.clearNearBottomLatch();
-    });
+    // Do not clear the near-bottom latch here. Clearing it on the next frame while the
+    // user remains parked at max scroll re-armed onNearBottom every frame and collided
+    // with phantom-row / virtual-window height updates (visible row bounce). The latch
+    // resets when scroll leaves the bottom band (HspScrollColumn) or after append restore
+    // (registerChatListScrollPreserveHandle → clearNearBottomLatch).
   }, [homeNavIndex, listSearchActive]);
   /**
    * Archive reveal:

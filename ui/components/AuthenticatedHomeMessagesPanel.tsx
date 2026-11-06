@@ -3046,9 +3046,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       scrollHasMore
         ? chatListCatalogPhantomRowCount(loadedChatCount, serverTotal)
         : 0;
-    const phantomRows = tailLoading
-      ? Math.max(0, basePhantomRows - 1)
-      : basePhantomRows;
+    // While a page is in flight, only one virtual row height of scroll past the loaded
+    // tail (shows loader, avoids a long empty runway / bounce before rows arrive).
+    const phantomRows = tailLoading ? 1 : basePhantomRows;
     return { phantomRows, tailLoading, scrollHasMore };
   }, [
     archiveOpen,

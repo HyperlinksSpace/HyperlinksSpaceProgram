@@ -81,20 +81,32 @@ export function MessageChatOlderHistoryLoadLine({ active, color, edge = "top" }:
         height: lineH,
         zIndex: layout.authenticatedHome.scrollIndicatorOverlayZIndex + 1,
         overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
         ...seamStyle,
       }}
     >
-      <Animated.View
+      <View
         style={{
+          width: "55%",
+          maxWidth: 200,
           height: lineH,
-          backgroundColor: color,
-          opacity: opacityAnim,
-          width: widthAnim.interpolate({
-            inputRange: [0, 1],
-            outputRange: ["0%", "100%"],
-          }),
+          overflow: "hidden",
         }}
-      />
+      >
+        <Animated.View
+          style={{
+            height: lineH,
+            backgroundColor: color,
+            opacity: opacityAnim,
+            alignSelf: "flex-start",
+            width: widthAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ["0%", "100%"],
+            }),
+          }}
+        />
+      </View>
     </View>
   );
 }
