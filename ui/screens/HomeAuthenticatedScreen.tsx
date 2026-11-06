@@ -1889,6 +1889,7 @@ function HomeAuthenticatedScreenMain() {
   }
 
   if (status === "idle" || status === "loading") {
+    const earlyHeaderTopInsetPx = !isWideHome ? layout.authenticatedHome.contentInsetTop : 0;
     return (
       <AuthenticatedHomeChrome edgePadding={isWideHome ? "wide" : false}>
         <HomeAuthenticatedHeaderRow
@@ -1896,60 +1897,40 @@ function HomeAuthenticatedScreenMain() {
           displayName={headerDisplayName}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
+          layoutIsWide={isWideHome}
+          compactStickyTopInsetPx={earlyHeaderTopInsetPx}
         />
         <AuthenticatedHomePaddedBody>
-          <Text style={{ marginBottom: 12, color: colors.primary }}>{t("common.loading")}</Text>
           <View
-          style={{
-            padding: 8,
-            borderRadius: 8,
-            alignSelf: "stretch",
-            borderWidth: 1,
-            borderColor: colors.highlight,
-          }}
-        >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.webAppPollLine", { count: debug.webAppPollCount })}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.initData")}{" "}
-            {debug.initDataLength != null ? String(debug.initDataLength) : t("common.emDash")}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.initDataPoll")} {debug.initDataPollCount}
-          </Text>
-          <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
-            {t("debug.initDataPollNoteLoading")}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
-          </Text>
-          {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>
-              {t("debug.url")} {debug.apiUrl}
+            style={{
+              flex: 1,
+              width: "100%",
+              minHeight: 160,
+              alignItems: "center",
+              justifyContent: "center",
+              paddingVertical: 24,
+            }}
+          >
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text
+              style={{
+                marginTop: 14,
+                fontSize: 14,
+                lineHeight: 20,
+                color: colors.secondary,
+                textAlign: "center",
+              }}
+            >
+              {t("common.loading")}
             </Text>
-          )}
-          {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.fetchMs")} {debug.fetchDurationMs}
-            </Text>
-          )}
-          {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.lastLog")} {debug.lastLog}
-            </Text>
-          )}
-        </View>
+          </View>
         </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );
   }
 
   if (status === "error") {
+    const earlyHeaderTopInsetPx = !isWideHome ? layout.authenticatedHome.contentInsetTop : 0;
     return (
       <AuthenticatedHomeChrome edgePadding={isWideHome ? "wide" : false}>
         <HomeAuthenticatedHeaderRow
@@ -1957,56 +1938,21 @@ function HomeAuthenticatedScreenMain() {
           displayName={headerDisplayName}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
+          layoutIsWide={isWideHome}
+          compactStickyTopInsetPx={earlyHeaderTopInsetPx}
         />
         <AuthenticatedHomePaddedBody>
-        <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
-          {t("home.errors.telegramRegistrationFailed")}
-        </Text>
-        <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>{error}</Text>
-        <View
-          style={{
-            marginTop: 8,
-            padding: 8,
-            borderRadius: 8,
-            alignSelf: "stretch",
-            borderWidth: 1,
-            borderColor: colors.highlight,
-          }}
-        >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })} ·{" "}
-            {t("debug.initData")}{" "}
-            {debug.initDataLength ?? t("common.emDash")}
+          <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
+            {t("home.errors.telegramRegistrationFailed")}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.webAppInitLine", { web: String(debug.webAppPollCount), init: String(debug.initDataPollCount) })}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
-          </Text>
-          {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>
-              {t("debug.url")} {debug.apiUrl}
-            </Text>
-          )}
-          {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.fetchMs")} {debug.fetchDurationMs}
-            </Text>
-          )}
-          {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.lastLog")} {debug.lastLog}
-            </Text>
-          )}
-        </View>
+          <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>{error}</Text>
         </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );
   }
 
   if (status === "dev") {
+    const earlyHeaderTopInsetPx = !isWideHome ? layout.authenticatedHome.contentInsetTop : 0;
     return (
       <AuthenticatedHomeChrome edgePadding={isWideHome ? "wide" : false}>
         <HomeAuthenticatedHeaderRow
@@ -2014,60 +1960,16 @@ function HomeAuthenticatedScreenMain() {
           displayName={headerDisplayName}
           onBalancePress={onHeaderBalancePress}
           walletCurrenciesOpen={walletCurrenciesOpen}
+          layoutIsWide={isWideHome}
+          compactStickyTopInsetPx={earlyHeaderTopInsetPx}
         />
         <AuthenticatedHomePaddedBody>
-        <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
-          {t("home.dev.productTitle")}
-        </Text>
-        <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>
-          {t("home.dev.outsideTelegram")}
-        </Text>
-        <View
-          style={{
-            marginTop: 8,
-            padding: 8,
-            borderRadius: 8,
-            alignSelf: "stretch",
-            borderWidth: 1,
-            borderColor: colors.highlight,
-          }}
-        >
-          <Text style={[typographySansSemibold, { fontSize: 12, color: colors.primary }]}>{t("common.debug")}</Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.hasWebAppLine", { has: String(debug.hasWebAppApi), in: String(debug.inTelegramClient) })}
+          <Text style={[typographySansSemibold, { marginBottom: 8, color: colors.primary }]}>
+            {t("home.dev.productTitle")}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {tf("debug.webAppPollLine", { count: debug.webAppPollCount })}
+          <Text style={{ textAlign: "center", marginBottom: 12, color: colors.primary }}>
+            {t("home.dev.outsideTelegram")}
           </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.initData")}{" "}
-            {debug.initDataLength != null ? String(debug.initDataLength) : t("common.emDash")}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.initDataPoll")} {debug.initDataPollCount}
-          </Text>
-          <Text style={{ fontSize: 10, color: colors.secondary, marginTop: 4 }}>
-            {t("debug.initDataPollNoteError")}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.primary }}>
-            {t("debug.api")} {debug.apiStatus ?? t("common.emDash")} {debug.apiMessage ?? ""}
-          </Text>
-          {debug.apiUrl != null && (
-            <Text style={{ fontSize: 10, color: colors.primary }}>
-              {t("debug.url")} {debug.apiUrl}
-            </Text>
-          )}
-          {debug.fetchDurationMs != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.fetchMs")} {debug.fetchDurationMs}
-            </Text>
-          )}
-          {debug.lastLog != null && (
-            <Text style={{ fontSize: 11, color: colors.primary }}>
-              {t("debug.lastLog")} {debug.lastLog}
-            </Text>
-          )}
-        </View>
         </AuthenticatedHomePaddedBody>
       </AuthenticatedHomeChrome>
     );

@@ -3046,9 +3046,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       scrollHasMore
         ? chatListCatalogPhantomRowCount(loadedChatCount, serverTotal)
         : 0;
-    // While a page is in flight, only one virtual row height of scroll past the loaded
-    // tail (shows loader, avoids a long empty runway / bounce before rows arrive).
-    const phantomRows = tailLoading ? 1 : basePhantomRows;
+    // While a page is in flight, ensure at least one virtual row past the loaded tail
+    // (loader). Never *replace* the prefetch runway with that single row — collapsing
+    // totalCount during fetch destabilizes maxScrollY, the virtual window (start/end flip),
+    // and remounts visible rows (avatar flashes in logs).
+    const phantomRows = Math.max(basePhantomRows, tailLoading ? 1 : 0);
     return { phantomRows, tailLoading, scrollHasMore };
   }, [
     archiveOpen,
