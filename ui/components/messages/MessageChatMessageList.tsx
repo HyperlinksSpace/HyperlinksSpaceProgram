@@ -7192,12 +7192,11 @@ export function MessageChatMessageList({
   const pinMessagesToBottom =
     openScrollPlan.pinMessagesToBottom &&
     (isFollowingBottom || initialScrollInProgress);
-  // Web compact overlay: keep thread visible while open-scroll settles — Safari can stall
-  // metrics long enough that opacity:0 looks like an empty chat (only date dividers / FAB).
+  // RN-native only: hide the scroller until open-scroll settles to avoid a one-frame
+  // jump. On web (incl. mobile Safari) opacity:0 can stick if metrics lag — user sees
+  // only date dividers / chrome while bubbles are painted underneath.
   const hideScrollUntilSettled =
-    !(compactChatOverlay && Platform.OS === "web") &&
-    displayMessages.length > 0 &&
-    !chatScrollPaintReady;
+    Platform.OS !== "web" && displayMessages.length > 0 && !chatScrollPaintReady;
   // Wide split: pill sits in the message column footer area. Compact overlay: same
   // pill UX as two-column (placeholderPill / «Введите сообщение»), not GlobalBottomBar.
   const showComposeOverlay =

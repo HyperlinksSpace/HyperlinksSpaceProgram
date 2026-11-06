@@ -21,8 +21,8 @@ import {
 import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
-import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
 import { useCompactChatOverlayGate } from "../components/CompactChatOverlayContext";
+import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
 import { MessagesColumnFooter } from "../components/MessagesColumnFooter";
 import { useMessagesChatListSearch } from "../messages/MessagesChatListSearchContext";
 import { SwapColumnFooter } from "../components/swap/SwapColumnFooter";
@@ -2500,6 +2500,9 @@ function HomeAuthenticatedScreenMain() {
               onBack={closeCompactMessagesChat}
               backAccessibilityLabel={t("messages.archive.back")}
             />
+          </View>
+          <View style={{ width: "100%", flexShrink: 0, alignSelf: "stretch" }}>
+            <GlobalBottomBar />
           </View>
         </View>
       ) : null}
