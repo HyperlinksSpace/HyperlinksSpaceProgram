@@ -664,8 +664,9 @@ function HomeAuthenticatedScreenMain() {
     isChatListBottomLoaderActive,
     () => false,
   );
-  const showChatListBottomLoader = chatListBottomLoaderActive && homeNavIndex === 1;
   const homeLeftScrollRef = useRef<HspScrollColumnHandle | null>(null);
+  /** Preserve chat-list scroll when compact full-screen chat opens so back restores the prior view. */
+  const compactHomeLeftScrollYRef = useRef(0);
   useEffect(() => {
     registerChatListScrollPreserveHandle({
       captureScrollAnchor: () =>
@@ -1169,11 +1170,29 @@ function HomeAuthenticatedScreenMain() {
     selectedMessageChat != null && middleColumnFocus === "chat";
   const wideMessagesChatOpen = isWideHome && messagesChatOpen;
   const compactMessagesChatOpen = !isWideHome && messagesChatOpen;
+  const showChatListBottomLoader =
+    chatListBottomLoaderActive && homeNavIndex === 1 && !compactMessagesChatOpen;
   const { setCompactChatOpen } = useCompactChatOverlayGate();
   useEffect(() => {
     setCompactChatOpen(compactMessagesChatOpen);
     return () => setCompactChatOpen(false);
   }, [compactMessagesChatOpen, setCompactChatOpen]);
+
+  const prevCompactMessagesChatOpenRef = useRef(false);
+  useEffect(() => {
+    if (compactMessagesChatOpen && !prevCompactMessagesChatOpenRef.current) {
+      compactHomeLeftScrollYRef.current =
+        homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
+    }
+    if (!compactMessagesChatOpen && prevCompactMessagesChatOpenRef.current) {
+      const y = Math.max(0, compactHomeLeftScrollYRef.current);
+      requestAnimationFrame(() => {
+        homeLeftScrollRef.current?.scrollToY(y);
+      });
+    }
+    prevCompactMessagesChatOpenRef.current = compactMessagesChatOpen;
+  }, [compactMessagesChatOpen]);
+
   const tradePanelActive =
     !wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "trade";
   // Left nav only switches the first column; chat pane is independent until header menu is used.
