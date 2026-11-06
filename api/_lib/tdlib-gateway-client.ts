@@ -2203,7 +2203,7 @@ export async function gatewayFetchUserProfileExtras(
         error: typeof json.error === "string" ? json.error : "profile_extras_unavailable",
       };
     }
-    const extras = json.extras;
+    const extras = json.extras as Record<string, unknown> | null | undefined;
     if (!extras || typeof extras !== "object") {
       return { ok: false, error: "profile_extras_unavailable" };
     }
@@ -2761,6 +2761,10 @@ export async function gatewaySearchRecentChats(
   chatIds: number[];
   peerUserIds: number[];
   chats: TelegramChatListSearchHit[];
+  directChats: TelegramChatListSearchHit[];
+  globalChats: TelegramChatListSearchHit[];
+  messageChats: TelegramChatListSearchHit[];
+  messageCount: number;
   error?: string;
 }> {
   const params = new URLSearchParams({ telegramUsername });
@@ -2773,6 +2777,10 @@ export async function gatewaySearchRecentChats(
         chatIds: [],
         peerUserIds: [],
         chats: [],
+        directChats: [],
+        globalChats: [],
+        messageChats: [],
+        messageCount: 0,
         error: typeof json.error === "string" ? json.error : "recent_chats_failed",
       };
     }
@@ -2782,6 +2790,10 @@ export async function gatewaySearchRecentChats(
       chatIds: [],
       peerUserIds: [],
       chats: [],
+      directChats: [],
+      globalChats: [],
+      messageChats: [],
+      messageCount: 0,
       error: err instanceof Error ? err.message : "gateway_unreachable",
     };
   }

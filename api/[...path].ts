@@ -18,7 +18,7 @@
 type NodeRes = {
   setHeader(name: string, value: string): void;
   status(code: number): void;
-  end(body?: string): void;
+  end(body?: string | Buffer): void;
 };
 
 type ApiHandler = (

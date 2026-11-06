@@ -174,8 +174,14 @@ export async function handleRequest(request: Request): Promise<Response> {
 /** Legacy (req, res) handler; also used when Vercel passes (request, context). */
 export interface NodeRes {
   setHeader(name: string, value: string): void;
-  status(code: number): { json(data: unknown): void; end(): void };
-  end(): void;
+  status(code: number): void;
+  end(body?: string | Buffer): void;
+}
+
+function legacyJson(res: NodeRes, statusCode: number, data: object): void {
+  res.status(statusCode);
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
 }
 
 export interface NodeReq {
@@ -188,7 +194,8 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(200);
+    res.end();
     return;
   }
   if (req.method === 'GET') {
@@ -196,14 +203,14 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     const current = await getWebhookInfo();
     if (BASE_URL && BOT_TOKEN) {
       const result = await setWebhook();
-      res.status(200).json({
+      legacyJson(res, 200, {
         ok: true,
         webhook_set: result?.ok === true,
         url: expectedUrl,
         telegram_has: current.url || '(none)',
       });
     } else {
-      res.status(200).json({
+      legacyJson(res, 200, {
         ok: true,
         service: 'telegram-bot',
         bot: !!BOT_TOKEN,
@@ -215,11 +222,11 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     return;
   }
   if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, error: 'method_not_allowed' });
+    legacyJson(res, 405, { ok: false, error: 'method_not_allowed' });
     return;
   }
   if (!BOT_TOKEN || !bot) {
-    res.status(500).json({ ok: false, error: 'BOT_TOKEN not set' });
+    legacyJson(res, 500, { ok: false, error: 'BOT_TOKEN not set' });
     return;
   }
   let update: TelegramUpdate = req.body as TelegramUpdate;
@@ -227,12 +234,12 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     try {
       update = JSON.parse(update) as TelegramUpdate;
     } catch {
-      res.status(400).json({ ok: false, error: 'invalid_body' });
+      legacyJson(res, 400, { ok: false, error: 'invalid_body' });
       return;
     }
   }
   if (!update || typeof update !== 'object') {
-    res.status(400).json({ ok: false, error: 'invalid_body' });
+    legacyJson(res, 400, { ok: false, error: 'invalid_body' });
     return;
   }
   try {
@@ -246,10 +253,10 @@ async function legacyHandler(req: NodeReq, res: NodeRes): Promise<void> {
     }
   } catch (err) {
     appError('[bot]', 'handler_error', undefined, err);
-    res.status(500).json({ ok: false, error: 'handler_error' });
+    legacyJson(res, 500, { ok: false, error: 'handler_error' });
     return;
   }
-  res.status(200).json({ ok: true });
+  legacyJson(res, 200, { ok: true });
 }
 
 export default async function handler(

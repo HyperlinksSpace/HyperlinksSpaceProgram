@@ -269,7 +269,14 @@ function isSecureRequest(
 async function jsonTelegramRegisterSuccess(
   body: Record<string, unknown>,
   telegramUsername: string,
-  request: Request | { headers?: Record<string, string | string[] | undefined>; url?: string },
+  request:
+    | Request
+    | {
+        headers?: Record<string, string | string[] | undefined>;
+        url?: string;
+        json?: () => Promise<unknown>;
+        body?: unknown;
+      },
   issueSession: boolean,
 ): Promise<Response> {
   const telegram_messages_connected = await isTelegramMessagesConnected(telegramUsername);

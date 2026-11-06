@@ -66,7 +66,11 @@ function utcDayKeys(days: number): string[] {
 }
 
 /** Spread a monthly $ evenly across calendar days (marked source=env). */
-function spreadMonthly(usdMonth: number, days: number, source: "env" | "unavailable"): ProviderDaySpend[] {
+function spreadMonthly(
+  usdMonth: number,
+  days: number,
+  source: ProviderDaySpend["source"],
+): ProviderDaySpend[] {
   const per = usdMonth / Math.max(1, days);
   return utcDayKeys(days).map((day) => ({ day, usd: round4(per), source }));
 }

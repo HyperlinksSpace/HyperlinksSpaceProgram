@@ -4,6 +4,8 @@
 import { sql } from "./start.js";
 import {
   DEFAULT_PRO_CATALOG,
+  normalizeFeatureEnabled,
+  normalizeFeatureWeights,
   normalizeProCatalog,
   type ProCatalogConfig,
   type ProFeatureEnabledMap,
@@ -102,10 +104,10 @@ export async function getProCatalogConfig(): Promise<ProCatalogConfig> {
         : DEFAULT_PRO_CATALOG.yearDiscountPct,
     featureWeights: weightsEmpty
       ? DEFAULT_PRO_CATALOG.featureWeights
-      : (weightsRaw as Partial<ProFeatureWeightMap>),
+      : normalizeFeatureWeights(weightsRaw as Partial<ProFeatureWeightMap>),
     featureEnabled: enabledEmpty
       ? DEFAULT_PRO_CATALOG.featureEnabled
-      : (enabledRaw as Partial<ProFeatureEnabledMap>),
+      : normalizeFeatureEnabled(enabledRaw as Partial<ProFeatureEnabledMap>),
   });
 }
 

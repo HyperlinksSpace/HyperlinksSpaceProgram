@@ -43,6 +43,8 @@ import {
   buildProPlansFromCatalog,
   computeLaunchDiscountUsd,
   computeProMonthPrice,
+  normalizeFeatureEnabled,
+  normalizeFeatureWeights,
   retailFromCogs,
   type ProCatalogConfig,
   type ProFeatureEnabledMap,
@@ -452,12 +454,18 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
       proMonthlyTokenLimit?: unknown;
       onDemandUsdPer1kTokens?: unknown;
       targetProfitMargin?: unknown;
+      profitMarginUsd?: unknown;
       quarterDiscountPct?: unknown;
       yearDiscountPct?: unknown;
       featureEnabled?: unknown;
       featureWeights?: unknown;
       applyMarginToOnDemand?: unknown;
       walletAddress?: unknown;
+      username?: unknown;
+      planId?: unknown;
+      months?: unknown;
+      priceUsd?: unknown;
+      memo?: unknown;
     }>(request);
     const action =
       typeof body.action === "string" ? body.action.trim().toLowerCase() : "login";
@@ -508,10 +516,14 @@ async function handler(request: Request, res?: NodeRes): Promise<Response | void
         patch.yearDiscountPct = body.yearDiscountPct;
       }
       if (body.featureEnabled && typeof body.featureEnabled === "object") {
-        patch.featureEnabled = body.featureEnabled as Partial<ProFeatureEnabledMap>;
+        patch.featureEnabled = normalizeFeatureEnabled(
+          body.featureEnabled as Partial<ProFeatureEnabledMap>,
+        );
       }
       if (body.featureWeights && typeof body.featureWeights === "object") {
-        patch.featureWeights = body.featureWeights as Partial<ProFeatureWeightMap>;
+        patch.featureWeights = normalizeFeatureWeights(
+          body.featureWeights as Partial<ProFeatureWeightMap>,
+        );
       }
       const proCatalog = await updateProCatalogConfig(patch);
       let aiLimits = await getAiLimitsConfig().catch(() => null);
