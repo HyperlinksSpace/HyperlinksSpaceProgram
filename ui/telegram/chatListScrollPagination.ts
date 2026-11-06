@@ -8,6 +8,13 @@ let hasMore = true;
 let loadedPages = 0;
 let scrollFetchInFlight = false;
 let generation = 0;
+/**
+ * First GET at offset 0 establishes page 1. Silent polls repeat offset 0 with new
+ * revision data — they must not call {@link noteChatListPageLoaded} as extra pages
+ * or scroll loads will keep requesting offset 25 while the cursor thinks page 2
+ * is already done.
+ */
+let offset0CatalogPageCommitted = false;
 
 const MAX_RANKING_REFRESH_PAGES = 8;
 
@@ -17,6 +24,7 @@ export function resetChatListScrollPagination(): void {
   hasMore = true;
   loadedPages = 0;
   scrollFetchInFlight = false;
+  offset0CatalogPageCommitted = false;
 }
 
 export function chatListScrollPaginationGeneration(): number {
@@ -135,6 +143,16 @@ export function noteChatListPageLoaded(
       hasMore = false;
     }
     return;
+  }
+  // Ignore duplicate offset-0 catalog responses (metronome / SSE flush / poll).
+  if (pageOffset === 0 && offset0CatalogPageCommitted) {
+    if (totalCount > 0 && loadedPages >= 1) {
+      hasMore = loadedPages * CHAT_LIST_API_PAGE_SIZE < totalCount;
+    }
+    return;
+  }
+  if (pageOffset === 0) {
+    offset0CatalogPageCommitted = true;
   }
   const pageIndex = Math.floor(pageOffset / CHAT_LIST_API_PAGE_SIZE) + 1;
   loadedPages = Math.max(loadedPages, pageIndex);

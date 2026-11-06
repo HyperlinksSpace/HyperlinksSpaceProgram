@@ -14,6 +14,8 @@ import {
 
 resetChatListScrollPagination();
 noteChatListPageLoaded(0, 25, 514);
+// Silent polls repeat offset=0 — must not advance the scroll cursor.
+noteChatListPageLoaded(0, 18, 514);
 assert.equal(getChatListLoadedPages(), 1);
 assert.equal(takeChatListScrollFetchOffset(), 25);
 noteChatListPageLoaded(25, 25, 514);
