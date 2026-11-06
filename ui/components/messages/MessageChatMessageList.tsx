@@ -7348,9 +7348,7 @@ export function MessageChatMessageList({
               colors={colors}
               columnWidthPx={innerWidthPx}
               selfUserId={selfUserId}
-              contentActive={
-                Platform.OS === "web" ? true : chatScrollPaintReady
-              }
+              contentActive={chatScrollPaintReady}
             />
           </View>
           );

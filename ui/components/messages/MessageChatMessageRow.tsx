@@ -800,7 +800,11 @@ export function MessageChatMessageRow({
                   Boolean(chat.peer_username?.toLowerCase().endsWith("bot")))
               }
               emojiContentActive={contentActive && rowInView}
-              mediaFetchEnabled={contentActive}
+              mediaFetchEnabled={
+                // Web (esp. mobile Safari): never arm media HTTP for off-screen rows —
+                // forcing all rows to fetch at once freezes the tab; text still paints.
+                Platform.OS === "web" ? contentActive && rowInView : contentActive
+              }
               deferFullMediaFetch={
                 // All kinds: full bytes only near the viewport. Painted-but-far
                 // rows used to fetch every full JPEG at once and freeze the tab.
