@@ -1019,7 +1019,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     startIndex: number;
     endIndex: number;
   } | null>(null);
-  const chatListVirtualScrollSyncRef = useRef({ topSpacerPx: 0, startIndex: 0 });
   const chatListAppendRestoreAnchorRef = useRef<HspScrollAnchor | null>(null);
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
   const loadChatsRef = useRef<
@@ -3100,40 +3099,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     searchListReplacesMain,
   ]);
   chatListVirtualWindowRef.current = chatListVirtualWindow;
-
-  useLayoutEffect(() => {
-    if (!chatListVirtualWindow.enabled) {
-      chatListVirtualScrollSyncRef.current = {
-        topSpacerPx: 0,
-        startIndex: 0,
-      };
-      return;
-    }
-    const prev = chatListVirtualScrollSyncRef.current;
-    const deltaTop = chatListVirtualWindow.topSpacerPx - prev.topSpacerPx;
-    if (
-      deltaTop !== 0 &&
-      Math.abs(deltaTop) <= chatListRowStride * 2 &&
-      chatListVirtualWindow.startIndex > prev.startIndex
-    ) {
-      const anchor = captureChatListScrollPreserveAnchor();
-      if (anchor) {
-        restoreChatListScrollPreserveAnchor({
-          ...anchor,
-          scrollTop: anchor.scrollTop + deltaTop,
-        });
-      }
-    }
-    chatListVirtualScrollSyncRef.current = {
-      topSpacerPx: chatListVirtualWindow.topSpacerPx,
-      startIndex: chatListVirtualWindow.startIndex,
-    };
-  }, [
-    chatListRowStride,
-    chatListVirtualWindow.enabled,
-    chatListVirtualWindow.startIndex,
-    chatListVirtualWindow.topSpacerPx,
-  ]);
 
   const chatListVirtualLogRef = useRef({
     enabled: false,
