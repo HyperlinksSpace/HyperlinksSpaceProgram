@@ -87,4 +87,26 @@ const LAYOUT = 480;
   assert.equal(nudgeUp.endIndex, base.endIndex);
 }
 
+// Sub-row gap just below one-row-from-max (e.g. maxScroll - rowStride + 0.2) must still snap.
+{
+  const row = 55;
+  const total = 118;
+  const layout = 514;
+  const inset = 0;
+  const totalHeight = inset + total * row;
+  const maxScroll = totalHeight - layout;
+  const base = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScroll, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
+  );
+  const floatNoise = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScroll - row + 0.2, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset },
+  );
+  assert.equal(floatNoise.startIndex, base.startIndex, "sub-row tail noise snaps startIndex");
+  assert.equal(floatNoise.endIndex, base.endIndex, "sub-row tail noise snaps endIndex");
+}
+
 console.log("chatListVirtualWindow.stickyJump.test.ts: ok");

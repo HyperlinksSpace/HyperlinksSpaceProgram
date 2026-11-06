@@ -160,9 +160,14 @@ export function resolveChatListVirtualWindow(
   const maxScrollY = Math.max(0, totalHeight - metrics.layoutH);
   let scrollY = Math.min(Math.max(0, metrics.scrollY), maxScrollY);
   // Near the catalog tail, native scroll metrics often oscillate by ~one rowStridePx
-  // (e.g. layout/subpixel clamp vs sticky end hysteresis). Treat "within one row of
-  // maxScrollY" as fully bottom so start/end indices and spacers don't flip ±1 row.
-  if (maxScrollY > 0 && scrollY >= maxScrollY - rowStridePx + 1e-3) {
+  // (e.g. layout/subpixel clamp vs sticky end hysteresis). Treat "within about one row
+  // of maxScrollY" as fully bottom so start/end indices and spacers don't flip ±1 row.
+  // Use a few px slack so values like maxScroll - row + 0.2 (float noise) still snap.
+  const tailSnapSlackPx = 4;
+  if (
+    maxScrollY > 0 &&
+    maxScrollY - scrollY <= rowStridePx + tailSnapSlackPx
+  ) {
     scrollY = maxScrollY;
   }
   const rowScrollY = Math.max(0, scrollY - contentTopInsetPx);
@@ -208,6 +213,15 @@ export function resolveChatListVirtualWindow(
     } else if (endIndex > e) {
       endIndex = Math.max(e, endIndex);
     }
+    if (endIndex < startIndex) {
+      endIndex = startIndex;
+    }
+  }
+
+  // When snapped to the scroll bottom, always include the last virtual row so sticky
+  // endIndex shrink logic cannot alternate 135/136 with subpixel scrollY.
+  if (maxScrollY > 0 && scrollY >= maxScrollY - 1e-6) {
+    endIndex = totalCount - 1;
     if (endIndex < startIndex) {
       endIndex = startIndex;
     }
