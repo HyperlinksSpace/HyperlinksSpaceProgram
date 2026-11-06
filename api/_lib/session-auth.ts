@@ -3,17 +3,26 @@ import { sha256Hex } from "./telegram-oidc.js";
 
 const SESSION_COOKIE = "hs_auth_session";
 
-type AnyRequest = Request | { method?: string; headers?: Record<string, string | string[] | undefined>; url?: string };
+/** Plain objects may use Web `Headers` or a Node-style lower-case header record. */
+type AnyRequest =
+  | Request
+  | {
+      method?: string;
+      headers?: Headers | Record<string, string | string[] | undefined>;
+      url?: string;
+    };
 
 function getHeader(request: AnyRequest, name: string): string | null {
-  const lower = name.toLowerCase();
-  const webHeaders = (request as Request).headers as Headers | undefined;
-  if (webHeaders && typeof webHeaders.get === "function") {
-    return webHeaders.get(name);
+  const headers =
+    request instanceof Request
+      ? request.headers
+      : (request as { headers?: Headers | Record<string, string | string[] | undefined> }).headers;
+  if (!headers) return null;
+  if (typeof headers.get === "function") {
+    return headers.get(name);
   }
-  const nodeHeaders = (request as { headers?: Record<string, string | string[] | undefined> }).headers;
-  if (!nodeHeaders) return null;
-  const raw = nodeHeaders[lower];
+  const lower = name.toLowerCase();
+  const raw = (headers as Record<string, string | string[] | undefined>)[lower];
   if (Array.isArray(raw)) return raw[0] ?? null;
   return typeof raw === "string" ? raw : null;
 }
