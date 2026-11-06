@@ -177,7 +177,11 @@ export function resolveChatListVirtualWindow(
 
   let rawStartIndex = Math.max(0, Math.floor(viewportTop / rowStridePx));
   let startIndex = rawStartIndex;
-  let endIndex = Math.min(totalCount - 1, Math.ceil(viewportBottom / rowStridePx) - 1);
+  const rawEndIndex = Math.min(
+    totalCount - 1,
+    Math.ceil(viewportBottom / rowStridePx) - 1,
+  );
+  let endIndex = rawEndIndex;
 
   const sticky = options.stickyWindow;
   // Large scrollbar jumps must not keep a stale sticky band — that leaves empty spacers.
@@ -216,6 +220,14 @@ export function resolveChatListVirtualWindow(
     if (endIndex < startIndex) {
       endIndex = startIndex;
     }
+  }
+
+  // If the unscrolled viewport already covers the last virtual row, never keep endIndex
+  // stuck one row short. Sticky shrink (endIndex = e) can lag by one frame while phantom
+  // tail rows grow totalCount — same mechanics as FlatList tail prefetch, but without
+  // oscillating endIndex / revealCount vs loaded chat rows in logs.
+  if (rawEndIndex >= totalCount - 1) {
+    endIndex = totalCount - 1;
   }
 
   // When snapped to the scroll bottom, always include the last virtual row so sticky

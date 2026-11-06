@@ -23,10 +23,7 @@ import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext"
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
-import {
-  CompactChatOverlayProvider,
-  useCompactChatOverlayGate,
-} from "../ui/components/CompactChatOverlayContext";
+import { CompactChatOverlayProvider } from "../ui/components/CompactChatOverlayContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
 import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
@@ -262,8 +259,6 @@ function RootContent() {
   const { width: windowWidth } = useWindowDimensions();
   const { setFooterDockedToScreenEdge } = useBottomBarLayout();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
-  const { compactChatOpen } = useCompactChatOverlayGate();
-
   useEffect(() => {
     setFooterDockedToScreenEdge(bottomBarDock === "screenFooter");
   }, [bottomBarDock, setFooterDockedToScreenEdge]);
@@ -436,7 +431,7 @@ function RootContent() {
             authReady={authReady}
             themeBgReady={themeBgReady}
             useTelegramTheme={useTelegramTheme}
-            suppressScreenFooter={compactChatOpen}
+            suppressScreenFooter={false}
           />
         ) : null
       }

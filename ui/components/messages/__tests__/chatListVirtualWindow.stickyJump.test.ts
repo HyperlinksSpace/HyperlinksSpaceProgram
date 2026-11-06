@@ -109,4 +109,25 @@ const LAYOUT = 480;
   assert.equal(floatNoise.endIndex, base.endIndex, "sub-row tail noise snaps endIndex");
 }
 
+// Sticky shrink must not hide the last row when the raw viewport already includes it
+// (at maxScroll, rawEndIndex is last; old logic could keep endIndex stuck at sticky e).
+{
+  const row = 55;
+  const total = 150;
+  const layout = 669;
+  const inset = 0;
+  const maxScrollY = Math.max(0, inset + total * row - layout);
+  const sticky = { startIndex: 88, endIndex: 121 };
+  const scrolled = resolveChatListVirtualWindow(
+    total,
+    { scrollY: maxScrollY, layoutH: layout },
+    { rowStridePx: row, contentTopInsetPx: inset, stickyWindow: sticky },
+  );
+  assert.equal(
+    scrolled.endIndex,
+    total - 1,
+    "at scroll bottom, endIndex includes last virtual row even if sticky end lags",
+  );
+}
+
 console.log("chatListVirtualWindow.stickyJump.test.ts: ok");
