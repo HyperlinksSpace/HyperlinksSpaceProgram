@@ -183,6 +183,13 @@ import { telegramEmojiDebug } from "./telegramEmojiDebug";
 type Props = {
   chat: MessageChatRowData;
   colors: ThemeColors;
+  /**
+   * False while the chat pane is mounted but not shown (e.g. wide home with another
+   * middle-column panel, or overlay before paint). When this flips true, scroll
+   * metrics must re-sync or open-scroll can stay at layoutH=0 and leave messages
+   * invisible (opacity gated on compact/mobile web).
+   */
+  panelVisible?: boolean;
 };
 
 /** Rows kept below the viewport before tail eviction while scrolled up. */
@@ -227,7 +234,11 @@ function applyHistoryMetaToSelectedChat(
   });
 }
 
-export function MessageChatMessageList({ chat, colors }: Props) {
+export function MessageChatMessageList({
+  chat,
+  colors,
+  panelVisible = true,
+}: Props) {
   const { t } = useAppStrings();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const isTwoColumnWide = splitMetrics?.columnCount === 2;
@@ -3994,6 +4005,27 @@ export function MessageChatMessageList({ chat, colors }: Props) {
       schedulePrependKeepFromLayout,
     ],
   );
+
+  // Compact/mobile: overlay is `position: fixed` and can mount before layout has a
+  // non-zero height — HspScrollColumn then stays at layoutH=0, open-scroll never
+  // settles, and the list stays opacity:0. Re-sync when the pane becomes visible.
+  useEffect(() => {
+    if (!panelVisible || !shouldLoadHistory) return;
+    if (Platform.OS !== "web") return;
+    const sync = () => {
+      scrollControllerRef.current?.syncScrollMetricsFromDom();
+      const m = scrollControllerRef.current?.getMetrics();
+      if (m && m.layoutH > 0) {
+        handleOpenScrollMetrics({ layoutH: m.layoutH, contentH: m.contentH });
+      }
+    };
+    const raf = requestAnimationFrame(sync);
+    const t = setTimeout(sync, 50);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t);
+    };
+  }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
 
   useEffect(() => {
     if (!shouldLoadHistory || displayMessages.length === 0) return;

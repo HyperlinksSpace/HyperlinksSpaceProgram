@@ -473,7 +473,12 @@ export function MessageChatPanel({
         backAccessibilityLabel={backAccessibilityLabel}
       />
       <MessageSubtreeErrorBoundary resetKey={chat.telegram_chat_id}>
-        <MessageChatMessageList key={chat.telegram_chat_id} chat={chat} colors={colors} />
+        <MessageChatMessageList
+          key={chat.telegram_chat_id}
+          chat={chat}
+          colors={colors}
+          panelVisible={visible}
+        />
       </MessageSubtreeErrorBoundary>
     </View>
   );
