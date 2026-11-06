@@ -22,6 +22,7 @@ import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
 import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
+import { useCompactChatOverlayGate } from "../components/CompactChatOverlayContext";
 import { MessagesColumnFooter } from "../components/MessagesColumnFooter";
 import { useMessagesChatListSearch } from "../messages/MessagesChatListSearchContext";
 import { SwapColumnFooter } from "../components/swap/SwapColumnFooter";
@@ -1168,6 +1169,11 @@ function HomeAuthenticatedScreenMain() {
     selectedMessageChat != null && middleColumnFocus === "chat";
   const wideMessagesChatOpen = isWideHome && messagesChatOpen;
   const compactMessagesChatOpen = !isWideHome && messagesChatOpen;
+  const { setCompactChatOpen } = useCompactChatOverlayGate();
+  useEffect(() => {
+    setCompactChatOpen(compactMessagesChatOpen);
+    return () => setCompactChatOpen(false);
+  }, [compactMessagesChatOpen, setCompactChatOpen]);
   const tradePanelActive =
     !wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "trade";
   // Left nav only switches the first column; chat pane is independent until header menu is used.

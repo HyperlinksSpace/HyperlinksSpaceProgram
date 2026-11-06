@@ -23,6 +23,10 @@ import { AppStringsProvider, useAppStrings } from "../locales/AppStringsContext"
 import { GlobalLogoBarWithFallback } from "../ui/components/GlobalLogoBarWithFallback";
 import { GlobalBottomBar } from "../ui/components/GlobalBottomBar";
 import { BottomBarLayoutProvider, useBottomBarLayout } from "../ui/components/BottomBarLayoutContext";
+import {
+  CompactChatOverlayProvider,
+  useCompactChatOverlayGate,
+} from "../ui/components/CompactChatOverlayContext";
 import { FloatingShield } from "../ui/components/FloatingShield";
 import { TelegramConnectFooterStrip } from "../ui/components/TelegramConnectFooterStrip";
 import { TelegramMessagesConnectionProvider } from "../ui/telegram/TelegramMessagesConnectionContext";
@@ -101,6 +105,7 @@ export default function RootLayout() {
             <SettingsProvider>
             <ProfileProvider>
             <BottomBarLayoutProvider>
+            <CompactChatOverlayProvider>
             <TonConnectProvider>
             <MessagesChatListSearchProvider>
             {Platform.OS === "ios" ? (
@@ -116,6 +121,7 @@ export default function RootLayout() {
             )}
             </MessagesChatListSearchProvider>
             </TonConnectProvider>
+            </CompactChatOverlayProvider>
             </BottomBarLayoutProvider>
             </ProfileProvider>
             </SettingsProvider>
@@ -153,6 +159,8 @@ function RootScreenFooter({
   authReady,
   themeBgReady,
   useTelegramTheme,
+  /** Narrow home full-screen chat: hide footer so in-chat compose is not covered (paint order above Stack). */
+  suppressScreenFooter,
 }: {
   pathname: string | null | undefined;
   bottomBarDock: ReturnType<typeof authenticatedHomeBottomBarDock>;
@@ -161,8 +169,10 @@ function RootScreenFooter({
   authReady: boolean;
   themeBgReady: boolean;
   useTelegramTheme: boolean;
+  suppressScreenFooter: boolean;
 }) {
   if (Platform.OS === "web" && useTelegramTheme && !themeBgReady) return null;
+  if (suppressScreenFooter) return null;
 
   if (pathname === "/founder") return null;
   if (pathname === "/owner-deploy") return null;
@@ -252,6 +262,7 @@ function RootContent() {
   const { width: windowWidth } = useWindowDimensions();
   const { setFooterDockedToScreenEdge } = useBottomBarLayout();
   const bottomBarDock = authenticatedHomeBottomBarDock(pathname, windowWidth, isAuthenticated);
+  const { compactChatOpen } = useCompactChatOverlayGate();
 
   useEffect(() => {
     setFooterDockedToScreenEdge(bottomBarDock === "screenFooter");
@@ -425,6 +436,7 @@ function RootContent() {
             authReady={authReady}
             themeBgReady={themeBgReady}
             useTelegramTheme={useTelegramTheme}
+            suppressScreenFooter={compactChatOpen}
           />
         ) : null
       }

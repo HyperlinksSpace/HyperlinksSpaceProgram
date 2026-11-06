@@ -7192,8 +7192,10 @@ export function MessageChatMessageList({
   const pinMessagesToBottom =
     openScrollPlan.pinMessagesToBottom &&
     (isFollowingBottom || initialScrollInProgress);
+  // Web compact overlay: keep thread visible while open-scroll settles — Safari can stall
+  // metrics long enough that opacity:0 looks like an empty chat (only date dividers / FAB).
   const hideScrollUntilSettled =
-    !compactChatOverlay &&
+    !(compactChatOverlay && Platform.OS === "web") &&
     displayMessages.length > 0 &&
     !chatScrollPaintReady;
   // Wide split: pill sits in the message column footer area. Compact overlay: same
