@@ -5,10 +5,10 @@ import {
   clearAuthenticatedHomeSelectedChat,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { useCompactChatOverlayGate } from "../components/CompactChatOverlayGate";
+import { useCompactChatOverlayGate } from "../components/CompactChatOverlayContext";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { MessageChatPanel } from "../components/messages/MessageChatPanel";
-import { useAppStrings } from "../locales/AppStringsContext";
+import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
 import { layout, useColors } from "../theme";
 import { useTelegramWebAppBackButton } from "../telegram/useTelegramWebAppBackButton";
