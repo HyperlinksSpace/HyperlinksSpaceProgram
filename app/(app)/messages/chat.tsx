@@ -1,7 +1,7 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef } from "react";
 import { useAuth } from "../../../auth/AuthContext";
-import { useAuthenticatedHomeRouteWideLayout } from "../../../ui/authenticatedHomeLayoutWidth";
+import { useAuthenticatedHomeCompactChatLayout } from "../../../ui/authenticatedHomeLayoutWidth";
 import {
   getAuthenticatedHomeSelectedChatSnapshot,
   useAuthenticatedHomeSelectedChat,
@@ -11,17 +11,17 @@ import { MessageChatCompactScreen } from "../../../ui/screens/MessageChatCompact
 
 export default function MessageChatRoute() {
   const { isAuthenticated, authReady } = useAuth();
-  const isWide = useAuthenticatedHomeRouteWideLayout();
+  const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const chat = useAuthenticatedHomeSelectedChat();
   const redirectedRef = useRef(false);
 
   useEffect(() => {
-    if (!authReady || !isAuthenticated || isWide) return;
+    if (!authReady || !isAuthenticated || !compactChatLayout) return;
     if (getAuthenticatedHomeSelectedChatSnapshot() != null) return;
     if (redirectedRef.current) return;
     redirectedRef.current = true;
     logPageDisplay("messages_chat_route_missing_selection", {});
-  }, [authReady, isAuthenticated, isWide]);
+  }, [authReady, isAuthenticated, compactChatLayout]);
 
   if (!authReady) {
     return null;
@@ -29,7 +29,7 @@ export default function MessageChatRoute() {
   if (!isAuthenticated) {
     return <Redirect href="/" />;
   }
-  if (isWide) {
+  if (!compactChatLayout) {
     return <Redirect href="/" />;
   }
   if (chat == null) {

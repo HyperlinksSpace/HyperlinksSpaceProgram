@@ -4039,9 +4039,54 @@ export function MessageChatMessageList({
     };
   }, [panelVisible, shouldLoadHistory, handleOpenScrollMetrics]);
 
+  // Narrow chat route: mobile Safari TMA can keep layoutH at 0 until DOM sync catches up.
+  useEffect(() => {
+    if (!compactPage || !panelVisible || !shouldLoadHistory) return;
+    if (Platform.OS !== "web") return;
+    let attempts = 0;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      scrollControllerRef.current?.syncScrollMetricsFromDom();
+      const metrics = scrollControllerRef.current?.getMetrics();
+      if (metrics && metrics.layoutH > 0) {
+        handleOpenScrollMetrics({
+          layoutH: metrics.layoutH,
+          contentH: metrics.contentH,
+        });
+        scheduleOpenScrollApply();
+        window.clearInterval(interval);
+        return;
+      }
+      if (attempts >= 50 && displayMessagesRef.current.length > 0) {
+        logPageDisplay("messages_compact_page_layout_sync_give_up", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          displayCount: displayMessagesRef.current.length,
+          attempts,
+        });
+        revealChatScroll();
+        window.clearInterval(interval);
+      }
+    }, 100);
+    return () => window.clearInterval(interval);
+  }, [
+    chat.peer_user_id,
+    chat.telegram_chat_id,
+    chat.title,
+    compactPage,
+    handleOpenScrollMetrics,
+    panelVisible,
+    revealChatScroll,
+    scheduleOpenScrollApply,
+    shouldLoadHistory,
+  ]);
+
   // Compact overlay: iOS Safari can leave layoutH at 0 — force reveal after rows exist.
   useEffect(() => {
-    if (!compactChatOverlay || !shouldLoadHistory) return;
+    if ((!compactChatOverlay && !compactPage) || !shouldLoadHistory) return;
     if (chatScrollPaintReadyRef.current) return;
     if (displayMessages.length === 0 && loadingInitial) return;
     const t = setTimeout(() => {
@@ -4061,6 +4106,7 @@ export function MessageChatMessageList({
     return () => clearTimeout(t);
   }, [
     compactChatOverlay,
+    compactPage,
     shouldLoadHistory,
     displayMessages.length,
     loadingInitial,
@@ -7351,7 +7397,7 @@ export function MessageChatMessageList({
               colors={colors}
               columnWidthPx={innerWidthPx}
               selfUserId={selfUserId}
-              contentActive={chatScrollPaintReady}
+              contentActive={chatScrollPaintReady || compactPage}
             />
           </View>
           );

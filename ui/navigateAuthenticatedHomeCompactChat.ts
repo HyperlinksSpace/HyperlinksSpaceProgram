@@ -1,17 +1,11 @@
 import { router } from "expo-router";
-import {
-  isAuthenticatedHomeWideLayoutWidthPx,
-  readAuthenticatedHomeLayoutWidthPx,
-} from "./authenticatedHomeLayoutWidth";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
 
 const COMPACT_CHAT_PATH = "/messages/chat";
 
 /** After `openAuthenticatedHomeChatHistory`, open the full-screen chat route on narrow home. */
 export function maybePushAuthenticatedHomeCompactChatRoute(): void {
-  const widthPx = readAuthenticatedHomeLayoutWidthPx(
-    typeof window !== "undefined" ? window.innerWidth : 0,
-  );
-  if (isAuthenticatedHomeWideLayoutWidthPx(widthPx)) return;
+  if (!readAuthenticatedHomeCompactChatLayoutSync()) return;
   if (typeof window !== "undefined" && window.location.pathname === COMPACT_CHAT_PATH) {
     return;
   }

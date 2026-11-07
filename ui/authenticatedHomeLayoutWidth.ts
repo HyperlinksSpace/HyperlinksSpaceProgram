@@ -1,6 +1,8 @@
 import { Platform, useWindowDimensions } from "react-native";
 
 import { useAuthenticatedHomeSplitLayoutMetrics } from "./components/AuthenticatedHomeSplitLayoutMetricsContext";
+import { computeTelegramLayoutStartupSnapshot } from "./components/telegramWebApp";
+import { useTelegram } from "./components/Telegram";
 import { layout } from "./theme";
 
 /** Layout width for authenticated-home breakpoints (prefer visual viewport on web). */
@@ -29,6 +31,51 @@ export function isAuthenticatedHomeTripleColumnLayoutWidthPx(widthPx: number): b
 export function useAuthenticatedHomeRouteWideLayout(): boolean {
   const { width: windowWidth } = useWindowDimensions();
   return isAuthenticatedHomeWideLayoutWidthPx(readAuthenticatedHomeLayoutWidthPx(windowWidth));
+}
+
+/** Mobile TMA / narrow width: full-screen `/messages/chat` instead of home overlay/split. */
+export function isAuthenticatedHomeCompactChatLayoutWidthPx(
+  widthPx: number,
+  options?: {
+    platformEffective?: string | null;
+    isMobileWebUserAgent?: boolean;
+    isTelegramMiniAppDesktop?: boolean;
+  },
+): boolean {
+  if (!isAuthenticatedHomeWideLayoutWidthPx(widthPx)) {
+    return true;
+  }
+  if (options?.isTelegramMiniAppDesktop) {
+    return false;
+  }
+  const platform = options?.platformEffective?.trim().toLowerCase();
+  if (platform === "ios" || platform === "android") {
+    return true;
+  }
+  return options?.isMobileWebUserAgent === true;
+}
+
+export function readAuthenticatedHomeCompactChatLayoutSync(): boolean {
+  const widthPx = readAuthenticatedHomeLayoutWidthPx(
+    typeof window !== "undefined" ? window.innerWidth : 0,
+  );
+  const snap = computeTelegramLayoutStartupSnapshot();
+  return isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
+    platformEffective: snap.platformEffective,
+    isMobileWebUserAgent: snap.isMobileWebUserAgent,
+    isTelegramMiniAppDesktop: snap.isTelegramMiniAppDesktop,
+  });
+}
+
+export function useAuthenticatedHomeCompactChatLayout(): boolean {
+  const { width: windowWidth } = useWindowDimensions();
+  const { layoutStartup } = useTelegram();
+  const widthPx = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+  return isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
+    platformEffective: layoutStartup.platformEffective,
+    isMobileWebUserAgent: layoutStartup.isMobileWebUserAgent,
+    isTelegramMiniAppDesktop: layoutStartup.isTelegramMiniAppDesktop,
+  });
 }
 
 /** Prefer live split metrics when mounted under {@link AuthenticatedHomeSplitLayoutMetricsProvider}. */
