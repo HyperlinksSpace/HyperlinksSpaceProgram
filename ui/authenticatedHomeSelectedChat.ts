@@ -3,6 +3,7 @@ import { normalizeTelegramGroupCallId } from "../shared/telegramGroupCallSdp";
 import { normalizeTelegramProfilePhotoMarkup } from "../shared/telegramProfilePhoto";
 import type { MessageChatRowData } from "./components/messages/MessageChatRow";
 import { saveChatScrollPosition } from "./messageChatScrollCache";
+import { maybePushAuthenticatedHomeCompactChatRoute } from "./navigateAuthenticatedHomeCompactChat";
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_selected_chat_v1";
 
@@ -245,12 +246,14 @@ export function openAuthenticatedHomeChatHistory(
   if (sameChatAlreadyOpen && !options?.forceReload) {
     syncHistoryLoadSnapshot();
     emit();
+    maybePushAuthenticatedHomeCompactChatRoute();
     return;
   }
   historyLoadChatId = chat.telegram_chat_id;
   historyLoadGeneration += 1;
   syncHistoryLoadSnapshot();
   emit();
+  maybePushAuthenticatedHomeCompactChatRoute();
 }
 
 /** Open chat history centered on a specific message (e.g. profile links jump). */

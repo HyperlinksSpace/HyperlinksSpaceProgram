@@ -21,7 +21,6 @@ import {
 import { isBrowserZoomWheelEvent } from "../browserZoom";
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { AiSearchColumnEmptyState } from "../components/ai/AiSearchColumnEmptyState";
-import { useCompactChatOverlayGate } from "../components/CompactChatOverlayContext";
 import { useBottomBarLayout } from "../components/BottomBarLayoutContext";
 import { MessagesColumnFooter } from "../components/MessagesColumnFooter";
 import { useMessagesChatListSearch } from "../messages/MessagesChatListSearchContext";
@@ -115,12 +114,10 @@ import {
   useAuthenticatedHomeLeftNavIndex,
 } from "../authenticatedHomeLeftNavIndex";
 import {
-  clearAuthenticatedHomeSelectedChat,
   focusAuthenticatedHomeMiddleColumnOnHeaderPanel,
   useAuthenticatedHomeMiddleColumnFocus,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { useTelegramWebAppBackButton } from "../telegram/useTelegramWebAppBackButton";
 import { useRouter } from "expo-router";
 import {
   openSwapCurrenciesBrowse,
@@ -665,8 +662,6 @@ function HomeAuthenticatedScreenMain() {
     () => false,
   );
   const homeLeftScrollRef = useRef<HspScrollColumnHandle | null>(null);
-  /** Preserve chat-list scroll when compact full-screen chat opens so back restores the prior view. */
-  const compactHomeLeftScrollYRef = useRef(0);
   useEffect(() => {
     registerChatListScrollPreserveHandle({
       captureScrollAnchor: () =>
@@ -1172,44 +1167,11 @@ function HomeAuthenticatedScreenMain() {
   const compactMessagesChatOpen = !isWideHome && messagesChatOpen;
   const showChatListBottomLoader =
     chatListBottomLoaderActive && homeNavIndex === 1 && !compactMessagesChatOpen;
-  const { setCompactChatOpen } = useCompactChatOverlayGate();
-  useEffect(() => {
-    setCompactChatOpen(compactMessagesChatOpen);
-    return () => setCompactChatOpen(false);
-  }, [compactMessagesChatOpen, setCompactChatOpen]);
-
-  const prevCompactMessagesChatOpenRef = useRef(false);
-  useEffect(() => {
-    if (compactMessagesChatOpen && !prevCompactMessagesChatOpenRef.current) {
-      compactHomeLeftScrollYRef.current =
-        homeLeftScrollRef.current?.getMetrics().scrollY ?? 0;
-    }
-    if (!compactMessagesChatOpen && prevCompactMessagesChatOpenRef.current) {
-      const y = Math.max(0, compactHomeLeftScrollYRef.current);
-      requestAnimationFrame(() => {
-        homeLeftScrollRef.current?.scrollToY(y);
-      });
-    }
-    prevCompactMessagesChatOpenRef.current = compactMessagesChatOpen;
-  }, [compactMessagesChatOpen]);
 
   const tradePanelActive =
     !wideMessagesChatOpen && headerPanelVisibleOnWide && rightPanel === "trade";
   // Left nav only switches the first column; chat pane is independent until header menu is used.
   const leftNavSelectedIndex = homeNavIndex;
-
-  const closeCompactMessagesChat = useCallback(() => {
-    clearAuthenticatedHomeSelectedChat();
-  }, []);
-
-  useTelegramWebAppBackButton(closeCompactMessagesChat, compactMessagesChatOpen);
-
-  // Leaving Messages on compact closes the open chat overlay.
-  useEffect(() => {
-    if (!compactMessagesChatOpen) return;
-    if (homeNavIndex === 1) return;
-    clearAuthenticatedHomeSelectedChat();
-  }, [compactMessagesChatOpen, homeNavIndex]);
 
   useEffect(() => {
     // Wide home (2- or 3-column): ensure a right pane is open (defaults to Swap).
@@ -2471,7 +2433,7 @@ function HomeAuthenticatedScreenMain() {
           thirdColumnFooter={aiBarDock === "splitColumn3" ? embeddedAiBar : null}
         />
       </AuthenticatedHomeChrome>
-      {!isWideHome && !compactMessagesChatOpen ? (
+      {!isWideHome ? (
         <View
           pointerEvents="box-none"
           style={{
@@ -2487,42 +2449,6 @@ function HomeAuthenticatedScreenMain() {
           }}
         >
           {mainColumnFooter}
-        </View>
-      ) : null}
-      {compactMessagesChatOpen && selectedMessageChat ? (
-        <View
-          style={{
-            position: Platform.OS === "web" ? ("fixed" as unknown as "absolute") : "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            width: "100%",
-            zIndex: 1000,
-            backgroundColor: colors.background,
-            flexDirection: "column",
-          }}
-        >
-          <View
-            style={{
-              flex: 1,
-              minHeight: 0,
-              alignSelf: "stretch",
-              paddingHorizontal: layout.contentSideInsetPx,
-              overflow: "visible",
-            }}
-          >
-            <MessageChatPanel
-              chat={selectedMessageChat}
-              colors={colors}
-              visible={compactMessagesChatOpen}
-              onBack={closeCompactMessagesChat}
-              backAccessibilityLabel={t("messages.archive.back")}
-            />
-          </View>
-          <View style={{ width: "100%", flexShrink: 0, alignSelf: "stretch" }}>
-            <GlobalBottomBar />
-          </View>
         </View>
       ) : null}
       {walletCurrenciesOpen ? (

@@ -26,6 +26,8 @@ type Props = {
   /** Compact / mobile: oval back control in the sticky chat header. */
   onBack?: () => void;
   backAccessibilityLabel?: string;
+  /** Narrow route `/messages/chat` — full page, not fixed overlay (avoids layoutH=0 on mobile). */
+  compactPage?: boolean;
 };
 
 function isLiveVoiceChat(chat: MessageChatRowData): boolean {
@@ -63,6 +65,7 @@ export function MessageChatPanel({
   visible = true,
   onBack,
   backAccessibilityLabel,
+  compactPage = false,
 }: Props) {
   const columnBleedPx = layout.contentSideInsetPx;
   const { openProfileSheet } = useProfileSheet();
@@ -478,7 +481,7 @@ export function MessageChatPanel({
           chat={chat}
           colors={colors}
           panelVisible={visible}
-          compactChatOverlay={typeof onBack === "function"}
+          compactChatOverlay={typeof onBack === "function" && !compactPage}
         />
       </MessageSubtreeErrorBoundary>
     </View>
