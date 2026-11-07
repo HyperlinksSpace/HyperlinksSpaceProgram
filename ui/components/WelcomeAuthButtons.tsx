@@ -131,7 +131,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
   const { signIn } = useAuth();
   const colors = useColors();
   const { t, tf } = useAppStrings();
-  const { colorScheme, isInTelegram, triggerHaptic } = useTelegram();
+  const { colorScheme, isInTelegram, triggerHaptic, layoutStartup } = useTelegram();
   const { openEmailCodeSheet } = useWelcomeEmailAuth();
   const [browserOAuthPending, setBrowserOAuthPending] = useState<BrowserOAuthProvider | null>(null);
   const [email, setEmail] = useState("");
@@ -377,11 +377,18 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
       if (Platform.OS !== "web") {
         triggerHaptic("light");
       }
-      // After app logout, initData alone must not mint a session — use Telegram OIDC
-      // (opens in the system browser / Telegram) so the user verifies in Telegram again.
+      // After app logout, initData alone must not mint a session — use Telegram OIDC.
+      // Mobile TMA: `openLink` → system browser (user can tap “Open in Telegram” on the OAuth page).
+      // Desktop TMA: navigate in the WebView so `Set-Cookie` stays on the mini-app session.
       if (hasExplicitSignOut()) {
-        logPageDisplay("welcome_telegram_miniapp_oidc_after_sign_out", { actuallyInTelegram });
-        await startBrowserOAuth("telegram", { keepInMiniAppWebView: true });
+        const keepInMiniAppWebView = layoutStartup.isTelegramMiniAppDesktop;
+        logPageDisplay("welcome_telegram_miniapp_oidc_after_sign_out", {
+          actuallyInTelegram,
+          keepInMiniAppWebView,
+          platform: layoutStartup.platformEffective,
+          mobileUa: layoutStartup.isMobileWebUserAgent,
+        });
+        await startBrowserOAuth("telegram", { keepInMiniAppWebView });
         return;
       }
       logPageDisplay("welcome_telegram_miniapp_sign_in", { actuallyInTelegram });
