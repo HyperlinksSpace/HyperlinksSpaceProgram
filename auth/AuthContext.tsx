@@ -255,7 +255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback((options?: { optimistic?: boolean }) => {
     const optimistic = options?.optimistic !== false;
-    clearExplicitSignOut();
+    // Keep explicit sign-out / pending reauth until refreshAuthSession confirms a cookie.
     writeAuthHint("in");
     rehydrateAuthenticatedHomeLeftNavFromStorage();
     // Dispatch first so TMA can start /api/telegram session mint immediately.

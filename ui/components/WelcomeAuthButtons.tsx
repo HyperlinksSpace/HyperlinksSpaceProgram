@@ -2,7 +2,7 @@ import { Alert, Pressable, StyleSheet, Text, View, Platform } from "react-native
 import { useEffect, useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { markPendingReauthentication } from "../../auth/authHint";
+import { hasExplicitSignOut, markPendingReauthentication } from "../../auth/authHint";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
 import {
@@ -371,6 +371,13 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
       // tdesktop. Native keeps haptics; web skips.
       if (Platform.OS !== "web") {
         triggerHaptic("light");
+      }
+      // After app logout, initData alone must not mint a session — use Telegram OIDC
+      // (opens in the system browser / Telegram) so the user verifies in Telegram again.
+      if (hasExplicitSignOut()) {
+        logPageDisplay("welcome_telegram_miniapp_oidc_after_sign_out", { actuallyInTelegram });
+        await startBrowserOAuth("telegram");
+        return;
       }
       logPageDisplay("welcome_telegram_miniapp_sign_in", { actuallyInTelegram });
       markPendingReauthentication();

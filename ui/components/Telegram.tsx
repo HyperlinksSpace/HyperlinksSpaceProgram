@@ -36,6 +36,7 @@ import {
 import type { TelegramLayoutStartupSnapshot } from "./telegramWebApp";
 import { buildApiUrl } from "../../api/_base";
 import {
+  hasPendingReauthentication,
   shouldHonorServerAuthSession,
   shouldIssueAuthSessionFromHint,
 } from "../../auth/authHint";
@@ -472,7 +473,8 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         hasRegisteredRef.current = false;
         const initDataStr = getInitDataString();
         if (initDataStr) {
-          registerWithBackendRef.current(initDataStr, { issueSession: true });
+          const issueSession = hasPendingReauthentication() || shouldIssueAuthSessionFromHint();
+          registerWithBackendRef.current(initDataStr, { issueSession });
         }
         return;
       }
