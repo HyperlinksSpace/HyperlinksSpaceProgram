@@ -24,6 +24,14 @@ export type ExternalAuthOpenResult = {
   sessionToken?: string | null;
 };
 
+export type NavigateExternalAuthUrlOptions = {
+  /**
+   * In the Telegram Mini App, navigate this WebView to the authorize URL instead of
+   * `WebApp.openLink`. Required so the OIDC callback `Set-Cookie` lands in the mini app.
+   */
+  keepInMiniAppWebView?: boolean;
+};
+
 function isInNestedFrame(): boolean {
   if (typeof window === "undefined") return false;
   try {
@@ -39,7 +47,10 @@ function isInNestedFrame(): boolean {
  * session token and avoid leaving a second authenticated window open.
  * @see https://core.telegram.org/bots/telegram-login — Authorization Code + PKCE; URL must open in the user's browser, not a subframe.
  */
-export async function openExternalAuthUrl(url: string): Promise<ExternalAuthOpenResult> {
+export async function openExternalAuthUrl(
+  url: string,
+  options?: NavigateExternalAuthUrlOptions,
+): Promise<ExternalAuthOpenResult> {
   if (isDesktopAppShell()) {
     const bridge = getDesktopOAuthBridge();
     if (bridge) {
@@ -53,14 +64,17 @@ export async function openExternalAuthUrl(url: string): Promise<ExternalAuthOpen
     }
   }
 
-  return { method: navigateExternalAuthUrl(url) };
+  return { method: navigateExternalAuthUrl(url, options) };
 }
 
 /**
  * Sync navigate helper for non-desktop (and desktop fallback without bridge).
  * Prefer {@link openExternalAuthUrl} when a session token may be returned.
  */
-export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
+export function navigateExternalAuthUrl(
+  url: string,
+  options?: NavigateExternalAuthUrlOptions,
+): ExternalAuthOpenMethod {
   if (isDesktopAppShell()) {
     const bridge = getDesktopOAuthBridge();
     if (bridge) {
@@ -79,6 +93,7 @@ export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
   logPageDisplay("welcome_telegram_oidc_navigate", {
     nestedFrame,
     inTelegramMiniApp,
+    keepInMiniAppWebView: options?.keepInMiniAppWebView === true,
     urlHost: (() => {
       try {
         return new URL(url).host;
@@ -89,7 +104,11 @@ export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
     hasQuery: url.includes("?") && url.length > url.indexOf("?") + 1,
   });
 
-  if (inTelegramMiniApp && openTelegramWebAppExternalLink(url)) {
+  if (
+    inTelegramMiniApp &&
+    options?.keepInMiniAppWebView !== true &&
+    openTelegramWebAppExternalLink(url)
+  ) {
     return "telegram_webapp_open_link";
   }
 

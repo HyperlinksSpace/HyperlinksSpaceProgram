@@ -167,7 +167,10 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
   const useBrowserOAuth =
     typeof globalThis !== "undefined" && typeof globalThis.fetch === "function";
 
-  const startBrowserOAuth = async (provider: BrowserOAuthProvider) => {
+  const startBrowserOAuth = async (
+    provider: BrowserOAuthProvider,
+    oauthOptions?: { keepInMiniAppWebView?: boolean },
+  ) => {
     const cfg = BROWSER_OAUTH[provider];
     const startUrl = buildApiUrl(cfg.startPath);
     const redirectUri = buildApiUrl(cfg.callbackPath);
@@ -226,7 +229,9 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
       if (!authRedirectUri?.trim()) {
         throw new Error("auth_url_missing_redirect_uri");
       }
-      const openResult = await openExternalAuthUrl(json.authUrl);
+      const openResult = await openExternalAuthUrl(json.authUrl, {
+        keepInMiniAppWebView: oauthOptions?.keepInMiniAppWebView,
+      });
       const openMethod = openResult.method;
       navigated = openMethod !== "desktop_oauth_window";
       logPageDisplay(`${cfg.logPrefix}_redirect`, {
@@ -376,7 +381,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
       // (opens in the system browser / Telegram) so the user verifies in Telegram again.
       if (hasExplicitSignOut()) {
         logPageDisplay("welcome_telegram_miniapp_oidc_after_sign_out", { actuallyInTelegram });
-        await startBrowserOAuth("telegram");
+        await startBrowserOAuth("telegram", { keepInMiniAppWebView: true });
         return;
       }
       logPageDisplay("welcome_telegram_miniapp_sign_in", { actuallyInTelegram });
