@@ -2,7 +2,11 @@ import { Alert, Pressable, StyleSheet, Text, View, Platform } from "react-native
 import { useEffect, useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { hasExplicitSignOut, markPendingReauthentication } from "../../auth/authHint";
+import {
+  hasExplicitSignOut,
+  markPendingReauthentication,
+  markTmaOauthAwaitingReturn,
+} from "../../auth/authHint";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
 import {
@@ -244,6 +248,10 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
         elapsedMs: Date.now() - startedAt,
       });
       if (openMethod === "telegram_webapp_open_link") {
+        markTmaOauthAwaitingReturn();
+        if (typeof document !== "undefined") {
+          document.dispatchEvent(new CustomEvent("hsp-tma-oauth-awaiting-return"));
+        }
         setBrowserOAuthPending(null);
       }
       if (openMethod === "desktop_oauth_window") {

@@ -465,6 +465,15 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
+    const onMintSessionAfterOauthReturn = (event: Event) => {
+      if (!isActuallyInTelegram()) return;
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source ?? null;
+      hasRegisteredRef.current = false;
+      const initDataStr = getInitDataString();
+      if (!initDataStr) return;
+      appLog("[TMA register]", "mint_after_oauth_return", { source });
+      registerWithBackendRef.current(initDataStr, { issueSession: true });
+    };
     const onSignedOut = () => {
       hasRegisteredRef.current = false;
     };
@@ -480,9 +489,11 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       }
       void hydrateBrowserSessionFromCookie();
     };
+    document.addEventListener("hsp-tma-mint-session-from-initdata", onMintSessionAfterOauthReturn);
     document.addEventListener("hsp-auth-signed-out", onSignedOut);
     document.addEventListener("hsp-auth-signed-in", onSignedIn);
     return () => {
+      document.removeEventListener("hsp-tma-mint-session-from-initdata", onMintSessionAfterOauthReturn);
       document.removeEventListener("hsp-auth-signed-out", onSignedOut);
       document.removeEventListener("hsp-auth-signed-in", onSignedIn);
     };
@@ -908,6 +919,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           }
         })
         .catch((e) => {
+          hasRegisteredRef.current = false;
           clearTimeout(timeoutId);
           const durationMs = Date.now() - fetchStartedAt;
           const isTimeout = e?.name === "AbortError";

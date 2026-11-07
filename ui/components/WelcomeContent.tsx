@@ -9,11 +9,15 @@ import {
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
-import { shouldHonorServerAuthSession } from "../../auth/authHint";
+import {
+  hasPendingReauthentication,
+  hasTmaOauthAwaitingReturn,
+  shouldHonorServerAuthSession,
+} from "../../auth/authHint";
 import { hasWelcomeBrowserAuthContext, isDesktopAppShell } from "../appShell";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 import { WelcomeLanguageSwitcher } from "./WelcomeLanguageSwitcher";
-import { isActuallyInTelegram } from "./telegramWebApp";
+import { isActuallyInTelegram, isTelegramMiniAppEnvironment } from "./telegramWebApp";
 import { HspScrollColumn } from "./HspScrollColumn";
 
 const CONTENT_GAP_BELOW_HEADER = 16;
@@ -36,7 +40,7 @@ const HEADING_LINE_WIDE = 42;
 export function WelcomeContent() {
   const colors = useColors();
   const { t, tf } = useAppStrings();
-  const { signIn } = useAuth();
+  const { signIn, isAuthenticated } = useAuth();
   const { width: dimensionsWidth } = useWindowDimensions();
   /** RN-web sometimes reports width 0 on the first frame; `innerWidth` matches the real viewport immediately. */
   const windowWidth = useMemo(() => {
@@ -47,9 +51,18 @@ export function WelcomeContent() {
   }, [dimensionsWidth]);
   /** Web: ready on first paint so wide/narrow heading matches viewport (no narrow→wide flash). Native: defer until mount so first layout pass has real dimensions. */
   const [layoutReady, setLayoutReady] = useState(() => Platform.OS === "web");
+  /** Bumps when TMA OAuth opens via `openLink` so the welcome login monitor effect attaches. */
+  const [tmaOauthWatchToken, setTmaOauthWatchToken] = useState(0);
 
   useEffect(() => {
     setLayoutReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onAwaitingReturn = () => setTmaOauthWatchToken((n) => n + 1);
+    document.addEventListener("hsp-tma-oauth-awaiting-return", onAwaitingReturn);
+    return () => document.removeEventListener("hsp-tma-oauth-awaiting-return", onAwaitingReturn);
   }, []);
 
   useEffect(() => {
@@ -124,10 +137,25 @@ export function WelcomeContent() {
     }
   }, [t, tf]);
 
+  type WelcomeLoginProbeSource =
+    | "mount"
+    | "visibility"
+    | "oauth_complete"
+    | "focus"
+    | "interval"
+    | "pageshow";
+
   const probeBrowserSession = useCallback(
-    async (source: "mount" | "visibility" | "oauth_complete") => {
+    async (
+      source: WelcomeLoginProbeSource,
+      options?: { allowTmaInitDataMint?: boolean },
+    ) => {
       const startedAt = Date.now();
-      logPageDisplay("welcome_telegram_oidc_session_probe", { source });
+      logPageDisplay("welcome_telegram_oidc_session_probe", {
+        source,
+        allowTmaInitDataMint: options?.allowTmaInitDataMint === true,
+        awaitingTmaOauthReturn: hasTmaOauthAwaitingReturn(),
+      });
       try {
         // AuthContext already owns cold-start session; skip_feed keeps OAuth probes cheap.
         const sessionUrl = buildApiUrl("/api/auth/session?skip_feed=1");
@@ -150,6 +178,19 @@ export function WelcomeContent() {
             elapsedMs: Date.now() - startedAt,
           });
           signIn({ optimistic: !isDesktopAppShell() });
+          return;
+        }
+        if (
+          options?.allowTmaInitDataMint &&
+          isTelegramMiniAppEnvironment() &&
+          isActuallyInTelegram() &&
+          hasPendingReauthentication() &&
+          hasTmaOauthAwaitingReturn()
+        ) {
+          logPageDisplay("welcome_tma_login_monitor_mint_initdata", { source });
+          document.dispatchEvent(
+            new CustomEvent("hsp-tma-mint-session-from-initdata", { detail: { source } }),
+          );
         }
       } catch (error) {
         logPageDisplay("welcome_telegram_oidc_session_probe_error", {
@@ -194,9 +235,10 @@ export function WelcomeContent() {
     };
   }, [probeBrowserSession, t, tf]);
 
-  // After OAuth in another tab/window or the system browser (TMA `WebApp.openLink`), refresh session.
+  // After OAuth in another tab/window or the system browser, refresh session (non-TMA).
   useEffect(() => {
     if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
+    if (isTelegramMiniAppEnvironment()) return;
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
@@ -205,6 +247,54 @@ export function WelcomeContent() {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [probeBrowserSession]);
+
+  // TMA: `openLink` OAuth sets cookies in the external browser (often another host). Poll and,
+  // on return, mint `hs_auth_session` in this WebView via initData when the user asked to sign in.
+  useEffect(() => {
+    if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
+    if (!isTelegramMiniAppEnvironment()) return;
+
+    const shouldWatch =
+      hasTmaOauthAwaitingReturn() || hasPendingReauthentication();
+    if (!shouldWatch && !isAuthenticated) {
+      return;
+    }
+
+    const run = (source: WelcomeLoginProbeSource) => {
+      if (isAuthenticated) return;
+      if (!hasPendingReauthentication() && !hasTmaOauthAwaitingReturn()) return;
+      void probeBrowserSession(source, {
+        allowTmaInitDataMint: hasTmaOauthAwaitingReturn(),
+      });
+    };
+
+    if (hasTmaOauthAwaitingReturn()) {
+      void probeBrowserSession("mount", { allowTmaInitDataMint: true });
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      run("visibility");
+    };
+    const onFocus = () => run("focus");
+    const onPageShow = () => run("pageshow");
+
+    const interval = window.setInterval(() => {
+      if (!hasTmaOauthAwaitingReturn()) return;
+      run("interval");
+    }, 2500);
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onPageShow);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [isAuthenticated, probeBrowserSession, tmaOauthWatchToken]);
 
   const isWideLayout = layoutReady && windowWidth > WIDE_LAYOUT_MIN_WIDTH;
 
