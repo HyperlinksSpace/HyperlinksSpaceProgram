@@ -9,6 +9,7 @@ import {
 import { layout, useColors } from "../theme";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { logPageDisplay } from "../pageDisplayLog";
+import { shouldHonorServerAuthSession } from "../../auth/authHint";
 import { hasWelcomeBrowserAuthContext, isDesktopAppShell } from "../appShell";
 import { WelcomeAuthButtons } from "./WelcomeAuthButtons";
 import { WelcomeLanguageSwitcher } from "./WelcomeLanguageSwitcher";
@@ -143,7 +144,7 @@ export function WelcomeContent() {
           authenticated,
           elapsedMs: Date.now() - startedAt,
         });
-        if (authenticated) {
+        if (authenticated && shouldHonorServerAuthSession()) {
           logPageDisplay("welcome_telegram_oidc_sign_in", {
             source,
             elapsedMs: Date.now() - startedAt,

@@ -11,7 +11,13 @@ import { useAppStrings } from "../locales/AppStringsContext";
 import { logPageDisplay } from "../ui/pageDisplayLog";
 import { isDesktopAppShell } from "../ui/appShell";
 import { rehydrateAuthenticatedHomeLeftNavFromStorage } from "../ui/authenticatedHomeLeftNavIndex";
-import { clearExplicitSignOut, markExplicitSignOut, readAuthHint, writeAuthHint } from "./authHint";
+import {
+  clearExplicitSignOut,
+  markExplicitSignOut,
+  readAuthHint,
+  shouldHonorServerAuthSession,
+  writeAuthHint,
+} from "./authHint";
 import { hasTelegramMessagesExplicitDisconnect } from "./telegramMessagesDisconnectHint";
 import { applyServerDllrLedgerFromSession } from "../ui/pro/dllrBalanceStore";
 
@@ -117,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useLayoutEffect(() => {
     installDesktopAuthFetch();
-    if (readAuthHint() === "in") {
+    if (readAuthHint() === "in" && shouldHonorServerAuthSession()) {
       setAuthenticated(true);
       // Warmup only after session confirms MTProto link — auth_hint warmup raced session
       // GET and could revoke the DB link while session still returned connected=true.
@@ -135,8 +141,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials: "include",
       });
       const json = (await response.json().catch(() => ({}))) as SessionJson;
-      const { authenticated, feedItems, telegramMessagesConnected: parsedTelegramConnected } =
+      let { authenticated, feedItems, telegramMessagesConnected: parsedTelegramConnected } =
         parseSessionResponse(json, response.ok);
+      if (authenticated && !shouldHonorServerAuthSession()) {
+        logPageDisplay("auth_session_blocked_explicit_sign_out", {
+          elapsedMs: Date.now() - startedAt,
+        });
+        authenticated = false;
+        feedItems = null;
+        parsedTelegramConnected = null;
+      }
       const sessionUsername =
         typeof json.telegram_username === "string" ? json.telegram_username : null;
       const telegramMessagesConnected =

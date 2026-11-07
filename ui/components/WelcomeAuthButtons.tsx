@@ -2,6 +2,7 @@ import { Alert, Pressable, StyleSheet, Text, View, Platform } from "react-native
 import { useEffect, useState } from "react";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { markPendingReauthentication } from "../../auth/authHint";
 import { useAuth } from "../../auth/AuthContext";
 import { buildApiUrl } from "../../api/_base";
 import {
@@ -176,6 +177,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
     const startError = t(cfg.startErrorKey);
 
     try {
+      markPendingReauthentication();
       setBrowserOAuthPending(provider);
       logPageDisplay(`${cfg.logPrefix}_start`, {
         apiBase: getApiBaseUrl(),
@@ -270,6 +272,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
 
   const startEmailSignIn = async () => {
     if (!useBrowserOAuth) return;
+    markPendingReauthentication();
     const normalizedEmail = email.trim().toLowerCase();
     if (!isValidBasicEmail(normalizedEmail)) {
       setEmailInvalid(true);
@@ -370,6 +373,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
         triggerHaptic("light");
       }
       logPageDisplay("welcome_telegram_miniapp_sign_in", { actuallyInTelegram });
+      markPendingReauthentication();
       // Stay on welcome until /api/telegram issues the cookie; optimistic Home races a
       // session GET that still returns unauthenticated and flickers back to welcome.
       signIn({ optimistic: false });

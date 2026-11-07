@@ -35,7 +35,10 @@ import {
 } from "./telegramWebApp";
 import type { TelegramLayoutStartupSnapshot } from "./telegramWebApp";
 import { buildApiUrl } from "../../api/_base";
-import { shouldIssueAuthSessionFromHint } from "../../auth/authHint";
+import {
+  shouldHonorServerAuthSession,
+  shouldIssueAuthSessionFromHint,
+} from "../../auth/authHint";
 import { takeFreshAuthSessionPayload, waitForAuthSessionCache } from "../../auth/lastAuthSessionCache";
 import { appError, appLog } from "../../shared/appLog";
 import {
@@ -356,7 +359,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     TelegramFeedBootstrapRow[] | null
   >(null);
   const hasRegisteredRef = useRef(false);
-  const registerWithBackendRef = useRef<(initData: string) => void>(() => {});
+  const registerWithBackendRef = useRef<
+    (initData: string, options?: { issueSession?: boolean }) => void
+  >(() => {});
   const browserSessionHydratedRef = useRef(false);
   const [browserSessionChecked, setBrowserSessionChecked] = useState(false);
   const initPollCleanupRef = useRef<(() => void) | null>(null);
@@ -409,7 +414,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       const cached =
         takeFreshAuthSessionPayload() ?? (await waitForAuthSessionCache(3_000));
       if (cached) {
-        if (!cached.authenticated) {
+        if (!cached.authenticated || !shouldHonorServerAuthSession()) {
           setBrowserSessionChecked(true);
           return false;
         }
@@ -438,7 +443,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         wallet_required?: boolean;
         wallet?: TelegramContextValue["wallet"];
       };
-      if (!response.ok || !json?.authenticated) return false;
+      if (!response.ok || !json?.authenticated || !shouldHonorServerAuthSession()) return false;
       setTelegramUsername(json.telegram_username ?? null);
       setDisplayName(
         typeof json.display_name === "string" && json.display_name.trim()
@@ -467,7 +472,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         hasRegisteredRef.current = false;
         const initDataStr = getInitDataString();
         if (initDataStr) {
-          registerWithBackendRef.current(initDataStr);
+          registerWithBackendRef.current(initDataStr, { issueSession: true });
         }
         return;
       }
@@ -813,7 +818,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     const API_TIMEOUT_MS = 30000;
 
-    function registerWithBackend(initData: string) {
+    function registerWithBackend(
+      initData: string,
+      options?: { issueSession?: boolean },
+    ) {
       if (hasRegisteredRef.current) return;
       hasRegisteredRef.current = true;
       markMiniAppRegistrationStarted();
@@ -821,7 +829,12 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
       const url = buildApiUrl("/api/telegram");
       const fetchStartedAt = Date.now();
-      const issueSession = shouldIssueAuthSessionFromHint();
+      const issueSession =
+        options?.issueSession === true
+          ? true
+          : options?.issueSession === false
+            ? false
+            : shouldIssueAuthSessionFromHint();
 
       setDebug((d) =>
         patchTelegramDebug(d, {
