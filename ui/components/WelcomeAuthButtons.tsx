@@ -17,7 +17,10 @@ import { WelcomeAppPreviews } from "./WelcomeAppPreviews";
 import { WelcomeAuthFormField, WELCOME_AUTH_MAX_WIDTH } from "./WelcomeAuthFormField";
 import { useWelcomeEmailAuth } from "../welcome/WelcomeEmailAuthContext";
 import { useTelegram } from "./Telegram";
-import { isActuallyInTelegram } from "./telegramWebApp";
+import {
+  isActuallyInTelegram,
+  isTelegramMiniAppEnvironment,
+} from "./telegramWebApp";
 import { getApiBaseUrl } from "../../api/_base";
 import { openExternalAuthUrl } from "../openExternalUrl";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -158,7 +161,7 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
   const useTelegramWebAuthOutsideMiniApp =
     typeof globalThis !== "undefined" &&
     typeof globalThis.fetch === "function" &&
-    !isActuallyInTelegram();
+    !isTelegramMiniAppEnvironment();
 
   const useBrowserOAuth =
     typeof globalThis !== "undefined" && typeof globalThis.fetch === "function";
@@ -233,6 +236,9 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
         desktopError: openResult.error ?? null,
         elapsedMs: Date.now() - startedAt,
       });
+      if (openMethod === "telegram_webapp_open_link") {
+        setBrowserOAuthPending(null);
+      }
       if (openMethod === "desktop_oauth_window") {
         if (openResult.sessionToken) {
           setDesktopSessionToken(openResult.sessionToken);
@@ -341,16 +347,21 @@ export function WelcomeAuthButtons({ hideAppPreviews = false }: WelcomeAuthButto
         await startBrowserOAuth("telegram");
         return;
       }
-      if (!isInTelegram) {
-        logPageDisplay("welcome_telegram_oidc_unavailable", {
-          reason: "not_in_telegram_and_web_auth_disabled",
-          actuallyInTelegram,
-          useTelegramWebAuthOutsideMiniApp,
-        });
-        Alert.alert(
-          t("welcome.auth.telegramBrowserAlertTitle"),
-          t("welcome.auth.telegramBrowserAlertMessage"),
-        );
+      const miniAppSession = actuallyInTelegram || isTelegramMiniAppEnvironment();
+      if (!miniAppSession) {
+        if (!isInTelegram) {
+          logPageDisplay("welcome_telegram_oidc_unavailable", {
+            reason: "not_in_telegram_and_web_auth_disabled",
+            actuallyInTelegram,
+            useTelegramWebAuthOutsideMiniApp,
+          });
+          Alert.alert(
+            t("welcome.auth.telegramBrowserAlertTitle"),
+            t("welcome.auth.telegramBrowserAlertMessage"),
+          );
+          return;
+        }
+        await startBrowserOAuth("telegram");
         return;
       }
       // Web / TMA: any Telegram haptic (sync or deferred) can desync react-native-web’s touch bank on

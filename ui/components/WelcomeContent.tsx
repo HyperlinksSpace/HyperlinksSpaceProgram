@@ -163,7 +163,6 @@ export function WelcomeContent() {
 
   useEffect(() => {
     if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
-    if (isActuallyInTelegram()) return;
 
     const onOAuthComplete = (event: Event) => {
       const detail = (
@@ -189,17 +188,22 @@ export function WelcomeContent() {
     };
 
     document.addEventListener("hsp-oauth-complete", onOAuthComplete);
+    return () => {
+      document.removeEventListener("hsp-oauth-complete", onOAuthComplete);
+    };
+  }, [probeBrowserSession, t, tf]);
+
+  // After OAuth in another tab/window or the system browser (TMA `WebApp.openLink`), refresh session.
+  useEffect(() => {
+    if (!hasWelcomeBrowserAuthContext() || typeof document === "undefined") return;
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       void probeBrowserSession("visibility");
     };
     document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      document.removeEventListener("hsp-oauth-complete", onOAuthComplete);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [probeBrowserSession, t, tf]);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [probeBrowserSession]);
 
   const isWideLayout = layoutReady && windowWidth > WIDE_LAYOUT_MIN_WIDTH;
 

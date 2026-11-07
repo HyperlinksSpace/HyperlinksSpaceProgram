@@ -3,6 +3,10 @@ import { Platform } from "react-native";
 import { logPageDisplay } from "./pageDisplayLog";
 import { getApiBaseUrl } from "../api/_base";
 import { getDesktopOAuthBridge, isDesktopAppShell } from "./appShell";
+import {
+  isTelegramMiniAppEnvironment,
+  openTelegramWebAppExternalLink,
+} from "./components/telegramWebApp";
 
 export type ExternalAuthOpenMethod =
   | "top_location_replace"
@@ -10,7 +14,8 @@ export type ExternalAuthOpenMethod =
   | "anchor_top"
   | "window_open"
   | "linking"
-  | "desktop_oauth_window";
+  | "desktop_oauth_window"
+  | "telegram_webapp_open_link";
 
 export type ExternalAuthOpenResult = {
   method: ExternalAuthOpenMethod;
@@ -70,8 +75,10 @@ export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
   }
 
   const nestedFrame = isInNestedFrame();
+  const inTelegramMiniApp = Platform.OS === "web" && isTelegramMiniAppEnvironment();
   logPageDisplay("welcome_telegram_oidc_navigate", {
     nestedFrame,
+    inTelegramMiniApp,
     urlHost: (() => {
       try {
         return new URL(url).host;
@@ -81,6 +88,10 @@ export function navigateExternalAuthUrl(url: string): ExternalAuthOpenMethod {
     })(),
     hasQuery: url.includes("?") && url.length > url.indexOf("?") + 1,
   });
+
+  if (inTelegramMiniApp && openTelegramWebAppExternalLink(url)) {
+    return "telegram_webapp_open_link";
+  }
 
   if (!nestedFrame) {
     window.location.replace(url);

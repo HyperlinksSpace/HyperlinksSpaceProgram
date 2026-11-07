@@ -23,6 +23,8 @@ export type TelegramWebApp = {
   /** Mini app uses expanded viewport height (after expand()); distinct from isFullscreen. */
   isExpanded?: boolean;
   HapticFeedback?: { impactOccurred?: (style: string) => void };
+  /** Opens http(s) in the device browser (required for OAuth inside the Mini App webview). */
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   [k: string]: unknown;
 };
 
@@ -82,6 +84,24 @@ export function isAvailable(): boolean {
  * True when the page is (or will be) a Telegram Mini App session — do **not** start browser OIDC.
  * Broader than {@link isActuallyInTelegram}: includes launch hash / UA while initData is still loading.
  */
+/**
+ * Open an external http(s) URL from inside the Mini App (OAuth, mailto, etc.).
+ * Prefer this over `window.location` / `window.open`, which Telegram often blocks on mobile.
+ */
+export function openTelegramWebAppExternalLink(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  const app = getWebApp();
+  const openLink = app?.openLink;
+  if (typeof openLink !== "function") return false;
+  try {
+    openLink(trimmed, { try_instant_view: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isTelegramMiniAppEnvironment(): boolean {
   if (typeof window === "undefined") return false;
   if (isAvailable()) return true;
