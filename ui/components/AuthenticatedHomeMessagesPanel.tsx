@@ -1021,6 +1021,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   } | null>(null);
   const chatListAppendRestoreAnchorRef = useRef<HspScrollAnchor | null>(null);
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
+  /** While parked on the catalog tail, never shrink virtual row count — phantom/tail toggles were flipping endIndex ±1. */
+  const chatListVirtualTotalBottomPinRef = useRef<number | null>(null);
   const loadChatsRef = useRef<
     (options?: {
       allowAvatarResync?: boolean;
@@ -3061,8 +3063,50 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     mainSortedChats.length,
     searchListReplacesMain,
   ]);
-  const chatListVirtualTotalCount =
+  const chatListVirtualTotalCountRaw =
     revealedDisplayListItems.length + catalogScrollExtent.phantomRows;
+  const chatListVirtualTotalCount = useMemo(() => {
+    if (searchListReplacesMain || listSearchActive || archiveOpen) {
+      chatListVirtualTotalBottomPinRef.current = null;
+      return chatListVirtualTotalCountRaw;
+    }
+    const layoutH = chatListEffectiveLayoutH;
+    if (layoutH <= 0 || chatListVirtualTotalCountRaw <= 0) {
+      chatListVirtualTotalBottomPinRef.current = null;
+      return chatListVirtualTotalCountRaw;
+    }
+    const contentTopInsetPx =
+      chatListShellTopInset + (chatListScrollMetrics.contentTopInsetPx ?? 0);
+    const totalHeight =
+      contentTopInsetPx + chatListVirtualTotalCountRaw * chatListRowStride;
+    const maxScrollY = Math.max(0, totalHeight - layoutH);
+    const tailSlackPx = chatListRowStride + 4;
+    const atCatalogTail =
+      maxScrollY <= 0
+        ? chatListScrollMetrics.scrollY <= tailSlackPx
+        : chatListScrollMetrics.scrollY >= maxScrollY - tailSlackPx;
+    if (!atCatalogTail) {
+      chatListVirtualTotalBottomPinRef.current = null;
+      return chatListVirtualTotalCountRaw;
+    }
+    const pinned = chatListVirtualTotalBottomPinRef.current;
+    const next =
+      pinned == null
+        ? chatListVirtualTotalCountRaw
+        : Math.max(chatListVirtualTotalCountRaw, pinned);
+    chatListVirtualTotalBottomPinRef.current = next;
+    return next;
+  }, [
+    archiveOpen,
+    chatListEffectiveLayoutH,
+    chatListRowStride,
+    chatListScrollMetrics.contentTopInsetPx,
+    chatListScrollMetrics.scrollY,
+    chatListShellTopInset,
+    chatListVirtualTotalCountRaw,
+    listSearchActive,
+    searchListReplacesMain,
+  ]);
   const chatListVirtualWindow = useMemo(() => {
     if (searchListReplacesMain) {
       return {
