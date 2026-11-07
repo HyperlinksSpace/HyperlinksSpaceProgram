@@ -196,6 +196,8 @@ type Props = {
    * settles leaves a blank pane; wide layout keeps the anti-flash gate.
    */
   compactChatOverlay?: boolean;
+  /** Narrow `/messages/chat` route: same compose pill above the global AI/search bar. */
+  compactPage?: boolean;
 };
 
 /** Rows kept below the viewport before tail eviction while scrolled up. */
@@ -245,6 +247,7 @@ export function MessageChatMessageList({
   colors,
   panelVisible = true,
   compactChatOverlay = false,
+  compactPage = false,
 }: Props) {
   const { t } = useAppStrings();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
@@ -7200,7 +7203,7 @@ export function MessageChatMessageList({
   // Wide split: pill sits in the message column footer area. Compact overlay: same
   // pill UX as two-column (placeholderPill / «Введите сообщение»), not GlobalBottomBar.
   const showComposeOverlay =
-    (isTwoColumnWide || compactChatOverlay) &&
+    (isTwoColumnWide || compactChatOverlay || compactPage) &&
     (chatKind ?? chat.chat_kind) !== "channel";
   const bottomOverlayHeightPx = showComposeOverlay
     ? messageChatBottomOverlayHeightPx(composePillHeightPx)

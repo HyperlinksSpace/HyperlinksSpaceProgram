@@ -482,6 +482,7 @@ export function MessageChatPanel({
           colors={colors}
           panelVisible={visible}
           compactChatOverlay={typeof onBack === "function" && !compactPage}
+          compactPage={compactPage}
         />
       </MessageSubtreeErrorBoundary>
     </View>
