@@ -15,7 +15,7 @@ const PANEL_EXTRA_TOP_PX = 50;
 const MAX_FILTERED_ROWS = 48;
 
 const DEBUG_LINE_KEEP_RE =
-  /messages_chat_row_press|messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh/;
+  /messages_chat_row_press|messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh|messages_history_open_supersede/;
 const DEBUG_LINE_FALLBACK_RE = /\[page-display\] messages_/;
 
 function useDebugLogOverlayEnabled(): boolean {

@@ -57,6 +57,7 @@ type LoadSpec = {
 };
 
 const sharedLoads = new Map<number, Promise<ChatHistoryPageResult>>();
+const sharedLoadLane = new Map<number, "foreground" | "background">();
 const inFlightBackground = new Map<number, Promise<void>>();
 const queued: Array<{
   chatId: number;
@@ -108,6 +109,10 @@ function toPageResult(cached: CachedChatHistoryPage): ChatHistoryPageResult {
 
 function isFullPageSpec(spec: LoadSpec): boolean {
   return !spec.previewOnly && spec.limit >= MESSAGE_CHAT_HISTORY_PAGE_SIZE;
+}
+
+function isForegroundOpenSpec(spec: LoadSpec): boolean {
+  return isFullPageSpec(spec) && spec.background !== true;
 }
 
 function toCacheAnchorSpec(spec: LoadSpec): ChatHistoryCacheAnchorSpec {
@@ -315,7 +320,26 @@ function startSharedLoad(
   spec: LoadSpec,
 ): Promise<ChatHistoryPageResult> {
   const anchorSpec = toCacheAnchorSpec(spec);
-  const existing = sharedLoads.get(chatId);
+  let existing = sharedLoads.get(chatId);
+  if (existing && isForegroundOpenSpec(spec)) {
+    const cached = getCachedChatHistory(chatId);
+    if (
+      cached &&
+      cached.messages.length > 0 &&
+      isChatHistoryCacheAnchorMatch(chatId, anchorSpec)
+    ) {
+      return Promise.resolve(toPageResult(cached));
+    }
+    if (sharedLoadLane.get(chatId) === "background") {
+      sharedLoads.delete(chatId);
+      sharedLoadLane.delete(chatId);
+      existing = undefined;
+      logPageDisplay("messages_history_open_supersede_background", {
+        chatId,
+        ...prefetchQueueSnapshot(),
+      });
+    }
+  }
   if (existing) {
     if (isFullPageSpec(spec)) {
       return existing.then(async (prior) => {
@@ -334,6 +358,7 @@ function startSharedLoad(
         ) {
           if (sharedLoads.get(chatId) === existing) {
             sharedLoads.delete(chatId);
+            sharedLoadLane.delete(chatId);
           }
         }
         if (prior.error && prior.messages.length === 0) {
@@ -356,12 +381,16 @@ function startSharedLoad(
     return existing;
   }
 
+  const lane: "foreground" | "background" =
+    spec.background === true ? "background" : "foreground";
   const promise = runHistoryLoad(chatId, peerUserId, spec).finally(() => {
     if (sharedLoads.get(chatId) === promise) {
       sharedLoads.delete(chatId);
+      sharedLoadLane.delete(chatId);
     }
   });
   sharedLoads.set(chatId, promise);
+  sharedLoadLane.set(chatId, lane);
   return promise;
 }
 

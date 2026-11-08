@@ -221,6 +221,7 @@ const OLDER_EMPTY_SOFT_FAIL_BUDGET = 3;
 const OLDER_EMPTY_SOFT_FAIL_COOLDOWN_MS = 1200;
 /** Absolute cap: never leave the open-chat spinner forever if a fetch chain stalls. */
 const HISTORY_OPEN_LOAD_WATCHDOG_MS = 45_000;
+const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 18_000;
 /** telegram-tt FAB_THRESHOLD — hide scroll-down when within this distance of bottom (read chats). */
 const FAB_VISIBILITY_THRESHOLD_PX = 50;
 /** telegram-tt NOTCH_THRESHOLD — unread chats hide FAB only at exact bottom. */
@@ -4853,6 +4854,9 @@ export function MessageChatMessageList({
 
     if (cachePaintable && cached) {
       applyCachedHistoryPage(cached, { replace: true });
+      if (cached.previewOnly) {
+        setLoadingInitial(false);
+      }
       return;
     }
 
@@ -4914,6 +4918,9 @@ export function MessageChatMessageList({
 
     if (cacheHit || cachePaintable) {
       const applied = applyCachedHistoryPage(cached!, { replace: true });
+      if (applied && cached!.messages.length > 0) {
+        setLoadingInitial(false);
+      }
       // applyCachedHistoryPage only setStates — messagesCountRef updates on the
       // next messages effect. Sync now so the deferred path does not treat a
       // successful cache paint as "unpainted" and flip loadingInitial (that
@@ -5248,6 +5255,9 @@ export function MessageChatMessageList({
   useEffect(() => {
     if (!loadingInitial || messages.length > 0) return;
     const chatId = chat.telegram_chat_id;
+    const timeoutMs = compactPage
+      ? HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS
+      : HISTORY_OPEN_LOAD_WATCHDOG_MS;
     const timer = setTimeout(() => {
       if (messagesCountRef.current > 0) {
         setLoadingInitial(false);
@@ -5259,13 +5269,15 @@ export function MessageChatMessageList({
           peerUserId: chat.peer_user_id,
           title: chat.title,
         }),
-        timeoutMs: HISTORY_OPEN_LOAD_WATCHDOG_MS,
+        timeoutMs,
+        compactPage,
       });
       setError("gateway_timeout_retry");
       setLoadingInitial(false);
-    }, HISTORY_OPEN_LOAD_WATCHDOG_MS);
+    }, timeoutMs);
     return () => clearTimeout(timer);
   }, [
+    compactPage,
     loadingInitial,
     messages.length,
     chat.telegram_chat_id,
@@ -5274,7 +5286,12 @@ export function MessageChatMessageList({
   ]);
 
   useEffect(() => {
-    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected || loadingInitial) {
+    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {
+      return;
+    }
+    const allowPollDuringCompactOpen =
+      compactPage && loadingInitial && messages.length === 0;
+    if (loadingInitial && !allowPollDuringCompactOpen) {
       return;
     }
 
@@ -5478,7 +5495,9 @@ export function MessageChatMessageList({
     isAuthenticated,
     isTelegramMessagesConnected,
     shouldLoadHistory,
+    compactPage,
     loadingInitial,
+    messages.length,
   ]);
 
   useTelegramChatHistoryStream({
