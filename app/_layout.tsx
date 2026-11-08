@@ -295,7 +295,10 @@ function RootContent() {
     if (Platform.OS !== "web" || typeof document === "undefined" || !shellPaintReady) return;
 
     const sync = () =>
-      syncWebDocumentOverflowForZoom({ lockDocumentScroll: compactChatOpen });
+      syncWebDocumentOverflowForZoom({
+        lockDocumentScroll:
+          compactChatOpen || pathname === "/messages/chat",
+      });
     sync();
 
     const viewport = window.visualViewport;
@@ -309,7 +312,7 @@ function RootContent() {
       viewport?.removeEventListener("scroll", onViewportChange);
       window.removeEventListener("resize", onViewportChange);
     };
-  }, [shellPaintReady, compactChatOpen]);
+  }, [shellPaintReady, compactChatOpen, pathname]);
 
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");

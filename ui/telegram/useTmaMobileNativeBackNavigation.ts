@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { useCallback } from "react";
 
 import { useTelegram } from "../components/Telegram";
+import { clearAuthenticatedHomeSelectedChat } from "../authenticatedHomeSelectedChat";
 import { isAppHomePathname, navigateBackOrHome } from "../navigateBackOrHome";
 import { closeSwapCurrencyPicker } from "../swap/swapCurrencyPicker";
 import { useTelegramWebAppBackButton } from "./useTelegramWebAppBackButton";
@@ -20,6 +21,9 @@ export function useTmaMobileNativeBackNavigation(
   const onBack = useCallback(() => {
     if (pathname === "/swap/currency") {
       closeSwapCurrencyPicker();
+    }
+    if (pathname === "/messages/chat") {
+      clearAuthenticatedHomeSelectedChat();
     }
     navigateBackOrHome(router);
   }, [pathname, router]);

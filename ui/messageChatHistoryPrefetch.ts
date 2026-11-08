@@ -319,8 +319,25 @@ function startSharedLoad(
   if (existing) {
     if (isFullPageSpec(spec)) {
       return existing.then(async (prior) => {
-        if (prior.error) {
+        if (
+          prior.error &&
+          !(
+            prior.error === "voice_dialog_open" ||
+            (prior.messages.length === 0 && prior.error !== "invalid_chat_id")
+          )
+        ) {
           return prior;
+        }
+        if (
+          prior.error === "voice_dialog_open" ||
+          (prior.messages.length === 0 && !prior.error)
+        ) {
+          if (sharedLoads.get(chatId) === existing) {
+            sharedLoads.delete(chatId);
+          }
+        }
+        if (prior.error && prior.messages.length === 0) {
+          return runHistoryLoad(chatId, peerUserId, spec);
         }
         if (
           isChatHistoryCacheComplete(chatId) &&

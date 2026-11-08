@@ -9,6 +9,14 @@ export default function AppGroupLayout() {
         // Match app shell — RN DefaultTheme card is #f2f2f2 and flashes on hard-reload.
         contentStyle: { flex: 1, minHeight: 0, backgroundColor: dark.background },
       }}
-    />
+    >
+      <Stack.Screen
+        name="messages/chat"
+        options={{
+          gestureEnabled: true,
+          animation: "slide_from_right",
+        }}
+      />
+    </Stack>
   );
 }

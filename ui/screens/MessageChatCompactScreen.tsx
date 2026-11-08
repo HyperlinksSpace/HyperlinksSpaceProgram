@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useLayoutEffect } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -11,7 +11,6 @@ import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
 import { layout, useColors } from "../theme";
-import { useTelegramWebAppBackButton } from "../telegram/useTelegramWebAppBackButton";
 
 /** Narrow layout: dedicated chat route (not a fixed overlay on home). */
 export function MessageChatCompactScreen() {
@@ -21,7 +20,7 @@ export function MessageChatCompactScreen() {
   const chat = useAuthenticatedHomeSelectedChat();
   const { setCompactChatOpen } = useCompactChatOverlayGate();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setCompactChatOpen(true);
     return () => setCompactChatOpen(false);
   }, [setCompactChatOpen]);
@@ -30,8 +29,6 @@ export function MessageChatCompactScreen() {
     clearAuthenticatedHomeSelectedChat();
     navigateBackOrHome(router);
   }, [router]);
-
-  useTelegramWebAppBackButton(onBack, chat != null);
 
   if (chat == null) {
     return null;
@@ -53,7 +50,7 @@ export function MessageChatCompactScreen() {
           minHeight: 0,
           alignSelf: "stretch",
           paddingHorizontal: layout.contentSideInsetPx,
-          overflow: "visible",
+          overflow: "hidden",
         }}
       >
         <MessageChatPanel

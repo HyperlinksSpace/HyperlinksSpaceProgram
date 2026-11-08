@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Text, View, type LayoutChangeEvent } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Text,
+  useWindowDimensions,
+  View,
+  type LayoutChangeEvent,
+} from "react-native";
 import { useAuth } from "../../../auth/AuthContext";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useAuthenticatedHomeHistoryLoadTarget } from "../../authenticatedHomeSelectedChat";
@@ -28,6 +35,7 @@ import {
   type CachedChatScrollPosition,
 } from "../../messageChatScrollCache";
 import { subscribeOutgoingChatMessages, subscribeOutgoingChatMessageRemovals, removeOutgoingChatMessage } from "../../messageChatOutgoing";
+import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import {
@@ -251,6 +259,7 @@ export function MessageChatMessageList({
   compactPage = false,
 }: Props) {
   const { t } = useAppStrings();
+  const { width: windowWidth } = useWindowDimensions();
   const splitMetrics = useAuthenticatedHomeSplitLayoutMetrics();
   const isTwoColumnWide = splitMetrics?.columnCount === 2;
   /** Wide split: flush thumb overlays the column seam (portaled above the divider on web). */
@@ -7032,8 +7041,17 @@ export function MessageChatMessageList({
     showScrollToBottomButton,
   ]);
 
+  const compactColumnWidthFallbackPx = useMemo(() => {
+    if (!compactPage) return 0;
+    const layoutWidth = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+    return Math.max(
+      0,
+      layoutWidth - layout.contentSideInsetPx * 2 - MESSAGE_CHAT_BODY_PADDING_PX * 2,
+    );
+  }, [compactPage, windowWidth]);
+
   const innerWidthPx = Math.max(
-    0,
+    compactColumnWidthFallbackPx,
     columnWidthPx - MESSAGE_CHAT_BODY_PADDING_PX * 2,
   );
 
@@ -7243,6 +7261,7 @@ export function MessageChatMessageList({
       <HspScrollColumn
         key={String(chat.telegram_chat_id)}
         style={{ flex: 1, minHeight: 0 }}
+        containOverscroll={compactPage}
         indicatorColor={colors.scrollIndicator}
         scrollbarRightInsetPx={scrollbarRightInsetPx}
         indicatorThumbMinPx={CHAT_SCROLL_INDICATOR_THUMB_MIN_PX}
