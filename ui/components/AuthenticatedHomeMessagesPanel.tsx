@@ -39,6 +39,9 @@ import {
   useAuthenticatedHomeMiddleColumnFocus,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
+import { useAuthenticatedHomeCompactChatLayout } from "../authenticatedHomeLayoutWidth";
+import { maybePushAuthenticatedHomeCompactChatRoute } from "../navigateAuthenticatedHomeCompactChat";
+import { useResolvedPathname } from "../useResolvedPathname";
 import {
   isOpenChatFocusHoldActive,
   prefetchChatHistory,
@@ -898,6 +901,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const [recentSearchHits, setRecentSearchHits] = useState<TelegramChatListSearchHit[]>([]);
   const [recentSearchLoaded, setRecentSearchLoaded] = useState(false);
   const selectedChat = useAuthenticatedHomeSelectedChat();
+  const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
+  const pathname = useResolvedPathname();
+  const compactChatNavigateRetryRef = useRef(0);
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const selectedChatRef = useRef(selectedChat);
@@ -921,6 +927,25 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       ),
     );
   }, [selectedChat, selectedChat?.unread_count, selectedChatId]);
+
+  useEffect(() => {
+    if (!compactChatLayout || selectedChatId == null) {
+      compactChatNavigateRetryRef.current = 0;
+      return;
+    }
+    if (pathname === "/messages/chat") {
+      compactChatNavigateRetryRef.current = 0;
+      return;
+    }
+    if (compactChatNavigateRetryRef.current >= 6) return;
+    const attempt = compactChatNavigateRetryRef.current;
+    const delayMs = attempt === 0 ? 0 : 40 + attempt * 60;
+    const timer = setTimeout(() => {
+      compactChatNavigateRetryRef.current += 1;
+      maybePushAuthenticatedHomeCompactChatRoute();
+    }, delayMs);
+    return () => clearTimeout(timer);
+  }, [compactChatLayout, pathname, selectedChatId]);
 
   useEffect(() => {
     return subscribeChatVoiceMeta((patch) => {
@@ -2395,14 +2420,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         peerUserId: resolvedItem.peer_user_id,
         title: resolvedItem.title,
       }));
-      // Pause neighbor history + demote leftover media so voice strip / open
-      // history win the gateway (prod: soft poll 4–5s timeouts while previews ran).
-      setOpenChatFocusHold(resolvedItem.telegram_chat_id);
-      demoteQueuedNetworkFetches();
-      clearQueuedNormalNetworkFetches();
-      // tdesktop: start full history warm before the message list mounts.
-      prefetchChatHistoryPriority(resolvedItem);
-      void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
       openAuthenticatedHomeChatHistory(
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
@@ -2411,15 +2428,27 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);
         dismissChatListSearch();
       }
-      void import("./messages/messageChatAvatarPrefetch").then(
-        ({ prefetchOpenChatListAvatar, prefetchOpenChatAvatars }) => {
-          prefetchOpenChatListAvatar(resolvedItem);
-          const cached = getCachedChatHistory(resolvedItem.telegram_chat_id);
-          if (cached != null && cached.messages.length > 0) {
-            prefetchOpenChatAvatars(resolvedItem, cached.messages, cached.chatKind);
-          }
-        },
-      );
+      const runDeferredOpenWarmup = () => {
+        setOpenChatFocusHold(resolvedItem.telegram_chat_id);
+        demoteQueuedNetworkFetches();
+        clearQueuedNormalNetworkFetches();
+        prefetchChatHistoryPriority(resolvedItem);
+        void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
+        void import("./messages/messageChatAvatarPrefetch").then(
+          ({ prefetchOpenChatListAvatar, prefetchOpenChatAvatars }) => {
+            prefetchOpenChatListAvatar(resolvedItem);
+            const cached = getCachedChatHistory(resolvedItem.telegram_chat_id);
+            if (cached != null && cached.messages.length > 0) {
+              prefetchOpenChatAvatars(resolvedItem, cached.messages, cached.chatKind);
+            }
+          },
+        );
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(runDeferredOpenWarmup);
+      } else {
+        runDeferredOpenWarmup();
+      }
     },
     [
       chatListSearchFocused,

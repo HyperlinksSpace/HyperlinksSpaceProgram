@@ -60,11 +60,22 @@ export function readAuthenticatedHomeCompactChatLayoutSync(): boolean {
     typeof window !== "undefined" ? window.innerWidth : 0,
   );
   const snap = computeTelegramLayoutStartupSnapshot();
-  return isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
+  const fromRules = isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
     platformEffective: snap.platformEffective,
     isMobileWebUserAgent: snap.isMobileWebUserAgent,
     isTelegramMiniAppDesktop: snap.isTelegramMiniAppDesktop,
   });
+  if (fromRules) return true;
+  if (
+    snap.webAppPresent &&
+    snap.isMobileWebUserAgent &&
+    !snap.isTelegramMiniAppDesktop
+  ) {
+    return true;
+  }
+  const platform = snap.platformEffective?.trim().toLowerCase();
+  if (platform === "ios" || platform === "android") return true;
+  return false;
 }
 
 export function useAuthenticatedHomeCompactChatLayout(): boolean {

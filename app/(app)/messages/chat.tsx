@@ -1,6 +1,8 @@
 import { Redirect } from "expo-router";
 import { useEffect, useRef } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../../../auth/AuthContext";
+import { useColors } from "../../../ui/theme";
 import { useAuthenticatedHomeCompactChatLayout } from "../../../ui/authenticatedHomeLayoutWidth";
 import {
   getAuthenticatedHomeSelectedChatSnapshot,
@@ -10,6 +12,7 @@ import { logPageDisplay } from "../../../ui/pageDisplayLog";
 import { MessageChatCompactScreen } from "../../../ui/screens/MessageChatCompactScreen";
 
 export default function MessageChatRoute() {
+  const colors = useColors();
   const { isAuthenticated, authReady } = useAuth();
   const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const chat = useAuthenticatedHomeSelectedChat();
@@ -24,7 +27,19 @@ export default function MessageChatRoute() {
   }, [authReady, isAuthenticated, compactChatLayout]);
 
   if (!authReady) {
-    return null;
+    return (
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator size="small" color={colors.primary} />
+      </View>
+    );
   }
   if (!isAuthenticated) {
     return <Redirect href="/" />;
