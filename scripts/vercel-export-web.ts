@@ -23,7 +23,8 @@ const env = {
   ...process.env,
   NODE_OPTIONS: nodeOptions,
   // Parallel Metro workers + dual web/λ bundles have frozen this app at ~98% on 8 GB VMs.
-  METRO_MAX_WORKERS: process.env.METRO_MAX_WORKERS ?? (process.env.VERCEL ? "2" : "4"),
+  // Single worker on Vercel avoids intermittent Web bundle stalls at ~95–98% (8 GB builders).
+  METRO_MAX_WORKERS: process.env.METRO_MAX_WORKERS ?? (process.env.VERCEL ? "1" : "4"),
   CI: process.env.CI ?? "1",
   EXPO_NO_TELEMETRY: process.env.EXPO_NO_TELEMETRY ?? "1",
   EXPO_PUBLIC_DEPLOY_VERSION: deployVersion,

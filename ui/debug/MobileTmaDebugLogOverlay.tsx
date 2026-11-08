@@ -4,7 +4,6 @@ import { useTelegram } from "../components/Telegram";
 import { layout, useColors } from "../theme";
 import {
   getAppLogRingBufferSnapshot,
-  installMobileTmaDebugLogCapture,
   subscribeAppLogRingBuffer,
   type AppLogRingEntry,
 } from "./appLogRingBuffer";
@@ -66,11 +65,6 @@ export function MobileTmaDebugLogOverlay() {
   const panelWidth = Math.max(0, windowWidth * PANEL_WIDTH_RATIO);
   const panelHeight = Math.max(0, windowHeight * PANEL_HEIGHT_RATIO);
   const panelLeft = Math.max(0, (windowWidth - panelWidth) / 2);
-
-  useEffect(() => {
-    if (!enabled) return;
-    installMobileTmaDebugLogCapture();
-  }, [enabled]);
 
   useEffect(() => {
     if (!pinBottom) return;
