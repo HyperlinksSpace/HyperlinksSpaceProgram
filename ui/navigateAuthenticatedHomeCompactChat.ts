@@ -38,24 +38,35 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
   if (isOnCompactChatPath()) {
     return;
   }
-  const go = () => {
+  const go = (source: "sync" | "raf" | "timeout" | "hard") => {
     if (isOnCompactChatPath()) return;
+    if (source === "hard" && typeof window !== "undefined") {
+      logPageDisplay("messages_compact_chat_route_hard_navigate", { path: COMPACT_CHAT_PATH });
+      window.location.assign(COMPACT_CHAT_PATH);
+      return;
+    }
     try {
       router.push(COMPACT_CHAT_PATH);
-      logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH });
+      logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
     } catch (error) {
       logPageDisplay("messages_compact_chat_route_push_error", {
         path: COMPACT_CHAT_PATH,
+        source,
         message: error instanceof Error ? error.message : String(error),
       });
     }
   };
-  // Mobile TMA: push in the same tap gesture; do not defer solely to rAF.
-  go();
+  // Mobile TMA: push in the same tap gesture; fall back to hard assign if SPA push stalls.
+  go("sync");
   if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(go);
+    requestAnimationFrame(() => go("raf"));
   }
   if (typeof window !== "undefined") {
-    window.setTimeout(go, 120);
+    window.setTimeout(() => {
+      if (!isOnCompactChatPath()) go("timeout");
+    }, 120);
+    window.setTimeout(() => {
+      if (!isOnCompactChatPath()) go("hard");
+    }, 400);
   }
 }

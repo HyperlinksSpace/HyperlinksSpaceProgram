@@ -14,7 +14,7 @@ const PANEL_Z_INDEX = 1_000_000;
 const MAX_FILTERED_ROWS = 48;
 
 const DEBUG_LINE_KEEP_RE =
-  /messages_chat_row_press|messages_chat_open|messages_compact_chat|messages_compact_home|root_shell pathname=|messages_history_prefetch_focus|messages_history_load_start|messages_compact_chat_route/;
+  /messages_chat_row_press_in|messages_chat_row_press |messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_prefetch_focus|messages_history_load_start|messages_compact_chat_route/;
 
 function useDebugLogOverlayEnabled(): boolean {
   const { isInTelegram } = useTelegram();
@@ -41,7 +41,13 @@ function formatLogLine(row: AppLogRingEntry): string {
 export function MobileTmaDebugLogOverlay() {
   const enabled = useDebugLogOverlayEnabled();
   const colors = useColors();
+  const { contentSafeAreaInsetTop, safeAreaInsetTop } = useTelegram();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const topInsetPx = Math.max(
+    8,
+    Math.ceil(contentSafeAreaInsetTop || 0),
+    Math.ceil(safeAreaInsetTop || 0),
+  ) + 8;
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [pinBottom, setPinBottom] = useState(true);
   const logStore = useSyncExternalStore(
@@ -60,6 +66,7 @@ export function MobileTmaDebugLogOverlay() {
   const panelWidth = Math.max(0, windowWidth * PANEL_WIDTH_RATIO);
   const panelHeight = Math.max(120, windowHeight * PANEL_HEIGHT_RATIO);
   const panelLeft = Math.max(0, (windowWidth - panelWidth) / 2);
+  const panelTop = topInsetPx;
 
   useEffect(() => {
     if (!pinBottom || Platform.OS !== "web") return;
@@ -108,7 +115,7 @@ export function MobileTmaDebugLogOverlay() {
       pointerEvents="box-none"
       style={{
         position: "absolute",
-        top: 0,
+        top: panelTop,
         left: panelLeft,
         width: panelWidth,
         height: panelHeight,

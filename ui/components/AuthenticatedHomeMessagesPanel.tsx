@@ -31,7 +31,6 @@ import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedCha
 import { toggleTelegramChatPinned } from "../telegram/toggleTelegramChatPinned";
 import {
   clearAuthenticatedHomeSelectedChat,
-  getAuthenticatedHomeSelectedChatSnapshot,
   mergeChatRowVoicePreferClientClear,
   openAuthenticatedHomeChatHistory,
   resolveAuthenticatedHomeOpenChatUnread,
@@ -40,7 +39,10 @@ import {
   useAuthenticatedHomeMiddleColumnFocus,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
-import { useAuthenticatedHomeCompactChatLayout } from "../authenticatedHomeLayoutWidth";
+import {
+  readAuthenticatedHomeCompactChatLayoutSync,
+  useAuthenticatedHomeCompactChatLayout,
+} from "../authenticatedHomeLayoutWidth";
 import {
   isAuthenticatedHomeCompactChatRoutePushIntent,
   maybePushAuthenticatedHomeCompactChatRoute,
@@ -907,7 +909,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const pathname = useResolvedPathname();
-  const compactHomeStoredChatClearDoneRef = useRef(false);
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const selectedChatRef = useRef(selectedChat);
@@ -931,18 +932,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       ),
     );
   }, [selectedChat, selectedChat?.unread_count, selectedChatId]);
-
-  // Compact home: clear restored chat once on cold landing — never after the user opens a chat
-  // (layout can flip to compact after tap; clearing then would wipe intent and block navigation).
-  useEffect(() => {
-    if (!compactChatLayout || pathname !== "/") return;
-    if (compactHomeStoredChatClearDoneRef.current) return;
-    compactHomeStoredChatClearDoneRef.current = true;
-    if (isAuthenticatedHomeCompactChatRoutePushIntent()) return;
-    if (getAuthenticatedHomeSelectedChatSnapshot() == null) return;
-    clearAuthenticatedHomeSelectedChat();
-    logPageDisplay("messages_compact_home_clear_stored_chat", {});
-  }, [compactChatLayout, pathname]);
 
   useEffect(() => {
     if (!compactChatLayout || selectedChatId == null) return;
@@ -2441,14 +2430,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
       );
-      if (compactChatLayout) {
+      if (readAuthenticatedHomeCompactChatLayoutSync()) {
         maybePushAuthenticatedHomeCompactChatRoute();
       }
-      if (hadSearchUi) {
-        void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);
-        dismissChatListSearch();
-      }
       const runDeferredOpenWarmup = () => {
+        if (hadSearchUi) {
+          void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);
+          dismissChatListSearch();
+        }
         setOpenChatFocusHold(
           resolvedItem.telegram_chat_id,
           compactChatLayout ? { holdMs: 2_000 } : undefined,
