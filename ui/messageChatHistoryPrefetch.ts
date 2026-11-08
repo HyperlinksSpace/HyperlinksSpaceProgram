@@ -38,9 +38,10 @@ function isOnCompactChatRoute(): boolean {
   return path === "/messages/chat";
 }
 
-/** Compact / mobile TMA list: defer preview warming so row taps stay on the main thread. */
+/** Defer preview warming while the list or an opening chat needs the gateway. */
 function shouldPauseListBackgroundPrefetch(): boolean {
-  if (isOnCompactChatRoute()) return false;
+  if (openChatLoadingId != null) return true;
+  if (isOnCompactChatRoute()) return true;
   if (readAuthenticatedHomeCompactChatLayoutSync()) return true;
   const snap = computeTelegramLayoutStartupSnapshot();
   const platform = snap.platformEffective?.trim().toLowerCase();
@@ -462,6 +463,7 @@ function enqueueBackgroundPrefetch(
   options?: { front?: boolean },
 ): void {
   if (!Number.isFinite(chatId)) return;
+  if (openChatLoadingId != null && openChatLoadingId !== Math.trunc(chatId)) return;
   // Always queue while the open chat loads — drain resumes when it finishes.
   // Skipping enqueue here previously burned MessageChatRow's one-shot prefetch.
   // List sync: still enqueue (esp. front/open neighbors); drain waits until sync clears.
@@ -528,6 +530,15 @@ export async function loadOpenChatHistoryFirstPage(
   const anchorSpec = toCacheAnchorSpec(spec);
 
   openChatLoadingId = chatId;
+  if (queued.length > 0) {
+    const dropped = queued.length;
+    queued.length = 0;
+    logPageDisplay("messages_history_prefetch_queue_cleared_open", {
+      chatId,
+      dropped,
+      ...prefetchQueueSnapshot(),
+    });
+  }
   if (openChatLoadingStaleTimer != null) {
     clearTimeout(openChatLoadingStaleTimer);
     openChatLoadingStaleTimer = null;

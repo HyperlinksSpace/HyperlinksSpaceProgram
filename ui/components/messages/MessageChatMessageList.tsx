@@ -561,6 +561,7 @@ export function MessageChatMessageList({
   const prevContentHForBottomStickRef = useRef(0);
   const historySyncKeyRef = useRef("");
   const historyNetworkKeyRef = useRef("");
+  const historyOpenWatchdogKeyRef = useRef("");
   const chatScrollPaintReadyRef = useRef(false);
   const messageLayoutsRef = useRef<Map<number, MessageScrollLayoutEntry>>(new Map());
   const messageRowHeightCacheRef = useRef<Map<number, number>>(new Map());
@@ -4960,11 +4961,15 @@ export function MessageChatMessageList({
       setNextBeforeMessageId(null);
       setLastReadOutboxFromHistory(null);
       setSelfUserId(null);
-      logPageDisplay("messages_history_load_start", chatLogFields({
-        chatId: chat.telegram_chat_id,
-        peerUserId: chat.peer_user_id,
-        title: chat.title,
-      }));
+      historyOpenWatchdogKeyRef.current = `${chat.telegram_chat_id}:${historyLoad.generation}:${compactHistoryOpenRetry}`;
+      logPageDisplay("messages_history_load_start", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        watchdogKey: historyOpenWatchdogKeyRef.current,
+      });
     }
 
     void (async () => {
@@ -5295,7 +5300,10 @@ export function MessageChatMessageList({
     const timeoutMs = compactPage
       ? HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS
       : HISTORY_OPEN_LOAD_WATCHDOG_MS;
+    const watchdogKey = `${chatId}:${historyLoad.generation}:${compactHistoryOpenRetry}`;
+    historyOpenWatchdogKeyRef.current = watchdogKey;
     const timer = setTimeout(() => {
+      if (historyOpenWatchdogKeyRef.current !== watchdogKey) return;
       if (messagesCountRef.current > 0) {
         setLoadingInitial(false);
         return;
@@ -5308,13 +5316,17 @@ export function MessageChatMessageList({
         }),
         timeoutMs,
         compactPage,
+        watchdogKey,
       });
+      resetSharedOpenChatHistoryLoad(chatId);
       setError("gateway_timeout_retry");
       setLoadingInitial(false);
     }, timeoutMs);
     return () => clearTimeout(timer);
   }, [
     compactPage,
+    compactHistoryOpenRetry,
+    historyLoad.generation,
     loadingInitial,
     messages.length,
     chat.telegram_chat_id,
