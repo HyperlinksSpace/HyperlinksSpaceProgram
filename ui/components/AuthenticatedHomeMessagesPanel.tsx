@@ -2427,6 +2427,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (resolvedItem.has_active_voice_chat) {
         unlockVoiceAutoplay();
       }
+      logPageDisplay("messages_chat_row_press", chatLogFields({
+        chatId: resolvedItem.telegram_chat_id,
+        peerUserId: resolvedItem.peer_user_id,
+        title: resolvedItem.title,
+      }));
       logPageDisplay("messages_chat_open", chatLogFields({
         chatId: resolvedItem.telegram_chat_id,
         peerUserId: resolvedItem.peer_user_id,
@@ -2444,7 +2449,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         dismissChatListSearch();
       }
       const runDeferredOpenWarmup = () => {
-        setOpenChatFocusHold(resolvedItem.telegram_chat_id);
+        setOpenChatFocusHold(
+          resolvedItem.telegram_chat_id,
+          compactChatLayout ? { holdMs: 2_000 } : undefined,
+        );
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         prefetchChatHistoryPriority(resolvedItem);
@@ -3872,6 +3880,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                 chatSelectionEnabled
                   ? () => {
                       if (listSearchActive) markChatListSearchRowPressPending();
+                      logPageDisplay(
+                        "messages_chat_row_press_in",
+                        chatLogFields({
+                          chatId: item.row.telegram_chat_id,
+                          peerUserId: item.row.peer_user_id,
+                          title: item.row.title,
+                        }),
+                      );
+                      // Compact TMA: heavy prefetch on press-in starves the tap (onPress never fires).
+                      if (compactChatLayout) return;
                       setOpenChatFocusHold(item.row.telegram_chat_id);
                       demoteQueuedNetworkFetches();
                       clearQueuedNormalNetworkFetches();

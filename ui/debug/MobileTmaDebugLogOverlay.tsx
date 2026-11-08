@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { createElement, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Platform, Text, useWindowDimensions, View } from "react-native";
 import { useTelegram } from "../components/Telegram";
 import { layout, useColors } from "../theme";
 import {
@@ -8,9 +8,13 @@ import {
   type AppLogRingEntry,
 } from "./appLogRingBuffer";
 
-const PANEL_WIDTH_RATIO = 0.8;
-const PANEL_HEIGHT_RATIO = 0.5;
+const PANEL_WIDTH_RATIO = 0.92;
+const PANEL_HEIGHT_RATIO = 0.28;
 const PANEL_Z_INDEX = 1_000_000;
+const MAX_FILTERED_ROWS = 48;
+
+const DEBUG_LINE_KEEP_RE =
+  /messages_chat_row_press|messages_chat_open|messages_compact_chat|messages_compact_home|root_shell pathname=|messages_history_prefetch_focus|messages_history_load_start|messages_compact_chat_route/;
 
 function useDebugLogOverlayEnabled(): boolean {
   const { isInTelegram } = useTelegram();
@@ -29,28 +33,8 @@ function formatRowClock(at: number): string {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
-function LogRow({ row }: { row: AppLogRingEntry }) {
-  const colors = useColors();
-  const tone =
-    row.level === "error"
-      ? "#f57474"
-      : row.level === "warn"
-        ? colors.secondary
-        : colors.primary;
-  return (
-    <Text
-      style={{
-        color: tone,
-        fontSize: 10,
-        lineHeight: 13,
-        fontFamily: Platform.OS === "web" ? "ui-monospace, monospace" : undefined,
-        marginBottom: 2,
-      }}
-    >
-      <Text style={{ color: colors.secondary }}>{formatRowClock(row.at)} </Text>
-      {row.text}
-    </Text>
-  );
+function formatLogLine(row: AppLogRingEntry): string {
+  return `${formatRowClock(row.at)} ${row.text}`;
 }
 
 /** Temporary TMA debug strip — remove when mobile chat navigation is fixed. */
@@ -58,28 +42,66 @@ export function MobileTmaDebugLogOverlay() {
   const enabled = useDebugLogOverlayEnabled();
   const colors = useColors();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [pinBottom, setPinBottom] = useState(true);
-  const scrollRef = useRef<ScrollView | null>(null);
   const logStore = useSyncExternalStore(
     subscribeAppLogRingBuffer,
     getAppLogRingBufferSnapshot,
     () => ({ revision: 0, entries: [] as const }),
   );
-  const logs = logStore.entries;
+
+  const filteredLogs = useMemo(() => {
+    const kept = logStore.entries.filter((row) => DEBUG_LINE_KEEP_RE.test(row.text));
+    return kept.length > MAX_FILTERED_ROWS
+      ? kept.slice(kept.length - MAX_FILTERED_ROWS)
+      : kept;
+  }, [logStore.entries]);
 
   const panelWidth = Math.max(0, windowWidth * PANEL_WIDTH_RATIO);
-  const panelHeight = Math.max(0, windowHeight * PANEL_HEIGHT_RATIO);
+  const panelHeight = Math.max(120, windowHeight * PANEL_HEIGHT_RATIO);
   const panelLeft = Math.max(0, (windowWidth - panelWidth) / 2);
 
   useEffect(() => {
-    if (!pinBottom) return;
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: false });
-    }, 0);
-    return () => clearTimeout(timer);
+    if (!pinBottom || Platform.OS !== "web") return;
+    const el = logScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [logStore.revision, pinBottom]);
 
   if (!enabled) return null;
+
+  const logBody =
+    Platform.OS === "web"
+      ? createElement(
+          "div",
+          {
+            ref: logScrollRef,
+            onScroll: () => {
+              const el = logScrollRef.current;
+              if (!el) return;
+              const distBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              setPinBottom(distBottom < 24);
+            },
+            style: {
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              overflowX: "hidden",
+              WebkitOverflowScrolling: "touch",
+              touchAction: "pan-y",
+              overscrollBehavior: "contain",
+              pointerEvents: "auto",
+              color: colors.primary,
+              fontSize: 9,
+              lineHeight: "12px",
+              fontFamily: "ui-monospace, monospace",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            },
+          },
+          filteredLogs.map((row) => createElement("div", { key: row.id }, formatLogLine(row))),
+        )
+      : null;
 
   return (
     <View
@@ -94,45 +116,30 @@ export function MobileTmaDebugLogOverlay() {
       }}
     >
       <View
+        pointerEvents="auto"
         style={{
           flex: 1,
           minHeight: 0,
-          backgroundColor: `${colors.background}ee`,
+          backgroundColor: `${colors.background}f5`,
           borderWidth: 1,
-          borderColor: colors.highlight,
-          borderTopWidth: 0,
-          paddingTop: 6,
-          paddingHorizontal: layout.contentSideInsetPx,
+          borderColor: colors.accent,
+          paddingTop: 4,
+          paddingHorizontal: 8,
           paddingBottom: 4,
         }}
       >
         <Text
           style={{
             color: colors.primary,
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: "600",
-            marginBottom: 4,
+            marginBottom: 2,
           }}
           numberOfLines={1}
         >
-          Debug log ({logs.length} #{logStore.revision}) — live
+          Chat nav debug ({filteredLogs.length} #{logStore.revision})
         </Text>
-        <ScrollView
-          ref={scrollRef}
-          onScroll={(e) => {
-            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-            const distBottom =
-              contentSize.height - layoutMeasurement.height - contentOffset.y;
-            setPinBottom(distBottom < 32);
-          }}
-          scrollEventThrottle={32}
-          style={{ flex: 1, minHeight: 0 }}
-          contentContainerStyle={{ paddingBottom: 8 }}
-        >
-          {logs.map((row) => (
-            <LogRow key={row.id} row={row} />
-          ))}
-        </ScrollView>
+        {logBody}
       </View>
     </View>
   );
