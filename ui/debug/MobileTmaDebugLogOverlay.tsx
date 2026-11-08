@@ -11,6 +11,7 @@ import {
 const PANEL_WIDTH_RATIO = 0.92;
 const PANEL_HEIGHT_RATIO = 0.28;
 const PANEL_Z_INDEX = 1_000_000;
+const PANEL_EXTRA_TOP_PX = 50;
 const MAX_FILTERED_ROWS = 48;
 
 const DEBUG_LINE_KEEP_RE =
@@ -43,11 +44,13 @@ export function MobileTmaDebugLogOverlay() {
   const colors = useColors();
   const { contentSafeAreaInsetTop, safeAreaInsetTop } = useTelegram();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const topInsetPx = Math.max(
-    8,
-    Math.ceil(contentSafeAreaInsetTop || 0),
-    Math.ceil(safeAreaInsetTop || 0),
-  ) + 8;
+  const topInsetPx =
+    Math.max(
+      8,
+      Math.ceil(contentSafeAreaInsetTop || 0),
+      Math.ceil(safeAreaInsetTop || 0),
+    ) +
+    PANEL_EXTRA_TOP_PX;
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [pinBottom, setPinBottom] = useState(true);
   const logStore = useSyncExternalStore(
