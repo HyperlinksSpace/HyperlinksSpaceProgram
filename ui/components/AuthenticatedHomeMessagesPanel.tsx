@@ -2444,11 +2444,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         peerUserId: resolvedItem.peer_user_id,
         title: resolvedItem.title,
       }));
+      const compactOpenNow = readAuthenticatedHomeCompactChatLayoutSync();
+      if (compactOpenNow) {
+        demoteQueuedNetworkFetches();
+        clearQueuedNormalNetworkFetches();
+      }
       openAuthenticatedHomeChatHistory(
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
       );
-      if (readAuthenticatedHomeCompactChatLayoutSync()) {
+      if (compactOpenNow) {
         maybePushAuthenticatedHomeCompactChatRoute();
       }
       const runDeferredOpenWarmup = () => {
@@ -2456,13 +2461,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);
           dismissChatListSearch();
         }
-        setOpenChatFocusHold(
-          resolvedItem.telegram_chat_id,
-          compactChatLayout ? { holdMs: 2_000 } : undefined,
-        );
-        demoteQueuedNetworkFetches();
-        clearQueuedNormalNetworkFetches();
-        prefetchChatHistoryPriority(resolvedItem);
+        if (!compactChatLayout && !compactOpenNow) {
+          setOpenChatFocusHold(resolvedItem.telegram_chat_id);
+        }
+        if (!compactChatLayout && !compactOpenNow) {
+          prefetchChatHistoryPriority(resolvedItem);
+        }
         void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
         void import("./messages/messageChatAvatarPrefetch").then(
           ({ prefetchOpenChatListAvatar, prefetchOpenChatAvatars }) => {

@@ -25,6 +25,7 @@ import {
 import {
   getOpenChatHistoryCacheAnchorSpec,
   loadOpenChatHistoryFirstPage,
+  resetSharedOpenChatHistoryLoad,
 } from "../../messageChatHistoryPrefetch";
 import { isVoiceDialogUiOpen, subscribeVoiceDialogUiOpen } from "./voiceDialogUiGate";
 import {
@@ -296,6 +297,7 @@ export function MessageChatMessageList({
   const [messages, setMessages] = useState<MessageChatHistoryItem[]>([]);
   const [chatKind, setChatKind] = useState<MessageChatKind | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(false);
+  const [compactHistoryOpenRetry, setCompactHistoryOpenRetry] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
@@ -5248,6 +5250,41 @@ export function MessageChatMessageList({
     shouldLoadHistory,
     applyCachedHistoryPage,
     applyLastReadInboxMessageId,
+    compactHistoryOpenRetry,
+  ]);
+
+  useEffect(() => {
+    if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;
+    if (!loadingInitial || messages.length > 0) return;
+    const chatId = chat.telegram_chat_id;
+    const generation = historyLoad.generation;
+    const timer = setTimeout(() => {
+      if (messagesCountRef.current > 0) return;
+      if (historyNetworkKeyRef.current !== `${chatId}:${generation}`) return;
+      logPageDisplay("messages_history_compact_open_retry", {
+        ...chatLogFields({
+          chatId,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        retry: compactHistoryOpenRetry + 1,
+      });
+      resetSharedOpenChatHistoryLoad(chatId);
+      historyNetworkKeyRef.current = "";
+      setCompactHistoryOpenRetry((n) => n + 1);
+    }, 4_000);
+    return () => clearTimeout(timer);
+  }, [
+    chat.peer_user_id,
+    chat.telegram_chat_id,
+    chat.title,
+    compactHistoryOpenRetry,
+    compactPage,
+    historyLoad.generation,
+    isTelegramMessagesConnected,
+    loadingInitial,
+    messages.length,
+    shouldLoadHistory,
   ]);
 
   // Belt-and-suspenders: if the open fetch never settles (hung body, cancelled

@@ -579,6 +579,26 @@ export function isOpenChatHistoryLoading(): boolean {
   return openChatLoadingId != null;
 }
 
+/** Drop a stuck coalesced load so compact open can start a fresh foreground fetch. */
+export function resetSharedOpenChatHistoryLoad(chatId: number): void {
+  if (!Number.isFinite(chatId)) return;
+  const id = Math.trunc(chatId);
+  sharedLoads.delete(id);
+  sharedLoadLane.delete(id);
+  if (openChatLoadingId === id) {
+    openChatLoadingId = null;
+    if (openChatLoadingStaleTimer != null) {
+      clearTimeout(openChatLoadingStaleTimer);
+      openChatLoadingStaleTimer = null;
+    }
+  }
+  logPageDisplay("messages_history_open_shared_reset", {
+    chatId: id,
+    ...prefetchQueueSnapshot(),
+  });
+  scheduleBackgroundDrain();
+}
+
 /**
  * Pause neighbor history drain after selecting a chat so voice strip / open
  * history / soft getGroupCall are not starved by list warming.
