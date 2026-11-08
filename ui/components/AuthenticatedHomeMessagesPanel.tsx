@@ -2400,7 +2400,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }, [authReady, isTelegramMessagesConnected, loadChats]);
 
   const handleChatPress = useCallback(
-    (item: MessageChatRowData, source: "press" | "press_out" = "press") => {
+    (
+      item: MessageChatRowData,
+      source: "press" | "press_in" | "press_out" | "web_click" = "press",
+    ) => {
       if (!chatSelectionEnabled) return;
       const openNow = Date.now();
       const guard = chatOpenGuardRef.current;
@@ -2487,9 +2490,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     ],
   );
 
-  const handleRowPrefetch = useCallback((item: MessageChatRowData) => {
-    prefetchChatHistory(item);
-  }, []);
+  const handleRowPrefetch = useCallback(
+    (item: MessageChatRowData) => {
+      if (compactChatLayout || readAuthenticatedHomeCompactChatLayoutSync()) return;
+      prefetchChatHistory(item);
+    },
+    [compactChatLayout],
+  );
 
   const handleClearSelection = useCallback(() => {
     if (!chatSelectionEnabled) return;
@@ -3321,6 +3328,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   // tdesktop: keep neighbors warm so the next switch paints from cache.
   useEffect(() => {
     if (!isTelegramMessagesConnected || visibleChats.length === 0) return;
+    if (compactChatLayout && pathname !== "/messages/chat") return;
     if (isVoiceDialogUiOpen()) return;
     // Live voice on the open chat already runs SSE/soft-poll + WebRTC — neighbor
     // history storms competed for the main thread (logs: prefetch_ok mid-freeze).
@@ -3332,7 +3340,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     });
     // visibleChats identity changes every render; key on ids + selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleChatIdsKey
-  }, [isTelegramMessagesConnected, searchListReplacesMain, selectedChatId, visibleChatIdsKey]);
+  }, [
+    compactChatLayout,
+    isTelegramMessagesConnected,
+    pathname,
+    searchListReplacesMain,
+    selectedChatId,
+    visibleChatIdsKey,
+  ]);
 
   useEffect(() => {
     setChatListBottomLoaderActive(showBottomLoader);
@@ -3915,6 +3930,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                           chatId: item.row.telegram_chat_id,
                           at: Date.now(),
                         };
+                        if (pinnedDragMovedRef.current) return;
+                        handleChatPress(item.row, "press_in");
                         return;
                       }
                       setOpenChatFocusHold(item.row.telegram_chat_id);
@@ -3928,6 +3945,27 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               onPressOut={
                 chatSelectionEnabled && listCompactOpen
                   ? openCompactChatFromRowRelease
+                  : undefined
+              }
+              webClick={
+                chatSelectionEnabled && listCompactOpen
+                  ? () => {
+                      if (listSearchActive) markChatListSearchRowPressPending();
+                      compactRowTapRef.current = {
+                        chatId: item.row.telegram_chat_id,
+                        at: Date.now(),
+                      };
+                      logPageDisplay(
+                        "messages_chat_row_web_click",
+                        chatLogFields({
+                          chatId: item.row.telegram_chat_id,
+                          peerUserId: item.row.peer_user_id,
+                          title: item.row.title,
+                        }),
+                      );
+                      if (pinnedDragMovedRef.current) return;
+                      handleChatPress(item.row, "web_click");
+                    }
                   : undefined
               }
               onOpenContextMenu={(anchor) => handleOpenChatListMenu(item.row, anchor)}

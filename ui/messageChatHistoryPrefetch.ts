@@ -29,6 +29,25 @@ import {
   isVoiceDialogUiOpen,
   subscribeVoiceDialogUiOpen,
 } from "./components/messages/voiceDialogUiGate";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
+import { computeTelegramLayoutStartupSnapshot } from "./components/telegramWebApp";
+
+function isOnCompactChatRoute(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname.replace(/\/$/, "");
+  return path === "/messages/chat";
+}
+
+/** Compact / mobile TMA list: defer preview warming so row taps stay on the main thread. */
+function shouldPauseListBackgroundPrefetch(): boolean {
+  if (isOnCompactChatRoute()) return false;
+  if (readAuthenticatedHomeCompactChatLayoutSync()) return true;
+  const snap = computeTelegramLayoutStartupSnapshot();
+  const platform = snap.platformEffective?.trim().toLowerCase();
+  if (platform === "ios" || platform === "android") return true;
+  if (snap.isMobileWebUserAgent && snap.webAppPresent) return true;
+  return false;
+}
 
 /** Max visible chats we warm in the background (viewport-driven). */
 const PREFETCH_VISIBLE_MAX = 7;
@@ -69,6 +88,8 @@ let backgroundActive = 0;
 let historyPrefetchEpoch = 0;
 /** While set, background list prefetch is paused so the open chat wins gateway time. */
 let openChatLoadingId: number | null = null;
+let openChatLoadingStaleTimer: ReturnType<typeof setTimeout> | null = null;
+const OPEN_CHAT_LOADING_STALE_MS = 22_000;
 /** Selected chat — background drain stays paused for {@link OPEN_CHAT_FOCUS_HOLD_MS}. */
 let openChatFocusId: number | null = null;
 let openChatFocusUntilMs = 0;
@@ -399,6 +420,7 @@ function scheduleBackgroundDrain(): void {
   // Voice UI owns gateway + main thread — pause neighbor history warming.
   if (isVoiceDialogUiOpen()) return;
   if (isOpenChatFocusHoldActive()) return;
+  if (shouldPauseListBackgroundPrefetch()) return;
   if (backgroundActive >= MAX_BACKGROUND_CONCURRENT || queued.length === 0) return;
 
   const next = queued.shift();
@@ -444,6 +466,7 @@ function enqueueBackgroundPrefetch(
   // Skipping enqueue here previously burned MessageChatRow's one-shot prefetch.
   // List sync: still enqueue (esp. front/open neighbors); drain waits until sync clears.
   if (isVoiceDialogUiOpen()) return;
+  if (shouldPauseListBackgroundPrefetch() && !options?.front) return;
   // During open-chat focus hold, don't refill neighbor work that will compete
   // the moment the hold ends (rows keep remounting / viewport firing).
   if (isOpenChatFocusHoldActive() && !options?.front) return;
@@ -505,6 +528,21 @@ export async function loadOpenChatHistoryFirstPage(
   const anchorSpec = toCacheAnchorSpec(spec);
 
   openChatLoadingId = chatId;
+  if (openChatLoadingStaleTimer != null) {
+    clearTimeout(openChatLoadingStaleTimer);
+    openChatLoadingStaleTimer = null;
+  }
+  openChatLoadingStaleTimer = setTimeout(() => {
+    openChatLoadingStaleTimer = null;
+    if (openChatLoadingId !== chatId) return;
+    openChatLoadingId = null;
+    logPageDisplay("messages_history_open_loading_stale", {
+      chatId,
+      staleMs: OPEN_CHAT_LOADING_STALE_MS,
+      ...prefetchQueueSnapshot(),
+    });
+    scheduleBackgroundDrain();
+  }, OPEN_CHAT_LOADING_STALE_MS);
   try {
     const cached = getCachedChatHistory(chatId);
     if (
@@ -525,6 +563,10 @@ export async function loadOpenChatHistoryFirstPage(
     }
     return await startSharedLoad(chatId, peerUserId ?? null, spec);
   } finally {
+    if (openChatLoadingStaleTimer != null) {
+      clearTimeout(openChatLoadingStaleTimer);
+      openChatLoadingStaleTimer = null;
+    }
     if (openChatLoadingId === chatId) {
       openChatLoadingId = null;
     }
@@ -614,6 +656,7 @@ export function prefetchVisibleChatNeighbors(
   options?: { radius?: number; /** Search/recents column-reverse: visual top is at the end. */ visualTopAtEnd?: boolean },
 ): void {
   if (chats.length === 0) return;
+  if (shouldPauseListBackgroundPrefetch()) return;
   if (isOpenChatFocusHoldActive()) {
     logPageDisplay("messages_history_prefetch_neighbors_deferred_focus", {
       selectedChatId: selectedChatId ?? null,

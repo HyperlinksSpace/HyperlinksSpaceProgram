@@ -139,6 +139,7 @@ export function MessageChatRow({
   onPress,
   onPressIn,
   onPressOut,
+  webClick,
   onLongPress,
   onAvatarPress,
   onPrefetch,
@@ -155,6 +156,7 @@ export function MessageChatRow({
   onPress?: () => void;
   onPressIn?: () => void;
   onPressOut?: () => void;
+  webClick?: () => void;
   onLongPress?: () => void;
   /** Opens the chat-list context menu (right-click / long-press). */
   onOpenContextMenu?: (anchor: { x: number; y: number }) => void;
@@ -268,6 +270,7 @@ export function MessageChatRow({
       onPress={onPress}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
+      webClick={webClick}
       onLongPress={(event) => {
         if (onOpenContextMenu) {
           onOpenContextMenu(eventToAnchor(event));

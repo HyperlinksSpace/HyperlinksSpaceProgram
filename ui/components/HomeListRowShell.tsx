@@ -21,6 +21,8 @@ type Props = {
   onPress?: () => void;
   onPressIn?: () => void;
   onPressOut?: () => void;
+  /** iOS TMA: RN `onPress` can drop — use DOM click on the row shell. */
+  webClick?: () => void;
   onLongPress?: (event: GestureResponderEvent) => void;
   onHoverIn?: () => void;
   onContextMenu?: (event: GestureResponderEvent) => void;
@@ -51,6 +53,7 @@ export function HomeListRowShell({
   onPress,
   onPressIn,
   onPressOut,
+  webClick,
   onLongPress,
   onHoverIn,
   onContextMenu,
@@ -69,6 +72,16 @@ export function HomeListRowShell({
         }
       : {};
 
+  const webClickProps =
+    Platform.OS === "web" && webClick
+      ? ({
+          onClick: (event: { defaultPrevented?: boolean }) => {
+            if (event.defaultPrevented) return;
+            webClick();
+          },
+        } as object)
+      : {};
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -77,9 +90,11 @@ export function HomeListRowShell({
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       onLongPress={onLongPress}
+      delayPressIn={webClick != null ? 0 : undefined}
       delayLongPress={450}
       onHoverIn={onHoverIn}
       {...webContextMenuProps}
+      {...webClickProps}
       style={({ pressed, hovered }) => ({
         marginHorizontal: -columnBleedPx,
         paddingHorizontal: columnBleedPx,
