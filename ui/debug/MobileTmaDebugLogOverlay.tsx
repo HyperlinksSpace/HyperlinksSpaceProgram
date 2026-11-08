@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore, useWindowDimensions } from "react";
-import { Platform, ScrollView, Text, View } from "react-native";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Platform, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { useTelegram } from "../components/Telegram";
 import { layout, useColors } from "../theme";
 import {
