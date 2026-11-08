@@ -137,6 +137,8 @@ type Props = {
   selfUserId?: number | null;
   /** When false, defer emoji/media fetches until open scroll has settled. */
   contentActive?: boolean;
+  /** Full-page mobile chat: paint rows without web viewport IO gates. */
+  compactPage?: boolean;
 };
 
 export function MessageChatMessageRow({
@@ -147,6 +149,7 @@ export function MessageChatMessageRow({
   columnWidthPx,
   selfUserId = null,
   contentActive = true,
+  compactPage = false,
 }: Props) {
   const { t } = useAppStrings();
   const { openProfileSheet } = useProfileSheet();
@@ -799,11 +802,15 @@ export function MessageChatMessageRow({
                 ((chatKind ?? chat.chat_kind) === "private" &&
                   Boolean(chat.peer_username?.toLowerCase().endsWith("bot")))
               }
-              emojiContentActive={contentActive && rowInView}
+              emojiContentActive={
+                contentActive && (compactPage || rowInView)
+              }
               mediaFetchEnabled={
                 // Web (esp. mobile Safari): never arm media HTTP for off-screen rows —
                 // forcing all rows to fetch at once freezes the tab; text still paints.
-                Platform.OS === "web" ? contentActive && rowInView : contentActive
+                Platform.OS === "web"
+                  ? contentActive && (compactPage || rowInView)
+                  : contentActive
               }
               deferFullMediaFetch={
                 // All kinds: full bytes only near the viewport. Painted-but-far

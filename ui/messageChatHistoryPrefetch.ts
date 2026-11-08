@@ -211,6 +211,31 @@ async function runHistoryLoad(
       isVoiceDialogUiOpen() ||
       isOpenChatFocusHoldActive())
   ) {
+    if (
+      isOpenChatFocusHoldActive() &&
+      openChatFocusId === chatId &&
+      !result.error &&
+      result.messages.length > 0
+    ) {
+      setCachedChatHistory(chatId, result, {
+        previewOnly: spec.previewOnly,
+        aroundUnread: spec.aroundUnread,
+        aroundMessageId: spec.aroundMessageId ?? null,
+      });
+      logPageDisplay("messages_history_prefetch_ok", {
+        chatId,
+        count: result.messages.length,
+        elapsedMs: Date.now() - started,
+        previewOnly: spec.previewOnly,
+        aroundUnread: spec.aroundUnread,
+        aroundMessageId: spec.aroundMessageId ?? null,
+        limit: spec.limit,
+        lane: spec.previewOnly ? "preview" : "full",
+        background: true,
+        openChatFocus: true,
+        ...prefetchQueueSnapshot(),
+      });
+    }
     logPageDisplay("messages_history_prefetch_dropped_voice_dialog", {
       chatId,
       count: result.messages.length,
