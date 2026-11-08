@@ -41,6 +41,10 @@ import {
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
 import { useAuthenticatedHomeCompactChatLayout } from "../authenticatedHomeLayoutWidth";
+import {
+  isAuthenticatedHomeCompactChatRoutePushIntent,
+  maybePushAuthenticatedHomeCompactChatRoute,
+} from "../navigateAuthenticatedHomeCompactChat";
 import { useResolvedPathname } from "../useResolvedPathname";
 import {
   isOpenChatFocusHoldActive,
@@ -903,6 +907,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const pathname = useResolvedPathname();
+  const compactHomeStoredChatClearDoneRef = useRef(false);
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const selectedChatRef = useRef(selectedChat);
@@ -927,13 +932,32 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     );
   }, [selectedChat, selectedChat?.unread_count, selectedChatId]);
 
-  // Compact one-column home: do not auto-open the last persisted chat full screen.
+  // Compact home: clear restored chat once on cold landing — never after the user opens a chat
+  // (layout can flip to compact after tap; clearing then would wipe intent and block navigation).
   useEffect(() => {
     if (!compactChatLayout || pathname !== "/") return;
+    if (compactHomeStoredChatClearDoneRef.current) return;
+    compactHomeStoredChatClearDoneRef.current = true;
+    if (isAuthenticatedHomeCompactChatRoutePushIntent()) return;
     if (getAuthenticatedHomeSelectedChatSnapshot() == null) return;
     clearAuthenticatedHomeSelectedChat();
     logPageDisplay("messages_compact_home_clear_stored_chat", {});
   }, [compactChatLayout, pathname]);
+
+  useEffect(() => {
+    if (!compactChatLayout || selectedChatId == null) return;
+    if (!isAuthenticatedHomeCompactChatRoutePushIntent()) return;
+    if (pathname === "/messages/chat") return;
+    if (typeof window === "undefined") return;
+    const timers = [
+      window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 0),
+      window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 80),
+      window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 240),
+    ];
+    return () => {
+      for (const id of timers) clearTimeout(id);
+    };
+  }, [compactChatLayout, pathname, selectedChatId]);
 
   useEffect(() => {
     return subscribeChatVoiceMeta((patch) => {
@@ -2412,6 +2436,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
       );
+      if (compactChatLayout) {
+        maybePushAuthenticatedHomeCompactChatRoute();
+      }
       if (hadSearchUi) {
         void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);
         dismissChatListSearch();
@@ -2443,6 +2470,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       chatListSearchQuery,
       chatSelectionEnabled,
       chats,
+      compactChatLayout,
       dismissChatListSearch,
     ],
   );

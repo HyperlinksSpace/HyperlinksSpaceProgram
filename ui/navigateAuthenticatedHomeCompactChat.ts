@@ -15,6 +15,16 @@ export function clearAuthenticatedHomeCompactChatRoutePushIntent(): void {
   compactChatRouteUserIntent = false;
 }
 
+export function isAuthenticatedHomeCompactChatRoutePushIntent(): boolean {
+  return compactChatRouteUserIntent;
+}
+
+function isOnCompactChatPath(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname;
+  return path === COMPACT_CHAT_PATH || path.endsWith(COMPACT_CHAT_PATH);
+}
+
 /** After `openAuthenticatedHomeChatHistory`, open the full-screen chat route on narrow home. */
 export function maybePushAuthenticatedHomeCompactChatRoute(): void {
   if (!compactChatRouteUserIntent) {
@@ -25,10 +35,11 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
     logPageDisplay("messages_compact_chat_route_skip", { reason: "layout_not_compact" });
     return;
   }
-  if (typeof window !== "undefined" && window.location.pathname === COMPACT_CHAT_PATH) {
+  if (isOnCompactChatPath()) {
     return;
   }
   const go = () => {
+    if (isOnCompactChatPath()) return;
     try {
       router.push(COMPACT_CHAT_PATH);
       logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH });
@@ -39,9 +50,12 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
       });
     }
   };
+  // Mobile TMA: push in the same tap gesture; do not defer solely to rAF.
+  go();
   if (typeof requestAnimationFrame === "function") {
     requestAnimationFrame(go);
-  } else {
-    go();
+  }
+  if (typeof window !== "undefined") {
+    window.setTimeout(go, 120);
   }
 }
