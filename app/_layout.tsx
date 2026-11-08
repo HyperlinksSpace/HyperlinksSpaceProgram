@@ -37,6 +37,8 @@ import { WelcomeEmailAuthProvider } from "../ui/welcome/WelcomeEmailAuthContext"
 import { TonConnectProvider } from "../ui/ton/TonConnectProvider";
 import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
+import { MobileTmaDebugLogOverlay } from "../ui/debug/MobileTmaDebugLogOverlay";
+import { installMobileTmaDebugLogCapture } from "../ui/debug/appLogRingBuffer";
 import { installGlobalVoiceFreezeLogger } from "../ui/components/messages/useVoiceDialogFreezeDetector";
 import { appWarn } from "../shared/appLog";
 import { syncWebDocumentOverflowForZoom } from "../ui/browserZoom";
@@ -316,6 +318,9 @@ function RootContent() {
 
   useEffect(() => {
     logBuildSnapshotOnce("root_layout_mount");
+    if (Platform.OS === "web") {
+      installMobileTmaDebugLogCapture();
+    }
     // Opt-in longtask logger (`window.__HSP_VOICE_DEBUG__=true`) — always-on
     // observe+POST was stacking with hard-reload chat paint.
     const cleanup = installGlobalVoiceFreezeLogger();
@@ -453,6 +458,7 @@ function RootContent() {
         </>
       ) : null}
       <WebVercelAnalytics pathname={pathname} />
+      <MobileTmaDebugLogOverlay />
     </View>
   );
 }

@@ -1,6 +1,20 @@
 /** Compact one-line logs: `[tag] event k=v …` — filter DevTools by tag, easy to copy. */
 export type AppLogDetails = Record<string, unknown>;
 
+type AppLogRingSink = (level: "log" | "warn" | "error", line: string) => void;
+
+let appLogRingSink: AppLogRingSink | null = null;
+
+/** Optional in-app log panel (mobile TMA); wired from {@link ui/debug/appLogRingBuffer}. */
+export function setAppLogRingSink(sink: AppLogRingSink | null): void {
+  appLogRingSink = sink;
+}
+
+function pushAppLogRing(level: "log" | "warn" | "error", tag: string, event: string, details?: AppLogDetails): void {
+  if (appLogRingSink == null) return;
+  appLogRingSink(level, `${tag} ${event}${formatDetails(details)}`);
+}
+
 /** Telegram user ids are safe to log; omit null/0/NaN (invalid or placeholder). */
 export function safeTelegramUserIdForLog(userId: unknown): number | undefined {
   const id = typeof userId === "bigint" ? Number(userId) : Number(userId);
@@ -52,11 +66,15 @@ function formatDetails(details?: AppLogDetails): string {
 }
 
 export function appLog(tag: string, event: string, details?: AppLogDetails): void {
-  console.log(`${tag} ${event}${formatDetails(details)}`);
+  const line = `${tag} ${event}${formatDetails(details)}`;
+  console.log(line);
+  pushAppLogRing("log", tag, event, details);
 }
 
 export function appWarn(tag: string, event: string, details?: AppLogDetails): void {
-  console.warn(`${tag} ${event}${formatDetails(details)}`);
+  const line = `${tag} ${event}${formatDetails(details)}`;
+  console.warn(line);
+  pushAppLogRing("warn", tag, event, details);
 }
 
 export function appError(
@@ -69,7 +87,9 @@ export function appError(
   if (err !== undefined) {
     merged.err = err instanceof Error ? err.message : err;
   }
-  console.error(`${tag} ${event}${formatDetails(merged)}`);
+  const line = `${tag} ${event}${formatDetails(merged)}`;
+  console.error(line);
+  pushAppLogRing("error", tag, event, merged);
 }
 
 /** For payloads shaped as `{ event, ...details }` (legacy JSON log objects). */
