@@ -1,5 +1,5 @@
 import { Redirect } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "../../../auth/AuthContext";
 import { useColors } from "../../../ui/theme";
@@ -16,7 +16,20 @@ export default function MessageChatRoute() {
   const { isAuthenticated, authReady } = useAuth();
   const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const chat = useAuthenticatedHomeSelectedChat();
+  const chatSnapshot =
+    chat ?? (authReady ? getAuthenticatedHomeSelectedChatSnapshot() : null);
+  const [selectionGraceExpired, setSelectionGraceExpired] = useState(false);
   const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (chatSnapshot != null) {
+      setSelectionGraceExpired(false);
+      return;
+    }
+    if (!authReady) return;
+    const timer = setTimeout(() => setSelectionGraceExpired(true), 400);
+    return () => clearTimeout(timer);
+  }, [authReady, chatSnapshot?.telegram_chat_id]);
 
   useEffect(() => {
     if (!authReady || !isAuthenticated || !compactChatLayout) return;
@@ -47,7 +60,22 @@ export default function MessageChatRoute() {
   if (!compactChatLayout) {
     return <Redirect href="/" />;
   }
-  if (chat == null) {
+  if (chatSnapshot == null) {
+    if (!selectionGraceExpired) {
+      return (
+        <View
+          style={{
+            flex: 1,
+            minHeight: 0,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: colors.background,
+          }}
+        >
+          <ActivityIndicator size="small" color={colors.primary} />
+        </View>
+      );
+    }
     return <Redirect href="/" />;
   }
 

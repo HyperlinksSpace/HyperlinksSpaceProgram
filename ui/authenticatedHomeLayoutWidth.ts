@@ -55,37 +55,51 @@ export function isAuthenticatedHomeCompactChatLayoutWidthPx(
   return options?.isMobileWebUserAgent === true;
 }
 
+function evaluateAuthenticatedHomeCompactChatLayout(
+  widthPx: number,
+  options: {
+    platformEffective?: string | null;
+    isMobileWebUserAgent?: boolean;
+    isTelegramMiniAppDesktop?: boolean;
+    webAppPresent?: boolean;
+  },
+): boolean {
+  const fromRules = isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, options);
+  if (fromRules) return true;
+  if (
+    options.webAppPresent &&
+    options.isMobileWebUserAgent &&
+    !options.isTelegramMiniAppDesktop
+  ) {
+    return true;
+  }
+  const platform = options.platformEffective?.trim().toLowerCase();
+  if (platform === "ios" || platform === "android") return true;
+  return false;
+}
+
 export function readAuthenticatedHomeCompactChatLayoutSync(): boolean {
   const widthPx = readAuthenticatedHomeLayoutWidthPx(
     typeof window !== "undefined" ? window.innerWidth : 0,
   );
   const snap = computeTelegramLayoutStartupSnapshot();
-  const fromRules = isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
+  return evaluateAuthenticatedHomeCompactChatLayout(widthPx, {
     platformEffective: snap.platformEffective,
     isMobileWebUserAgent: snap.isMobileWebUserAgent,
     isTelegramMiniAppDesktop: snap.isTelegramMiniAppDesktop,
+    webAppPresent: snap.webAppPresent,
   });
-  if (fromRules) return true;
-  if (
-    snap.webAppPresent &&
-    snap.isMobileWebUserAgent &&
-    !snap.isTelegramMiniAppDesktop
-  ) {
-    return true;
-  }
-  const platform = snap.platformEffective?.trim().toLowerCase();
-  if (platform === "ios" || platform === "android") return true;
-  return false;
 }
 
 export function useAuthenticatedHomeCompactChatLayout(): boolean {
   const { width: windowWidth } = useWindowDimensions();
   const { layoutStartup } = useTelegram();
   const widthPx = readAuthenticatedHomeLayoutWidthPx(windowWidth);
-  return isAuthenticatedHomeCompactChatLayoutWidthPx(widthPx, {
+  return evaluateAuthenticatedHomeCompactChatLayout(widthPx, {
     platformEffective: layoutStartup.platformEffective,
     isMobileWebUserAgent: layoutStartup.isMobileWebUserAgent,
     isTelegramMiniAppDesktop: layoutStartup.isTelegramMiniAppDesktop,
+    webAppPresent: layoutStartup.webAppPresent,
   });
 }
 
