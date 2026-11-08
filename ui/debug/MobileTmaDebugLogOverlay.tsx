@@ -15,7 +15,8 @@ const PANEL_EXTRA_TOP_PX = 50;
 const MAX_FILTERED_ROWS = 48;
 
 const DEBUG_LINE_KEEP_RE =
-  /messages_chat_row_press_in|messages_chat_row_press |messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_prefetch_focus|messages_history_load_start|messages_compact_chat_route/;
+  /messages_chat_row_press|messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh/;
+const DEBUG_LINE_FALLBACK_RE = /\[page-display\] messages_/;
 
 function useDebugLogOverlayEnabled(): boolean {
   const { isInTelegram } = useTelegram();
@@ -60,7 +61,13 @@ export function MobileTmaDebugLogOverlay() {
   );
 
   const filteredLogs = useMemo(() => {
-    const kept = logStore.entries.filter((row) => DEBUG_LINE_KEEP_RE.test(row.text));
+    let kept = logStore.entries.filter((row) => DEBUG_LINE_KEEP_RE.test(row.text));
+    if (kept.length === 0) {
+      kept = logStore.entries.filter((row) => DEBUG_LINE_FALLBACK_RE.test(row.text));
+    }
+    if (kept.length === 0) {
+      kept = logStore.entries.slice(-24);
+    }
     return kept.length > MAX_FILTERED_ROWS
       ? kept.slice(kept.length - MAX_FILTERED_ROWS)
       : kept;
@@ -147,7 +154,7 @@ export function MobileTmaDebugLogOverlay() {
           }}
           numberOfLines={1}
         >
-          Chat nav debug ({filteredLogs.length} #{logStore.revision})
+          Chat debug {filteredLogs.length}/{logStore.entries.length} #{logStore.revision}
         </Text>
         {logBody}
       </View>

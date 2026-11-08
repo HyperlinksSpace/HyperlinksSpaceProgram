@@ -15,6 +15,8 @@ export type AppLogRingStoreSnapshot = {
 };
 
 const MAX_ENTRIES = 500;
+const SESSION_PERSIST_MAX = 200;
+const DEBUG_LOG_SESSION_KEY = "hsp_tma_debug_log_ring_v1";
 let nextId = 1;
 const entries: AppLogRingEntry[] = [];
 const listeners = new Set<() => void>();
@@ -33,6 +35,43 @@ function refreshStoreSnapshot(): void {
 function emit(): void {
   for (const listener of listeners) {
     listener();
+  }
+}
+
+function persistDebugLogSession(): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    sessionStorage.setItem(
+      DEBUG_LOG_SESSION_KEY,
+      JSON.stringify(entries.slice(-SESSION_PERSIST_MAX)),
+    );
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+function restoreDebugLogSession(): void {
+  try {
+    if (typeof sessionStorage === "undefined") return;
+    const raw = sessionStorage.getItem(DEBUG_LOG_SESSION_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return;
+    for (const row of parsed) {
+      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+      const entry = row as Record<string, unknown>;
+      const id = Number(entry.id);
+      const at = Number(entry.at);
+      const text = typeof entry.text === "string" ? entry.text : "";
+      const level = entry.level;
+      if (!Number.isFinite(id) || !text) continue;
+      if (level !== "log" && level !== "warn" && level !== "error") continue;
+      entries.push({ id, at: Number.isFinite(at) ? at : Date.now(), level, text });
+      nextId = Math.max(nextId, Math.trunc(id) + 1);
+    }
+    refreshStoreSnapshot();
+  } catch {
+    /* corrupt session */
   }
 }
 
@@ -56,12 +95,18 @@ export function appendAppLogRingBuffer(
   if (options?.skipConsoleMirrorOnce) {
     skipConsoleRingMirrorCount = 1;
   }
+  persistDebugLogSession();
   emit();
 }
 
 export function clearAppLogRingBuffer(): void {
   entries.length = 0;
   refreshStoreSnapshot();
+  try {
+    sessionStorage?.removeItem(DEBUG_LOG_SESSION_KEY);
+  } catch {
+    /* ignore */
+  }
   emit();
 }
 
@@ -99,6 +144,8 @@ function formatConsoleArgs(args: unknown[]): string {
 export function installMobileTmaDebugLogCapture(): void {
   if (typeof window === "undefined" || consoleTapInstalled) return;
   consoleTapInstalled = true;
+  restoreDebugLogSession();
+  emit();
   setAppLogRingSink((level, line) =>
     appendAppLogRingBuffer(level, line, { skipConsoleMirrorOnce: true }),
   );
