@@ -60,7 +60,12 @@ export function MobileTmaDebugLogOverlay() {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [pinBottom, setPinBottom] = useState(true);
   const scrollRef = useRef<ScrollView | null>(null);
-  const logs = useSyncExternalStore(subscribeAppLogRingBuffer, getAppLogRingBufferSnapshot, () => []);
+  const logStore = useSyncExternalStore(
+    subscribeAppLogRingBuffer,
+    getAppLogRingBufferSnapshot,
+    () => ({ revision: 0, entries: [] as const }),
+  );
+  const logs = logStore.entries;
 
   const panelWidth = Math.max(0, windowWidth * PANEL_WIDTH_RATIO);
   const panelHeight = Math.max(0, windowHeight * PANEL_HEIGHT_RATIO);
@@ -72,7 +77,7 @@ export function MobileTmaDebugLogOverlay() {
       scrollRef.current?.scrollToEnd({ animated: false });
     }, 0);
     return () => clearTimeout(timer);
-  }, [logs.length, pinBottom]);
+  }, [logStore.revision, pinBottom]);
 
   if (!enabled) return null;
 
@@ -110,7 +115,7 @@ export function MobileTmaDebugLogOverlay() {
           }}
           numberOfLines={1}
         >
-          Debug log ({logs.length}) — screenshot this panel
+          Debug log ({logs.length} #{logStore.revision}) — live
         </Text>
         <ScrollView
           ref={scrollRef}

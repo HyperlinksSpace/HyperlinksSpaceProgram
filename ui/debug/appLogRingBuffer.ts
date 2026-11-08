@@ -9,10 +9,26 @@ export type AppLogRingEntry = {
   text: string;
 };
 
+export type AppLogRingStoreSnapshot = {
+  revision: number;
+  entries: readonly AppLogRingEntry[];
+};
+
 const MAX_ENTRIES = 500;
 let nextId = 1;
 const entries: AppLogRingEntry[] = [];
 const listeners = new Set<() => void>();
+/** Skip the next console tap mirror(s) when appLog already wrote through the sink. */
+let skipConsoleRingMirrorCount = 0;
+
+let storeSnapshot: AppLogRingStoreSnapshot = { revision: 0, entries: [] };
+
+function refreshStoreSnapshot(): void {
+  storeSnapshot = {
+    revision: storeSnapshot.revision + 1,
+    entries: entries.slice(),
+  };
+}
 
 function emit(): void {
   for (const listener of listeners) {
@@ -20,7 +36,11 @@ function emit(): void {
   }
 }
 
-export function appendAppLogRingBuffer(level: AppLogRingLevel, text: string): void {
+export function appendAppLogRingBuffer(
+  level: AppLogRingLevel,
+  text: string,
+  options?: { skipConsoleMirrorOnce?: boolean },
+): void {
   const trimmed = text.trim();
   if (!trimmed) return;
   entries.push({
@@ -32,16 +52,21 @@ export function appendAppLogRingBuffer(level: AppLogRingLevel, text: string): vo
   while (entries.length > MAX_ENTRIES) {
     entries.shift();
   }
+  refreshStoreSnapshot();
+  if (options?.skipConsoleMirrorOnce) {
+    skipConsoleRingMirrorCount = 1;
+  }
   emit();
 }
 
 export function clearAppLogRingBuffer(): void {
   entries.length = 0;
+  refreshStoreSnapshot();
   emit();
 }
 
-export function getAppLogRingBufferSnapshot(): readonly AppLogRingEntry[] {
-  return entries;
+export function getAppLogRingBufferSnapshot(): AppLogRingStoreSnapshot {
+  return storeSnapshot;
 }
 
 export function subscribeAppLogRingBuffer(onStoreChange: () => void): () => void {
@@ -74,12 +99,18 @@ function formatConsoleArgs(args: unknown[]): string {
 export function installMobileTmaDebugLogCapture(): void {
   if (typeof window === "undefined" || consoleTapInstalled) return;
   consoleTapInstalled = true;
-  setAppLogRingSink(appendAppLogRingBuffer);
+  setAppLogRingSink((level, line) =>
+    appendAppLogRingBuffer(level, line, { skipConsoleMirrorOnce: true }),
+  );
 
   const bind =
     <K extends "log" | "warn" | "error">(level: K, original: (typeof console)[K]) =>
     (...args: unknown[]) => {
       original.apply(console, args as never);
+      if (skipConsoleRingMirrorCount > 0) {
+        skipConsoleRingMirrorCount -= 1;
+        return;
+      }
       const line = formatConsoleArgs(args);
       if (level !== "log" || CONSOLE_TAP_PREFIX_RE.test(line)) {
         appendAppLogRingBuffer(level, line);
