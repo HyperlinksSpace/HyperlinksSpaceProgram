@@ -174,6 +174,7 @@ import {
   UNREAD_DIVIDER_ROW_HEIGHT_PX,
   UNREAD_DIVIDER_TOP_PX,
   VIEW_INBOX_DEBOUNCE_MS,
+  MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX,
   type MessageScrollLayoutEntry,
 } from "./messageListLayout";
 import {
@@ -224,6 +225,26 @@ const HISTORY_OPEN_LOAD_WATCHDOG_MS = 45_000;
 const FAB_VISIBILITY_THRESHOLD_PX = 50;
 /** telegram-tt NOTCH_THRESHOLD — unread chats hide FAB only at exact bottom. */
 const FAB_NOTCH_THRESHOLD_PX = 0;
+
+/** Bottom chrome on `/messages/chat` (GlobalBottomBar + safe inset). */
+const COMPACT_CHAT_BOTTOM_CHROME_PX = 72;
+/** Telegram mini-app header above the webview when expanded. */
+const COMPACT_CHAT_TMA_TOP_CHROME_PX = 56;
+
+function readCompactChatScrollHostHeightPx(): number {
+  if (Platform.OS !== "web" || typeof window === "undefined") return 0;
+  const vh = Math.round(
+    window.visualViewport?.height ?? window.innerHeight ?? 0,
+  );
+  if (vh <= 0) return 0;
+  const reserved =
+    MESSAGE_CHAT_HEADER_STRIP_HEIGHT_PX +
+    MESSAGE_CHAT_COMPOSE_PILL_HEIGHT_PX +
+    MESSAGE_CHAT_BODY_PADDING_PX * 2 +
+    COMPACT_CHAT_BOTTOM_CHROME_PX +
+    COMPACT_CHAT_TMA_TOP_CHROME_PX;
+  return Math.max(200, vh - reserved);
+}
 
 function chatOpenScrollPlanFromSession(
   session: ReturnType<typeof resolveChatOpenSession>,
@@ -7043,14 +7064,29 @@ export function MessageChatMessageList({
 
   const compactColumnWidthFallbackPx = useMemo(() => {
     if (!compactPage) return 0;
-    const layoutWidth = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+    let layoutWidth = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+    if (
+      layoutWidth <= 0 &&
+      Platform.OS === "web" &&
+      typeof document !== "undefined"
+    ) {
+      layoutWidth =
+        document.documentElement.clientWidth ||
+        (typeof window !== "undefined" ? window.innerWidth : 0);
+    }
     return Math.max(
-      0,
+      260,
       layoutWidth - layout.contentSideInsetPx * 2 - MESSAGE_CHAT_BODY_PADDING_PX * 2,
     );
   }, [compactPage, windowWidth]);
 
+  const compactScrollHostHeightHintPx = useMemo(
+    () => (compactPage ? readCompactChatScrollHostHeightPx() : 0),
+    [compactPage, windowWidth],
+  );
+
   const innerWidthPx = Math.max(
+    compactPage ? 260 : 0,
     compactColumnWidthFallbackPx,
     columnWidthPx - MESSAGE_CHAT_BODY_PADDING_PX * 2,
   );
@@ -7230,7 +7266,8 @@ export function MessageChatMessageList({
 
   const pinMessagesToBottom =
     openScrollPlan.pinMessagesToBottom &&
-    (isFollowingBottom || initialScrollInProgress);
+    (isFollowingBottom || initialScrollInProgress) &&
+    !(compactPage && !chatScrollPaintReady);
   // RN-native only: hide the scroller until open-scroll settles to avoid a one-frame
   // jump. On web (incl. mobile Safari) opacity:0 can stick if metrics lag — user sees
   // only date dividers / chrome while bubbles are painted underneath.
@@ -7262,6 +7299,7 @@ export function MessageChatMessageList({
         key={String(chat.telegram_chat_id)}
         style={{ flex: 1, minHeight: 0 }}
         containOverscroll={compactPage}
+        layoutHostHeightHintPx={compactScrollHostHeightHintPx}
         indicatorColor={colors.scrollIndicator}
         scrollbarRightInsetPx={scrollbarRightInsetPx}
         indicatorThumbMinPx={CHAT_SCROLL_INDICATOR_THUMB_MIN_PX}

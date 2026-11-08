@@ -171,6 +171,11 @@ type Props = {
    * newer rows are expanded/loaded below.
    */
   stickToBottomOnResize?: boolean;
+  /**
+   * Fallback scrollport height when flex/split heuristics return 0 (compact `/messages/chat`
+   * on mobile TMA — without this, layoutH stays 0, scroll/touch die, only date dividers show).
+   */
+  layoutHostHeightHintPx?: number;
 };
 
 /**
@@ -201,6 +206,7 @@ export function HspScrollColumn({
   scrollControllerRef,
   preserveViewportOnResize = false,
   stickToBottomOnResize = true,
+  layoutHostHeightHintPx = 0,
 }: Props) {
   const colors = useColors();
   const dialogScrollChrome = useFloatingDialogScrollChrome();
@@ -600,6 +606,7 @@ export function HspScrollColumn({
       const avail = Math.max(
         readShellFlexAvailableHeightPx(shellDom),
         readSplitColumnScrollHostHeightPx(shellDom),
+        layoutHostHeightHintPx > 0 ? layoutHostHeightHintPx : 0,
       );
       if (avail > 0) {
         shellDom.style.setProperty("height", `${avail}px`);
@@ -710,6 +717,7 @@ export function HspScrollColumn({
     };
   }, [
     children,
+    layoutHostHeightHintPx,
     scrollbarRightInsetPx,
     scrollIndicatorOverlaySeam,
     scrollEnabled,

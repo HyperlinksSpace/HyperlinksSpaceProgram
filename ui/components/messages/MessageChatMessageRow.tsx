@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Platform, Pressable, Text, View, type GestureResponderEvent, type TextLayoutEvent } from "react-native";
+import {
+  Platform,
+  Pressable,
+  Text,
+  useWindowDimensions,
+  View,
+  type GestureResponderEvent,
+  type TextLayoutEvent,
+} from "react-native";
+import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
 import { useAppStrings } from "../../../locales/AppStringsContext";
 import { useProfileSheet } from "../../profile/ProfileContext";
-import { typographyRect15 } from "../../theme";
-import type { ThemeColors } from "../../theme";
+import { layout, typographyRect15, type ThemeColors } from "../../theme";
 import { useTelegram } from "../Telegram";
 import { MessageChatAvatarSlot } from "./MessageChatAvatarSlot";
 import { ProfileOpenHitTarget } from "./ProfileOpenHitTarget";
@@ -43,6 +51,7 @@ import {
   MESSAGE_BUBBLE_PADDING_VERTICAL_PX,
   MESSAGE_BUBBLE_REPLY_BAR_WIDTH_PX,
   MESSAGE_BUBBLE_REPLY_PADDING_PX,
+  MESSAGE_CHAT_BODY_PADDING_PX,
   MESSAGE_CHAT_MEDIA_PREFETCH_PX,
 } from "./messageChatLayout";
 import { resolveMessageMediaDimensions } from "./MessageChatMediaContent";
@@ -152,7 +161,29 @@ export function MessageChatMessageRow({
   compactPage = false,
 }: Props) {
   const { t } = useAppStrings();
+  const { width: windowWidth } = useWindowDimensions();
   const { openProfileSheet } = useProfileSheet();
+  const effectiveColumnWidthPx = useMemo(() => {
+    if (columnWidthPx > 0) return columnWidthPx;
+    if (!compactPage) return 0;
+    let layoutWidth = readAuthenticatedHomeLayoutWidthPx(windowWidth);
+    if (
+      layoutWidth <= 0 &&
+      Platform.OS === "web" &&
+      typeof document !== "undefined"
+    ) {
+      layoutWidth =
+        document.documentElement.clientWidth ||
+        (typeof window !== "undefined" ? window.innerWidth : 0);
+    }
+  return Math.max(
+      260,
+      layoutWidth -
+        layout.contentSideInsetPx * 2 -
+        MESSAGE_BUBBLE_PADDING_HORIZONTAL_PX * 2 -
+        MESSAGE_CHAT_BODY_PADDING_PX * 2,
+    );
+  }, [columnWidthPx, compactPage, windowWidth]);
   const iconUrl = resolveTelegramThreadAvatarUrl(chat, item, chatKind);
   const animatedIconUrl = resolveTelegramThreadAnimatedAvatarUrl(chat, item, chatKind);
   const avatarInitials = useMemo(() => {
@@ -217,7 +248,7 @@ export function MessageChatMessageRow({
 
   const bubbleMaxWidth = Math.max(
     0,
-    columnWidthPx - MESSAGE_BUBBLE_AVATAR_PX - MESSAGE_BUBBLE_AVATAR_GAP_PX,
+    effectiveColumnWidthPx - MESSAGE_BUBBLE_AVATAR_PX - MESSAGE_BUBBLE_AVATAR_GAP_PX,
   );
 
   const bubbleInnerMaxWidth = Math.max(
@@ -611,7 +642,7 @@ export function MessageChatMessageRow({
     [chat.telegram_chat_id, item.telegram_message_id],
   );
 
-  if (columnWidthPx <= 0) {
+  if (effectiveColumnWidthPx <= 0) {
     return (
       <View
         style={{
