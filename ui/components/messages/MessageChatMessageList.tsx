@@ -4830,8 +4830,11 @@ export function MessageChatMessageList({
 
   // Apply cached history (or clear stale rows) before paint when switching chats.
   useLayoutEffect(() => {
-    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {
+    if (!shouldLoadHistory || !isAuthenticated) {
       historySyncKeyRef.current = "";
+      return;
+    }
+    if (!isTelegramMessagesConnected) {
       return;
     }
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
@@ -4869,7 +4872,7 @@ export function MessageChatMessageList({
   ]);
 
   useEffect(() => {
-    if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {
+    if (!shouldLoadHistory || !isAuthenticated) {
       setMessages([]);
       setChatKind(null);
       setError(null);
@@ -4878,6 +4881,12 @@ export function MessageChatMessageList({
       setNextBeforeMessageId(null);
       setLastReadOutboxFromHistory(null);
       setSelfUserId(null);
+      historyNetworkKeyRef.current = "";
+      return;
+    }
+    if (!isTelegramMessagesConnected) {
+      setLoadingInitial(true);
+      setError(null);
       historyNetworkKeyRef.current = "";
       return;
     }
@@ -7344,7 +7353,10 @@ export function MessageChatMessageList({
           </Text>
         ) : null}
 
-        {!loadingInitial && !error && messages.length === 0 ? (
+        {!loadingInitial &&
+        !error &&
+        messages.length === 0 &&
+        isTelegramMessagesConnected ? (
           <Text
             style={{
               color: colors.secondary,

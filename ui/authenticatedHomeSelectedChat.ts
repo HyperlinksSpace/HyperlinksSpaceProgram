@@ -3,7 +3,11 @@ import { normalizeTelegramGroupCallId } from "../shared/telegramGroupCallSdp";
 import { normalizeTelegramProfilePhotoMarkup } from "../shared/telegramProfilePhoto";
 import type { MessageChatRowData } from "./components/messages/MessageChatRow";
 import { saveChatScrollPosition } from "./messageChatScrollCache";
-import { maybePushAuthenticatedHomeCompactChatRoute } from "./navigateAuthenticatedHomeCompactChat";
+import {
+  allowAuthenticatedHomeCompactChatRoutePush,
+  clearAuthenticatedHomeCompactChatRoutePushIntent,
+  maybePushAuthenticatedHomeCompactChatRoute,
+} from "./navigateAuthenticatedHomeCompactChat";
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_selected_chat_v1";
 
@@ -237,6 +241,7 @@ export function openAuthenticatedHomeChatHistory(
   chat: MessageChatRowData,
   options?: { forceReload?: boolean },
 ) {
+  allowAuthenticatedHomeCompactChatRoutePush();
   hydrateFromStorageIfNeeded();
   const sameChatAlreadyOpen =
     historyLoadChatId === chat.telegram_chat_id && historyLoadGeneration > 0;
@@ -294,6 +299,7 @@ export function focusAuthenticatedHomeMiddleColumnOnChat() {
 }
 
 export function clearAuthenticatedHomeSelectedChat() {
+  clearAuthenticatedHomeCompactChatRoutePushIntent();
   historyLoadChatId = null;
   selectAuthenticatedHomeChat(null);
 }

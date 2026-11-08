@@ -31,6 +31,7 @@ import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedCha
 import { toggleTelegramChatPinned } from "../telegram/toggleTelegramChatPinned";
 import {
   clearAuthenticatedHomeSelectedChat,
+  getAuthenticatedHomeSelectedChatSnapshot,
   mergeChatRowVoicePreferClientClear,
   openAuthenticatedHomeChatHistory,
   resolveAuthenticatedHomeOpenChatUnread,
@@ -40,7 +41,6 @@ import {
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
 import { useAuthenticatedHomeCompactChatLayout } from "../authenticatedHomeLayoutWidth";
-import { maybePushAuthenticatedHomeCompactChatRoute } from "../navigateAuthenticatedHomeCompactChat";
 import { useResolvedPathname } from "../useResolvedPathname";
 import {
   isOpenChatFocusHoldActive,
@@ -903,7 +903,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const selectedChat = useAuthenticatedHomeSelectedChat();
   const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const pathname = useResolvedPathname();
-  const compactChatNavigateRetryRef = useRef(0);
   const middleColumnFocus = useAuthenticatedHomeMiddleColumnFocus();
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const selectedChatRef = useRef(selectedChat);
@@ -928,24 +927,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     );
   }, [selectedChat, selectedChat?.unread_count, selectedChatId]);
 
+  // Compact one-column home: do not auto-open the last persisted chat full screen.
   useEffect(() => {
-    if (!compactChatLayout || selectedChatId == null) {
-      compactChatNavigateRetryRef.current = 0;
-      return;
-    }
-    if (pathname === "/messages/chat") {
-      compactChatNavigateRetryRef.current = 0;
-      return;
-    }
-    if (compactChatNavigateRetryRef.current >= 6) return;
-    const attempt = compactChatNavigateRetryRef.current;
-    const delayMs = attempt === 0 ? 0 : 40 + attempt * 60;
-    const timer = setTimeout(() => {
-      compactChatNavigateRetryRef.current += 1;
-      maybePushAuthenticatedHomeCompactChatRoute();
-    }, delayMs);
-    return () => clearTimeout(timer);
-  }, [compactChatLayout, pathname, selectedChatId]);
+    if (!compactChatLayout || pathname !== "/") return;
+    if (getAuthenticatedHomeSelectedChatSnapshot() == null) return;
+    clearAuthenticatedHomeSelectedChat();
+    logPageDisplay("messages_compact_home_clear_stored_chat", {});
+  }, [compactChatLayout, pathname]);
 
   useEffect(() => {
     return subscribeChatVoiceMeta((patch) => {

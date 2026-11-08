@@ -4,8 +4,23 @@ import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeL
 
 const COMPACT_CHAT_PATH = "/messages/chat";
 
+/** Set by {@link openAuthenticatedHomeChatHistory} — blocks restore-driven route pushes. */
+let compactChatRouteUserIntent = false;
+
+export function allowAuthenticatedHomeCompactChatRoutePush(): void {
+  compactChatRouteUserIntent = true;
+}
+
+export function clearAuthenticatedHomeCompactChatRoutePushIntent(): void {
+  compactChatRouteUserIntent = false;
+}
+
 /** After `openAuthenticatedHomeChatHistory`, open the full-screen chat route on narrow home. */
 export function maybePushAuthenticatedHomeCompactChatRoute(): void {
+  if (!compactChatRouteUserIntent) {
+    logPageDisplay("messages_compact_chat_route_skip", { reason: "no_user_intent" });
+    return;
+  }
   if (!readAuthenticatedHomeCompactChatLayoutSync()) {
     logPageDisplay("messages_compact_chat_route_skip", { reason: "layout_not_compact" });
     return;
