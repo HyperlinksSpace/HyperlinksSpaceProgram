@@ -913,6 +913,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const selectedChatId = selectedChat?.telegram_chat_id ?? null;
   const selectedChatRef = useRef(selectedChat);
   selectedChatRef.current = selectedChat;
+  const compactRowTapRef = useRef<{ chatId: number; at: number } | null>(null);
+  const chatOpenGuardRef = useRef<{ chatId: number; at: number } | null>(null);
   /** Keep applyChats urgent while the list is still empty (hard-reload first paint). */
   const chatsCountRef = useRef(0);
   chatsCountRef.current = chats.length;
@@ -2398,8 +2400,18 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   }, [authReady, isTelegramMessagesConnected, loadChats]);
 
   const handleChatPress = useCallback(
-    (item: MessageChatRowData) => {
+    (item: MessageChatRowData, source: "press" | "press_out" = "press") => {
       if (!chatSelectionEnabled) return;
+      const openNow = Date.now();
+      const guard = chatOpenGuardRef.current;
+      if (
+        guard &&
+        guard.chatId === item.telegram_chat_id &&
+        openNow - guard.at < 450
+      ) {
+        return;
+      }
+      chatOpenGuardRef.current = { chatId: item.telegram_chat_id, at: openNow };
       const hadSearchUi =
         chatListSearchFocused || chatListSearchQuery.trim().length > 0;
       if (hadSearchUi) {
@@ -2416,11 +2428,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (resolvedItem.has_active_voice_chat) {
         unlockVoiceAutoplay();
       }
-      logPageDisplay("messages_chat_row_press", chatLogFields({
-        chatId: resolvedItem.telegram_chat_id,
-        peerUserId: resolvedItem.peer_user_id,
-        title: resolvedItem.title,
-      }));
+      logPageDisplay("messages_chat_row_press", {
+        ...chatLogFields({
+          chatId: resolvedItem.telegram_chat_id,
+          peerUserId: resolvedItem.peer_user_id,
+          title: resolvedItem.title,
+        }),
+        source,
+      });
       logPageDisplay("messages_chat_open", chatLogFields({
         chatId: resolvedItem.telegram_chat_id,
         peerUserId: resolvedItem.peer_user_id,
@@ -3807,6 +3822,16 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             </View>
           );
         }
+        const listCompactOpen =
+          compactChatLayout || readAuthenticatedHomeCompactChatLayoutSync();
+        const openCompactChatFromRowRelease = () => {
+          const tap = compactRowTapRef.current;
+          if (!tap || tap.chatId !== item.row.telegram_chat_id) return;
+          if (Date.now() - tap.at > 700) return;
+          if (pinnedDragMovedRef.current) return;
+          compactRowTapRef.current = null;
+          handleChatPress(item.row, "press_out");
+        };
         return (
           <View
             key={item.key}
@@ -3845,6 +3870,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                   style: { cursor: "grab" },
                 } as object)
               : {})}
+            {...(Platform.OS === "web" && chatSelectionEnabled && listCompactOpen
+              ? ({
+                  onPointerUp: (e: { button?: number }) => {
+                    if (e.button != null && e.button !== 0) return;
+                    openCompactChatFromRowRelease();
+                  },
+                } as object)
+              : {})}
           >
             <MessageChatRow
               item={item.row}
@@ -3861,7 +3894,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                 chatSelectionEnabled
                   ? () => {
                       if (pinnedDragMovedRef.current) return;
-                      handleChatPress(item.row);
+                      handleChatPress(item.row, "press");
                     }
                   : undefined
               }
@@ -3877,14 +3910,24 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                           title: item.row.title,
                         }),
                       );
-                      // Compact TMA: heavy prefetch on press-in starves the tap (onPress never fires).
-                      if (compactChatLayout) return;
+                      if (listCompactOpen) {
+                        compactRowTapRef.current = {
+                          chatId: item.row.telegram_chat_id,
+                          at: Date.now(),
+                        };
+                        return;
+                      }
                       setOpenChatFocusHold(item.row.telegram_chat_id);
                       demoteQueuedNetworkFetches();
                       clearQueuedNormalNetworkFetches();
                       prefetchChatHistoryPriority(item.row);
                       void warmupTelegramChatSession(item.row.telegram_chat_id);
                     }
+                  : undefined
+              }
+              onPressOut={
+                chatSelectionEnabled && listCompactOpen
+                  ? openCompactChatFromRowRelease
                   : undefined
               }
               onOpenContextMenu={(anchor) => handleOpenChatListMenu(item.row, anchor)}

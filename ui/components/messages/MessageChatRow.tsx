@@ -138,6 +138,7 @@ export function MessageChatRow({
   timePendingLabel,
   onPress,
   onPressIn,
+  onPressOut,
   onLongPress,
   onAvatarPress,
   onPrefetch,
@@ -153,6 +154,7 @@ export function MessageChatRow({
   timePendingLabel: string;
   onPress?: () => void;
   onPressIn?: () => void;
+  onPressOut?: () => void;
   onLongPress?: () => void;
   /** Opens the chat-list context menu (right-click / long-press). */
   onOpenContextMenu?: (anchor: { x: number; y: number }) => void;
@@ -265,6 +267,7 @@ export function MessageChatRow({
       colors={colors}
       onPress={onPress}
       onPressIn={onPressIn}
+      onPressOut={onPressOut}
       onLongPress={(event) => {
         if (onOpenContextMenu) {
           onOpenContextMenu(eventToAnchor(event));
