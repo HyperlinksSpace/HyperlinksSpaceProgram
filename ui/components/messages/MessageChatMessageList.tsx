@@ -560,7 +560,10 @@ export function MessageChatMessageList({
   const prevContentHForBottomStickRef = useRef(0);
   const historySyncKeyRef = useRef("");
   const historyNetworkKeyRef = useRef("");
+  const historyOpenFetchInFlightRef = useRef(false);
   const historyOpenWatchdogKeyRef = useRef("");
+  const [historyLoadKick, setHistoryLoadKick] = useState(0);
+  const compactStallKickKeyRef = useRef("");
   const chatScrollPaintReadyRef = useRef(false);
   const messageLayoutsRef = useRef<Map<number, MessageScrollLayoutEntry>>(new Map());
   const messageRowHeightCacheRef = useRef<Map<number, number>>(new Map());
@@ -4900,7 +4903,25 @@ export function MessageChatMessageList({
     // One network open per chat+generation — do not re-fetch when callback
     // identities change (e.g. selfUserId lands and recreates merge helpers).
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
-    if (historyNetworkKeyRef.current === historyKey) return;
+    if (historyNetworkKeyRef.current === historyKey) {
+      const staleLatch =
+        messagesCountRef.current === 0 &&
+        !historyOpenFetchInFlightRef.current &&
+        (loadingInitial || error == null);
+      if (!staleLatch) {
+        return;
+      }
+      logPageDisplay("messages_history_load_stale_latch", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        historyKey,
+        compactPage,
+      });
+      historyNetworkKeyRef.current = "";
+    }
     historyNetworkKeyRef.current = historyKey;
 
     let cancelled = false;
@@ -4971,6 +4992,7 @@ export function MessageChatMessageList({
       });
     }
 
+    historyOpenFetchInFlightRef.current = true;
     void (async () => {
       const runNetworkLoad = async () => {
         try {
@@ -5239,21 +5261,62 @@ export function MessageChatMessageList({
           setLoadingInitial(false);
         }
       }
-    })();
+    })().finally(() => {
+      historyOpenFetchInFlightRef.current = false;
+    });
 
     return () => {
       cancelled = true;
+      historyOpenFetchInFlightRef.current = false;
+      if (messagesCountRef.current === 0) {
+        historyNetworkKeyRef.current = "";
+      }
     };
   }, [
     chat.telegram_chat_id,
     chat.peer_user_id,
     chat.title,
     historyLoad.generation,
+    historyLoadKick,
     isAuthenticated,
     isTelegramMessagesConnected,
     shouldLoadHistory,
     applyCachedHistoryPage,
     applyLastReadInboxMessageId,
+  ]);
+
+  useEffect(() => {
+    if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;
+    if (messages.length > 0) return;
+    const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
+    const timer = setTimeout(() => {
+      if (messagesCountRef.current > 0) return;
+      if (historyOpenFetchInFlightRef.current) return;
+      if (historyNetworkKeyRef.current !== historyKey) return;
+      if (compactStallKickKeyRef.current === historyKey) return;
+      compactStallKickKeyRef.current = historyKey;
+      logPageDisplay("messages_history_compact_stall_kick", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        historyKey,
+      });
+      historyNetworkKeyRef.current = "";
+      setHistoryLoadKick((n) => n + 1);
+    }, 3_000);
+    return () => clearTimeout(timer);
+  }, [
+    chat.peer_user_id,
+    chat.telegram_chat_id,
+    chat.title,
+    compactPage,
+    historyLoad.generation,
+    historyLoadKick,
+    isTelegramMessagesConnected,
+    messages.length,
+    shouldLoadHistory,
   ]);
 
   // Belt-and-suspenders: if the open fetch never settles (hung body, cancelled

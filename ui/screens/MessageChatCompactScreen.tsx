@@ -3,6 +3,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import {
   clearAuthenticatedHomeSelectedChat,
+  ensureAuthenticatedHomeHistoryLoadArmed,
   useAuthenticatedHomeSelectedChat,
 } from "../authenticatedHomeSelectedChat";
 import { useCompactChatOverlayGate } from "../components/CompactChatOverlayContext";
@@ -19,6 +20,12 @@ export function MessageChatCompactScreen() {
   const router = useRouter();
   const chat = useAuthenticatedHomeSelectedChat();
   const { setCompactChatOpen } = useCompactChatOverlayGate();
+
+  useLayoutEffect(() => {
+    if (chat != null) {
+      ensureAuthenticatedHomeHistoryLoadArmed(chat);
+    }
+  }, [chat?.telegram_chat_id]);
 
   useLayoutEffect(() => {
     setCompactChatOpen(true);

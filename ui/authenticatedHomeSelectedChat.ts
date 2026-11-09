@@ -270,6 +270,25 @@ export function openAuthenticatedHomeChatHistory(
   maybePushAuthenticatedHomeCompactChatRoute();
 }
 
+/**
+ * Compact `/messages/chat` can mount before list tap finishes arming history load
+ * (mobile WebView). Desktop TMA often keeps the wide panel mounted with gen > 0.
+ */
+export function ensureAuthenticatedHomeHistoryLoadArmed(chat: MessageChatRowData): void {
+  hydrateFromStorageIfNeeded();
+  if (
+    historyLoadChatId === chat.telegram_chat_id &&
+    historyLoadGeneration > 0
+  ) {
+    syncHistoryLoadSnapshot();
+    return;
+  }
+  historyLoadChatId = chat.telegram_chat_id;
+  historyLoadGeneration = Math.max(1, historyLoadGeneration + 1);
+  syncHistoryLoadSnapshot();
+  emit();
+}
+
 /** Open chat history centered on a specific message (e.g. profile links jump). */
 export function openAuthenticatedHomeChatHistoryAtMessage(
   chat: MessageChatRowData,
