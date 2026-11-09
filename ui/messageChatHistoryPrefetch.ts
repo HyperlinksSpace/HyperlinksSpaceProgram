@@ -31,17 +31,12 @@ import {
 } from "./components/messages/voiceDialogUiGate";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
 import { computeTelegramLayoutStartupSnapshot } from "./components/telegramWebApp";
-
-function isOnCompactChatRoute(): boolean {
-  if (typeof window === "undefined") return false;
-  const path = window.location.pathname.replace(/\/$/, "");
-  return path === "/messages/chat";
-}
+import { isCompactChatRouteActive } from "./compactChatRouteGate";
 
 /** Defer preview warming while the list or an opening chat needs the gateway. */
 function shouldPauseListBackgroundPrefetch(): boolean {
   if (openChatLoadingId != null) return true;
-  if (isOnCompactChatRoute()) return true;
+  if (isCompactChatRouteActive()) return true;
   if (readAuthenticatedHomeCompactChatLayoutSync()) return true;
   const snap = computeTelegramLayoutStartupSnapshot();
   const platform = snap.platformEffective?.trim().toLowerCase();
@@ -592,7 +587,7 @@ export function isOpenChatHistoryLoading(): boolean {
 
 /** Compact list must not keep the open-chat gateway gate latched from a stray warm. */
 export function releaseOpenChatLoadingGateForCompactList(): void {
-  if (!readAuthenticatedHomeCompactChatLayoutSync() || isOnCompactChatRoute()) return;
+  if (!readAuthenticatedHomeCompactChatLayoutSync() || isCompactChatRouteActive()) return;
   if (openChatLoadingId == null) return;
   const chatId = openChatLoadingId;
   openChatLoadingId = null;
@@ -786,16 +781,20 @@ export function prefetchChatHistoryPriority(
 ): void {
   // Compact home list: full open load sets openChatLoadingId and blocks the gateway
   // before the user reaches `/messages/chat` (logs: prefetch_ok on main with UI frozen).
-  if (readAuthenticatedHomeCompactChatLayoutSync() && !isOnCompactChatRoute()) {
+  if (
+    readAuthenticatedHomeCompactChatLayoutSync() &&
+    !isCompactChatRouteActive()
+  ) {
     logPageDisplay("messages_history_priority_prefetch_skip", {
       chatId: chat.telegram_chat_id,
       reason: "compact_list",
     });
     return;
   }
-  if (isOnCompactChatRoute()) {
+  if (isCompactChatRouteActive()) {
     logPageDisplay("messages_history_compact_route_prefetch", {
       chatId: chat.telegram_chat_id,
+      uiLatch: true,
     });
   }
   const chatId = chat.telegram_chat_id;

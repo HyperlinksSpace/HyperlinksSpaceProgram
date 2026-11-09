@@ -11,6 +11,7 @@ import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
+import { setCompactChatRouteUiOpen } from "../compactChatRouteGate";
 import { layout, useColors } from "../theme";
 
 /** Narrow layout: dedicated chat route (not a fixed overlay on home). */
@@ -23,14 +24,25 @@ export function MessageChatCompactScreen() {
 
   useLayoutEffect(() => {
     if (chat == null) return;
+    setCompactChatRouteUiOpen(true);
     ensureAuthenticatedHomeHistoryLoadArmed(chat);
-    // Mobile TMA: route remount must start the same foreground load as desktop
-    // (wide panel never unmounts). MessageList dedupe can skip the effect fetch.
-    void import("../messageChatHistoryPrefetch").then(
-      ({ prefetchChatHistoryPriority }) => {
-        prefetchChatHistoryPriority(chat);
-      },
-    );
+    const runPrefetch = () => {
+      void import("../messageChatHistoryPrefetch").then(
+        ({ prefetchChatHistoryPriority }) => {
+          prefetchChatHistoryPriority(chat);
+        },
+      );
+    };
+    runPrefetch();
+    const t1 =
+      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 60) : null;
+    const t2 =
+      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 280) : null;
+    return () => {
+      if (t1 != null) window.clearTimeout(t1);
+      if (t2 != null) window.clearTimeout(t2);
+      setCompactChatRouteUiOpen(false);
+    };
   }, [chat?.telegram_chat_id]);
 
   useLayoutEffect(() => {
