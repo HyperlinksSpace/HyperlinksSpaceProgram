@@ -24,6 +24,8 @@ const listeners = new Set<() => void>();
 let skipConsoleRingMirrorCount = 0;
 
 let storeSnapshot: AppLogRingStoreSnapshot = { revision: 0, entries: [] };
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let emitFrame: number | null = null;
 
 function refreshStoreSnapshot(): void {
   storeSnapshot = {
@@ -33,21 +35,35 @@ function refreshStoreSnapshot(): void {
 }
 
 function emit(): void {
+  if (typeof requestAnimationFrame === "function") {
+    if (emitFrame != null) return;
+    emitFrame = requestAnimationFrame(() => {
+      emitFrame = null;
+      for (const listener of listeners) {
+        listener();
+      }
+    });
+    return;
+  }
   for (const listener of listeners) {
     listener();
   }
 }
 
 function persistDebugLogSession(): void {
-  try {
-    if (typeof sessionStorage === "undefined") return;
-    sessionStorage.setItem(
-      DEBUG_LOG_SESSION_KEY,
-      JSON.stringify(entries.slice(-SESSION_PERSIST_MAX)),
-    );
-  } catch {
-    /* private mode / quota */
-  }
+  if (persistTimer != null) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      if (typeof sessionStorage === "undefined") return;
+      sessionStorage.setItem(
+        DEBUG_LOG_SESSION_KEY,
+        JSON.stringify(entries.slice(-SESSION_PERSIST_MAX)),
+      );
+    } catch {
+      /* private mode / quota */
+    }
+  }, 1_000);
 }
 
 function restoreDebugLogSession(): void {

@@ -439,13 +439,22 @@ export function TelegramMessagesConnectionProvider({ children }: { children: Rea
           setConnected(true);
           connectedRef.current = true;
           logPageDisplay("telegram_messages_gateway_ready");
-          void import("../authenticatedHomeSelectedChat").then(({ getAuthenticatedHomeSelectedChatSnapshot }) => {
-            const chat = getAuthenticatedHomeSelectedChatSnapshot();
-            if (!chat) return;
-            void import("../messageChatHistoryPrefetch").then(({ prefetchChatHistoryPriority }) => {
-              prefetchChatHistoryPriority(chat);
-            });
-          });
+          void import("../authenticatedHomeLayoutWidth").then(
+            ({ readAuthenticatedHomeCompactChatLayoutSync }) => {
+              if (readAuthenticatedHomeCompactChatLayoutSync()) return;
+              void import("../authenticatedHomeSelectedChat").then(
+                ({ getAuthenticatedHomeSelectedChatSnapshot }) => {
+                  const chat = getAuthenticatedHomeSelectedChatSnapshot();
+                  if (!chat) return;
+                  void import("../messageChatHistoryPrefetch").then(
+                    ({ prefetchChatHistoryPriority }) => {
+                      prefetchChatHistoryPriority(chat);
+                    },
+                  );
+                },
+              );
+            },
+          );
           return true;
         }
         if (
