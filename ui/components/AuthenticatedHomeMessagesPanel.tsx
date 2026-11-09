@@ -53,6 +53,7 @@ import {
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
+  primeOpenChatHistoryFromGesture,
   releaseOpenChatLoadingGateForCompactList,
   setOpenChatFocusHold,
 } from "../messageChatHistoryPrefetch";
@@ -2454,6 +2455,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (compactOpenNow) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
+        primeOpenChatHistoryFromGesture(resolvedItem);
       }
       openAuthenticatedHomeChatHistory(
         resolvedItem,

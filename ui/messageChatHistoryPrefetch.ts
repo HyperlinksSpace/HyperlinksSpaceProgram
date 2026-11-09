@@ -779,6 +779,21 @@ export function prefetchVisibleChatNeighbors(
   }
 }
 
+/**
+ * Start the history HTTP request inside the tap gesture. iOS Telegram WebView
+ * often never dispatches a fetch that begins later in a route effect, so the
+ * UI sits on `messages_history_load_start` with nothing sent to the gateway.
+ */
+export function primeOpenChatHistoryFromGesture(
+  chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id" | "unread_count">,
+): void {
+  const chatId = chat.telegram_chat_id;
+  if (!Number.isFinite(chatId)) return;
+  resetSharedOpenChatHistoryLoad(chatId);
+  logPageDisplay("messages_history_gesture_prime", { chatId });
+  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);
+}
+
 /** Warm the open chat — shares the same in-flight load as {@link loadOpenChatHistoryFirstPage}. */
 export function prefetchChatHistoryPriority(
   chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id" | "unread_count">,

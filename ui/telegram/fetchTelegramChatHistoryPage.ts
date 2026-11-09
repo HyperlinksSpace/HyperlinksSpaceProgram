@@ -18,6 +18,7 @@ import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageCh
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
+import { logPageDisplay } from "../pageDisplayLog";
 
 export type ChatHistoryPageResult = {
   messages: MessageChatHistoryItem[];
@@ -357,11 +358,24 @@ async function fetchTelegramChatHistoryPageOnce(
     ? HISTORY_FETCH_BACKGROUND_TIMEOUT_MS
     : HISTORY_FETCH_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const sentAt = Date.now();
+  logPageDisplay("messages_history_fetch_dispatch", {
+    chatId,
+    limit,
+    background: options?.background === true,
+    aroundUnread,
+  });
   try {
     const response = await fetch(url, {
       method: "GET",
       credentials: "include",
       signal: controller.signal,
+    });
+    logPageDisplay("messages_history_fetch_response", {
+      chatId,
+      status: response.status,
+      elapsedMs: Date.now() - sentAt,
+      background: options?.background === true,
     });
     const json = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
