@@ -565,6 +565,7 @@ export function MessageChatMessageList({
   const historyOpenWatchdogKeyRef = useRef("");
   const [historyLoadKick, setHistoryLoadKick] = useState(0);
   const compactStallKickKeyRef = useRef("");
+  const compactStreamReloadKeyRef = useRef("");
   const chatScrollPaintReadyRef = useRef(false);
   const messageLayoutsRef = useRef<Map<number, MessageScrollLayoutEntry>>(new Map());
   const messageRowHeightCacheRef = useRef<Map<number, number>>(new Map());
@@ -5654,6 +5655,22 @@ export function MessageChatMessageList({
     },
     onStreamActiveChange: (active) => {
       historyStreamActiveRef.current = active;
+      if (!active || !compactPage || messagesCountRef.current > 0) return;
+      const reloadKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
+      if (compactStreamReloadKeyRef.current === reloadKey) return;
+      compactStreamReloadKeyRef.current = reloadKey;
+      logPageDisplay("messages_history_compact_stream_reload", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        reloadKey,
+      });
+      resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+      historyNetworkKeyRef.current = "";
+      historyOpenFetchInFlightRef.current = false;
+      setHistoryLoadKick((n) => n + 1);
     },
   });
 
