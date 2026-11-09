@@ -3397,7 +3397,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const requestChatListNextPage = useCallback(() => {
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
-    if (isOpenChatFocusHoldActive()) return;
+    if (isOpenChatFocusHoldActive() && !compactChatLayout) return;
     if (archiveRevealPendingRef.current) return;
     if (chatListFetchBusyRef.current || chatListFetchingMore) {
       queueChatListScrollPageFetch();
@@ -3415,6 +3415,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     cachedChatCount,
     chatListFetchingMore,
     chatListTotalCount,
+    compactChatLayout,
     listSearchActive,
     queueChatListScrollPageFetch,
   ]);
@@ -3423,7 +3424,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (listSearchActive || searchListReplacesMain) return false;
     if (!initialChatListRevealed) return false;
     if (isVoiceDialogUiOpen() || archiveRevealPendingRef.current) return false;
-    if (isOpenChatFocusHoldActive()) return false;
+    if (isOpenChatFocusHoldActive() && !compactChatLayout) return false;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
     if (serverTotal <= 0 && !chatListScrollHasMore()) return false;
     const partialCatalog = chatListScrollCatalogPartial(
@@ -3449,9 +3450,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     );
     const listFitsViewport =
       metrics.contentH > 0 && metrics.contentH <= layoutH + 12;
+    // Mobile TMA often reports scrollY/layoutH as 0 while the user is visually
+    // at the list tail. The near-bottom sentinel still sets this latch.
+    if (chatListAtBottomRef.current) return true;
     return tailWithinPrefetch || listFitsViewport;
   }, [
     cachedChatCount,
+    compactChatLayout,
     chatListEffectiveLayoutH,
     chatListRowStride,
     chatListShellTopInset,

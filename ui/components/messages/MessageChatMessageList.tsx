@@ -4899,7 +4899,7 @@ export function MessageChatMessageList({
       historyNetworkKeyRef.current = "";
       return;
     }
-    if (!isTelegramMessagesConnected) {
+    if (!isTelegramMessagesConnected && !compactPage) {
       setLoadingInitial(true);
       setError(null);
       historyNetworkKeyRef.current = "";
