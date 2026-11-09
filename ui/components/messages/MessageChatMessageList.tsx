@@ -222,7 +222,7 @@ const OLDER_EMPTY_SOFT_FAIL_BUDGET = 3;
 const OLDER_EMPTY_SOFT_FAIL_COOLDOWN_MS = 1200;
 /** Absolute cap: never leave the open-chat spinner forever if a fetch chain stalls. */
 const HISTORY_OPEN_LOAD_WATCHDOG_MS = 45_000;
-const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 26_000;
+const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 45_000;
 /** telegram-tt FAB_THRESHOLD — hide scroll-down when within this distance of bottom (read chats). */
 const FAB_VISIBILITY_THRESHOLD_PX = 50;
 /** telegram-tt NOTCH_THRESHOLD — unread chats hide FAB only at exact bottom. */
@@ -4937,7 +4937,7 @@ export function MessageChatMessageList({
         compactPage &&
         messagesCountRef.current === 0 &&
         historyOpenFetchInFlightRef.current &&
-        Date.now() - historyOpenInFlightSinceRef.current > 24_000
+        Date.now() - historyOpenInFlightSinceRef.current > 45_000
       ) {
         logPageDisplay("messages_history_compact_inflight_stale", {
           ...chatLogFields({
@@ -5069,7 +5069,11 @@ export function MessageChatMessageList({
             chat.peer_user_id,
             chat,
           );
-          if (result.error && isTransientHistoryFetchError(result.error)) {
+          if (
+            result.error &&
+            result.error !== "gateway_timeout_retry" &&
+            isTransientHistoryFetchError(result.error)
+          ) {
             await warmupTelegramChatSession(chat.telegram_chat_id);
             result = await loadOpenChatHistoryFirstPage(
               chat.telegram_chat_id,
@@ -5151,6 +5155,7 @@ export function MessageChatMessageList({
           } else if (fetchAnchor > 0) {
             scrollAnchorMessageIdRef.current = fetchAnchor;
           }
+          setError(null);
           // Yield before replacing an already-painted window so open scroll /
           // voice controls are not frozen by a large history merge.
           if (messagesCountRef.current > 0) {
@@ -5430,7 +5435,6 @@ export function MessageChatMessageList({
         watchdogKey,
         inFlightAgeMs,
       });
-      resetSharedOpenChatHistoryLoad(chatId);
       setError("gateway_timeout_retry");
       setLoadingInitial(false);
     }, timeoutMs);
@@ -5685,6 +5689,17 @@ export function MessageChatMessageList({
       const reloadKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
       if (compactStreamReloadKeyRef.current === reloadKey) return;
       compactStreamReloadKeyRef.current = reloadKey;
+      if (historyOpenFetchInFlightRef.current) {
+        logPageDisplay("messages_history_compact_stream_reload_skipped_inflight", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          reloadKey,
+        });
+        return;
+      }
       logPageDisplay("messages_history_compact_stream_reload", {
         ...chatLogFields({
           chatId: chat.telegram_chat_id,
@@ -5693,9 +5708,7 @@ export function MessageChatMessageList({
         }),
         reloadKey,
       });
-      resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
       historyNetworkKeyRef.current = "";
-      historyOpenFetchInFlightRef.current = false;
       setHistoryLoadKick((n) => n + 1);
     },
   });

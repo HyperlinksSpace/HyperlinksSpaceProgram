@@ -74,8 +74,6 @@ type LoadSpec = {
 
 const sharedLoads = new Map<number, Promise<ChatHistoryPageResult>>();
 const sharedLoadLane = new Map<number, "foreground" | "background">();
-const compactJoinRescue = new Set<number>();
-const COMPACT_JOIN_STALE_MS = 3_500;
 const inFlightBackground = new Map<number, Promise<void>>();
 const queued: Array<{
   chatId: number;
@@ -840,44 +838,11 @@ export function prefetchChatHistoryPriority(
     return;
   }
   const inFlight = sharedLoads.get(chatId);
-  if (inFlight) {
+    if (inFlight) {
     logPageDisplay("messages_history_compact_route_prefetch_join", { chatId });
-    if (isCompactChatRouteActive() && !compactJoinRescue.has(chatId)) {
-      compactJoinRescue.add(chatId);
-      const started = inFlight;
-      void Promise.race([
-        started.then(() => "ok" as const),
-        new Promise<"timeout">((resolve) => {
-          setTimeout(() => resolve("timeout"), COMPACT_JOIN_STALE_MS);
-        }),
-      ]).then((outcome) => {
-        compactJoinRescue.delete(chatId);
-        if (outcome === "ok") {
-          pokeChatHistoryCacheListeners(chatId);
-          return;
-        }
-        if (sharedLoads.get(chatId) !== started) return;
-        sharedLoads.delete(chatId);
-        sharedLoadLane.delete(chatId);
-        if (openChatLoadingId === chatId) openChatLoadingId = null;
-        logPageDisplay("messages_history_compact_join_stale", {
-          chatId,
-          staleMs: COMPACT_JOIN_STALE_MS,
-          ...prefetchQueueSnapshot(),
-        });
-        void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat).then(
-          (page) => {
-            if (!page.error && page.messages.length > 0) {
-              pokeChatHistoryCacheListeners(chatId);
-            }
-          },
-        );
-      });
-    } else {
-      void inFlight.finally(() => {
-        pokeChatHistoryCacheListeners(chatId);
-      });
-    }
+    void inFlight.finally(() => {
+      pokeChatHistoryCacheListeners(chatId);
+    });
     return;
   }
   if (isCompactChatRouteActive()) {

@@ -274,11 +274,6 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
   return /^HTTP_50[234]$/.test(error);
 }
 
-/**
- * Foreground cap. Around-message history has been observed at 17–30s; aborting
- * at 12s drops the body and the retry stacks another gateway call behind it.
- */
-const HISTORY_FETCH_TIMEOUT_MS = 22_000;
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
@@ -357,10 +352,13 @@ async function fetchTelegramChatHistoryPageOnce(
   return runQueuedNetworkFetch(
     async () => {
   const controller = new AbortController();
-  const timeoutMs = options?.background
-    ? HISTORY_FETCH_BACKGROUND_TIMEOUT_MS
-    : HISTORY_FETCH_TIMEOUT_MS;
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // Foreground open must stay alive until the gateway writes the body.
+  // Aborting at 22s left the TDLib call running (observed 42s) and the next
+  // iOS open queued behind it. Background warming still has a short cap.
+  const timer =
+    options?.background === true
+      ? setTimeout(() => controller.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
+      : null;
   const sentAt = Date.now();
   logPageDisplay("messages_history_fetch_dispatch", {
     chatId,
@@ -453,7 +451,7 @@ async function fetchTelegramChatHistoryPageOnce(
     const aborted = err instanceof DOMException && err.name === "AbortError";
     return emptyHistoryError(aborted ? "gateway_timeout_retry" : "network_error");
   } finally {
-    clearTimeout(timer);
+    if (timer != null) clearTimeout(timer);
   }
     },
     { priority: options?.background === true ? "normal" : "critical" },
@@ -463,8 +461,84 @@ async function fetchTelegramChatHistoryPageOnce(
 const HISTORY_FETCH_MAX_ATTEMPTS = 3;
 const HISTORY_FETCH_RETRY_BASE_MS = 400;
 
+const foregroundHistoryFlights = new Map<string, Promise<ChatHistoryPageResult>>();
+
+function foregroundHistoryFlightKey(
+  chatId: number,
+  limit: number,
+  beforeMessageId?: number | null,
+  sinceMessageId?: number | null,
+  aroundUnread = false,
+  aroundMessageId?: number | null,
+): string {
+  return [
+    chatId,
+    limit,
+    beforeMessageId ?? "",
+    sinceMessageId ?? "",
+    aroundUnread ? 1 : 0,
+    aroundMessageId ?? "",
+  ].join(":");
+}
+
 /** Fetch one history page, retrying transient gateway / API failures. */
 export async function fetchTelegramChatHistoryPage(
+  chatId: number,
+  limit: number,
+  peerUserId: number | null | undefined,
+  beforeMessageId?: number | null,
+  sinceMessageId?: number | null,
+  aroundUnread = false,
+  aroundMessageId?: number | null,
+  olderAbove?: number | null,
+  newerBelow?: number | null,
+  options?: { background?: boolean },
+): Promise<ChatHistoryPageResult> {
+  if (options?.background !== true) {
+    const flightKey = foregroundHistoryFlightKey(
+      chatId,
+      limit,
+      beforeMessageId,
+      sinceMessageId,
+      aroundUnread,
+      aroundMessageId,
+    );
+    const existing = foregroundHistoryFlights.get(flightKey);
+    if (existing) return existing;
+    const flight = fetchTelegramChatHistoryPageBody(
+      chatId,
+      limit,
+      peerUserId,
+      beforeMessageId,
+      sinceMessageId,
+      aroundUnread,
+      aroundMessageId,
+      olderAbove,
+      newerBelow,
+      options,
+    ).finally(() => {
+      if (foregroundHistoryFlights.get(flightKey) === flight) {
+        foregroundHistoryFlights.delete(flightKey);
+      }
+    });
+    foregroundHistoryFlights.set(flightKey, flight);
+    return flight;
+  }
+  return fetchTelegramChatHistoryPageBody(
+    chatId,
+    limit,
+    peerUserId,
+    beforeMessageId,
+    sinceMessageId,
+    aroundUnread,
+    aroundMessageId,
+    olderAbove,
+    newerBelow,
+    options,
+  );
+}
+
+async function fetchTelegramChatHistoryPageBody(
   chatId: number,
   limit: number,
   peerUserId: number | null | undefined,
