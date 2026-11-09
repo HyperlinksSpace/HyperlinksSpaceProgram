@@ -297,7 +297,6 @@ export function MessageChatMessageList({
   const [messages, setMessages] = useState<MessageChatHistoryItem[]>([]);
   const [chatKind, setChatKind] = useState<MessageChatKind | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(false);
-  const [compactHistoryOpenRetry, setCompactHistoryOpenRetry] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
@@ -4961,7 +4960,7 @@ export function MessageChatMessageList({
       setNextBeforeMessageId(null);
       setLastReadOutboxFromHistory(null);
       setSelfUserId(null);
-      historyOpenWatchdogKeyRef.current = `${chat.telegram_chat_id}:${historyLoad.generation}:${compactHistoryOpenRetry}`;
+      historyOpenWatchdogKeyRef.current = `${chat.telegram_chat_id}:${historyLoad.generation}`;
       logPageDisplay("messages_history_load_start", {
         ...chatLogFields({
           chatId: chat.telegram_chat_id,
@@ -5255,41 +5254,6 @@ export function MessageChatMessageList({
     shouldLoadHistory,
     applyCachedHistoryPage,
     applyLastReadInboxMessageId,
-    compactHistoryOpenRetry,
-  ]);
-
-  useEffect(() => {
-    if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;
-    if (!loadingInitial || messages.length > 0) return;
-    const chatId = chat.telegram_chat_id;
-    const generation = historyLoad.generation;
-    const timer = setTimeout(() => {
-      if (messagesCountRef.current > 0) return;
-      if (historyNetworkKeyRef.current !== `${chatId}:${generation}`) return;
-      logPageDisplay("messages_history_compact_open_retry", {
-        ...chatLogFields({
-          chatId,
-          peerUserId: chat.peer_user_id,
-          title: chat.title,
-        }),
-        retry: compactHistoryOpenRetry + 1,
-      });
-      resetSharedOpenChatHistoryLoad(chatId);
-      historyNetworkKeyRef.current = "";
-      setCompactHistoryOpenRetry((n) => n + 1);
-    }, 4_000);
-    return () => clearTimeout(timer);
-  }, [
-    chat.peer_user_id,
-    chat.telegram_chat_id,
-    chat.title,
-    compactHistoryOpenRetry,
-    compactPage,
-    historyLoad.generation,
-    isTelegramMessagesConnected,
-    loadingInitial,
-    messages.length,
-    shouldLoadHistory,
   ]);
 
   // Belt-and-suspenders: if the open fetch never settles (hung body, cancelled
@@ -5300,7 +5264,7 @@ export function MessageChatMessageList({
     const timeoutMs = compactPage
       ? HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS
       : HISTORY_OPEN_LOAD_WATCHDOG_MS;
-    const watchdogKey = `${chatId}:${historyLoad.generation}:${compactHistoryOpenRetry}`;
+    const watchdogKey = `${chatId}:${historyLoad.generation}`;
     historyOpenWatchdogKeyRef.current = watchdogKey;
     const timer = setTimeout(() => {
       if (historyOpenWatchdogKeyRef.current !== watchdogKey) return;
@@ -5325,7 +5289,6 @@ export function MessageChatMessageList({
     return () => clearTimeout(timer);
   }, [
     compactPage,
-    compactHistoryOpenRetry,
     historyLoad.generation,
     loadingInitial,
     messages.length,
