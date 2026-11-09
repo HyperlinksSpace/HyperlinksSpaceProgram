@@ -789,6 +789,13 @@ export function primeOpenChatHistoryFromGesture(
 ): void {
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
+  // A reset drops the shared promise but the HTTP call keeps running. Joining
+  // the foreground load avoids a second around/tail request for the same open.
+  if (sharedLoads.has(chatId) && sharedLoadLane.get(chatId) === "foreground") {
+    logPageDisplay("messages_history_gesture_prime_join", { chatId });
+    void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);
+    return;
+  }
   resetSharedOpenChatHistoryLoad(chatId);
   logPageDisplay("messages_history_gesture_prime", { chatId });
   void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);

@@ -14,6 +14,7 @@ import {
 } from "./messageChatLayout";
 import { CHAT_HISTORY_WINDOW_N } from "./chatHistoryWindowBudget";
 import type { MessageChatRowData } from "./MessageChatRow";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "../../authenticatedHomeLayoutWidth";
 
 /** Full bidirectional open window (2N) when one side of history is exhausted. */
 const OPEN_WINDOW_2N = CHAT_HISTORY_WINDOW_N * 2;
@@ -164,6 +165,31 @@ function aroundUnreadFetch(unreadCount: number): ChatOpenFetchSpec {
   };
 }
 
+function compactTailOpenSession(chat: MessageChatRowData): ChatOpenSession {
+  const openingUnreadCount = Math.max(
+    0,
+    Math.trunc(Number.isFinite(chat.unread_count) ? chat.unread_count : 0),
+  );
+  const tailId = positiveId(chat.last_message_telegram_id);
+  // Around-message opens for a saved anchor take 17–30s on the gateway.
+  // The phone aborts the fetch at 12s and retries, so the body never arrives.
+  // Compact open paints the latest page; mid-thread restore stays on desktop.
+  return {
+    mode: "bottom",
+    openingUnreadCount,
+    fetch: tailFetchFallback(),
+    scroll: {
+      followingBottom: true,
+      pinToBottom: true,
+      restore: null,
+      alignUnreadDivider: false,
+      openAnchor: "bottom",
+      pendingInitialScroll: true,
+    },
+    displayAnchorMessageId: tailId > 0 ? tailId : null,
+  };
+}
+
 function tailFetchFallback(): ChatOpenFetchSpec {
   return {
     kind: "tail",
@@ -182,6 +208,9 @@ function tailFetchFallback(): ChatOpenFetchSpec {
  * prefetch, cache match, and MessageList network load.
  */
 export function resolveChatOpenSession(chat: MessageChatRowData): ChatOpenSession {
+  if (readAuthenticatedHomeCompactChatLayoutSync()) {
+    return compactTailOpenSession(chat);
+  }
   const openingUnreadCount = Math.max(
     0,
     Math.trunc(Number.isFinite(chat.unread_count) ? chat.unread_count : 0),

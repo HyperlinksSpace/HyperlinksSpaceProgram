@@ -274,8 +274,11 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
   return /^HTTP_50[234]$/.test(error);
 }
 
-/** Per-attempt hard cap so a hung gateway never leaves the chat spinner forever. */
-const HISTORY_FETCH_TIMEOUT_MS = 12_000;
+/**
+ * Foreground cap. Around-message history has been observed at 17–30s; aborting
+ * at 12s drops the body and the retry stacks another gateway call behind it.
+ */
+const HISTORY_FETCH_TIMEOUT_MS = 22_000;
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
@@ -364,6 +367,10 @@ async function fetchTelegramChatHistoryPageOnce(
     limit,
     background: options?.background === true,
     aroundUnread,
+    aroundMessageId:
+      typeof aroundMessageId === "number" && aroundMessageId > 0
+        ? aroundMessageId
+        : undefined,
   });
   try {
     const response = await fetch(url, {
@@ -487,6 +494,9 @@ export async function fetchTelegramChatHistoryPage(
     lastResult = result;
     if (
       !isTransientHistoryFetchError(result.error) ||
+      // The aborted request is still running on the gateway. A second call
+      // queues behind it and the spinner never reads a body.
+      result.error === "gateway_timeout_retry" ||
       attempt >= HISTORY_FETCH_MAX_ATTEMPTS - 1
     ) {
       return result;
