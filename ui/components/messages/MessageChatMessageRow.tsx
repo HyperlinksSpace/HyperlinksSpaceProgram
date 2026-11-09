@@ -805,8 +805,11 @@ export function MessageChatMessageRow({
                       overflow: "visible",
                       ...(Platform.OS === "web"
                         ? ({
-                            width: "max-content",
+                            // iOS Safari collapses `max-content` to 0 in this column,
+                            // so only the stretch date divider stays visible.
+                            width: compactPage ? "auto" : "max-content",
                             maxWidth: bubbleMaxWidth,
+                            minWidth: compactPage ? 48 : undefined,
                             boxSizing: "border-box",
                           } as object)
                         : null),
