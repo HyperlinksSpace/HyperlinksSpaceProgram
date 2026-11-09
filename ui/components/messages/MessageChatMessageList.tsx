@@ -5393,12 +5393,30 @@ export function MessageChatMessageList({
     const timeoutMs = compactPage
       ? HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS
       : HISTORY_OPEN_LOAD_WATCHDOG_MS;
-    const watchdogKey = `${chatId}:${historyLoad.generation}`;
+    const watchdogKey = `${chatId}:${historyLoad.generation}:${historyLoadKick}`;
     historyOpenWatchdogKeyRef.current = watchdogKey;
     const timer = setTimeout(() => {
       if (historyOpenWatchdogKeyRef.current !== watchdogKey) return;
       if (messagesCountRef.current > 0) {
         setLoadingInitial(false);
+        return;
+      }
+      const inFlightAgeMs = Date.now() - historyOpenInFlightSinceRef.current;
+      if (
+        historyOpenFetchInFlightRef.current &&
+        historyOpenInFlightSinceRef.current > 0 &&
+        inFlightAgeMs < timeoutMs - 1_000
+      ) {
+        logPageDisplay("messages_history_load_watchdog_skipped_inflight", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          inFlightAgeMs,
+          timeoutMs,
+          watchdogKey,
+        });
         return;
       }
       logPageDisplay("messages_history_load_watchdog_timeout", {
@@ -5410,15 +5428,22 @@ export function MessageChatMessageList({
         timeoutMs,
         compactPage,
         watchdogKey,
+        inFlightAgeMs,
       });
       resetSharedOpenChatHistoryLoad(chatId);
       setError("gateway_timeout_retry");
       setLoadingInitial(false);
     }, timeoutMs);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (historyOpenWatchdogKeyRef.current === watchdogKey) {
+        historyOpenWatchdogKeyRef.current = "";
+      }
+    };
   }, [
     compactPage,
     historyLoad.generation,
+    historyLoadKick,
     loadingInitial,
     messages.length,
     chat.telegram_chat_id,
