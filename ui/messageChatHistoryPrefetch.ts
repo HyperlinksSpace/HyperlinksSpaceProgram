@@ -590,6 +590,24 @@ export function isOpenChatHistoryLoading(): boolean {
   return openChatLoadingId != null;
 }
 
+/** Compact list must not keep the open-chat gateway gate latched from a stray warm. */
+export function releaseOpenChatLoadingGateForCompactList(): void {
+  if (!readAuthenticatedHomeCompactChatLayoutSync() || isOnCompactChatRoute()) return;
+  if (openChatLoadingId == null) return;
+  const chatId = openChatLoadingId;
+  openChatLoadingId = null;
+  if (openChatLoadingStaleTimer != null) {
+    clearTimeout(openChatLoadingStaleTimer);
+    openChatLoadingStaleTimer = null;
+  }
+  logPageDisplay("messages_history_open_loading_gate_release", {
+    chatId,
+    reason: "compact_list",
+    ...prefetchQueueSnapshot(),
+  });
+  scheduleBackgroundDrain();
+}
+
 /** Drop a stuck coalesced load so compact open can start a fresh foreground fetch. */
 export function resetSharedOpenChatHistoryLoad(chatId: number): void {
   if (!Number.isFinite(chatId)) return;
@@ -766,6 +784,15 @@ export function prefetchVisibleChatNeighbors(
 export function prefetchChatHistoryPriority(
   chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id" | "unread_count">,
 ): void {
+  // Compact home list: full open load sets openChatLoadingId and blocks the gateway
+  // before the user reaches `/messages/chat` (logs: prefetch_ok on main with UI frozen).
+  if (readAuthenticatedHomeCompactChatLayoutSync() && !isOnCompactChatRoute()) {
+    logPageDisplay("messages_history_priority_prefetch_skip", {
+      chatId: chat.telegram_chat_id,
+      reason: "compact_list",
+    });
+    return;
+  }
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
   const spec = resolveOpenLoadSpec(chat);

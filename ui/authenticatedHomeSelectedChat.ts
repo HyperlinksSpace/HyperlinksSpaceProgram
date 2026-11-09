@@ -8,6 +8,7 @@ import {
   clearAuthenticatedHomeCompactChatRoutePushIntent,
   maybePushAuthenticatedHomeCompactChatRoute,
 } from "./navigateAuthenticatedHomeCompactChat";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_selected_chat_v1";
 
@@ -177,16 +178,24 @@ function hydrateFromStorageIfNeeded() {
   selectedChat = readStoredChat();
   if (selectedChat && historyLoadGeneration === 0) {
     historyLoadChatId = selectedChat.telegram_chat_id;
-    historyLoadGeneration = 1;
+    const compactListWithoutChatRoute =
+      readAuthenticatedHomeCompactChatLayoutSync() &&
+      (typeof window === "undefined" ||
+        window.location.pathname.replace(/\/$/, "") !== "/messages/chat");
+    if (!compactListWithoutChatRoute) {
+      historyLoadGeneration = 1;
+    }
     // Keep `headerPanel` on cold start so multicolumn opens on the default Swap
     // menu item; the last chat stays selected for when the user opens Messages.
     syncHistoryLoadSnapshot();
     void import("./messageChatHistoryCache").then(({ warmChatHistoryCacheFromSession }) => {
       warmChatHistoryCacheFromSession(selectedChat!.telegram_chat_id);
     });
-    void import("./messageChatHistoryPrefetch").then(({ prefetchChatHistoryPriority }) => {
-      prefetchChatHistoryPriority(selectedChat!);
-    });
+    if (!compactListWithoutChatRoute) {
+      void import("./messageChatHistoryPrefetch").then(({ prefetchChatHistoryPriority }) => {
+        prefetchChatHistoryPriority(selectedChat!);
+      });
+    }
   }
 }
 

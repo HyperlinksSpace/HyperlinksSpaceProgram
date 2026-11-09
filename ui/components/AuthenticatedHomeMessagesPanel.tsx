@@ -53,6 +53,7 @@ import {
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
+  releaseOpenChatLoadingGateForCompactList,
   setOpenChatFocusHold,
 } from "../messageChatHistoryPrefetch";
 import { unlockVoiceAutoplay } from "../telegram/unlockVoiceAutoplay";
@@ -923,6 +924,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   useEffect(() => {
     publishTelegramChatDirectory(chats);
   }, [chats]);
+
+  useEffect(() => {
+    if (!compactChatLayout || pathname === "/messages/chat") return;
+    releaseOpenChatLoadingGateForCompactList();
+  }, [compactChatLayout, pathname]);
 
   useEffect(() => {
     if (selectedChatId == null || selectedChat == null) return;
