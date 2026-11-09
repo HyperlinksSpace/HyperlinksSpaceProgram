@@ -4841,7 +4841,7 @@ export function MessageChatMessageList({
       historySyncKeyRef.current = "";
       return;
     }
-    if (!isTelegramMessagesConnected) {
+    if (!isTelegramMessagesConnected && !compactPage) {
       return;
     }
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
@@ -4859,8 +4859,12 @@ export function MessageChatMessageList({
         isChatHistoryCachePaintable(chat.telegram_chat_id));
 
     if (cachePaintable && cached) {
-      applyCachedHistoryPage(cached, { replace: true });
-      if (cached.previewOnly) {
+      const applied = applyCachedHistoryPage(cached, { replace: true });
+      if (applied && cached.messages.length > 0) {
+        messagesCountRef.current = Math.max(
+          messagesCountRef.current,
+          cached.messages.length,
+        );
         setLoadingInitial(false);
       }
       return;
@@ -4875,6 +4879,7 @@ export function MessageChatMessageList({
   }, [
     applyCachedHistoryPage,
     chat,
+    compactPage,
     historyLoad.generation,
     isAuthenticated,
     isTelegramMessagesConnected,

@@ -13,6 +13,7 @@ import {
   isChatHistoryCacheComplete,
   isChatHistoryCacheFresh,
   PREVIEW_FRESH_MS,
+  pokeChatHistoryCacheListeners,
   setCachedChatHistory,
 } from "./messageChatHistoryCache";
 import {
@@ -562,6 +563,7 @@ export async function loadOpenChatHistoryFirstPage(
         cached.chatKind != null &&
         cached.chatKind !== "private";
       if (!needsMemberCount) {
+        pokeChatHistoryCacheListeners(chatId);
         return toPageResult(cached);
       }
       // Group/channel cache without member_count — refetch so the header can show
@@ -791,12 +793,6 @@ export function prefetchChatHistoryPriority(
     });
     return;
   }
-  if (isCompactChatRouteActive()) {
-    logPageDisplay("messages_history_compact_route_prefetch", {
-      chatId: chat.telegram_chat_id,
-      uiLatch: true,
-    });
-  }
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
   const spec = resolveOpenLoadSpec(chat);
@@ -809,10 +805,35 @@ export function prefetchChatHistoryPriority(
     isChatHistoryCacheFresh(chatId) &&
     isChatHistoryCacheAnchorMatch(chatId, anchorSpec)
   ) {
+    pokeChatHistoryCacheListeners(chatId);
+    logPageDisplay("messages_history_compact_route_cache_poke", {
+      chatId,
+      count: cached.messages.length,
+    });
     return;
   }
-  if (sharedLoads.has(chatId)) return;
-  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);
+  const inFlight = sharedLoads.get(chatId);
+  if (inFlight) {
+    void inFlight.finally(() => {
+      pokeChatHistoryCacheListeners(chatId);
+    });
+    logPageDisplay("messages_history_compact_route_prefetch_join", { chatId });
+    return;
+  }
+  if (isCompactChatRouteActive()) {
+    logPageDisplay("messages_history_compact_route_prefetch", {
+      chatId,
+      uiLatch: true,
+    });
+  }
+  logPageDisplay("messages_history_open_load_begin", { chatId });
+  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat).then(
+    (page) => {
+      if (!page.error && page.messages.length > 0) {
+        pokeChatHistoryCacheListeners(chatId);
+      }
+    },
+  );
 }
 
 /** @deprecated Use viewport-driven {@link prefetchChatHistory} from visible rows. */

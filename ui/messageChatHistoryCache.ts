@@ -403,3 +403,9 @@ export function removeCachedChatHistoryMessages(
 export function invalidateChatHistoryCache(chatId: number): void {
   cache.delete(chatId);
 }
+
+/** Re-notify subscribers when cache is already warm (compact route must paint from RAM). */
+export function pokeChatHistoryCacheListeners(chatId: number): void {
+  if (!Number.isFinite(chatId)) return;
+  emitCacheUpdate(Math.trunc(chatId));
+}

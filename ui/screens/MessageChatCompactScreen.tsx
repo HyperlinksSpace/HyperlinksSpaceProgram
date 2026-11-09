@@ -34,13 +34,10 @@ export function MessageChatCompactScreen() {
       );
     };
     runPrefetch();
-    const t1 =
-      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 60) : null;
-    const t2 =
-      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 280) : null;
+    const retry =
+      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 200) : null;
     return () => {
-      if (t1 != null) window.clearTimeout(t1);
-      if (t2 != null) window.clearTimeout(t2);
+      if (retry != null) window.clearTimeout(retry);
       setCompactChatRouteUiOpen(false);
     };
   }, [chat?.telegram_chat_id]);
