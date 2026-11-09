@@ -389,6 +389,13 @@ async function fetchTelegramChatHistoryPageOnce(
       self_user_id?: number;
       error?: string;
     };
+    logPageDisplay("messages_history_fetch_body", {
+      chatId,
+      count: Array.isArray(json.messages) ? json.messages.length : 0,
+      ok: json.ok === true,
+      elapsedMs: Date.now() - sentAt,
+      background: options?.background === true,
+    });
     if (controller.signal.aborted) {
       return emptyHistoryError("gateway_timeout_retry");
     }

@@ -5455,9 +5455,10 @@ export function MessageChatMessageList({
     if (!shouldLoadHistory || !isAuthenticated || !isTelegramMessagesConnected) {
       return;
     }
-    const allowPollDuringCompactOpen =
-      compactPage && loadingInitial && messages.length === 0;
-    if (loadingInitial && !allowPollDuringCompactOpen) {
+    // Compact iOS reads one history body at a time. A live-tail fetch (limit=10)
+    // started while the open page (limit=26) is still parsing never reaches
+    // prefetch_ok / cache_hit — the WebView stops after fetch_response.
+    if (loadingInitial) {
       return;
     }
 
