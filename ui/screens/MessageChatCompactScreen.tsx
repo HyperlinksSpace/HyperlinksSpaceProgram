@@ -22,9 +22,15 @@ export function MessageChatCompactScreen() {
   const { setCompactChatOpen } = useCompactChatOverlayGate();
 
   useLayoutEffect(() => {
-    if (chat != null) {
-      ensureAuthenticatedHomeHistoryLoadArmed(chat);
-    }
+    if (chat == null) return;
+    ensureAuthenticatedHomeHistoryLoadArmed(chat);
+    // Mobile TMA: route remount must start the same foreground load as desktop
+    // (wide panel never unmounts). MessageList dedupe can skip the effect fetch.
+    void import("../messageChatHistoryPrefetch").then(
+      ({ prefetchChatHistoryPriority }) => {
+        prefetchChatHistoryPriority(chat);
+      },
+    );
   }, [chat?.telegram_chat_id]);
 
   useLayoutEffect(() => {

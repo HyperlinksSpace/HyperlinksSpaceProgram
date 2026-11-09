@@ -793,6 +793,11 @@ export function prefetchChatHistoryPriority(
     });
     return;
   }
+  if (isOnCompactChatRoute()) {
+    logPageDisplay("messages_history_compact_route_prefetch", {
+      chatId: chat.telegram_chat_id,
+    });
+  }
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
   const spec = resolveOpenLoadSpec(chat);
