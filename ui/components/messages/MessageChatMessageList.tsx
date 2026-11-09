@@ -4757,6 +4757,27 @@ export function MessageChatMessageList({
 
   useEffect(() => {
     if (!shouldLoadHistory) return;
+    if (compactPage && messagesCountRef.current === 0) {
+      const cached = getCachedChatHistory(chat.telegram_chat_id);
+      if (cached != null && cached.messages.length > 0) {
+        const applied = applyCachedHistoryPage(cached, { replace: true });
+        if (applied) {
+          messagesCountRef.current = Math.max(
+            messagesCountRef.current,
+            cached.messages.length,
+          );
+          setLoadingInitial(false);
+          logPageDisplay("messages_history_compact_cache_replay", {
+            ...chatLogFields({
+              chatId: chat.telegram_chat_id,
+              peerUserId: chat.peer_user_id,
+              title: chat.title,
+            }),
+            count: cached.messages.length,
+          });
+        }
+      }
+    }
     return subscribeChatHistoryCache((chatId) => {
       if (chatId !== chat.telegram_chat_id) return;
       if (loadingOlderRef.current || loadingNewerRef.current) return;
@@ -4832,6 +4853,7 @@ export function MessageChatMessageList({
     chat.telegram_chat_id,
     chat.title,
     chat.chat_kind,
+    compactPage,
     shouldLoadHistory,
   ]);
 
