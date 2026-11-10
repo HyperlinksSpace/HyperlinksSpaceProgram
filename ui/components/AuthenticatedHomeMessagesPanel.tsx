@@ -25,7 +25,6 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useProfileSheet } from "../profile/ProfileContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
-import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedChats";
@@ -52,7 +51,6 @@ import { useResolvedPathname } from "../useResolvedPathname";
 import {
   isOpenChatFocusHoldActive,
   prefetchChatHistory,
-  loadOpenChatHistoryFirstPage,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
   primeOpenChatHistoryFromGesture,
@@ -927,8 +925,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     moved: boolean;
   } | null>(null);
   const chatOpenGuardRef = useRef<{ chatId: number; at: number } | null>(null);
-  /** iOS reads the history body on the list, then opens the chat. */
-  const iosCompactOpenPendingRef = useRef<number | null>(null);
   /** Keep applyChats urgent while the list is still empty (hard-reload first paint). */
   const chatsCountRef = useRef(0);
   chatsCountRef.current = chats.length;
@@ -2422,13 +2418,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       source: "press" | "press_in" | "press_out" | "web_click" = "press",
     ) => {
       if (!chatSelectionEnabled) return;
-      if (
-        isIosTelegramMiniAppSync() &&
-        readAuthenticatedHomeCompactChatLayoutSync() &&
-        iosCompactOpenPendingRef.current != null
-      ) {
-        return;
-      }
       const openNow = Date.now();
       const guard = chatOpenGuardRef.current;
       if (
@@ -2501,42 +2490,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           runDeferredOpenWarmup();
         }
       };
-      if (compactOpenNow && isIosTelegramMiniAppSync()) {
-        // Reading the history body after /messages/chat is already open locks
-        // WKWebView (panel stops at fetch_response, spinner stays). Finish the
-        // body on this list, then open the chat with that page already cached.
-        iosCompactOpenPendingRef.current = resolvedItem.telegram_chat_id;
-        demoteQueuedNetworkFetches();
-        clearQueuedNormalNetworkFetches();
-        logPageDisplay("messages_history_ios_open_hold", {
-          chatId: resolvedItem.telegram_chat_id,
-        });
-        void loadOpenChatHistoryFirstPage(
-          resolvedItem.telegram_chat_id,
-          resolvedItem.peer_user_id,
-          resolvedItem,
-          { holdGate: false },
-        ).then(
-          (page) => {
-            if (iosCompactOpenPendingRef.current === resolvedItem.telegram_chat_id) {
-              iosCompactOpenPendingRef.current = null;
-            }
-            logPageDisplay("messages_history_ios_open_ready", {
-              chatId: resolvedItem.telegram_chat_id,
-              count: page.messages.length,
-              error: page.error,
-            });
-            if (page.error) return;
-            openChat();
-          },
-          () => {
-            if (iosCompactOpenPendingRef.current === resolvedItem.telegram_chat_id) {
-              iosCompactOpenPendingRef.current = null;
-            }
-          },
-        );
-        return;
-      }
       if (compactOpenNow) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();

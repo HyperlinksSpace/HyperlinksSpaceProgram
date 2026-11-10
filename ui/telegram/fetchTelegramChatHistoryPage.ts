@@ -295,6 +295,110 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type HistoryWireJson = {
+  ok?: boolean;
+  messages?: unknown[];
+  chat_kind?: unknown;
+  member_count?: unknown;
+  has_more_older?: boolean;
+  next_before_message_id?: number;
+  last_read_outbox_message_id?: number;
+  last_read_inbox_message_id?: number;
+  self_user_id?: number;
+  error?: string;
+};
+
+const IOS_HISTORY_WORKER_SOURCE = `
+self.onmessage = function (event) {
+  var target = event.data && event.data.url;
+  fetch(target, { method: "GET", credentials: "include" })
+    .then(function (response) {
+      var contentLength = response.headers.get("content-length");
+      return response.text().then(function (text) {
+        var json = {};
+        try { json = text ? JSON.parse(text) : {}; } catch (e) { json = {}; }
+        self.postMessage({
+          ok: true,
+          status: response.status,
+          bytes: text.length,
+          contentLength: contentLength,
+          json: json
+        });
+      });
+    })
+    .catch(function () {
+      self.postMessage({ ok: false, error: "network_error" });
+    });
+};
+`;
+
+/**
+ * iOS WKWebView locks the page inside response.json() on the main thread.
+ * Fetch and parse in a worker; the chat route can stay open while this runs.
+ */
+function readIosHistoryInWorker(
+  url: string,
+): Promise<
+  | { kind: "unavailable" }
+  | { kind: "error"; error: string }
+  | {
+      kind: "ok";
+      status: number;
+      bytes: number;
+      contentLength: string | null;
+      json: HistoryWireJson;
+    }
+> {
+  if (typeof Worker === "undefined" || typeof Blob === "undefined") {
+    return Promise.resolve({ kind: "unavailable" });
+  }
+  return new Promise((resolve) => {
+    let worker: Worker;
+    try {
+      const blob = new Blob([IOS_HISTORY_WORKER_SOURCE], { type: "text/javascript" });
+      const objectUrl = URL.createObjectURL(blob);
+      worker = new Worker(objectUrl);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      resolve({ kind: "unavailable" });
+      return;
+    }
+    const timer = setTimeout(() => {
+      worker.terminate();
+      resolve({ kind: "error", error: "network_error" });
+    }, 60_000);
+    worker.onmessage = (event: MessageEvent) => {
+      clearTimeout(timer);
+      worker.terminate();
+      const data = event.data as {
+        ok?: boolean;
+        error?: string;
+        status?: number;
+        bytes?: number;
+        contentLength?: string | null;
+        json?: HistoryWireJson;
+      };
+      if (!data || data.ok !== true) {
+        resolve({ kind: "error", error: data?.error || "network_error" });
+        return;
+      }
+      resolve({
+        kind: "ok",
+        status: typeof data.status === "number" ? data.status : 0,
+        bytes: typeof data.bytes === "number" ? data.bytes : 0,
+        contentLength: data.contentLength ?? null,
+        json: data.json ?? {},
+      });
+    };
+    worker.onerror = () => {
+      clearTimeout(timer);
+      worker.terminate();
+      resolve({ kind: "unavailable" });
+    };
+    worker.postMessage({ url });
+  });
+}
+
 async function fetchTelegramChatHistoryPageOnce(
   chatId: number,
   limit: number,
@@ -372,52 +476,59 @@ async function fetchTelegramChatHistoryPageOnce(
         : undefined,
   });
   try {
-    const response = await fetch(url, {
-      method: "GET",
-      credentials: "include",
-      signal: controller.signal,
-    });
-    const contentLengthRaw = response.headers.get("content-length");
-    logPageDisplay("messages_history_fetch_response", {
-      chatId,
-      status: response.status,
-      elapsedMs: Date.now() - sentAt,
-      background: options?.background === true,
-      contentLength: contentLengthRaw ?? undefined,
-    });
-    // iOS WKWebView locks the open chat page inside response.json(). Read the
-    // bytes, let the log paint, then parse. The open path waits for this on
-    // the chat list and only then pushes /messages/chat.
-    let json: {
-      ok?: boolean;
-      messages?: unknown[];
-      chat_kind?: unknown;
-      member_count?: unknown;
-      has_more_older?: boolean;
-      next_before_message_id?: number;
-      last_read_outbox_message_id?: number;
-      last_read_inbox_message_id?: number;
-      self_user_id?: number;
-      error?: string;
-    };
-    if (isIosTelegramMiniAppSync()) {
-      const text = await response.text();
-      logPageDisplay("messages_history_fetch_body_bytes", {
+    let json: HistoryWireJson | null = null;
+    let httpStatus = 0;
+    if (isIosTelegramMiniAppSync() && options?.background !== true) {
+      logPageDisplay("messages_history_fetch_worker", { chatId, limit });
+      const viaWorker = await readIosHistoryInWorker(url);
+      if (viaWorker.kind === "error") {
+        logPageDisplay("messages_history_fetch_response", {
+          chatId,
+          status: 0,
+          elapsedMs: Date.now() - sentAt,
+          background: false,
+          error: viaWorker.error,
+        });
+        return emptyHistoryError(viaWorker.error);
+      }
+      if (viaWorker.kind === "ok") {
+        json = viaWorker.json;
+        httpStatus = viaWorker.status;
+        logPageDisplay("messages_history_fetch_response", {
+          chatId,
+          status: viaWorker.status,
+          elapsedMs: Date.now() - sentAt,
+          background: false,
+          contentLength: viaWorker.contentLength ?? undefined,
+          worker: true,
+        });
+        logPageDisplay("messages_history_fetch_body_bytes", {
+          chatId,
+          bytes: viaWorker.bytes,
+          elapsedMs: Date.now() - sentAt,
+          background: false,
+        });
+      }
+    }
+    if (json == null) {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        signal: controller.signal,
+      });
+      httpStatus = response.status;
+      const contentLengthRaw = response.headers.get("content-length");
+      logPageDisplay("messages_history_fetch_response", {
         chatId,
-        bytes: text.length,
+        status: response.status,
         elapsedMs: Date.now() - sentAt,
         background: options?.background === true,
+        contentLength: contentLengthRaw ?? undefined,
       });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      try {
-        json = text ? (JSON.parse(text) as typeof json) : {};
-      } catch {
-        json = {};
+      json = (await response.json().catch(() => ({}))) as HistoryWireJson;
+      if (controller.signal.aborted) {
+        return emptyHistoryError("gateway_timeout_retry");
       }
-    } else {
-      json = (await response.json().catch(() => ({}))) as typeof json;
     }
     logPageDisplay("messages_history_fetch_body", {
       chatId,
@@ -426,11 +537,8 @@ async function fetchTelegramChatHistoryPageOnce(
       elapsedMs: Date.now() - sentAt,
       background: options?.background === true,
     });
-    if (controller.signal.aborted) {
-      return emptyHistoryError("gateway_timeout_retry");
-    }
-    if (!response.ok || !json.ok) {
-      return emptyHistoryError(json.error || `HTTP_${response.status}`);
+    if (httpStatus < 200 || httpStatus >= 300 || !json.ok) {
+      return emptyHistoryError(json.error || `HTTP_${httpStatus}`);
     }
     // Neighbor history JSON can be huge — normalizing mid-Join freezes WebRTC/Close.
     if (options?.background && isVoiceDialogUiOpen()) {
