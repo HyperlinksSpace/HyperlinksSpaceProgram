@@ -44,6 +44,7 @@ import {
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
+  setIosHistoryPaint,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import {
   fetchChatHistoryAroundCharBudget,
@@ -5382,6 +5383,28 @@ export function MessageChatMessageList({
     applyCachedHistoryPage,
     applyLastReadInboxMessageId,
   ]);
+
+  useEffect(() => {
+    if (!compactPage || !isIosTelegramMiniAppSync()) return;
+    setIosHistoryPaint((paintedChatId, page) => {
+      if (paintedChatId !== chat.telegram_chat_id || page.messages.length === 0) return;
+      messagesCountRef.current = page.messages.length;
+      setMessages(page.messages);
+      setChatKind(page.chatKind);
+      setError(null);
+      setLoadingInitial(false);
+      setCachedChatHistory(chat.telegram_chat_id, page, { previewOnly: false });
+      logPageDisplay("messages_history_ios_paint", {
+        ...chatLogFields({
+          chatId: chat.telegram_chat_id,
+          peerUserId: chat.peer_user_id,
+          title: chat.title,
+        }),
+        count: page.messages.length,
+      });
+    });
+    return () => setIosHistoryPaint(null);
+  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title, compactPage]);
 
   useEffect(() => {
     if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;

@@ -308,47 +308,109 @@ type HistoryWireJson = {
   error?: string;
 };
 
-function loadHistoryViaSameOriginScript(
+type IosHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => void;
+let iosHistoryPaint: IosHistoryPaint | null = null;
+
+/** Compact iOS chat paints from the frame load itself, before the promise resumes. */
+export function setIosHistoryPaint(listener: IosHistoryPaint | null): void {
+  iosHistoryPaint = listener;
+}
+
+function historyPageFromWire(
+  json: HistoryWireJson,
+  peerUserId: number | null | undefined,
+): ChatHistoryPageResult {
+  const rows: MessageChatHistoryItem[] = [];
+  const selfUserRaw = Number(json.self_user_id);
+  const selfUserId =
+    Number.isFinite(selfUserRaw) && selfUserRaw > 0
+      ? safeTelegramUserIdForLog(selfUserRaw) ?? null
+      : null;
+  if (Array.isArray(json.messages)) {
+    for (const raw of json.messages) {
+      const row = normalizeHistoryMessage(raw, peerUserId, selfUserId);
+      if (row) rows.push(row);
+    }
+  }
+  const lastReadRaw = Number(json.last_read_outbox_message_id);
+  const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
+  const memberRaw = Number(json.member_count);
+  return {
+    messages: rows,
+    chatKind: normalizeChatKind(json.chat_kind),
+    error: null,
+    hasMoreOlder: Boolean(json.has_more_older),
+    nextBeforeMessageId:
+      typeof json.next_before_message_id === "number" &&
+      Number.isFinite(json.next_before_message_id) &&
+      json.next_before_message_id > 0
+        ? json.next_before_message_id
+        : null,
+    lastReadOutboxMessageId:
+      Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
+    lastReadInboxMessageId:
+      Number.isFinite(lastReadInboxRaw) && lastReadInboxRaw > 0
+        ? lastReadInboxRaw
+        : null,
+    memberCount:
+      Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
+    selfUserId,
+  };
+}
+
+function loadHistoryViaIframe(
   url: string,
+  chatId: number,
+  peerUserId: number | null | undefined,
 ): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
   return new Promise((resolve, reject) => {
-    if (typeof document === "undefined") {
+    if (typeof document === "undefined" || !document.body) {
       reject(new Error("network_error"));
       return;
     }
-    const host = window as Window & {
-      __hspHistoryDeliver?: (payload: HistoryWireJson) => void;
-    };
-    const previous = host.__hspHistoryDeliver;
-    const script = document.createElement("script");
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.cssText =
+      "position:fixed;left:-9999px;top:0;width:1px;height:1px;border:0;opacity:0";
     let settled = false;
     const finish = (run: () => void) => {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      script.remove();
-      if (previous) host.__hspHistoryDeliver = previous;
-      else delete host.__hspHistoryDeliver;
+      iframe.remove();
       run();
     };
     const timer = window.setTimeout(() => {
       finish(() => reject(new Error("network_error")));
     }, 15_000);
-    host.__hspHistoryDeliver = (payload) => {
-      const json = payload && typeof payload === "object" ? payload : {};
-      let bytes = 0;
+    iframe.onload = () => {
+      let text = "";
       try {
-        bytes = JSON.stringify(json).length;
+        const doc = iframe.contentDocument;
+        text = doc?.body?.innerText || doc?.documentElement?.textContent || "";
       } catch {
-        bytes = 0;
+        finish(() => reject(new Error("network_error")));
+        return;
       }
-      finish(() => resolve({ status: json.ok === true ? 200 : 502, bytes, json }));
+      let json: HistoryWireJson = {};
+      try {
+        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+      } catch {
+        json = {};
+      }
+      logPageDisplay("messages_history_iframe_hit", {
+        chatId,
+        bytes: text.length,
+        count: Array.isArray(json.messages) ? json.messages.length : 0,
+      });
+      if (json.ok === true && Array.isArray(json.messages) && json.messages.length > 0) {
+        iosHistoryPaint?.(chatId, historyPageFromWire(json, peerUserId));
+      }
+      finish(() => resolve({ status: json.ok === true ? 200 : 502, bytes: text.length, json }));
     };
-    script.async = true;
-    script.onerror = () => finish(() => reject(new Error("network_error")));
     const joiner = url.includes("?") ? "&" : "?";
-    script.src = `${url}${joiner}ios_script=1&_=${Date.now()}`;
-    document.head.appendChild(script);
+    iframe.src = `${url}${joiner}_=${Date.now()}`;
+    document.body.appendChild(iframe);
   });
 }
 
@@ -435,8 +497,8 @@ async function fetchTelegramChatHistoryPageOnce(
       // fetch() receives this response on the server and then never resumes
       // on iOS (panel stays on fetch_plain). A same-origin script runs the
       // payload directly.
-      logPageDisplay("messages_history_fetch_script", { chatId, limit });
-      const delivered = await loadHistoryViaSameOriginScript(url);
+      logPageDisplay("messages_history_fetch_iframe", { chatId, limit });
+      const delivered = await loadHistoryViaIframe(url, chatId, peerUserId);
       json = delivered.json;
       httpStatus = delivered.status;
       logPageDisplay("messages_history_fetch_response", {
