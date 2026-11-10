@@ -5336,6 +5336,12 @@ export function MessageChatMessageList({
           return;
         }
 
+        if (compactPage && isIosTelegramMiniAppSync()) {
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+          });
+          if (cancelled) return;
+        }
         await runNetworkLoad();
       } catch {
         /* runNetworkLoad handles errors */

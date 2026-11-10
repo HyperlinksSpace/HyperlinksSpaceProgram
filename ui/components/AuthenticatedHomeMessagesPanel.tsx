@@ -25,6 +25,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useProfileSheet } from "../profile/ProfileContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedChats";
@@ -916,6 +917,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const selectedChatRef = useRef(selectedChat);
   selectedChatRef.current = selectedChat;
   const compactRowTapRef = useRef<{ chatId: number; at: number } | null>(null);
+  /** Compact rows: a drag past this is a scroll, not a chat open. */
+  const COMPACT_ROW_TAP_MOVE_PX = 10;
+  const compactRowGestureRef = useRef<{
+    chatId: number;
+    x: number;
+    y: number;
+    moved: boolean;
+  } | null>(null);
   const chatOpenGuardRef = useRef<{ chatId: number; at: number } | null>(null);
   /** Keep applyChats urgent while the list is still empty (hard-reload first paint). */
   const chatsCountRef = useRef(0);
@@ -2452,7 +2461,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const compactOpenNow = readAuthenticatedHomeCompactChatLayoutSync();
       const openOptions =
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true as const } : undefined;
-      if (compactOpenNow) {
+      if (compactOpenNow && !isIosTelegramMiniAppSync()) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         primeOpenChatHistoryFromGesture(resolvedItem);
@@ -3854,11 +3863,20 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         }
         const listCompactOpen =
           compactChatLayout || readAuthenticatedHomeCompactChatLayoutSync();
+        const compactRowMoved = () => {
+          const gesture = compactRowGestureRef.current;
+          return (
+            pinnedDragMovedRef.current ||
+            (gesture != null &&
+              gesture.chatId === item.row.telegram_chat_id &&
+              gesture.moved)
+          );
+        };
         const openCompactChatFromRowRelease = () => {
           const tap = compactRowTapRef.current;
           if (!tap || tap.chatId !== item.row.telegram_chat_id) return;
           if (Date.now() - tap.at > 700) return;
-          if (pinnedDragMovedRef.current) return;
+          if (compactRowMoved()) return;
           compactRowTapRef.current = null;
           handleChatPress(item.row, "press_out");
         };
@@ -3902,6 +3920,39 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               : {})}
             {...(Platform.OS === "web" && chatSelectionEnabled && listCompactOpen
               ? ({
+                  onPointerDown: (e: { button?: number; clientX: number; clientY: number }) => {
+                    if (e.button != null && e.button !== 0) return;
+                    compactRowGestureRef.current = {
+                      chatId: item.row.telegram_chat_id,
+                      x: e.clientX,
+                      y: e.clientY,
+                      moved: false,
+                    };
+                    if (
+                      !listSearchActive &&
+                      pinnedIndexByChatId.has(item.row.telegram_chat_id)
+                    ) {
+                      const idx = pinnedIndexByChatId.get(item.row.telegram_chat_id);
+                      if (idx == null) return;
+                      pinnedDragFromRef.current = idx;
+                      pinnedDragStartYRef.current = e.clientY;
+                      pinnedDragMovedRef.current = false;
+                      pinnedOrderBeforeDragRef.current = listModeChats
+                        .filter((row) => resolveChatListTier(row) === "pinned")
+                        .map((row) => row.telegram_chat_id);
+                      pinnedOrderLiveRef.current = pinnedOrderBeforeDragRef.current;
+                    }
+                  },
+                  onPointerMove: (e: { clientX: number; clientY: number }) => {
+                    const gesture = compactRowGestureRef.current;
+                    if (gesture == null || gesture.chatId !== item.row.telegram_chat_id) return;
+                    if (
+                      Math.abs(e.clientX - gesture.x) > COMPACT_ROW_TAP_MOVE_PX ||
+                      Math.abs(e.clientY - gesture.y) > COMPACT_ROW_TAP_MOVE_PX
+                    ) {
+                      gesture.moved = true;
+                    }
+                  },
                   onPointerUp: (e: { button?: number }) => {
                     if (e.button != null && e.button !== 0) return;
                     openCompactChatFromRowRelease();
@@ -3923,7 +3974,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
               onPress={
                 chatSelectionEnabled
                   ? () => {
-                      if (pinnedDragMovedRef.current) return;
+                      if (compactRowMoved()) return;
                       handleChatPress(item.row, "press");
                     }
                   : undefined
@@ -3945,8 +3996,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                           chatId: item.row.telegram_chat_id,
                           at: Date.now(),
                         };
-                        if (pinnedDragMovedRef.current) return;
-                        handleChatPress(item.row, "press_in");
                         return;
                       }
                       setOpenChatFocusHold(item.row.telegram_chat_id);
@@ -3978,7 +4027,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                           title: item.row.title,
                         }),
                       );
-                      if (pinnedDragMovedRef.current) return;
+                      if (compactRowMoved()) return;
                       handleChatPress(item.row, "web_click");
                     }
                   : undefined

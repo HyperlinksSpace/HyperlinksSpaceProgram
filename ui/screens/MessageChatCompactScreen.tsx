@@ -12,6 +12,7 @@ import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
 import { setCompactChatRouteUiOpen } from "../compactChatRouteGate";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, useColors } from "../theme";
 
 /** Narrow layout: dedicated chat route (not a fixed overlay on home). */
@@ -26,6 +27,14 @@ export function MessageChatCompactScreen() {
     if (chat == null) return;
     setCompactChatRouteUiOpen(true);
     ensureAuthenticatedHomeHistoryLoadArmed(chat);
+    // iOS starts history from the message list after the route has settled.
+    // A prefetch here joins a request that began on the chat list and never
+    // delivers its body, so the thread stays on the spinner.
+    if (isIosTelegramMiniAppSync()) {
+      return () => {
+        setCompactChatRouteUiOpen(false);
+      };
+    }
     const runPrefetch = () => {
       void import("../messageChatHistoryPrefetch").then(
         ({ prefetchChatHistoryPriority }) => {
