@@ -308,33 +308,6 @@ type HistoryWireJson = {
   error?: string;
 };
 
-/**
- * iOS WKWebView delivers fetch() headers, then never finishes the body stream
- * (main thread or a worker). XMLHttpRequest exposes responseText when the
- * same response completes.
- */
-function readHistoryViaXhr(
-  url: string,
-  onHeaders: (status: number) => void,
-): Promise<{ status: number; text: string }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("GET", url, true);
-    xhr.withCredentials = true;
-    let headersLogged = false;
-    xhr.onreadystatechange = () => {
-      if (headersLogged || xhr.readyState < XMLHttpRequest.HEADERS_RECEIVED) return;
-      headersLogged = true;
-      onHeaders(xhr.status);
-    };
-    xhr.onload = () => {
-      resolve({ status: xhr.status, text: xhr.responseText || "" });
-    };
-    xhr.onerror = () => reject(new Error("network_error"));
-    xhr.send();
-  });
-}
-
 async function fetchTelegramChatHistoryPageOnce(
   chatId: number,
   limit: number,
@@ -414,39 +387,40 @@ async function fetchTelegramChatHistoryPageOnce(
   try {
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
-    if (
-      isIosTelegramMiniAppSync() &&
-      options?.background !== true &&
-      typeof XMLHttpRequest !== "undefined"
-    ) {
-      logPageDisplay("messages_history_fetch_xhr", { chatId, limit });
+    if (isIosTelegramMiniAppSync() && options?.background !== true) {
+      // Same call the chat list uses. XHR never left readyState 1 on iOS, so
+      // the panel stopped on fetch_xhr while the server had already returned.
+      logPageDisplay("messages_history_fetch_plain", { chatId, limit });
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      httpStatus = response.status;
+      logPageDisplay("messages_history_fetch_response", {
+        chatId,
+        status: response.status,
+        elapsedMs: Date.now() - sentAt,
+        background: false,
+        plain: true,
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      const text = await response.text();
+      logPageDisplay("messages_history_fetch_body_bytes", {
+        chatId,
+        bytes: text.length,
+        elapsedMs: Date.now() - sentAt,
+        background: false,
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
       try {
-        const viaXhr = await readHistoryViaXhr(url, (status) => {
-          logPageDisplay("messages_history_fetch_response", {
-            chatId,
-            status,
-            elapsedMs: Date.now() - sentAt,
-            background: false,
-            xhr: true,
-          });
-        });
-        httpStatus = viaXhr.status;
-        logPageDisplay("messages_history_fetch_body_bytes", {
-          chatId,
-          bytes: viaXhr.text.length,
-          elapsedMs: Date.now() - sentAt,
-          background: false,
-        });
-        try {
-          json = viaXhr.text ? (JSON.parse(viaXhr.text) as HistoryWireJson) : {};
-        } catch {
-          json = {};
-        }
-      } catch (xhrErr) {
-        const message = xhrErr instanceof Error ? xhrErr.message : "network_error";
-        return emptyHistoryError(
-          message === "gateway_timeout_retry" ? message : "network_error",
-        );
+        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+      } catch {
+        json = {};
       }
     }
     if (json == null) {
