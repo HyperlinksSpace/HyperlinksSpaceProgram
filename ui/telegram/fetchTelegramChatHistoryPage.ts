@@ -404,18 +404,14 @@ async function fetchTelegramChatHistoryPageOnce(
         background: false,
         plain: true,
       });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
       const text = await response.text();
+      // Do not yield here. A setTimeout while this response is still open never
+      // fires on iOS, so the panel stops on fetch_body_bytes and the spinner stays.
       logPageDisplay("messages_history_fetch_body_bytes", {
         chatId,
         bytes: text.length,
         elapsedMs: Date.now() - sentAt,
         background: false,
-      });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
       });
       try {
         json = text ? (JSON.parse(text) as HistoryWireJson) : {};
