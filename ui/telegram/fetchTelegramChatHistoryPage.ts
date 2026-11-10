@@ -463,6 +463,14 @@ const HISTORY_FETCH_RETRY_BASE_MS = 400;
 
 const foregroundHistoryFlights = new Map<string, Promise<ChatHistoryPageResult>>();
 
+/** Drop a foreground history promise the WebView never delivered, so the next open can fetch. */
+export function abandonForegroundHistoryFlightsForChat(chatId: number): void {
+  const prefix = `${Math.trunc(chatId)}:`;
+  for (const key of foregroundHistoryFlights.keys()) {
+    if (key.startsWith(prefix)) foregroundHistoryFlights.delete(key);
+  }
+}
+
 function foregroundHistoryFlightKey(
   chatId: number,
   limit: number,

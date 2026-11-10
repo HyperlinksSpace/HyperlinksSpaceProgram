@@ -5362,8 +5362,9 @@ export function MessageChatMessageList({
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
     const timer = setTimeout(() => {
       if (messagesCountRef.current > 0) return;
-      if (historyOpenFetchInFlightRef.current) return;
-      if (historyNetworkKeyRef.current !== historyKey) return;
+      if (historyNetworkKeyRef.current !== historyKey && !historyOpenFetchInFlightRef.current) {
+        return;
+      }
       if (compactStallKickKeyRef.current === historyKey) return;
       compactStallKickKeyRef.current = historyKey;
       logPageDisplay("messages_history_compact_stall_kick", {
@@ -5373,7 +5374,12 @@ export function MessageChatMessageList({
           title: chat.title,
         }),
         historyKey,
+        inFlight: historyOpenFetchInFlightRef.current,
       });
+      // The joined promise can stay open after the gateway already sent the
+      // page (iOS never delivers that body). Drop it and load once more.
+      resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+      historyOpenFetchInFlightRef.current = false;
       historyNetworkKeyRef.current = "";
       setHistoryLoadKick((n) => n + 1);
     }, 3_000);

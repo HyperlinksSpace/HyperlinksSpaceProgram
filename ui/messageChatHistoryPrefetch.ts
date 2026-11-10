@@ -4,7 +4,10 @@ import {
   MESSAGE_CHAT_HISTORY_PREVIEW_SIZE,
 } from "./components/messages/messageChatLayout";
 import type { ChatHistoryPageResult } from "./telegram/fetchTelegramChatHistoryPage";
-import { loadTelegramChatHistoryFirstPage } from "./telegram/fetchTelegramChatHistoryPage";
+import {
+  abandonForegroundHistoryFlightsForChat,
+  loadTelegramChatHistoryFirstPage,
+} from "./telegram/fetchTelegramChatHistoryPage";
 import {
   type CachedChatHistoryPage,
   type ChatHistoryCacheAnchorSpec,
@@ -611,6 +614,7 @@ export function resetSharedOpenChatHistoryLoad(chatId: number): void {
   const id = Math.trunc(chatId);
   sharedLoads.delete(id);
   sharedLoadLane.delete(id);
+  abandonForegroundHistoryFlightsForChat(id);
   if (openChatLoadingId === id) {
     openChatLoadingId = null;
     if (openChatLoadingStaleTimer != null) {
