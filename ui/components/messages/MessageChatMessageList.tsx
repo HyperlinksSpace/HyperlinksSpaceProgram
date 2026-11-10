@@ -5337,15 +5337,18 @@ export function MessageChatMessageList({
         }
 
         if (compactPage && isIosTelegramMiniAppSync()) {
+          // slide_from_right is still running at 50ms. The history API answers
+          // in ~80ms, and WKWebView drops that response for the whole life of
+          // the XHR (server 200 at 11:18:50, panel never reaches fetch_response).
+          // Send one request only after the push animation has finished.
           await new Promise<void>((resolve) => {
-            setTimeout(resolve, 50);
+            setTimeout(resolve, 800);
           });
           if (cancelled) return;
-          // A history GET started on the chat list is dropped when iOS pushes
-          // /messages/chat. The server still returns 200; this page never sees
-          // the body and waits until the watchdog. Drop that promise and read
-          // the page here, after the route has settled.
           resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+          logPageDisplay("messages_history_ios_settled", {
+            chatId: chat.telegram_chat_id,
+          });
         }
         await runNetworkLoad();
       } catch {

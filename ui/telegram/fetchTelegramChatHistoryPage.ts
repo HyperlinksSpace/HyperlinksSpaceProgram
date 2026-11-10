@@ -321,7 +321,6 @@ function readHistoryViaXhr(
     const xhr = new XMLHttpRequest();
     xhr.open("GET", url, true);
     xhr.withCredentials = true;
-    xhr.timeout = 20_000;
     let headersLogged = false;
     xhr.onreadystatechange = () => {
       if (headersLogged || xhr.readyState < XMLHttpRequest.HEADERS_RECEIVED) return;
@@ -332,7 +331,6 @@ function readHistoryViaXhr(
       resolve({ status: xhr.status, text: xhr.responseText || "" });
     };
     xhr.onerror = () => reject(new Error("network_error"));
-    xhr.ontimeout = () => reject(new Error("gateway_timeout_retry"));
     xhr.send();
   });
 }
