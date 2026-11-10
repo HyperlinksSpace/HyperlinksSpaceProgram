@@ -5375,9 +5375,10 @@ export function MessageChatMessageList({
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
     const timer = setTimeout(() => {
       if (messagesCountRef.current > 0) return;
-      if (historyNetworkKeyRef.current !== historyKey && !historyOpenFetchInFlightRef.current) {
-        return;
-      }
+      // Same as the chat list: one request at a time. Starting another history
+      // page while the first body is still loading freezes iOS and drops the paint.
+      if (historyOpenFetchInFlightRef.current) return;
+      if (historyNetworkKeyRef.current !== historyKey) return;
       if (compactStallKickKeyRef.current === historyKey) return;
       compactStallKickKeyRef.current = historyKey;
       logPageDisplay("messages_history_compact_stall_kick", {
@@ -5387,12 +5388,7 @@ export function MessageChatMessageList({
           title: chat.title,
         }),
         historyKey,
-        inFlight: historyOpenFetchInFlightRef.current,
       });
-      // The joined promise can stay open after the gateway already sent the
-      // page (iOS never delivers that body). Drop it and load once more.
-      resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
-      historyOpenFetchInFlightRef.current = false;
       historyNetworkKeyRef.current = "";
       setHistoryLoadKick((n) => n + 1);
     }, 3_000);
@@ -5694,7 +5690,13 @@ export function MessageChatMessageList({
     // Connect as soon as the session is ready — do not wait for loadingInitial.
     // Cache-hit opens used to keep loadingInitial true through revalidate and
     // deferred live history until HTTP finished (felt like lazy stream on open).
-    enabled: shouldLoadHistory && isAuthenticated && isTelegramMessagesConnected,
+    enabled:
+      shouldLoadHistory &&
+      isAuthenticated &&
+      isTelegramMessagesConnected &&
+      // iOS reads one body at a time. The history stream beside the open page
+      // stalls the first paint, same as a second chat-list fetch.
+      !(compactPage && isIosTelegramMiniAppSync() && messages.length === 0),
     chatId: chat.telegram_chat_id,
     getSinceRevision: () => historyStreamRevisionRef.current || null,
     onRevision: (revision) => {

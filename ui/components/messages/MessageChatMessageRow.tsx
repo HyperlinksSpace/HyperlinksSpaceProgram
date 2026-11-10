@@ -836,14 +836,14 @@ export function MessageChatMessageRow({
                 ((chatKind ?? chat.chat_kind) === "private" &&
                   Boolean(chat.peer_username?.toLowerCase().endsWith("bot")))
               }
-              emojiContentActive={
-                contentActive && (compactPage || rowInView)
-              }
+              emojiContentActive={contentActive && rowInView}
               mediaFetchEnabled={
-                // Web (esp. mobile Safari): never arm media HTTP for off-screen rows —
-                // forcing all rows to fetch at once freezes the tab; text still paints.
+                // Web (esp. mobile Safari): never arm media HTTP for every row
+                // just because the chat is full-screen. That fetch storm freezes
+                // the tab before the bubbles paint. Text paints first; media
+                // starts when the row is in view.
                 Platform.OS === "web"
-                  ? contentActive && (compactPage || rowInView)
+                  ? contentActive && rowInView
                   : contentActive
               }
               deferFullMediaFetch={
