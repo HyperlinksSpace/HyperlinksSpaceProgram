@@ -704,6 +704,11 @@ export function isTelegramMiniAppDesktopContext(): boolean {
   return computeTelegramLayoutStartupSnapshot().isTelegramMiniAppDesktop;
 }
 
+/** iOS Telegram WebView. History must be in memory before the chat route opens. */
+export function isIosTelegramMiniAppSync(): boolean {
+  return computeTelegramLayoutStartupSnapshot().platformEffective?.trim().toLowerCase() === "ios";
+}
+
 /**
  * When to show the default global logo bar on `/welcome` inside TMA.
  * Only **immersive** fullscreen (`WebApp.isFullscreen` / merged viewport) — not expanded “fullsize” alone.

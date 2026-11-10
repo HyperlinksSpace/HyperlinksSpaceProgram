@@ -25,6 +25,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useProfileSheet } from "../profile/ProfileContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedChats";
@@ -53,6 +54,7 @@ import {
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
+  loadOpenChatHistoryFirstPage,
   primeOpenChatHistoryFromGesture,
   releaseOpenChatLoadingGateForCompactList,
   setOpenChatFocusHold,
@@ -2450,15 +2452,31 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         title: resolvedItem.title,
       }));
       const compactOpenNow = readAuthenticatedHomeCompactChatLayoutSync();
+      const openOptions =
+        hadSearchUi && sameChatAlreadyOpen ? { forceReload: true as const } : undefined;
+      if (compactOpenNow && isIosTelegramMiniAppSync()) {
+        // WKWebView drops a history body that arrives while the route is changing.
+        // Finish the page on the list, then open /messages/chat with it already cached.
+        demoteQueuedNetworkFetches();
+        clearQueuedNormalNetworkFetches();
+        primeOpenChatHistoryFromGesture(resolvedItem);
+        chatOpenGuardRef.current = { chatId: resolvedItem.telegram_chat_id, at: openNow + 20_000 };
+        void loadOpenChatHistoryFirstPage(
+          resolvedItem.telegram_chat_id,
+          resolvedItem.peer_user_id,
+          resolvedItem,
+        ).finally(() => {
+          chatOpenGuardRef.current = { chatId: resolvedItem.telegram_chat_id, at: Date.now() };
+          openAuthenticatedHomeChatHistory(resolvedItem, openOptions);
+        });
+        return;
+      }
       if (compactOpenNow) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         primeOpenChatHistoryFromGesture(resolvedItem);
       }
-      openAuthenticatedHomeChatHistory(
-        resolvedItem,
-        hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
-      );
+      openAuthenticatedHomeChatHistory(resolvedItem, openOptions);
       const runDeferredOpenWarmup = () => {
         if (hadSearchUi) {
           void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);

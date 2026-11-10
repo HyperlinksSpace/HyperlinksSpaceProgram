@@ -37,7 +37,6 @@ import { WelcomeEmailAuthProvider } from "../ui/welcome/WelcomeEmailAuthContext"
 import { TonConnectProvider } from "../ui/ton/TonConnectProvider";
 import { useTmaMobileNativeBackNavigation } from "../ui/telegram/useTmaMobileNativeBackNavigation";
 import { logBuildSnapshotOnce, logPageDisplay } from "../ui/pageDisplayLog";
-import { ClientOnlyMobileTmaDebugLogOverlay } from "../ui/debug/ClientOnlyMobileTmaDebugLogOverlay";
 import { installGlobalVoiceFreezeLogger } from "../ui/components/messages/useVoiceDialogFreezeDetector";
 import { appWarn } from "../shared/appLog";
 import { syncWebDocumentOverflowForZoom } from "../ui/browserZoom";
@@ -454,7 +453,6 @@ function RootContent() {
         </>
       ) : null}
       <WebVercelAnalytics pathname={pathname} />
-      <ClientOnlyMobileTmaDebugLogOverlay />
     </View>
   );
 }

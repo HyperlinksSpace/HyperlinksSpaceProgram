@@ -37,6 +37,7 @@ import {
 } from "../../messageChatScrollCache";
 import { subscribeOutgoingChatMessages, subscribeOutgoingChatMessageRemovals, removeOutgoingChatMessage } from "../../messageChatOutgoing";
 import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
+import { isIosTelegramMiniAppSync } from "../telegramWebApp";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import {
@@ -5287,6 +5288,18 @@ export function MessageChatMessageList({
           cacheServesUnreadOpen &&
           isChatHistoryCacheFresh(chat.telegram_chat_id) &&
           isChatHistoryCacheAnchorMatch(chat.telegram_chat_id, historyAnchorSpec)
+        ) {
+          return;
+        }
+        // iOS already painted this page from memory when the route opened.
+        // A follow-up history response is an in-flight screen update WKWebView drops.
+        if (
+          compactPage &&
+          isIosTelegramMiniAppSync() &&
+          cached != null &&
+          cached.messages.length > 0 &&
+          cached.previewOnly !== true &&
+          isChatHistoryCacheFresh(chat.telegram_chat_id)
         ) {
           return;
         }

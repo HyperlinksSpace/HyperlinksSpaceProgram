@@ -55,9 +55,17 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
       return;
     }
     try {
+      const navigate =
+        "navigate" in router && typeof router.navigate === "function"
+          ? (path: string) => router.navigate(path)
+          : null;
       if (source === "replace") {
-        router.replace(COMPACT_CHAT_PATH);
+        if (navigate) navigate(COMPACT_CHAT_PATH);
+        else router.replace(COMPACT_CHAT_PATH);
         logPageDisplay("messages_compact_chat_route_replace", { path: COMPACT_CHAT_PATH, source });
+      } else if (navigate) {
+        navigate(COMPACT_CHAT_PATH);
+        logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
       } else {
         router.push(COMPACT_CHAT_PATH);
         logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
