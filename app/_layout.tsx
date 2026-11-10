@@ -52,6 +52,7 @@ import {
   type ReactNode,
 } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import { ClientOnlyMobileTmaDebugLogOverlay } from "../ui/debug/ClientOnlyMobileTmaDebugLogOverlay";
 
 applyPlatformTextDefaults();
 
@@ -453,6 +454,7 @@ function RootContent() {
         </>
       ) : null}
       <WebVercelAnalytics pathname={pathname} />
+      <ClientOnlyMobileTmaDebugLogOverlay />
     </View>
   );
 }
