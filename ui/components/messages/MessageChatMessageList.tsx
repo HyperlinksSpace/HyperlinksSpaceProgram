@@ -5341,6 +5341,11 @@ export function MessageChatMessageList({
             setTimeout(resolve, 50);
           });
           if (cancelled) return;
+          // A history GET started on the chat list is dropped when iOS pushes
+          // /messages/chat. The server still returns 200; this page never sees
+          // the body and waits until the watchdog. Drop that promise and read
+          // the page here, after the route has settled.
+          resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
         }
         await runNetworkLoad();
       } catch {

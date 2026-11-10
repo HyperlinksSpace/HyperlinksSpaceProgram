@@ -308,94 +308,32 @@ type HistoryWireJson = {
   error?: string;
 };
 
-const IOS_HISTORY_WORKER_SOURCE = `
-self.onmessage = function (event) {
-  var target = event.data && event.data.url;
-  fetch(target, { method: "GET", credentials: "include" })
-    .then(function (response) {
-      var contentLength = response.headers.get("content-length");
-      return response.text().then(function (text) {
-        var json = {};
-        try { json = text ? JSON.parse(text) : {}; } catch (e) { json = {}; }
-        self.postMessage({
-          ok: true,
-          status: response.status,
-          bytes: text.length,
-          contentLength: contentLength,
-          json: json
-        });
-      });
-    })
-    .catch(function () {
-      self.postMessage({ ok: false, error: "network_error" });
-    });
-};
-`;
-
 /**
- * iOS WKWebView locks the page inside response.json() on the main thread.
- * Fetch and parse in a worker; the chat route can stay open while this runs.
+ * iOS WKWebView delivers fetch() headers, then never finishes the body stream
+ * (main thread or a worker). XMLHttpRequest exposes responseText when the
+ * same response completes.
  */
-function readIosHistoryInWorker(
+function readHistoryViaXhr(
   url: string,
-): Promise<
-  | { kind: "unavailable" }
-  | { kind: "error"; error: string }
-  | {
-      kind: "ok";
-      status: number;
-      bytes: number;
-      contentLength: string | null;
-      json: HistoryWireJson;
-    }
-> {
-  if (typeof Worker === "undefined" || typeof Blob === "undefined") {
-    return Promise.resolve({ kind: "unavailable" });
-  }
-  return new Promise((resolve) => {
-    let worker: Worker;
-    try {
-      const blob = new Blob([IOS_HISTORY_WORKER_SOURCE], { type: "text/javascript" });
-      const objectUrl = URL.createObjectURL(blob);
-      worker = new Worker(objectUrl);
-      URL.revokeObjectURL(objectUrl);
-    } catch {
-      resolve({ kind: "unavailable" });
-      return;
-    }
-    const timer = setTimeout(() => {
-      worker.terminate();
-      resolve({ kind: "error", error: "network_error" });
-    }, 60_000);
-    worker.onmessage = (event: MessageEvent) => {
-      clearTimeout(timer);
-      worker.terminate();
-      const data = event.data as {
-        ok?: boolean;
-        error?: string;
-        status?: number;
-        bytes?: number;
-        contentLength?: string | null;
-        json?: HistoryWireJson;
-      };
-      if (!data || data.ok !== true) {
-        resolve({ kind: "error", error: data?.error || "network_error" });
-        return;
-      }
-      resolve({
-        kind: "ok",
-        status: typeof data.status === "number" ? data.status : 0,
-        bytes: typeof data.bytes === "number" ? data.bytes : 0,
-        contentLength: data.contentLength ?? null,
-        json: data.json ?? {},
-      });
+  onHeaders: (status: number) => void,
+): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.withCredentials = true;
+    xhr.timeout = 20_000;
+    let headersLogged = false;
+    xhr.onreadystatechange = () => {
+      if (headersLogged || xhr.readyState < XMLHttpRequest.HEADERS_RECEIVED) return;
+      headersLogged = true;
+      onHeaders(xhr.status);
     };
-    worker.onerror = () => {
-      clearTimeout(timer);
-      worker.terminate();
-      resolve({ kind: "unavailable" });
+    xhr.onload = () => {
+      resolve({ status: xhr.status, text: xhr.responseText || "" });
     };
-    worker.postMessage({ url });
+    xhr.onerror = () => reject(new Error("network_error"));
+    xhr.ontimeout = () => reject(new Error("gateway_timeout_retry"));
+    xhr.send();
   });
 }
 
@@ -478,36 +416,39 @@ async function fetchTelegramChatHistoryPageOnce(
   try {
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
-    if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      logPageDisplay("messages_history_fetch_worker", { chatId, limit });
-      const viaWorker = await readIosHistoryInWorker(url);
-      if (viaWorker.kind === "error") {
-        logPageDisplay("messages_history_fetch_response", {
-          chatId,
-          status: 0,
-          elapsedMs: Date.now() - sentAt,
-          background: false,
-          error: viaWorker.error,
+    if (
+      isIosTelegramMiniAppSync() &&
+      options?.background !== true &&
+      typeof XMLHttpRequest !== "undefined"
+    ) {
+      logPageDisplay("messages_history_fetch_xhr", { chatId, limit });
+      try {
+        const viaXhr = await readHistoryViaXhr(url, (status) => {
+          logPageDisplay("messages_history_fetch_response", {
+            chatId,
+            status,
+            elapsedMs: Date.now() - sentAt,
+            background: false,
+            xhr: true,
+          });
         });
-        return emptyHistoryError(viaWorker.error);
-      }
-      if (viaWorker.kind === "ok") {
-        json = viaWorker.json;
-        httpStatus = viaWorker.status;
-        logPageDisplay("messages_history_fetch_response", {
-          chatId,
-          status: viaWorker.status,
-          elapsedMs: Date.now() - sentAt,
-          background: false,
-          contentLength: viaWorker.contentLength ?? undefined,
-          worker: true,
-        });
+        httpStatus = viaXhr.status;
         logPageDisplay("messages_history_fetch_body_bytes", {
           chatId,
-          bytes: viaWorker.bytes,
+          bytes: viaXhr.text.length,
           elapsedMs: Date.now() - sentAt,
           background: false,
         });
+        try {
+          json = viaXhr.text ? (JSON.parse(viaXhr.text) as HistoryWireJson) : {};
+        } catch {
+          json = {};
+        }
+      } catch (xhrErr) {
+        const message = xhrErr instanceof Error ? xhrErr.message : "network_error";
+        return emptyHistoryError(
+          message === "gateway_timeout_retry" ? message : "network_error",
+        );
       }
     }
     if (json == null) {

@@ -25,6 +25,7 @@ import { useAuth } from "../../auth/AuthContext";
 import { useAppStrings } from "../../locales/AppStringsContext";
 import { useProfileSheet } from "../profile/ProfileContext";
 import { logPageDisplay, firstChatListLogFields, chatLogFields } from "../pageDisplayLog";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, type ThemeColors } from "../theme";
 import { useTelegramMessagesConnection } from "../telegram/TelegramMessagesConnectionContext";
 import { reorderTelegramPinnedChats } from "../telegram/reorderTelegramPinnedChats";
@@ -2490,7 +2491,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           runDeferredOpenWarmup();
         }
       };
-      if (compactOpenNow) {
+      if (compactOpenNow && !isIosTelegramMiniAppSync()) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         primeOpenChatHistoryFromGesture(resolvedItem);
