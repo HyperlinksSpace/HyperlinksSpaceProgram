@@ -8,6 +8,7 @@ import {
   type TelegramProfilePhotoMarkup,
 } from "../../shared/telegramProfilePhoto";
 import { rememberTelegramProfilePhotoMarkup } from "./telegramProfilePhotoCache";
+import { openIosCompetingRead } from "./iosCompetingRead";
 
 export type { TelegramProfilePhotoMarkup };
 
@@ -230,10 +231,16 @@ export async function fetchTelegramUserProfile(
   if (existing && !signal) return existing;
 
   const request = runQueuedNetworkFetch(async () => {
+    const competing = openIosCompetingRead();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal?.aborted || competing.signal.aborted) controller.abort();
+    signal?.addEventListener("abort", abort);
+    competing.signal.addEventListener("abort", abort);
     try {
       const response = await fetch(
         buildApiUrl(`/api/telegram-messages-profile?${params.toString()}`),
-        { method: "GET", credentials: "include", signal },
+        { method: "GET", credentials: "include", signal: controller.signal },
       );
       const json = (await response.json().catch(() => null)) as
         | { ok?: boolean; profile?: TelegramUserProfile; error?: string }
@@ -250,6 +257,10 @@ export async function fetchTelegramUserProfile(
         return { ok: false, error: "aborted" };
       }
       return { ok: false, error: err instanceof Error ? err.message : "fetch_failed" };
+    } finally {
+      signal?.removeEventListener("abort", abort);
+      competing.signal.removeEventListener("abort", abort);
+      competing.finish();
     }
   }, { priority });
 

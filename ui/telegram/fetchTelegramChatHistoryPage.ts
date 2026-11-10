@@ -20,6 +20,7 @@ import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { logPageDisplay } from "../pageDisplayLog";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
+import { abortIosCompetingReads } from "./iosCompetingRead";
 
 export type ChatHistoryPageResult = {
   messages: MessageChatHistoryItem[];
@@ -378,17 +379,47 @@ function pinIosHistoryLine(text: string): void {
  * (fetch, XHR, worker, script, iframe — server 200 at 14:15:23, panel stays on
  * fetch_iframe). Read the body on this turn so paint does not wait for a callback.
  */
-function loadHistoryViaSyncXhr(
+function wireMessageLine(raw: unknown): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const row = raw as Record<string, unknown>;
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  if (text) return text;
+  if (row.has_media === true || row.hasMedia === true) return "Media";
+  return "";
+}
+
+/** Visible list that paints when this turn ends, before React renders the rows. */
+function paintIosHistoryDom(json: HistoryWireJson): void {
+  if (typeof document === "undefined" || !document.body) return;
+  const rows = Array.isArray(json.messages) ? json.messages : [];
+  let el = document.getElementById("hsp-ios-history-paint");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hsp-ios-history-paint";
+    el.style.cssText =
+      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch";
+    document.body.appendChild(el);
+  }
+  el.replaceChildren();
+  for (const raw of rows) {
+    const lineText = wireMessageLine(raw);
+    if (!lineText) continue;
+    const line = document.createElement("div");
+    line.style.cssText =
+      "margin:6px 0;padding:8px 10px;border-radius:12px;background:#1c1c1e;white-space:pre-wrap;word-break:break-word";
+    line.textContent = lineText;
+    el.appendChild(line);
+  }
+}
+
+async function loadHistoryViaText(
   url: string,
   chatId: number,
-  peerUserId: number | null | undefined,
-): { status: number; bytes: number; json: HistoryWireJson } {
-  pinIosHistoryLine(`messages_history_sync_send chatId=${chatId}`);
-  const xhr = new XMLHttpRequest();
-  xhr.open("GET", url, false);
-  xhr.withCredentials = true;
-  xhr.send();
-  const text = xhr.responseText || "";
+): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
+  abortIosCompetingReads();
+  pinIosHistoryLine(`messages_history_text_send chatId=${chatId}`);
+  const response = await fetch(url, { method: "GET", credentials: "include" });
+  const text = await response.text();
   let json: HistoryWireJson = {};
   try {
     json = text ? (JSON.parse(text) as HistoryWireJson) : {};
@@ -396,19 +427,23 @@ function loadHistoryViaSyncXhr(
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
+  if (json.ok === true && count > 0) {
+    paintIosHistoryDom(json);
+  }
   pinIosHistoryLine(
-    `messages_history_sync_hit chatId=${chatId} status=${xhr.status} bytes=${text.length} count=${count}`,
+    `messages_history_text_hit chatId=${chatId} status=${response.status} bytes=${text.length} count=${count}`,
   );
-  logPageDisplay("messages_history_sync_hit", {
+  logPageDisplay("messages_history_text_hit", {
     chatId,
-    status: xhr.status,
+    status: response.status,
     bytes: text.length,
     count,
   });
-  if (json.ok === true && count > 0) {
-    iosHistoryPaint?.(chatId, historyPageFromWire(json, peerUserId));
-  }
-  return { status: xhr.status, bytes: text.length, json };
+  // Let the browser paint the lines. React's setState stays on the next turn.
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  return { status: response.status, bytes: text.length, json };
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -491,9 +526,22 @@ async function fetchTelegramChatHistoryPageOnce(
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
     if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      // Async completions never run after this 200 on iOS. Read it here.
-      logPageDisplay("messages_history_fetch_sync", { chatId, limit });
-      const delivered = loadHistoryViaSyncXhr(url, chatId, peerUserId);
+      // Sync XHR at 16:37:04 never returned to the screen (server 200 in 108ms).
+      // Draw the lines in the same turn the body text arrives, then yield.
+      logPageDisplay("messages_history_fetch_text", { chatId, limit });
+      const delivered = await loadHistoryViaText(url, chatId);
+      // End the turn so WKWebView paints the DOM list. React setState in this
+      // same turn never reached the screen (16:37:04 server 200, panel stuck).
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      if (
+        delivered.json.ok === true &&
+        Array.isArray(delivered.json.messages) &&
+        delivered.json.messages.length > 0
+      ) {
+        iosHistoryPaint?.(chatId, historyPageFromWire(delivered.json, peerUserId));
+      }
       json = delivered.json;
       httpStatus = delivered.status;
       logPageDisplay("messages_history_fetch_response", {

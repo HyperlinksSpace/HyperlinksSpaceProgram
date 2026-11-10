@@ -5386,6 +5386,13 @@ export function MessageChatMessageList({
 
   useEffect(() => {
     if (!compactPage || !isIosTelegramMiniAppSync()) return;
+    if (messages.length === 0) return;
+    if (typeof document === "undefined") return;
+    document.getElementById("hsp-ios-history-paint")?.remove();
+  }, [compactPage, messages.length]);
+
+  useEffect(() => {
+    if (!compactPage || !isIosTelegramMiniAppSync()) return;
     setIosHistoryPaint((paintedChatId, page) => {
       if (paintedChatId !== chat.telegram_chat_id || page.messages.length === 0) return;
       messagesCountRef.current = page.messages.length;

@@ -60,6 +60,7 @@ import {
 } from "../messageChatHistoryPrefetch";
 import { unlockVoiceAutoplay } from "../telegram/unlockVoiceAutoplay";
 import { warmupTelegramChatSession } from "../telegram/warmupTelegramChatSession";
+import { openIosCompetingRead } from "../telegram/iosCompetingRead";
 import { publishTelegramChatDirectory } from "../telegram/telegramChatDirectory";
 import { openTelegramBotWebApp } from "../telegram/openTelegramBotWebApp";
 import { useMessageChatBotWebApp } from "./messages/MessageChatBotWebAppContext";
@@ -1484,8 +1485,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     }
     const scrollPageOffsetReserved = fromScroll && !rankingRefresh;
     let scrollPageOffsetCommitted = false;
+    const competing = openIosCompetingRead();
     try {
-      const response = await fetch(url, { method: "GET", credentials: "include" });
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        signal: competing.signal,
+      });
       // Sheet may have opened while the request was in flight — skip JSON parse
       // of ~260 chats (main-thread longtask) and apply on close instead.
       if (isVoiceDialogUiOpen()) {
@@ -1906,6 +1912,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         telegramEmojiDebug.chatListSummary(rows);
       }
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       const message = e instanceof Error ? e.message : String(e);
       if (message === "not_connected" || message.startsWith("HTTP_403")) {
         const recovered = await recoverTelegramMessagesSession();
@@ -1934,6 +1941,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         });
       }
     } finally {
+      competing.finish();
       if (scrollPageOffsetReserved && !scrollPageOffsetCommitted) {
         rollbackChatListScrollFetchReservation();
       }
