@@ -510,6 +510,7 @@ export async function loadOpenChatHistoryFirstPage(
   chatId: number,
   peerUserId: number | null | undefined,
   chat?: Pick<MessageChatRowData, "telegram_chat_id" | "unread_count"> | null,
+  options?: { holdGate?: boolean },
 ): Promise<ChatHistoryPageResult> {
   if (!Number.isFinite(chatId)) {
     return {
@@ -527,8 +528,9 @@ export async function loadOpenChatHistoryFirstPage(
 
   const spec = resolveOpenLoadSpec(chat ?? { telegram_chat_id: chatId, unread_count: 0 });
   const anchorSpec = toCacheAnchorSpec(spec);
+  const holdGate = options?.holdGate !== false;
 
-  openChatLoadingId = chatId;
+  if (holdGate) openChatLoadingId = chatId;
   if (queued.length > 0) {
     const dropped = queued.length;
     queued.length = 0;
@@ -538,11 +540,11 @@ export async function loadOpenChatHistoryFirstPage(
       ...prefetchQueueSnapshot(),
     });
   }
-  if (openChatLoadingStaleTimer != null) {
+  if (holdGate && openChatLoadingStaleTimer != null) {
     clearTimeout(openChatLoadingStaleTimer);
     openChatLoadingStaleTimer = null;
   }
-  openChatLoadingStaleTimer = setTimeout(() => {
+  if (holdGate) openChatLoadingStaleTimer = setTimeout(() => {
     openChatLoadingStaleTimer = null;
     if (openChatLoadingId !== chatId) return;
     openChatLoadingId = null;
@@ -574,11 +576,11 @@ export async function loadOpenChatHistoryFirstPage(
     }
     return await startSharedLoad(chatId, peerUserId ?? null, spec);
   } finally {
-    if (openChatLoadingStaleTimer != null) {
+    if (holdGate && openChatLoadingStaleTimer != null) {
       clearTimeout(openChatLoadingStaleTimer);
       openChatLoadingStaleTimer = null;
     }
-    if (openChatLoadingId === chatId) {
+    if (holdGate && openChatLoadingId === chatId) {
       openChatLoadingId = null;
     }
     scheduleBackgroundDrain();

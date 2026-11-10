@@ -19,6 +19,7 @@ import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { logPageDisplay } from "../pageDisplayLog";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 
 export type ChatHistoryPageResult = {
   messages: MessageChatHistoryItem[];
@@ -376,13 +377,18 @@ async function fetchTelegramChatHistoryPageOnce(
       credentials: "include",
       signal: controller.signal,
     });
+    const contentLengthRaw = response.headers.get("content-length");
     logPageDisplay("messages_history_fetch_response", {
       chatId,
       status: response.status,
       elapsedMs: Date.now() - sentAt,
       background: options?.background === true,
+      contentLength: contentLengthRaw ?? undefined,
     });
-    const json = (await response.json().catch(() => ({}))) as {
+    // iOS WKWebView locks the open chat page inside response.json(). Read the
+    // bytes, let the log paint, then parse. The open path waits for this on
+    // the chat list and only then pushes /messages/chat.
+    let json: {
       ok?: boolean;
       messages?: unknown[];
       chat_kind?: unknown;
@@ -394,6 +400,25 @@ async function fetchTelegramChatHistoryPageOnce(
       self_user_id?: number;
       error?: string;
     };
+    if (isIosTelegramMiniAppSync()) {
+      const text = await response.text();
+      logPageDisplay("messages_history_fetch_body_bytes", {
+        chatId,
+        bytes: text.length,
+        elapsedMs: Date.now() - sentAt,
+        background: options?.background === true,
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      try {
+        json = text ? (JSON.parse(text) as typeof json) : {};
+      } catch {
+        json = {};
+      }
+    } else {
+      json = (await response.json().catch(() => ({}))) as typeof json;
+    }
     logPageDisplay("messages_history_fetch_body", {
       chatId,
       count: Array.isArray(json.messages) ? json.messages.length : 0,
