@@ -358,60 +358,57 @@ function historyPageFromWire(
   };
 }
 
-function loadHistoryViaIframe(
+function pinIosHistoryLine(text: string): void {
+  if (typeof document === "undefined" || !document.body) return;
+  let el = document.getElementById("hsp-ios-history-pin");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hsp-ios-history-pin";
+    el.style.cssText =
+      "position:fixed;left:4%;right:4%;bottom:72px;z-index:1000002;background:#111;color:#b6f5b6;font:11px/14px ui-monospace,monospace;padding:6px 8px;white-space:pre-wrap;pointer-events:none";
+    document.body.appendChild(el);
+  }
+  const d = new Date();
+  const clock = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  el.textContent = `${clock} ${text}`;
+}
+
+/**
+ * iOS WKWebView delivers this 200 and then never runs the async continuation
+ * (fetch, XHR, worker, script, iframe — server 200 at 14:15:23, panel stays on
+ * fetch_iframe). Read the body on this turn so paint does not wait for a callback.
+ */
+function loadHistoryViaSyncXhr(
   url: string,
   chatId: number,
   peerUserId: number | null | undefined,
-): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
-  return new Promise((resolve, reject) => {
-    if (typeof document === "undefined" || !document.body) {
-      reject(new Error("network_error"));
-      return;
-    }
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.cssText =
-      "position:fixed;left:-9999px;top:0;width:1px;height:1px;border:0;opacity:0";
-    let settled = false;
-    const finish = (run: () => void) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      iframe.remove();
-      run();
-    };
-    const timer = window.setTimeout(() => {
-      finish(() => reject(new Error("network_error")));
-    }, 15_000);
-    iframe.onload = () => {
-      let text = "";
-      try {
-        const doc = iframe.contentDocument;
-        text = doc?.body?.innerText || doc?.documentElement?.textContent || "";
-      } catch {
-        finish(() => reject(new Error("network_error")));
-        return;
-      }
-      let json: HistoryWireJson = {};
-      try {
-        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
-      } catch {
-        json = {};
-      }
-      logPageDisplay("messages_history_iframe_hit", {
-        chatId,
-        bytes: text.length,
-        count: Array.isArray(json.messages) ? json.messages.length : 0,
-      });
-      if (json.ok === true && Array.isArray(json.messages) && json.messages.length > 0) {
-        iosHistoryPaint?.(chatId, historyPageFromWire(json, peerUserId));
-      }
-      finish(() => resolve({ status: json.ok === true ? 200 : 502, bytes: text.length, json }));
-    };
-    const joiner = url.includes("?") ? "&" : "?";
-    iframe.src = `${url}${joiner}_=${Date.now()}`;
-    document.body.appendChild(iframe);
+): { status: number; bytes: number; json: HistoryWireJson } {
+  pinIosHistoryLine(`messages_history_sync_send chatId=${chatId}`);
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", url, false);
+  xhr.withCredentials = true;
+  xhr.send();
+  const text = xhr.responseText || "";
+  let json: HistoryWireJson = {};
+  try {
+    json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+  } catch {
+    json = {};
+  }
+  const count = Array.isArray(json.messages) ? json.messages.length : 0;
+  pinIosHistoryLine(
+    `messages_history_sync_hit chatId=${chatId} status=${xhr.status} bytes=${text.length} count=${count}`,
+  );
+  logPageDisplay("messages_history_sync_hit", {
+    chatId,
+    status: xhr.status,
+    bytes: text.length,
+    count,
   });
+  if (json.ok === true && count > 0) {
+    iosHistoryPaint?.(chatId, historyPageFromWire(json, peerUserId));
+  }
+  return { status: xhr.status, bytes: text.length, json };
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -494,11 +491,9 @@ async function fetchTelegramChatHistoryPageOnce(
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
     if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      // fetch() receives this response on the server and then never resumes
-      // on iOS (panel stays on fetch_plain). A same-origin script runs the
-      // payload directly.
-      logPageDisplay("messages_history_fetch_iframe", { chatId, limit });
-      const delivered = await loadHistoryViaIframe(url, chatId, peerUserId);
+      // Async completions never run after this 200 on iOS. Read it here.
+      logPageDisplay("messages_history_fetch_sync", { chatId, limit });
+      const delivered = loadHistoryViaSyncXhr(url, chatId, peerUserId);
       json = delivered.json;
       httpStatus = delivered.status;
       logPageDisplay("messages_history_fetch_response", {
@@ -506,7 +501,7 @@ async function fetchTelegramChatHistoryPageOnce(
         status: delivered.status,
         elapsedMs: Date.now() - sentAt,
         background: false,
-        script: true,
+        sync: true,
       });
       logPageDisplay("messages_history_fetch_body_bytes", {
         chatId,
@@ -587,6 +582,16 @@ async function fetchTelegramChatHistoryPageOnce(
     };
   } catch (err) {
     const aborted = err instanceof DOMException && err.name === "AbortError";
+    const message = err instanceof Error ? err.message : String(err);
+    if (isIosTelegramMiniAppSync() && options?.background !== true) {
+      pinIosHistoryLine(
+        `messages_history_sync_error chatId=${chatId} ${aborted ? "aborted" : message}`,
+      );
+      logPageDisplay("messages_history_sync_error", {
+        chatId,
+        message: aborted ? "aborted" : message,
+      });
+    }
     return emptyHistoryError(aborted ? "gateway_timeout_retry" : "network_error");
   } finally {
     if (timer != null) clearTimeout(timer);
@@ -752,7 +757,11 @@ export async function loadTelegramChatHistoryFirstPage(
     background?: boolean;
   },
 ): Promise<ChatHistoryPageResult> {
-  const warmup = options?.warmup !== false;
+  // Warmup is a second in-flight body. On iOS that body lands while history
+  // is open and the WebView stops resuming the history read.
+  const warmup =
+    options?.warmup !== false &&
+    !(isIosTelegramMiniAppSync() && options?.background !== true);
   const aroundUnread = options?.aroundUnread === true;
   const aroundMessageId = options?.aroundMessageId ?? null;
   const olderAbove = options?.olderAbove ?? null;
