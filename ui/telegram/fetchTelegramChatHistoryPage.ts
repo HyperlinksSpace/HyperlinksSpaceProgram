@@ -308,6 +308,50 @@ type HistoryWireJson = {
   error?: string;
 };
 
+function loadHistoryViaSameOriginScript(
+  url: string,
+): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === "undefined") {
+      reject(new Error("network_error"));
+      return;
+    }
+    const host = window as Window & {
+      __hspHistoryDeliver?: (payload: HistoryWireJson) => void;
+    };
+    const previous = host.__hspHistoryDeliver;
+    const script = document.createElement("script");
+    let settled = false;
+    const finish = (run: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      script.remove();
+      if (previous) host.__hspHistoryDeliver = previous;
+      else delete host.__hspHistoryDeliver;
+      run();
+    };
+    const timer = window.setTimeout(() => {
+      finish(() => reject(new Error("network_error")));
+    }, 15_000);
+    host.__hspHistoryDeliver = (payload) => {
+      const json = payload && typeof payload === "object" ? payload : {};
+      let bytes = 0;
+      try {
+        bytes = JSON.stringify(json).length;
+      } catch {
+        bytes = 0;
+      }
+      finish(() => resolve({ status: json.ok === true ? 200 : 502, bytes, json }));
+    };
+    script.async = true;
+    script.onerror = () => finish(() => reject(new Error("network_error")));
+    const joiner = url.includes("?") ? "&" : "?";
+    script.src = `${url}${joiner}ios_script=1&_=${Date.now()}`;
+    document.head.appendChild(script);
+  });
+}
+
 async function fetchTelegramChatHistoryPageOnce(
   chatId: number,
   limit: number,
@@ -388,39 +432,26 @@ async function fetchTelegramChatHistoryPageOnce(
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
     if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      // Same call the chat list uses. XHR never left readyState 1 on iOS, so
-      // the panel stopped on fetch_xhr while the server had already returned.
-      logPageDisplay("messages_history_fetch_plain", { chatId, limit });
-      const response = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-      httpStatus = response.status;
+      // fetch() receives this response on the server and then never resumes
+      // on iOS (panel stays on fetch_plain). A same-origin script runs the
+      // payload directly.
+      logPageDisplay("messages_history_fetch_script", { chatId, limit });
+      const delivered = await loadHistoryViaSameOriginScript(url);
+      json = delivered.json;
+      httpStatus = delivered.status;
       logPageDisplay("messages_history_fetch_response", {
         chatId,
-        status: response.status,
+        status: delivered.status,
         elapsedMs: Date.now() - sentAt,
         background: false,
-        plain: true,
+        script: true,
       });
-      // One yield so iOS paints the status line and reads the body on a fresh
-      // turn. A second timer after the body never fires, so parse immediately.
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      const text = await response.text();
       logPageDisplay("messages_history_fetch_body_bytes", {
         chatId,
-        bytes: text.length,
+        bytes: delivered.bytes,
         elapsedMs: Date.now() - sentAt,
         background: false,
       });
-      try {
-        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
-      } catch {
-        json = {};
-      }
     }
     if (json == null) {
       const response = await fetch(url, {

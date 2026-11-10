@@ -122,6 +122,35 @@ function finishPreflight(request: AnyRequest, res: NodeRes | undefined, prefligh
   return preflight;
 }
 
+/** Same-origin script so iOS WKWebView runs the history payload instead of a fetch body. */
+function finishHistoryScript(
+  request: AnyRequest,
+  res: NodeRes | undefined,
+  body: object,
+  status = 200,
+): Response | void {
+  const json = JSON.stringify(body).replace(/</g, "\\u003c");
+  const js = `window.__hspHistoryDeliver&&window.__hspHistoryDeliver(${json});`;
+  if (res) {
+    res.status(status);
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    if (request) {
+      const headers = new Headers();
+      applyAuthApiCors(request, headers);
+      headers.forEach((v, k) => res.setHeader(k, v));
+    }
+    res.end(js);
+    return;
+  }
+  const headers = new Headers({
+    "Content-Type": "application/javascript; charset=utf-8",
+    "Cache-Control": "no-store",
+  });
+  if (request) applyAuthApiCors(request, headers);
+  return new Response(js, { status, headers });
+}
+
 function finishJson(
   request: AnyRequest,
   res: NodeRes | undefined,
@@ -1770,37 +1799,44 @@ export async function telegramMessagesHistoryHandler(
     elapsedMs: Date.now() - started,
   });
 
+  const iosScript = url.searchParams.get("ios_script") === "1";
   if (result.error) {
+    const errorBody = {
+      ok: false,
+      error: result.error,
+      messages: [],
+      has_more_older: false,
+      next_before_message_id: null,
+    };
+    if (iosScript) {
+      return finishHistoryScript(
+        request,
+        res,
+        errorBody,
+        result.error === "session_not_ready" ? 503 : 502,
+      );
+    }
     return finishJson(
       request,
       res,
-      {
-        ok: false,
-        error: result.error,
-        messages: [],
-        has_more_older: false,
-        next_before_message_id: null,
-      },
+      errorBody,
       result.error === "session_not_ready" ? 503 : 502,
     );
   }
 
-  return finishJson(
-    request,
-    res,
-    {
-      ok: true,
-      chat_kind: result.chatKind,
-      member_count: result.memberCount,
-      self_user_id: result.selfUserId,
-      messages: result.messages,
-      has_more_older: result.hasMoreOlder,
-      next_before_message_id: result.nextBeforeMessageId,
-      last_read_outbox_message_id: result.lastReadOutboxMessageId,
-      last_read_inbox_message_id: result.lastReadInboxMessageId,
-    },
-    200,
-  );
+  const historyBody = {
+    ok: true,
+    chat_kind: result.chatKind,
+    member_count: result.memberCount,
+    self_user_id: result.selfUserId,
+    messages: result.messages,
+    has_more_older: result.hasMoreOlder,
+    next_before_message_id: result.nextBeforeMessageId,
+    last_read_outbox_message_id: result.lastReadOutboxMessageId,
+    last_read_inbox_message_id: result.lastReadInboxMessageId,
+  };
+  if (iosScript) return finishHistoryScript(request, res, historyBody);
+  return finishJson(request, res, historyBody, 200);
 }
 
 export async function telegramMessagesMediaHandler(
