@@ -948,8 +948,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (pathname === "/messages/chat") return;
     if (typeof window === "undefined") return;
     const timers = [
-      window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 0),
-      window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 80),
       window.setTimeout(() => maybePushAuthenticatedHomeCompactChatRoute(), 240),
     ];
     return () => {
@@ -2461,9 +2459,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         resolvedItem,
         hadSearchUi && sameChatAlreadyOpen ? { forceReload: true } : undefined,
       );
-      if (compactOpenNow) {
-        maybePushAuthenticatedHomeCompactChatRoute();
-      }
       const runDeferredOpenWarmup = () => {
         if (hadSearchUi) {
           void rememberTelegramFoundChat(resolvedItem.telegram_chat_id);

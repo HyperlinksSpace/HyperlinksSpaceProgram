@@ -6,6 +6,12 @@ const COMPACT_CHAT_PATH = "/messages/chat";
 
 /** Set by {@link openAuthenticatedHomeChatHistory} — blocks restore-driven route pushes. */
 let compactChatRouteUserIntent = false;
+/**
+ * `router.navigate` does not update `location.pathname` until the next frame.
+ * A second push in that gap stacks another `/messages/chat` card on the home
+ * screen. iOS Telegram WebView fails when those cards stay mounted together.
+ */
+let compactChatRoutePushPending = false;
 
 export function allowAuthenticatedHomeCompactChatRoutePush(): void {
   compactChatRouteUserIntent = true;
@@ -36,27 +42,28 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
     return;
   }
   if (isOnCompactChatPath()) {
+    compactChatRoutePushPending = false;
     return;
   }
-  const go = (source: "sync" | "raf" | "timeout" | "replace", useReplace = false) => {
-    if (isOnCompactChatPath()) return;
+  if (compactChatRoutePushPending) {
+    logPageDisplay("messages_compact_chat_route_skip", { reason: "push_pending" });
+    return;
+  }
+  const go = (source: "sync" | "replace") => {
+    if (isOnCompactChatPath()) {
+      compactChatRoutePushPending = false;
+      return;
+    }
     try {
-      const navigate =
-        "navigate" in router && typeof router.navigate === "function"
-          ? (path: string) => router.navigate(path)
-          : null;
-      if (useReplace) {
-        if (navigate) navigate(COMPACT_CHAT_PATH);
-        else router.replace(COMPACT_CHAT_PATH);
+      if (source === "replace") {
+        router.replace(COMPACT_CHAT_PATH);
         logPageDisplay("messages_compact_chat_route_replace", { path: COMPACT_CHAT_PATH, source });
-      } else if (navigate) {
-        navigate(COMPACT_CHAT_PATH);
-        logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
       } else {
         router.push(COMPACT_CHAT_PATH);
         logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
       }
     } catch (error) {
+      compactChatRoutePushPending = false;
       logPageDisplay("messages_compact_chat_route_push_error", {
         path: COMPACT_CHAT_PATH,
         source,
@@ -64,17 +71,16 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
       });
     }
   };
-  // Mobile TMA: push in the same tap gesture; replace retries without full document reload.
+  compactChatRoutePushPending = true;
   go("sync");
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => go("raf"));
-  }
   if (typeof window !== "undefined") {
     window.setTimeout(() => {
-      if (!isOnCompactChatPath()) go("timeout", true);
-    }, 120);
-    window.setTimeout(() => {
-      if (!isOnCompactChatPath()) go("replace", true);
+      if (isOnCompactChatPath()) {
+        compactChatRoutePushPending = false;
+        return;
+      }
+      compactChatRoutePushPending = true;
+      go("replace");
     }, 400);
   }
 }

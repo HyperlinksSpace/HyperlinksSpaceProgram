@@ -14,7 +14,10 @@ export default function AppGroupLayout() {
         name="messages/chat"
         options={{
           gestureEnabled: true,
-          animation: "slide_from_right",
+          // One screen, not a card slid over home. iOS Telegram WebView keeps
+          // every stacked card mounted and drops the history response.
+          animation: "none",
+          detachPreviousScreen: true,
         }}
       />
     </Stack>
