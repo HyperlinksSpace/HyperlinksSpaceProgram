@@ -44,7 +44,6 @@ import {
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
-  setIosHistoryPaint,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import {
   fetchChatHistoryAroundCharBudget,
@@ -5337,20 +5336,6 @@ export function MessageChatMessageList({
           return;
         }
 
-        if (compactPage && isIosTelegramMiniAppSync()) {
-          // slide_from_right is still running at 50ms. The history API answers
-          // in ~80ms, and WKWebView drops that response for the whole life of
-          // the XHR (server 200 at 11:18:50, panel never reaches fetch_response).
-          // Send one request only after the push animation has finished.
-          await new Promise<void>((resolve) => {
-            setTimeout(resolve, 800);
-          });
-          if (cancelled) return;
-          resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
-          logPageDisplay("messages_history_ios_settled", {
-            chatId: chat.telegram_chat_id,
-          });
-        }
         await runNetworkLoad();
       } catch {
         /* runNetworkLoad handles errors */
@@ -5383,35 +5368,6 @@ export function MessageChatMessageList({
     applyCachedHistoryPage,
     applyLastReadInboxMessageId,
   ]);
-
-  useEffect(() => {
-    if (!compactPage || !isIosTelegramMiniAppSync()) return;
-    if (messages.length === 0) return;
-    if (typeof document === "undefined") return;
-    document.getElementById("hsp-ios-history-paint")?.remove();
-  }, [compactPage, messages.length]);
-
-  useEffect(() => {
-    if (!compactPage || !isIosTelegramMiniAppSync()) return;
-    setIosHistoryPaint((paintedChatId, page) => {
-      if (paintedChatId !== chat.telegram_chat_id || page.messages.length === 0) return;
-      messagesCountRef.current = page.messages.length;
-      setMessages(page.messages);
-      setChatKind(page.chatKind);
-      setError(null);
-      setLoadingInitial(false);
-      setCachedChatHistory(chat.telegram_chat_id, page, { previewOnly: false });
-      logPageDisplay("messages_history_ios_paint", {
-        ...chatLogFields({
-          chatId: chat.telegram_chat_id,
-          peerUserId: chat.peer_user_id,
-          title: chat.title,
-        }),
-        count: page.messages.length,
-      });
-    });
-    return () => setIosHistoryPaint(null);
-  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title, compactPage]);
 
   useEffect(() => {
     if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;

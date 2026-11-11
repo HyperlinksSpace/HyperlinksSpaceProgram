@@ -309,142 +309,6 @@ type HistoryWireJson = {
   error?: string;
 };
 
-type IosHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => void;
-let iosHistoryPaint: IosHistoryPaint | null = null;
-
-/** Compact iOS chat paints from the frame load itself, before the promise resumes. */
-export function setIosHistoryPaint(listener: IosHistoryPaint | null): void {
-  iosHistoryPaint = listener;
-}
-
-function historyPageFromWire(
-  json: HistoryWireJson,
-  peerUserId: number | null | undefined,
-): ChatHistoryPageResult {
-  const rows: MessageChatHistoryItem[] = [];
-  const selfUserRaw = Number(json.self_user_id);
-  const selfUserId =
-    Number.isFinite(selfUserRaw) && selfUserRaw > 0
-      ? safeTelegramUserIdForLog(selfUserRaw) ?? null
-      : null;
-  if (Array.isArray(json.messages)) {
-    for (const raw of json.messages) {
-      const row = normalizeHistoryMessage(raw, peerUserId, selfUserId);
-      if (row) rows.push(row);
-    }
-  }
-  const lastReadRaw = Number(json.last_read_outbox_message_id);
-  const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
-  const memberRaw = Number(json.member_count);
-  return {
-    messages: rows,
-    chatKind: normalizeChatKind(json.chat_kind),
-    error: null,
-    hasMoreOlder: Boolean(json.has_more_older),
-    nextBeforeMessageId:
-      typeof json.next_before_message_id === "number" &&
-      Number.isFinite(json.next_before_message_id) &&
-      json.next_before_message_id > 0
-        ? json.next_before_message_id
-        : null,
-    lastReadOutboxMessageId:
-      Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
-    lastReadInboxMessageId:
-      Number.isFinite(lastReadInboxRaw) && lastReadInboxRaw > 0
-        ? lastReadInboxRaw
-        : null,
-    memberCount:
-      Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
-    selfUserId,
-  };
-}
-
-function pinIosHistoryLine(text: string): void {
-  if (typeof document === "undefined" || !document.body) return;
-  let el = document.getElementById("hsp-ios-history-pin");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hsp-ios-history-pin";
-    el.style.cssText =
-      "position:fixed;left:4%;right:4%;bottom:72px;z-index:1000002;background:#111;color:#b6f5b6;font:11px/14px ui-monospace,monospace;padding:6px 8px;white-space:pre-wrap;pointer-events:none";
-    document.body.appendChild(el);
-  }
-  const d = new Date();
-  const clock = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-  el.textContent = `${clock} ${text}`;
-}
-
-/**
- * iOS WKWebView delivers this 200 and then never runs the async continuation
- * (fetch, XHR, worker, script, iframe — server 200 at 14:15:23, panel stays on
- * fetch_iframe). Read the body on this turn so paint does not wait for a callback.
- */
-function wireMessageLine(raw: unknown): string {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
-  const row = raw as Record<string, unknown>;
-  const text = typeof row.text === "string" ? row.text.trim() : "";
-  if (text) return text;
-  if (row.has_media === true || row.hasMedia === true) return "Media";
-  return "";
-}
-
-/** Visible list that paints when this turn ends, before React renders the rows. */
-function paintIosHistoryDom(json: HistoryWireJson): void {
-  if (typeof document === "undefined" || !document.body) return;
-  const rows = Array.isArray(json.messages) ? json.messages : [];
-  let el = document.getElementById("hsp-ios-history-paint");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hsp-ios-history-paint";
-    el.style.cssText =
-      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch";
-    document.body.appendChild(el);
-  }
-  el.replaceChildren();
-  for (const raw of rows) {
-    const lineText = wireMessageLine(raw);
-    if (!lineText) continue;
-    const line = document.createElement("div");
-    line.style.cssText =
-      "margin:6px 0;padding:8px 10px;border-radius:12px;background:#1c1c1e;white-space:pre-wrap;word-break:break-word";
-    line.textContent = lineText;
-    el.appendChild(line);
-  }
-}
-
-async function loadHistoryViaText(
-  url: string,
-  chatId: number,
-): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
-  abortIosCompetingReads();
-  pinIosHistoryLine(`messages_history_text_send chatId=${chatId}`);
-  const response = await fetch(url, { method: "GET", credentials: "include" });
-  const text = await response.text();
-  let json: HistoryWireJson = {};
-  try {
-    json = text ? (JSON.parse(text) as HistoryWireJson) : {};
-  } catch {
-    json = {};
-  }
-  const count = Array.isArray(json.messages) ? json.messages.length : 0;
-  if (json.ok === true && count > 0) {
-    paintIosHistoryDom(json);
-  }
-  pinIosHistoryLine(
-    `messages_history_text_hit chatId=${chatId} status=${response.status} bytes=${text.length} count=${count}`,
-  );
-  logPageDisplay("messages_history_text_hit", {
-    chatId,
-    status: response.status,
-    bytes: text.length,
-    count,
-  });
-  // Let the browser paint the lines. React's setState stays on the next turn.
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  return { status: response.status, bytes: text.length, json };
-}
 
 async function fetchTelegramChatHistoryPageOnce(
   chatId: number,
@@ -525,40 +389,31 @@ async function fetchTelegramChatHistoryPageOnce(
   try {
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
-    if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      // Sync XHR at 16:37:04 never returned to the screen (server 200 in 108ms).
-      // Draw the lines in the same turn the body text arrives, then yield.
-      logPageDisplay("messages_history_fetch_text", { chatId, limit });
-      const delivered = await loadHistoryViaText(url, chatId);
-      // End the turn so WKWebView paints the DOM list. React setState in this
-      // same turn never reached the screen (16:37:04 server 200, panel stuck).
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
+    if (isIosTelegramMiniAppSync()) {
+      abortIosCompetingReads();
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        signal: options?.background === true ? controller.signal : undefined,
       });
-      if (
-        delivered.json.ok === true &&
-        Array.isArray(delivered.json.messages) &&
-        delivered.json.messages.length > 0
-      ) {
-        iosHistoryPaint?.(chatId, historyPageFromWire(delivered.json, peerUserId));
-      }
-      json = delivered.json;
-      httpStatus = delivered.status;
+      httpStatus = response.status;
+      const textBody = await response.text();
       logPageDisplay("messages_history_fetch_response", {
         chatId,
-        status: delivered.status,
+        status: response.status,
         elapsedMs: Date.now() - sentAt,
-        background: false,
-        sync: true,
+        background: options?.background === true,
+        bytes: textBody.length,
       });
-      logPageDisplay("messages_history_fetch_body_bytes", {
-        chatId,
-        bytes: delivered.bytes,
-        elapsedMs: Date.now() - sentAt,
-        background: false,
-      });
-    }
-    if (json == null) {
+      try {
+        json = textBody ? (JSON.parse(textBody) as HistoryWireJson) : {};
+      } catch {
+        json = {};
+      }
+      if (controller.signal.aborted) {
+        return emptyHistoryError("gateway_timeout_retry");
+      }
+    } else {
       const response = await fetch(url, {
         method: "GET",
         credentials: "include",
@@ -630,16 +485,6 @@ async function fetchTelegramChatHistoryPageOnce(
     };
   } catch (err) {
     const aborted = err instanceof DOMException && err.name === "AbortError";
-    const message = err instanceof Error ? err.message : String(err);
-    if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      pinIosHistoryLine(
-        `messages_history_sync_error chatId=${chatId} ${aborted ? "aborted" : message}`,
-      );
-      logPageDisplay("messages_history_sync_error", {
-        chatId,
-        message: aborted ? "aborted" : message,
-      });
-    }
     return emptyHistoryError(aborted ? "gateway_timeout_retry" : "network_error");
   } finally {
     if (timer != null) clearTimeout(timer);
