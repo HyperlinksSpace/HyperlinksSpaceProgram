@@ -132,8 +132,22 @@ function isFullPageSpec(spec: LoadSpec): boolean {
   return !spec.previewOnly && spec.limit >= MESSAGE_CHAT_HISTORY_PAGE_SIZE;
 }
 
+/** Open-chat load, including the short live tail (16), not only a 30-row page. */
 function isForegroundOpenSpec(spec: LoadSpec): boolean {
-  return isFullPageSpec(spec) && spec.background !== true;
+  return !spec.previewOnly && spec.background !== true;
+}
+
+/**
+ * Neighbor prefetches are dropped while a chat is opening or a voice sheet is up.
+ * The chat the user just selected must still receive its page — Telegram Web
+ * applies that state before the message pane paints.
+ */
+function backgroundLoadShouldDrop(chatId: number, epochAtStart: number): boolean {
+  if (isVoiceDialogUiOpen()) return true;
+  if (isOpenChatFocusHoldActive() && openChatFocusId === chatId) return false;
+  if (historyPrefetchEpoch !== epochAtStart) return true;
+  if (isOpenChatFocusHoldActive()) return true;
+  return false;
 }
 
 function toCacheAnchorSpec(spec: LoadSpec): ChatHistoryCacheAnchorSpec {
@@ -188,12 +202,7 @@ async function runHistoryLoad(
   const epochAtStart = historyPrefetchEpoch;
   // Skip starting neighbor loads once the voice sheet is open — an in-flight
   // 80-row normalize mid-Join freezes createOffer / Close.
-  if (
-    spec.background &&
-    (historyPrefetchEpoch !== epochAtStart ||
-      isVoiceDialogUiOpen() ||
-      isOpenChatFocusHoldActive())
-  ) {
+  if (spec.background && backgroundLoadShouldDrop(chatId, epochAtStart)) {
     logPageDisplay("messages_history_prefetch_dropped_voice_dialog", {
       chatId,
       count: 0,
@@ -231,37 +240,7 @@ async function runHistoryLoad(
   // Neighbor prefetches that finish during Join used to parse + cache-notify on
   // the main thread beside createOffer (logs: history_prefetch_ok mid-dialog).
   // Same for open-chat focus hold — drop paint so voice soft-poll can recover.
-  if (
-    spec.background &&
-    (historyPrefetchEpoch !== epochAtStart ||
-      isVoiceDialogUiOpen() ||
-      isOpenChatFocusHoldActive())
-  ) {
-    if (
-      isOpenChatFocusHoldActive() &&
-      openChatFocusId === chatId &&
-      !result.error &&
-      result.messages.length > 0
-    ) {
-      setCachedChatHistory(chatId, result, {
-        previewOnly: spec.previewOnly,
-        aroundUnread: spec.aroundUnread,
-        aroundMessageId: spec.aroundMessageId ?? null,
-      });
-      logPageDisplay("messages_history_prefetch_ok", {
-        chatId,
-        count: result.messages.length,
-        elapsedMs: Date.now() - started,
-        previewOnly: spec.previewOnly,
-        aroundUnread: spec.aroundUnread,
-        aroundMessageId: spec.aroundMessageId ?? null,
-        limit: spec.limit,
-        lane: spec.previewOnly ? "preview" : "full",
-        background: true,
-        openChatFocus: true,
-        ...prefetchQueueSnapshot(),
-      });
-    }
+  if (spec.background && backgroundLoadShouldDrop(chatId, epochAtStart)) {
     logPageDisplay("messages_history_prefetch_dropped_voice_dialog", {
       chatId,
       count: result.messages.length,
@@ -610,6 +589,13 @@ export function releaseOpenChatLoadingGateForCompactList(): void {
   scheduleBackgroundDrain();
 }
 
+/** Foreground open still running from list gesture-prime (do not reset on chat mount). */
+export function isOpenChatHistoryForegroundInFlight(chatId: number): boolean {
+  if (!Number.isFinite(chatId)) return false;
+  const id = Math.trunc(chatId);
+  return sharedLoads.has(id) && sharedLoadLane.get(id) === "foreground";
+}
+
 /** Drop a stuck coalesced load so compact open can start a fresh foreground fetch. */
 export function resetSharedOpenChatHistoryLoad(chatId: number): void {
   if (!Number.isFinite(chatId)) return;
@@ -844,7 +830,7 @@ export function prefetchChatHistoryPriority(
     return;
   }
   const inFlight = sharedLoads.get(chatId);
-    if (inFlight) {
+  if (inFlight && sharedLoadLane.get(chatId) === "foreground") {
     logPageDisplay("messages_history_compact_route_prefetch_join", { chatId });
     void inFlight.finally(() => {
       pokeChatHistoryCacheListeners(chatId);

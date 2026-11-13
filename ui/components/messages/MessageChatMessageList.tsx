@@ -24,6 +24,7 @@ import {
 } from "../../messageChatHistoryCache";
 import {
   getOpenChatHistoryCacheAnchorSpec,
+  isOpenChatHistoryForegroundInFlight,
   loadOpenChatHistoryFirstPage,
   resetSharedOpenChatHistoryLoad,
 } from "../../messageChatHistoryPrefetch";
@@ -44,7 +45,7 @@ import {
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
-  setIosHistoryPaint,
+  setWebHistoryPaint,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import {
   fetchChatHistoryAroundCharBudget,
@@ -3217,6 +3218,30 @@ export function MessageChatMessageList({
     [applyOlderPaginationCursor, bumpViewportSliceTick, chat.telegram_chat_id, applyLastReadInboxMessageId, historyMessageContext, mergeHistoryWithWindow, chat, pinScrollToEnd],
   );
 
+  useLayoutEffect(() => {
+    if (!shouldLoadHistory || Platform.OS !== "web" || messagesCountRef.current > 0) return;
+    const cached = getCachedChatHistory(chat.telegram_chat_id);
+    if (cached == null || cached.messages.length === 0) return;
+    const historyAnchorSpec = getOpenChatHistoryCacheAnchorSpec(chat);
+    if (!isChatHistoryCacheAnchorMatch(chat.telegram_chat_id, historyAnchorSpec)) return;
+    const applied = applyCachedHistoryPage(cached, { replace: true });
+    if (!applied) return;
+    messagesCountRef.current = Math.max(messagesCountRef.current, cached.messages.length);
+    logPageDisplay("messages_history_cache_layout_replay", {
+      ...chatLogFields({
+        chatId: chat.telegram_chat_id,
+        peerUserId: chat.peer_user_id,
+        title: chat.title,
+      }),
+      count: cached.messages.length,
+    });
+  }, [
+    applyCachedHistoryPage,
+    chat,
+    historyLoad.generation,
+    shouldLoadHistory,
+  ]);
+
   const readOutboxCursor = useMemo(
     () =>
       mergeReadOutboxCursor(
@@ -5296,7 +5321,7 @@ export function MessageChatMessageList({
         // A follow-up history response is an in-flight screen update WKWebView drops.
         if (
           compactPage &&
-          isIosTelegramMiniAppSync() &&
+          Platform.OS === "web" &&
           cached != null &&
           cached.messages.length > 0 &&
           cached.previewOnly !== true &&
@@ -5346,7 +5371,13 @@ export function MessageChatMessageList({
             setTimeout(resolve, 800);
           });
           if (cancelled) return;
-          resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+          if (isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id)) {
+            logPageDisplay("messages_history_ios_join_prime", {
+              chatId: chat.telegram_chat_id,
+            });
+          } else {
+            resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+          }
           logPageDisplay("messages_history_ios_settled", {
             chatId: chat.telegram_chat_id,
           });
@@ -5385,15 +5416,8 @@ export function MessageChatMessageList({
   ]);
 
   useEffect(() => {
-    if (!compactPage || !isIosTelegramMiniAppSync()) return;
-    if (messages.length === 0) return;
-    if (typeof document === "undefined") return;
-    document.getElementById("hsp-ios-history-paint")?.remove();
-  }, [compactPage, messages.length]);
-
-  useEffect(() => {
-    if (!compactPage || !isIosTelegramMiniAppSync()) return;
-    setIosHistoryPaint((paintedChatId, page) => {
+    if (Platform.OS !== "web") return;
+    setWebHistoryPaint((paintedChatId, page) => {
       if (paintedChatId !== chat.telegram_chat_id || page.messages.length === 0) return;
       messagesCountRef.current = page.messages.length;
       setMessages(page.messages);
@@ -5401,7 +5425,7 @@ export function MessageChatMessageList({
       setError(null);
       setLoadingInitial(false);
       setCachedChatHistory(chat.telegram_chat_id, page, { previewOnly: false });
-      logPageDisplay("messages_history_ios_paint", {
+      logPageDisplay("messages_history_web_paint", {
         ...chatLogFields({
           chatId: chat.telegram_chat_id,
           peerUserId: chat.peer_user_id,
@@ -5410,8 +5434,8 @@ export function MessageChatMessageList({
         count: page.messages.length,
       });
     });
-    return () => setIosHistoryPaint(null);
-  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title, compactPage]);
+    return () => setWebHistoryPaint(null);
+  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title]);
 
   useEffect(() => {
     if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;
@@ -5738,9 +5762,8 @@ export function MessageChatMessageList({
       shouldLoadHistory &&
       isAuthenticated &&
       isTelegramMessagesConnected &&
-      // iOS reads one body at a time. The history stream beside the open page
-      // stalls the first paint, same as a second chat-list fetch.
-      !(compactPage && isIosTelegramMiniAppSync() && messages.length === 0),
+      // Web reads one body at a time on open — hold the stream until the list paints.
+      !(compactPage && Platform.OS === "web" && messages.length === 0),
     chatId: chat.telegram_chat_id,
     getSinceRevision: () => historyStreamRevisionRef.current || null,
     onRevision: (revision) => {
@@ -7369,10 +7392,13 @@ export function MessageChatMessageList({
     );
   }, [compactPage, windowWidth]);
 
-  const compactScrollHostHeightHintPx = useMemo(
-    () => (compactPage ? readCompactChatScrollHostHeightPx() : 0),
-    [compactPage, windowWidth],
-  );
+  const compactScrollHostHeightHintPx = useMemo(() => {
+    if (Platform.OS !== "web") return 0;
+    // Wide split often reports layoutH=0 until flex settles, so a cache hit
+    // (messages in state) never gets a scrollport. Same viewport fallback as
+    // compact: give the column a height before the first paint.
+    return readCompactChatScrollHostHeightPx();
+  }, [windowWidth]);
 
   const innerWidthPx = Math.max(
     compactPage ? 260 : 0,
@@ -7583,7 +7609,12 @@ export function MessageChatMessageList({
       onLayout={onColumnLayout}
     >
       <MessageChatOlderHistoryLoadLine active={topHistoryLoadLineActive} color={colors.accent} />
-      <View style={{ flex: 1, minHeight: 0, position: "relative", opacity: hideScrollUntilSettled ? 0 : 1 }}>
+      <View
+        style={{ flex: 1, minHeight: 0, position: "relative", opacity: hideScrollUntilSettled ? 0 : 1 }}
+        {...(Platform.OS === "web"
+          ? ({ dataSet: { hspChatScroll: "1" } } as object)
+          : null)}
+      >
       <HspScrollColumn
         key={String(chat.telegram_chat_id)}
         style={{ flex: 1, minHeight: 0 }}

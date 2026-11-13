@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { buildApiUrl } from "../../api/_base";
 import { normalizeFormattedTextSegments } from "../../shared/formattedTextSegments";
 import { safeTelegramUserIdForLog } from "../../shared/appLog";
@@ -19,8 +20,17 @@ import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { logPageDisplay } from "../pageDisplayLog";
-import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { abortIosCompetingReads } from "./iosCompetingRead";
+import {
+  currentHistoryFetchWorker,
+  fetchHistoryBodyInWorker,
+  historyFetchWorkerSupported,
+  resetHistoryFetchWorker,
+} from "./historyFetchWorkerClient";
+
+function isWebHistoryPlatform(): boolean {
+  return Platform.OS === "web";
+}
 
 export type ChatHistoryPageResult = {
   messages: MessageChatHistoryItem[];
@@ -309,12 +319,17 @@ type HistoryWireJson = {
   error?: string;
 };
 
-type IosHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => void;
-let iosHistoryPaint: IosHistoryPaint | null = null;
+type WebHistoryPaintListener = (chatId: number, page: ChatHistoryPageResult) => void;
+let webHistoryPaintListener: WebHistoryPaintListener | null = null;
 
-/** Compact iOS chat paints from the frame load itself, before the promise resumes. */
-export function setIosHistoryPaint(listener: IosHistoryPaint | null): void {
-  iosHistoryPaint = listener;
+/** Web: commit an open history page from the worker message turn into the list. */
+export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): void {
+  webHistoryPaintListener = listener;
+}
+
+/** @deprecated Use {@link setWebHistoryPaint} */
+export function setIosHistoryPaint(listener: WebHistoryPaintListener | null): void {
+  setWebHistoryPaint(listener);
 }
 
 function historyPageFromWire(
@@ -359,91 +374,103 @@ function historyPageFromWire(
   };
 }
 
-function pinIosHistoryLine(text: string): void {
-  if (typeof document === "undefined" || !document.body) return;
-  let el = document.getElementById("hsp-ios-history-pin");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hsp-ios-history-pin";
-    el.style.cssText =
-      "position:fixed;left:4%;right:4%;bottom:72px;z-index:1000002;background:#111;color:#b6f5b6;font:11px/14px ui-monospace,monospace;padding:6px 8px;white-space:pre-wrap;pointer-events:none";
-    document.body.appendChild(el);
-  }
-  const d = new Date();
-  const clock = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-  el.textContent = `${clock} ${text}`;
-}
-
-/**
- * iOS WKWebView delivers this 200 and then never runs the async continuation
- * (fetch, XHR, worker, script, iframe — server 200 at 14:15:23, panel stays on
- * fetch_iframe). Read the body on this turn so paint does not wait for a callback.
- */
-function wireMessageLine(raw: unknown): string {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
-  const row = raw as Record<string, unknown>;
-  const text = typeof row.text === "string" ? row.text.trim() : "";
-  if (text) return text;
-  if (row.has_media === true || row.hasMedia === true) return "Media";
-  return "";
-}
-
-/** Visible list that paints when this turn ends, before React renders the rows. */
-function paintIosHistoryDom(json: HistoryWireJson): void {
-  if (typeof document === "undefined" || !document.body) return;
-  const rows = Array.isArray(json.messages) ? json.messages : [];
-  let el = document.getElementById("hsp-ios-history-paint");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "hsp-ios-history-paint";
-    el.style.cssText =
-      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch";
-    document.body.appendChild(el);
-  }
-  el.replaceChildren();
-  for (const raw of rows) {
-    const lineText = wireMessageLine(raw);
-    if (!lineText) continue;
-    const line = document.createElement("div");
-    line.style.cssText =
-      "margin:6px 0;padding:8px 10px;border-radius:12px;background:#1c1c1e;white-space:pre-wrap;word-break:break-word";
-    line.textContent = lineText;
-    el.appendChild(line);
-  }
-}
-
-async function loadHistoryViaText(
+async function loadHistoryViaWorkerOrText(
   url: string,
   chatId: number,
+  peerUserId: number | null | undefined,
+  background: boolean,
+  paintOpen: boolean,
 ): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
   abortIosCompetingReads();
-  pinIosHistoryLine(`messages_history_text_send chatId=${chatId}`);
-  const response = await fetch(url, { method: "GET", credentials: "include" });
-  const text = await response.text();
+  let httpStatus = 0;
+  let textBody = "";
+  let transport: "worker" | "main" = "main";
+  const timeoutMs = background ? HISTORY_FETCH_BACKGROUND_TIMEOUT_MS : 45_000;
+  const readInWorker = async (): Promise<void> => {
+    logPageDisplay("messages_history_fetch_worker", { chatId, background });
+    const workerBody = await fetchHistoryBodyInWorker(url, timeoutMs);
+    httpStatus = workerBody.status;
+    textBody = workerBody.text;
+    transport = "worker";
+    logPageDisplay("messages_history_fetch_worker_response", {
+      chatId,
+      status: httpStatus,
+      bytes: textBody.length,
+      background,
+    });
+  };
+  if (historyFetchWorkerSupported()) {
+    try {
+      await readInWorker();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logPageDisplay("messages_history_fetch_worker_fallback", {
+        chatId,
+        message,
+        background,
+      });
+      // Safari stops delivering messages from a live worker. A main-thread
+      // response.text() in that state never resumes and the page stops taking
+      // touches. Terminate and read once more in a new worker instead.
+      if (message !== "history_worker_reset") {
+        resetHistoryFetchWorker(currentHistoryFetchWorker());
+      }
+      try {
+        await readInWorker();
+      } catch (retryErr) {
+        logPageDisplay("messages_history_fetch_worker_fallback", {
+          chatId,
+          message: retryErr instanceof Error ? retryErr.message : String(retryErr),
+          background,
+          retry: true,
+        });
+      }
+    }
+  }
+  if (transport === "main" && !isWebHistoryPlatform()) {
+    logPageDisplay("messages_history_fetch_text", { chatId, background });
+    const response = await fetch(url, { method: "GET", credentials: "include" });
+    httpStatus = response.status;
+    logPageDisplay("messages_history_fetch_response", {
+      chatId,
+      status: response.status,
+      background,
+      syncHeaders: true,
+    });
+    textBody = await response.text();
+  }
   let json: HistoryWireJson = {};
   try {
-    json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+    json = textBody ? (JSON.parse(textBody) as HistoryWireJson) : {};
   } catch {
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
-  if (json.ok === true && count > 0) {
-    paintIosHistoryDom(json);
-  }
-  pinIosHistoryLine(
-    `messages_history_text_hit chatId=${chatId} status=${response.status} bytes=${text.length} count=${count}`,
-  );
   logPageDisplay("messages_history_text_hit", {
     chatId,
-    status: response.status,
-    bytes: text.length,
+    status: httpStatus,
+    bytes: textBody.length,
     count,
+    transport,
   });
-  // Let the browser paint the lines. React's setState stays on the next turn.
+  const page =
+    json.ok === true && count > 0 && paintOpen
+      ? historyPageFromWire(json, peerUserId)
+      : null;
+  // Commit bubbles on the next turn. Doing it inside the worker message
+  // handler runs every row's layout effect before Safari can take input.
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
-  return { status: response.status, bytes: text.length, json };
+  if (page && page.messages.length > 0) {
+    webHistoryPaintListener?.(chatId, page);
+    logPageDisplay("messages_history_web_paint", {
+      chatId,
+      count: page.messages.length,
+      transport,
+    });
+  }
+  return { status: httpStatus, bytes: textBody.length, json };
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -525,37 +552,36 @@ async function fetchTelegramChatHistoryPageOnce(
   try {
     let json: HistoryWireJson | null = null;
     let httpStatus = 0;
-    if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      // Sync XHR at 16:37:04 never returned to the screen (server 200 in 108ms).
-      // Draw the lines in the same turn the body text arrives, then yield.
-      logPageDisplay("messages_history_fetch_text", { chatId, limit });
-      const delivered = await loadHistoryViaText(url, chatId);
-      // End the turn so WKWebView paints the DOM list. React setState in this
-      // same turn never reached the screen (16:37:04 server 200, panel stuck).
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      if (
-        delivered.json.ok === true &&
-        Array.isArray(delivered.json.messages) &&
-        delivered.json.messages.length > 0
-      ) {
-        iosHistoryPaint?.(chatId, historyPageFromWire(delivered.json, peerUserId));
-      }
+    if (isWebHistoryPlatform()) {
+      const olderPage =
+        typeof beforeMessageId === "number" &&
+        Number.isFinite(beforeMessageId) &&
+        beforeMessageId > 0;
+      const newerPage =
+        typeof sinceMessageId === "number" &&
+        Number.isFinite(sinceMessageId) &&
+        sinceMessageId > 0;
+      const delivered = await loadHistoryViaWorkerOrText(
+        url,
+        chatId,
+        peerUserId,
+        options?.background === true,
+        !olderPage && !newerPage,
+      );
       json = delivered.json;
       httpStatus = delivered.status;
       logPageDisplay("messages_history_fetch_response", {
         chatId,
         status: delivered.status,
         elapsedMs: Date.now() - sentAt,
-        background: false,
+        background: options?.background === true,
         sync: true,
       });
       logPageDisplay("messages_history_fetch_body_bytes", {
         chatId,
         bytes: delivered.bytes,
         elapsedMs: Date.now() - sentAt,
-        background: false,
+        background: options?.background === true,
       });
     }
     if (json == null) {
@@ -631,11 +657,8 @@ async function fetchTelegramChatHistoryPageOnce(
   } catch (err) {
     const aborted = err instanceof DOMException && err.name === "AbortError";
     const message = err instanceof Error ? err.message : String(err);
-    if (isIosTelegramMiniAppSync() && options?.background !== true) {
-      pinIosHistoryLine(
-        `messages_history_sync_error chatId=${chatId} ${aborted ? "aborted" : message}`,
-      );
-      logPageDisplay("messages_history_sync_error", {
+    if (isWebHistoryPlatform()) {
+      logPageDisplay("messages_history_web_fetch_error", {
         chatId,
         message: aborted ? "aborted" : message,
       });
@@ -809,7 +832,7 @@ export async function loadTelegramChatHistoryFirstPage(
   // is open and the WebView stops resuming the history read.
   const warmup =
     options?.warmup !== false &&
-    !(isIosTelegramMiniAppSync() && options?.background !== true);
+    !(isWebHistoryPlatform() && options?.background !== true);
   const aroundUnread = options?.aroundUnread === true;
   const aroundMessageId = options?.aroundMessageId ?? null;
   const olderAbove = options?.olderAbove ?? null;

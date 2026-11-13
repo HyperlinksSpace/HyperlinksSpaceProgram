@@ -709,6 +709,13 @@ export function isIosTelegramMiniAppSync(): boolean {
   return computeTelegramLayoutStartupSnapshot().platformEffective?.trim().toLowerCase() === "ios";
 }
 
+/** iPhone, iPad, or the iOS Mini App. Desktop Chrome stays on the normal history path. */
+export function isIosWebSync(): boolean {
+  if (isIosTelegramMiniAppSync()) return true;
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+}
+
 /**
  * When to show the default global logo bar on `/welcome` inside TMA.
  * Only **immersive** fullscreen (`WebApp.isFullscreen` / merged viewport) — not expanded “fullsize” alone.

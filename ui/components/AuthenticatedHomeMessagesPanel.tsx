@@ -2501,7 +2501,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
           runDeferredOpenWarmup();
         }
       };
-      if (compactOpenNow && !isIosTelegramMiniAppSync()) {
+      if (compactOpenNow) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         primeOpenChatHistoryFromGesture(resolvedItem);

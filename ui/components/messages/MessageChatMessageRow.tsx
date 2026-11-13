@@ -466,22 +466,30 @@ export function MessageChatMessageRow({
     Platform.OS === "web" && !showMedia ? null : bubbleLayout?.width ?? null;
   const [webTimeOverflowPx, setWebTimeOverflowPx] = useState(0);
   const bubbleFillRef = useRef<View>(null);
+  const webTimeOverflowAppliedRef = useRef(false);
 
   useEffect(() => {
+    webTimeOverflowAppliedRef.current = false;
     setWebTimeOverflowPx(0);
   }, [item.telegram_message_id, bodyText, timeLabel]);
 
   useLayoutEffect(() => {
     if (Platform.OS !== "web" || showMedia) return;
+    if (webTimeOverflowAppliedRef.current) return;
     const node = bubbleFillRef.current as unknown as HTMLElement | null;
     if (!node || typeof node.querySelector !== "function") return;
     const time = node.querySelector("[data-bubble-time]");
     if (!time) return;
     const bubbleRect = node.getBoundingClientRect();
+    // A 0-wide column (open scroll still at layoutH=0) makes every row look
+    // overflowing. Updating state from that measurement re-enters this layout
+    // effect before Safari can paint or take the next touch.
+    if (bubbleRect.width < 8) return;
     const timeRect = time.getBoundingClientRect();
     const overflow = Math.ceil(timeRect.right - bubbleRect.right);
-    if (overflow > 1) {
-      setWebTimeOverflowPx((prev) => prev + overflow + 2);
+    if (overflow > 1 && overflow < 80) {
+      webTimeOverflowAppliedRef.current = true;
+      setWebTimeOverflowPx(overflow + 2);
     }
   }, [
     bodyText,
@@ -490,7 +498,6 @@ export function MessageChatMessageRow({
     metaPlacement,
     showMedia,
     timeLabel,
-    webTimeOverflowPx,
   ]);
   const measureText = bodyText || " ";
   const showChannelBadge = Boolean(item.sender_is_channel) && chatKind !== "channel";
