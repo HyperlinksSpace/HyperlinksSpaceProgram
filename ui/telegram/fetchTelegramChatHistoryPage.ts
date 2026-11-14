@@ -18,14 +18,16 @@ import {
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
-import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { logPageDisplay } from "../pageDisplayLog";
-import { abortIosCompetingReads } from "./iosCompetingRead";
 import {
-  currentHistoryFetchWorker,
+  isOnMessagesChatPath,
+  waitForIosCompactHistoryFetchReady,
+} from "../compactChatRouteGate";
+import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
+import { abortIosCompetingReads, openIosCompetingRead } from "./iosCompetingRead";
+import {
   fetchHistoryBodyInWorker,
   historyFetchWorkerSupported,
-  resetHistoryFetchWorker,
 } from "./historyFetchWorkerClient";
 
 function isWebHistoryPlatform(): boolean {
@@ -287,6 +289,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
 }
 
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
+const HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS = 28_000;
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
   return {
@@ -330,147 +333,6 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
 /** @deprecated Use {@link setWebHistoryPaint} */
 export function setIosHistoryPaint(listener: WebHistoryPaintListener | null): void {
   setWebHistoryPaint(listener);
-}
-
-function historyPageFromWire(
-  json: HistoryWireJson,
-  peerUserId: number | null | undefined,
-): ChatHistoryPageResult {
-  const rows: MessageChatHistoryItem[] = [];
-  const selfUserRaw = Number(json.self_user_id);
-  const selfUserId =
-    Number.isFinite(selfUserRaw) && selfUserRaw > 0
-      ? safeTelegramUserIdForLog(selfUserRaw) ?? null
-      : null;
-  if (Array.isArray(json.messages)) {
-    for (const raw of json.messages) {
-      const row = normalizeHistoryMessage(raw, peerUserId, selfUserId);
-      if (row) rows.push(row);
-    }
-  }
-  const lastReadRaw = Number(json.last_read_outbox_message_id);
-  const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
-  const memberRaw = Number(json.member_count);
-  return {
-    messages: rows,
-    chatKind: normalizeChatKind(json.chat_kind),
-    error: null,
-    hasMoreOlder: Boolean(json.has_more_older),
-    nextBeforeMessageId:
-      typeof json.next_before_message_id === "number" &&
-      Number.isFinite(json.next_before_message_id) &&
-      json.next_before_message_id > 0
-        ? json.next_before_message_id
-        : null,
-    lastReadOutboxMessageId:
-      Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
-    lastReadInboxMessageId:
-      Number.isFinite(lastReadInboxRaw) && lastReadInboxRaw > 0
-        ? lastReadInboxRaw
-        : null,
-    memberCount:
-      Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
-    selfUserId,
-  };
-}
-
-async function loadHistoryViaWorkerOrText(
-  url: string,
-  chatId: number,
-  peerUserId: number | null | undefined,
-  background: boolean,
-  paintOpen: boolean,
-): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
-  abortIosCompetingReads();
-  let httpStatus = 0;
-  let textBody = "";
-  let transport: "worker" | "main" = "main";
-  const timeoutMs = background ? HISTORY_FETCH_BACKGROUND_TIMEOUT_MS : 45_000;
-  const readInWorker = async (): Promise<void> => {
-    logPageDisplay("messages_history_fetch_worker", { chatId, background });
-    const workerBody = await fetchHistoryBodyInWorker(url, timeoutMs);
-    httpStatus = workerBody.status;
-    textBody = workerBody.text;
-    transport = "worker";
-    logPageDisplay("messages_history_fetch_worker_response", {
-      chatId,
-      status: httpStatus,
-      bytes: textBody.length,
-      background,
-    });
-  };
-  if (historyFetchWorkerSupported()) {
-    try {
-      await readInWorker();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logPageDisplay("messages_history_fetch_worker_fallback", {
-        chatId,
-        message,
-        background,
-      });
-      // Safari stops delivering messages from a live worker. A main-thread
-      // response.text() in that state never resumes and the page stops taking
-      // touches. Terminate and read once more in a new worker instead.
-      if (message !== "history_worker_reset") {
-        resetHistoryFetchWorker(currentHistoryFetchWorker());
-      }
-      try {
-        await readInWorker();
-      } catch (retryErr) {
-        logPageDisplay("messages_history_fetch_worker_fallback", {
-          chatId,
-          message: retryErr instanceof Error ? retryErr.message : String(retryErr),
-          background,
-          retry: true,
-        });
-      }
-    }
-  }
-  if (transport === "main" && !isWebHistoryPlatform()) {
-    logPageDisplay("messages_history_fetch_text", { chatId, background });
-    const response = await fetch(url, { method: "GET", credentials: "include" });
-    httpStatus = response.status;
-    logPageDisplay("messages_history_fetch_response", {
-      chatId,
-      status: response.status,
-      background,
-      syncHeaders: true,
-    });
-    textBody = await response.text();
-  }
-  let json: HistoryWireJson = {};
-  try {
-    json = textBody ? (JSON.parse(textBody) as HistoryWireJson) : {};
-  } catch {
-    json = {};
-  }
-  const count = Array.isArray(json.messages) ? json.messages.length : 0;
-  logPageDisplay("messages_history_text_hit", {
-    chatId,
-    status: httpStatus,
-    bytes: textBody.length,
-    count,
-    transport,
-  });
-  const page =
-    json.ok === true && count > 0 && paintOpen
-      ? historyPageFromWire(json, peerUserId)
-      : null;
-  // Commit bubbles on the next turn. Doing it inside the worker message
-  // handler runs every row's layout effect before Safari can take input.
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 0);
-  });
-  if (page && page.messages.length > 0) {
-    webHistoryPaintListener?.(chatId, page);
-    logPageDisplay("messages_history_web_paint", {
-      chatId,
-      count: page.messages.length,
-      transport,
-    });
-  }
-  return { status: httpStatus, bytes: textBody.length, json };
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -528,16 +390,27 @@ async function fetchTelegramChatHistoryPageOnce(
     params.set("newer_below", String(Math.trunc(newerBelow)));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
-  return runQueuedNetworkFetch(
-    async () => {
-  const controller = new AbortController();
-  // Foreground open must stay alive until the gateway writes the body.
-  // Aborting at 22s left the TDLib call running (observed 42s) and the next
-  // iOS open queued behind it. Background warming still has a short cap.
+  const iosOpenForeground =
+    isWebHistoryPlatform() &&
+    isIosTelegramMiniAppSync() &&
+    options?.background !== true;
+  if (iosOpenForeground) {
+    abortIosCompetingReads();
+    // Gesture prime runs on the list host; only waits when this fetch starts on chat.
+    if (isOnMessagesChatPath()) {
+      await waitForIosCompactHistoryFetchReady();
+    }
+  }
+  // Same request as the home chat list: GET + credentials, then read the body.
+  const competing = openIosCompetingRead();
+  const onChatPath = isOnMessagesChatPath();
+  const iosWorkerPath = iosOpenForeground && historyFetchWorkerSupported();
   const timer =
     options?.background === true
-      ? setTimeout(() => controller.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
-      : null;
+      ? setTimeout(() => competing.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
+      : iosOpenForeground && onChatPath && !iosWorkerPath
+        ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS)
+        : null;
   const sentAt = Date.now();
   logPageDisplay("messages_history_fetch_dispatch", {
     chatId,
@@ -548,47 +421,49 @@ async function fetchTelegramChatHistoryPageOnce(
       typeof aroundMessageId === "number" && aroundMessageId > 0
         ? aroundMessageId
         : undefined,
+    iosOpenForeground,
+    iosWorkerPath,
+    onChatPath,
   });
   try {
-    let json: HistoryWireJson | null = null;
-    let httpStatus = 0;
-    if (isWebHistoryPlatform()) {
-      const olderPage =
-        typeof beforeMessageId === "number" &&
-        Number.isFinite(beforeMessageId) &&
-        beforeMessageId > 0;
-      const newerPage =
-        typeof sinceMessageId === "number" &&
-        Number.isFinite(sinceMessageId) &&
-        sinceMessageId > 0;
-      const delivered = await loadHistoryViaWorkerOrText(
+    logPageDisplay("messages_history_fetch_await", {
+      chatId,
+      background: options?.background === true,
+      iosWorkerPath,
+    });
+    let httpStatus: number;
+    let json: HistoryWireJson;
+    if (iosWorkerPath) {
+      const workerResult = await fetchHistoryBodyInWorker(
         url,
-        chatId,
-        peerUserId,
-        options?.background === true,
-        !olderPage && !newerPage,
+        HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS,
       );
-      json = delivered.json;
-      httpStatus = delivered.status;
+      httpStatus = workerResult.status;
       logPageDisplay("messages_history_fetch_response", {
         chatId,
-        status: delivered.status,
+        status: httpStatus,
         elapsedMs: Date.now() - sentAt,
         background: options?.background === true,
-        sync: true,
+        worker: true,
       });
-      logPageDisplay("messages_history_fetch_body_bytes", {
+      const text = workerResult.text;
+      logPageDisplay("messages_history_text_hit", {
         chatId,
-        bytes: delivered.bytes,
-        elapsedMs: Date.now() - sentAt,
+        status: httpStatus,
+        bytes: text.length,
         background: options?.background === true,
+        worker: true,
       });
-    }
-    if (json == null) {
+      try {
+        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+      } catch {
+        json = {};
+      }
+    } else {
       const response = await fetch(url, {
         method: "GET",
         credentials: "include",
-        signal: controller.signal,
+        signal: competing.signal,
       });
       httpStatus = response.status;
       const contentLengthRaw = response.headers.get("content-length");
@@ -599,10 +474,25 @@ async function fetchTelegramChatHistoryPageOnce(
         background: options?.background === true,
         contentLength: contentLengthRaw ?? undefined,
       });
-      json = (await response.json().catch(() => ({}))) as HistoryWireJson;
-      if (controller.signal.aborted) {
-        return emptyHistoryError("gateway_timeout_retry");
+      if (iosOpenForeground) {
+        const text = await response.text();
+        logPageDisplay("messages_history_text_hit", {
+          chatId,
+          status: httpStatus,
+          bytes: text.length,
+          background: options?.background === true,
+        });
+        try {
+          json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+        } catch {
+          json = {};
+        }
+      } else {
+        json = (await response.json().catch(() => ({}))) as HistoryWireJson;
       }
+    }
+    if (competing.signal.aborted) {
+      return emptyHistoryError("gateway_timeout_retry");
     }
     logPageDisplay("messages_history_fetch_body", {
       chatId,
@@ -633,7 +523,7 @@ async function fetchTelegramChatHistoryPageOnce(
     const lastReadRaw = Number(json.last_read_outbox_message_id);
     const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
     const memberRaw = Number(json.member_count);
-    return {
+    const page: ChatHistoryPageResult = {
       messages: rows,
       chatKind: normalizeChatKind(json.chat_kind),
       error: null,
@@ -654,8 +544,11 @@ async function fetchTelegramChatHistoryPageOnce(
         Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
       selfUserId,
     };
+    return page;
   } catch (err) {
-    const aborted = err instanceof DOMException && err.name === "AbortError";
+    const aborted =
+      (err instanceof DOMException && err.name === "AbortError") ||
+      competing.signal.aborted;
     const message = err instanceof Error ? err.message : String(err);
     if (isWebHistoryPlatform()) {
       logPageDisplay("messages_history_web_fetch_error", {
@@ -666,10 +559,8 @@ async function fetchTelegramChatHistoryPageOnce(
     return emptyHistoryError(aborted ? "gateway_timeout_retry" : "network_error");
   } finally {
     if (timer != null) clearTimeout(timer);
+    competing.finish();
   }
-    },
-    { priority: options?.background === true ? "normal" : "critical" },
-  );
 }
 
 const HISTORY_FETCH_MAX_ATTEMPTS = 3;

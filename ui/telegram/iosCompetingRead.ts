@@ -1,7 +1,11 @@
 const competingReads = new Set<AbortController>();
 
 /** A profile, warmup, or chat-list body that can be dropped when iOS opens a chat. */
-export function openIosCompetingRead(): { signal: AbortSignal; finish: () => void } {
+export function openIosCompetingRead(): {
+  signal: AbortSignal;
+  finish: () => void;
+  abort: () => void;
+} {
   const controller = new AbortController();
   competingReads.add(controller);
   return {
@@ -9,6 +13,7 @@ export function openIosCompetingRead(): { signal: AbortSignal; finish: () => voi
     finish: () => {
       competingReads.delete(controller);
     },
+    abort: () => controller.abort(),
   };
 }
 

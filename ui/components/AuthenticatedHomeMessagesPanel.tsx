@@ -49,6 +49,7 @@ import {
   maybePushAuthenticatedHomeCompactChatRoute,
 } from "../navigateAuthenticatedHomeCompactChat";
 import { useResolvedPathname } from "../useResolvedPathname";
+import { shouldPauseChatListUpdatesInCompactChat } from "../compactChatRouteGate";
 import {
   isOpenChatFocusHoldActive,
   prefetchChatHistory,
@@ -60,7 +61,7 @@ import {
 } from "../messageChatHistoryPrefetch";
 import { unlockVoiceAutoplay } from "../telegram/unlockVoiceAutoplay";
 import { warmupTelegramChatSession } from "../telegram/warmupTelegramChatSession";
-import { openIosCompetingRead } from "../telegram/iosCompetingRead";
+import { abortIosCompetingReads, openIosCompetingRead } from "../telegram/iosCompetingRead";
 import { publishTelegramChatDirectory } from "../telegram/telegramChatDirectory";
 import { openTelegramBotWebApp } from "../telegram/openTelegramBotWebApp";
 import { useMessageChatBotWebApp } from "./messages/MessageChatBotWebAppContext";
@@ -1365,6 +1366,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       setGatewayWarming(false);
       return;
     }
+    if (shouldPauseChatListUpdatesInCompactChat()) {
+      return;
+    }
     // Coalesce overlapping callers (mount + SSE + metronome). Without this,
     // 3–4×170-row normalize/apply stacks freeze the shell and voice Close.
     if (chatListFetchBusyRef.current) {
@@ -1998,6 +2002,10 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const streamLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const flushStreamChatLoad = useCallback(async () => {
+    if (shouldPauseChatListUpdatesInCompactChat()) {
+      streamRevisionPendingRef.current = null;
+      return;
+    }
     const pendingRevision = streamRevisionPendingRef.current;
     if (
       pendingRevision != null &&
@@ -2078,6 +2086,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   const onStreamRevision = useCallback(
     (revision: number) => {
+      if (shouldPauseChatListUpdatesInCompactChat()) {
+        return;
+      }
       if (lastLiveRevisionRef.current != null && revision <= lastLiveRevisionRef.current) {
         return;
       }
@@ -2204,8 +2215,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     });
   }, [flushStreamChatLoad]);
 
+  const pauseChatListStreamWhileInCompactChat =
+    compactChatLayout && pathname === "/messages/chat";
+
   useTelegramMessagesChatListStream({
-    enabled: authReady && isTelegramMessagesConnected,
+    enabled:
+      authReady &&
+      isTelegramMessagesConnected &&
+      !pauseChatListStreamWhileInCompactChat,
     getSinceRevision: () => lastLiveRevisionRef.current,
     onRevision: onStreamRevision,
     onStreamHealthyChange: (healthy) => {
@@ -2351,6 +2368,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     const runPoll = async () => {
       if (cancelled) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (shouldPauseChatListUpdatesInCompactChat()) return;
       if (isVoiceDialogUiOpen()) return;
       if (pollInFlightRef.current) return;
       pollInFlightRef.current = true;
@@ -2504,11 +2522,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       if (compactOpenNow) {
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
-        primeOpenChatHistoryFromGesture(resolvedItem);
-        // Same as compact list load: the open-chat gate freezes the list if it
-        // stays set before /messages/chat is on screen. The history request
-        // keeps running; the chat page paints that one page when it arrives.
         releaseOpenChatLoadingGateForCompactList();
+        abortIosCompetingReads();
+        if (!isIosTelegramMiniAppSync()) {
+          primeOpenChatHistoryFromGesture(resolvedItem);
+        }
       }
       openChat();
     },

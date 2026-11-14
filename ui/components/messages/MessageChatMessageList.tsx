@@ -39,13 +39,13 @@ import {
 import { subscribeOutgoingChatMessages, subscribeOutgoingChatMessageRemovals, removeOutgoingChatMessage } from "../../messageChatOutgoing";
 import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
 import { isIosTelegramMiniAppSync } from "../telegramWebApp";
+import { abortIosCompetingReads } from "../../telegram/iosCompetingRead";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import {
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
-  setWebHistoryPaint,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import {
   fetchChatHistoryAroundCharBudget,
@@ -5087,7 +5087,41 @@ export function MessageChatMessageList({
     historyOpenInFlightSinceRef.current = Date.now();
     void (async () => {
       const runNetworkLoad = async () => {
+        if (cancelled) return;
         try {
+          if (
+            compactPage &&
+            isIosTelegramMiniAppSync() &&
+            isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id)
+          ) {
+            const historyAnchorSpec = getOpenChatHistoryCacheAnchorSpec(chat);
+            const primeCached = getCachedChatHistory(chat.telegram_chat_id);
+            const canPaintFromCache =
+              primeCached != null &&
+              primeCached.messages.length > 0 &&
+              (isChatHistoryCacheAnchorMatch(chat.telegram_chat_id, historyAnchorSpec) ||
+                isChatHistoryCachePaintable(chat.telegram_chat_id));
+            if (!canPaintFromCache) {
+              logPageDisplay("messages_history_compact_join_stale", {
+                ...chatLogFields({
+                  chatId: chat.telegram_chat_id,
+                  peerUserId: chat.peer_user_id,
+                  title: chat.title,
+                }),
+              });
+              resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+              abortIosCompetingReads();
+            }
+          }
+          const joinPrime = isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id);
+          logPageDisplay("messages_history_network_begin", {
+            ...chatLogFields({
+              chatId: chat.telegram_chat_id,
+              peerUserId: chat.peer_user_id,
+              title: chat.title,
+            }),
+            joinPrime,
+          });
           const session = resolveChatOpenSession(chat);
           const plan = chatOpenScrollPlanFromSession(resolveChatOpenSession(chat));
           const fetchAnchor = session.displayAnchorMessageId ?? 0;
@@ -5362,31 +5396,17 @@ export function MessageChatMessageList({
           return;
         }
 
-        if (compactPage && isIosTelegramMiniAppSync()) {
-          // slide_from_right is still running at 50ms. The history API answers
-          // in ~80ms, and WKWebView drops that response for the whole life of
-          // the XHR (server 200 at 11:18:50, panel never reaches fetch_response).
-          // Send one request only after the push animation has finished.
-          await new Promise<void>((resolve) => {
-            setTimeout(resolve, 800);
-          });
-          if (cancelled) return;
-          if (isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id)) {
-            logPageDisplay("messages_history_ios_join_prime", {
-              chatId: chat.telegram_chat_id,
-            });
-          } else {
-            resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
-          }
-          logPageDisplay("messages_history_ios_settled", {
-            chatId: chat.telegram_chat_id,
-          });
-        }
+        // Same as the chat list: one fetch started in the tap gesture; the open
+        // page only joins that in-flight load (no 800ms wait, no reset that
+        // starts a second body read WKWebView drops during slide_from_right).
         await runNetworkLoad();
       } catch {
         /* runNetworkLoad handles errors */
       } finally {
         if (!cancelled && cacheHit && messagesCountRef.current > 0) {
+          setLoadingInitial(false);
+        }
+        if (cancelled && messagesCountRef.current === 0) {
           setLoadingInitial(false);
         }
       }
@@ -5400,6 +5420,14 @@ export function MessageChatMessageList({
       historyOpenInFlightSinceRef.current = 0;
       if (messagesCountRef.current === 0) {
         historyNetworkKeyRef.current = "";
+        logPageDisplay("messages_history_open_effect_cancel", {
+          ...chatLogFields({
+            chatId: chat.telegram_chat_id,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          historyKey,
+        });
       }
     };
   }, [
@@ -5416,36 +5444,25 @@ export function MessageChatMessageList({
   ]);
 
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    setWebHistoryPaint((paintedChatId, page) => {
-      if (paintedChatId !== chat.telegram_chat_id || page.messages.length === 0) return;
-      messagesCountRef.current = page.messages.length;
-      setMessages(page.messages);
-      setChatKind(page.chatKind);
-      setError(null);
-      setLoadingInitial(false);
-      setCachedChatHistory(chat.telegram_chat_id, page, { previewOnly: false });
-      logPageDisplay("messages_history_web_paint", {
-        ...chatLogFields({
-          chatId: chat.telegram_chat_id,
-          peerUserId: chat.peer_user_id,
-          title: chat.title,
-        }),
-        count: page.messages.length,
-      });
-    });
-    return () => setWebHistoryPaint(null);
-  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title]);
-
-  useEffect(() => {
     if (!compactPage || !shouldLoadHistory || !isTelegramMessagesConnected) return;
     if (messages.length > 0) return;
     const historyKey = `${chat.telegram_chat_id}:${historyLoad.generation}`;
     const timer = setTimeout(() => {
       if (messagesCountRef.current > 0) return;
-      // Same as the chat list: one request at a time. Starting another history
-      // page while the first body is still loading freezes iOS and drops the paint.
-      if (historyOpenFetchInFlightRef.current) return;
+      if (historyOpenFetchInFlightRef.current) {
+        const inFlightAgeMs = Date.now() - historyOpenInFlightSinceRef.current;
+        if (
+          isIosTelegramMiniAppSync() &&
+          inFlightAgeMs >= 2_500 &&
+          messagesCountRef.current === 0
+        ) {
+          resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
+          abortIosCompetingReads();
+          historyOpenFetchInFlightRef.current = false;
+        } else {
+          return;
+        }
+      }
       if (historyNetworkKeyRef.current !== historyKey) return;
       if (compactStallKickKeyRef.current === historyKey) return;
       compactStallKickKeyRef.current = historyKey;
