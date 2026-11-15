@@ -1,4 +1,5 @@
 import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
+import { logPageDisplay } from "./pageDisplayLog";
 
 /** Set while `MessageChatCompactScreen` is mounted — pathname can lag on mobile TMA. */
 let compactChatRouteUiOpen = false;
@@ -47,4 +48,8 @@ export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 32));
   }
+  logPageDisplay("messages_history_ios_route_wait_timeout", {
+    uiOpen: compactChatRouteUiOpen,
+    onPath: isOnMessagesChatPath(),
+  });
 }

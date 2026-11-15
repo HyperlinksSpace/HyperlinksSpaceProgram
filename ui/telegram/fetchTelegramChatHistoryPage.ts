@@ -19,16 +19,10 @@ import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageCh
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { logPageDisplay } from "../pageDisplayLog";
-import {
-  isOnMessagesChatPath,
-  waitForIosCompactHistoryFetchReady,
-} from "../compactChatRouteGate";
+import { isOnMessagesChatPath } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
-import { abortIosCompetingReads, openIosCompetingRead } from "./iosCompetingRead";
-import {
-  fetchHistoryBodyInWorker,
-  historyFetchWorkerSupported,
-} from "./historyFetchWorkerClient";
+import { openIosCompetingRead, openIosHistoryOpenRead } from "./iosCompetingRead";
+import { iosGestureHistoryBodySingle } from "./iosForegroundHistoryHttp";
 
 function isWebHistoryPlatform(): boolean {
   return Platform.OS === "web";
@@ -289,7 +283,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
 }
 
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
-const HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS = 28_000;
+const HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS = 26_000;
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
   return {
@@ -345,12 +339,15 @@ async function fetchTelegramChatHistoryPageOnce(
   aroundMessageId?: number | null,
   olderAbove?: number | null,
   newerBelow?: number | null,
-  options?: { background?: boolean },
+  options?: { background?: boolean; iosGesturePrime?: boolean },
 ): Promise<ChatHistoryPageResult> {
   const params = new URLSearchParams({
     chat_id: String(chatId),
     limit: String(limit),
   });
+  if (options?.iosGesturePrime === true) {
+    params.set("client_trace", `ios_gesture_${Date.now()}`);
+  }
   if (
     typeof beforeMessageId === "number" &&
     Number.isFinite(beforeMessageId) &&
@@ -394,22 +391,26 @@ async function fetchTelegramChatHistoryPageOnce(
     isWebHistoryPlatform() &&
     isIosTelegramMiniAppSync() &&
     options?.background !== true;
-  if (iosOpenForeground) {
-    abortIosCompetingReads();
-    // Gesture prime runs on the list host; only waits when this fetch starts on chat.
-    if (isOnMessagesChatPath()) {
-      await waitForIosCompactHistoryFetchReady();
-    }
-  }
-  // Same request as the home chat list: GET + credentials, then read the body.
-  const competing = openIosCompetingRead();
+  const iosGesturePrime = options?.iosGesturePrime === true;
   const onChatPath = isOnMessagesChatPath();
-  const iosWorkerPath = iosOpenForeground && historyFetchWorkerSupported();
+  /** WKWebView on `/messages/chat` may never finish any transport; list-path fetch works. */
+  const iosOpenRace =
+    iosOpenForeground && onChatPath && !iosGesturePrime;
+  if (iosOpenRace) {
+    logPageDisplay("messages_history_fetch_ios_chat_blocked", {
+      chatId,
+      onChatPath,
+    });
+    return emptyHistoryError("ios_chat_path_deferred");
+  }
+  const competing = iosOpenForeground
+    ? openIosHistoryOpenRead()
+    : openIosCompetingRead();
   const timer =
     options?.background === true
       ? setTimeout(() => competing.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
-      : iosOpenForeground && onChatPath && !iosWorkerPath
-        ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS)
+      : iosOpenForeground && !iosGesturePrime
+        ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS)
         : null;
   const sentAt = Date.now();
   logPageDisplay("messages_history_fetch_dispatch", {
@@ -422,40 +423,43 @@ async function fetchTelegramChatHistoryPageOnce(
         ? aroundMessageId
         : undefined,
     iosOpenForeground,
-    iosWorkerPath,
     onChatPath,
+    iosGesturePrime,
+    iosOpenRace: false,
+    iosScriptLane: false,
+    iosBodySingle: iosGesturePrime,
+    openLimit: iosGesturePrime ? limit : undefined,
   });
   try {
     logPageDisplay("messages_history_fetch_await", {
       chatId,
       background: options?.background === true,
-      iosWorkerPath,
+      iosGesturePrime,
+      iosOpenRace: false,
     });
-    let httpStatus: number;
+    let httpStatus = 0;
     let json: HistoryWireJson;
-    if (iosWorkerPath) {
-      const workerResult = await fetchHistoryBodyInWorker(
-        url,
-        HISTORY_FETCH_IOS_FOREGROUND_TIMEOUT_MS,
-      );
-      httpStatus = workerResult.status;
+    if (iosGesturePrime) {
+      const body = await iosGestureHistoryBodySingle(url, competing.signal);
+      httpStatus = body.status;
       logPageDisplay("messages_history_fetch_response", {
         chatId,
         status: httpStatus,
         elapsedMs: Date.now() - sentAt,
         background: options?.background === true,
-        worker: true,
+        transport: body.transport,
+        onChatPath,
+        iosGesturePrime: true,
       });
-      const text = workerResult.text;
       logPageDisplay("messages_history_text_hit", {
         chatId,
         status: httpStatus,
-        bytes: text.length,
+        bytes: body.text.length,
         background: options?.background === true,
-        worker: true,
+        transport: body.transport,
       });
       try {
-        json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+        json = body.text ? (JSON.parse(body.text) as HistoryWireJson) : {};
       } catch {
         json = {};
       }
@@ -473,6 +477,8 @@ async function fetchTelegramChatHistoryPageOnce(
         elapsedMs: Date.now() - sentAt,
         background: options?.background === true,
         contentLength: contentLengthRaw ?? undefined,
+        transport: "fetch",
+        onChatPath,
       });
       if (iosOpenForeground) {
         const text = await response.text();
@@ -481,6 +487,7 @@ async function fetchTelegramChatHistoryPageOnce(
           status: httpStatus,
           bytes: text.length,
           background: options?.background === true,
+          transport: "fetch",
         });
         try {
           json = text ? (JSON.parse(text) as HistoryWireJson) : {};
@@ -491,16 +498,9 @@ async function fetchTelegramChatHistoryPageOnce(
         json = (await response.json().catch(() => ({}))) as HistoryWireJson;
       }
     }
-    if (competing.signal.aborted) {
+    if (options?.background === true && competing.signal.aborted) {
       return emptyHistoryError("gateway_timeout_retry");
     }
-    logPageDisplay("messages_history_fetch_body", {
-      chatId,
-      count: Array.isArray(json.messages) ? json.messages.length : 0,
-      ok: json.ok === true,
-      elapsedMs: Date.now() - sentAt,
-      background: options?.background === true,
-    });
     if (httpStatus < 200 || httpStatus >= 300 || !json.ok) {
       return emptyHistoryError(json.error || `HTTP_${httpStatus}`);
     }
@@ -520,6 +520,15 @@ async function fetchTelegramChatHistoryPageOnce(
         if (row) rows.push(row);
       }
     }
+    const wireCount = Array.isArray(json.messages) ? json.messages.length : 0;
+    logPageDisplay("messages_history_fetch_body", {
+      chatId,
+      count: rows.length,
+      wireCount,
+      ok: json.ok === true,
+      elapsedMs: Date.now() - sentAt,
+      background: options?.background === true,
+    });
     const lastReadRaw = Number(json.last_read_outbox_message_id);
     const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
     const memberRaw = Number(json.member_count);
@@ -548,7 +557,7 @@ async function fetchTelegramChatHistoryPageOnce(
   } catch (err) {
     const aborted =
       (err instanceof DOMException && err.name === "AbortError") ||
-      competing.signal.aborted;
+      (competing.signal.aborted && options?.background === true);
     const message = err instanceof Error ? err.message : String(err);
     if (isWebHistoryPlatform()) {
       logPageDisplay("messages_history_web_fetch_error", {
@@ -605,7 +614,7 @@ export async function fetchTelegramChatHistoryPage(
   aroundMessageId?: number | null,
   olderAbove?: number | null,
   newerBelow?: number | null,
-  options?: { background?: boolean },
+  options?: { background?: boolean; iosGesturePrime?: boolean },
 ): Promise<ChatHistoryPageResult> {
   if (options?.background !== true) {
     const flightKey = foregroundHistoryFlightKey(
@@ -661,7 +670,7 @@ async function fetchTelegramChatHistoryPageBody(
   aroundMessageId?: number | null,
   olderAbove?: number | null,
   newerBelow?: number | null,
-  options?: { background?: boolean },
+  options?: { background?: boolean; iosGesturePrime?: boolean },
 ): Promise<ChatHistoryPageResult> {
   let lastResult: ChatHistoryPageResult | null = null;
   for (let attempt = 0; attempt < HISTORY_FETCH_MAX_ATTEMPTS; attempt += 1) {
@@ -746,7 +755,10 @@ export async function loadTelegramChatHistoryFirstPage(
     aroundMessageId,
     olderAbove,
     newerBelow,
-    { background },
+    {
+      background,
+      iosGesturePrime: options?.iosGesturePrime === true,
+    },
   ] as const;
   let result = await fetchTelegramChatHistoryPage(...fetchArgs);
   if (

@@ -55,7 +55,6 @@ import {
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
-  primeOpenChatHistoryFromGesture,
   releaseOpenChatLoadingGateForCompactList,
   setOpenChatFocusHold,
 } from "../messageChatHistoryPrefetch";
@@ -2523,10 +2522,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         demoteQueuedNetworkFetches();
         clearQueuedNormalNetworkFetches();
         releaseOpenChatLoadingGateForCompactList();
-        abortIosCompetingReads();
-        if (!isIosTelegramMiniAppSync()) {
-          primeOpenChatHistoryFromGesture(resolvedItem);
-        }
+        abortIosCompetingReads("compact_open_tap");
       }
       openChat();
     },
@@ -3379,6 +3375,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   useEffect(() => {
     if (!isTelegramMessagesConnected || visibleChats.length === 0) return;
     if (compactChatLayout && pathname !== "/messages/chat") return;
+    if (isIosTelegramMiniAppSync() && compactChatLayout) return;
     if (isVoiceDialogUiOpen()) return;
     // Live voice on the open chat already runs SSE/soft-poll + WebRTC — neighbor
     // history storms competed for the main thread (logs: prefetch_ok mid-freeze).

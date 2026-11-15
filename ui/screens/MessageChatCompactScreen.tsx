@@ -13,8 +13,6 @@ import { useAppStrings } from "../../locales/AppStringsContext";
 import { navigateBackOrHome } from "../navigateBackOrHome";
 import { setCompactChatRouteUiOpen } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
-import { abortIosCompetingReads } from "../telegram/iosCompetingRead";
-import { resetSharedOpenChatHistoryLoad } from "../messageChatHistoryPrefetch";
 import { layout, useColors } from "../theme";
 
 /** Narrow layout: dedicated chat route (not a fixed overlay on home). */
@@ -30,10 +28,6 @@ export function MessageChatCompactScreen() {
     setCompactChatRouteUiOpen(true);
     ensureAuthenticatedHomeHistoryLoadArmed(chat);
     if (isIosTelegramMiniAppSync()) {
-      // Drop a list-started body that never completes after route change; the
-      // chat page will issue a fresh worker read on /messages/chat.
-      abortIosCompetingReads();
-      resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
       return () => {
         setCompactChatRouteUiOpen(false);
       };

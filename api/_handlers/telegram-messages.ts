@@ -1773,6 +1773,7 @@ export async function telegramMessagesHistoryHandler(
     return finishJson(request, res, { ok: false, error: "invalid_params" }, 400);
   }
 
+  const clientTrace = url.searchParams.get("client_trace");
   const started = Date.now();
   const result = await gatewayFetchChatMessages(
     userOrRes,
@@ -1787,6 +1788,7 @@ export async function telegramMessagesHistoryHandler(
   );
   logTelegramMessagesApi("messages_history_served", {
     telegramUsername: userOrRes,
+    clientTrace: clientTrace ?? undefined,
     chatId,
     beforeMessageId,
     sinceMessageId,

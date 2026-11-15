@@ -145,6 +145,8 @@ export const MESSAGE_CHAT_MEDIA_PREFETCH_PX = 900;
 export const MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE = 12;
 /** Bottom-open tail: newest rows only (visible), not a 2N older dump. */
 export const MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL = 16;
+/** iOS compact / TMA: smallest gateway open batch — older pages on scroll-up only. */
+export const MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT = 12;
 /**
  * Older rows to keep after the visible open (scroll-up buffer).
  * Matches N so every open has a full scrollable side when history allows.

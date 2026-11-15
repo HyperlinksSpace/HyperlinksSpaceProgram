@@ -34,11 +34,20 @@ import {
   subscribeVoiceDialogUiOpen,
 } from "./components/messages/voiceDialogUiGate";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
-import { computeTelegramLayoutStartupSnapshot } from "./components/telegramWebApp";
-import { isCompactChatRouteActive } from "./compactChatRouteGate";
+import {
+  computeTelegramLayoutStartupSnapshot,
+  isIosTelegramMiniAppSync,
+} from "./components/telegramWebApp";
+import { isCompactChatRouteActive, isOnMessagesChatPath } from "./compactChatRouteGate";
 
 /** Defer preview warming while the list or an opening chat needs the gateway. */
 function shouldPauseListBackgroundPrefetch(): boolean {
+  if (
+    isIosTelegramMiniAppSync() &&
+    readAuthenticatedHomeCompactChatLayoutSync()
+  ) {
+    return true;
+  }
   if (openChatLoadingId != null) return true;
   if (isCompactChatRouteActive()) return true;
   if (readAuthenticatedHomeCompactChatLayoutSync()) return true;
@@ -51,8 +60,30 @@ function shouldPauseListBackgroundPrefetch(): boolean {
 
 /** Max visible chats we warm in the background (viewport-driven). */
 const PREFETCH_VISIBLE_MAX = 7;
+const PREFETCH_VISIBLE_MAX_IOS_COMPACT = 0;
 /** Preview rows warmed immediately when the viewport changes (visual top first). */
 const VISIBLE_PREVIEW_BATCH = 5;
+const VISIBLE_PREVIEW_BATCH_IOS_COMPACT = 0;
+
+function effectivePrefetchVisibleMax(): number {
+  if (
+    isIosTelegramMiniAppSync() &&
+    readAuthenticatedHomeCompactChatLayoutSync()
+  ) {
+    return PREFETCH_VISIBLE_MAX_IOS_COMPACT;
+  }
+  return PREFETCH_VISIBLE_MAX;
+}
+
+function effectiveVisiblePreviewBatch(): number {
+  if (
+    isIosTelegramMiniAppSync() &&
+    readAuthenticatedHomeCompactChatLayoutSync()
+  ) {
+    return VISIBLE_PREVIEW_BATCH_IOS_COMPACT;
+  }
+  return VISIBLE_PREVIEW_BATCH;
+}
 const MAX_BACKGROUND_CONCURRENT = 2;
 /** Stagger between background list prefetches (telegram-tt). */
 const TOP_CHAT_PREFETCH_INTERVAL_MS = 100;
@@ -73,6 +104,8 @@ type LoadSpec = {
   newerBelow?: number | null;
   /** Neighbor/list warming — discarded if the voice dialog opens mid-flight. */
   background?: boolean;
+  /** List-path iOS tap — keep plain fetch even after route animates to `/messages/chat`. */
+  iosGesturePrime?: boolean;
 };
 
 const sharedLoads = new Map<number, Promise<ChatHistoryPageResult>>();
@@ -115,6 +148,14 @@ function prefetchQueueSnapshot(): {
 
 export function isOpenChatFocusHoldActive(): boolean {
   return openChatFocusId != null && Date.now() < openChatFocusUntilMs;
+}
+
+export function openHistoryResultFromCache(chatId: number): ChatHistoryPageResult | null {
+  const cached = getCachedChatHistory(chatId);
+  if (cached == null || cached.messages.length === 0 || cached.previewOnly === true) {
+    return null;
+  }
+  return toPageResult(cached);
 }
 
 function toPageResult(cached: CachedChatHistoryPage): ChatHistoryPageResult {
@@ -164,8 +205,10 @@ function resolveOpenLoadSpec(
     Partial<Pick<MessageChatRowData, "last_message_telegram_id" | "last_read_inbox_message_id">>,
 ): LoadSpec {
   const session = resolveChatOpenSession(chat as MessageChatRowData);
+  const iosCompact =
+    isIosTelegramMiniAppSync() && readAuthenticatedHomeCompactChatLayoutSync();
   return {
-    warmup: true,
+    warmup: !iosCompact,
     limit: session.fetch.limit,
     previewOnly: false,
     aroundUnread: session.fetch.aroundUnread,
@@ -236,6 +279,7 @@ async function runHistoryLoad(
     olderAbove: spec.olderAbove ?? null,
     newerBelow: spec.newerBelow ?? null,
     background: spec.background === true,
+    iosGesturePrime: spec.iosGesturePrime === true,
   });
   // Neighbor prefetches that finish during Join used to parse + cache-notify on
   // the main thread beside createOffer (logs: history_prefetch_ok mid-dialog).
@@ -341,8 +385,21 @@ function startSharedLoad(
     }
   }
   if (existing) {
+    if (isFullPageSpec(spec) && sharedLoadLane.get(chatId) === "foreground") {
+      logPageDisplay("messages_history_join_await", {
+        chatId,
+        ...prefetchQueueSnapshot(),
+      });
+      return existing;
+    }
     if (isFullPageSpec(spec)) {
       return existing.then(async (prior) => {
+        if (prior.error && prior.messages.length === 0) {
+          const fromCache = openHistoryResultFromCache(chatId);
+          if (fromCache != null) {
+            return fromCache;
+          }
+        }
         if (
           prior.error &&
           !(
@@ -465,7 +522,7 @@ function enqueueBackgroundPrefetch(
     queued.splice(existingIdx, 1);
   }
 
-  if (queued.length + inFlightBackground.size >= PREFETCH_VISIBLE_MAX) {
+  if (queued.length + inFlightBackground.size >= effectivePrefetchVisibleMax()) {
     if (!options?.front) return;
     // Neighbors of the open chat: bump the oldest queued preview out.
     if (queued.length > 0) queued.pop();
@@ -489,7 +546,7 @@ export async function loadOpenChatHistoryFirstPage(
   chatId: number,
   peerUserId: number | null | undefined,
   chat?: Pick<MessageChatRowData, "telegram_chat_id" | "unread_count"> | null,
-  options?: { holdGate?: boolean },
+  options?: { holdGate?: boolean; iosGesturePrime?: boolean },
 ): Promise<ChatHistoryPageResult> {
   if (!Number.isFinite(chatId)) {
     return {
@@ -505,7 +562,10 @@ export async function loadOpenChatHistoryFirstPage(
     };
   }
 
-  const spec = resolveOpenLoadSpec(chat ?? { telegram_chat_id: chatId, unread_count: 0 });
+  const spec = {
+    ...resolveOpenLoadSpec(chat ?? { telegram_chat_id: chatId, unread_count: 0 }),
+    iosGesturePrime: options?.iosGesturePrime === true,
+  };
   const anchorSpec = toCacheAnchorSpec(spec);
   const holdGate = options?.holdGate !== false;
 
@@ -553,7 +613,53 @@ export async function loadOpenChatHistoryFirstPage(
       // Group/channel cache without member_count — refetch so the header can show
       // participants (TDLib FullInfo). Keep falling through to the shared load.
     }
-    return await startSharedLoad(chatId, peerUserId ?? null, spec);
+    if (
+      isIosTelegramMiniAppSync() &&
+      isOnMessagesChatPath() &&
+      options?.iosGesturePrime !== true &&
+      !isOpenChatHistoryForegroundInFlight(chatId)
+    ) {
+      if (isOpenChatHistoryForegroundInFlight(chatId)) {
+        return startSharedLoad(chatId, peerUserId ?? null, spec);
+      }
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        if (isOpenChatHistoryForegroundInFlight(chatId)) {
+          return startSharedLoad(chatId, peerUserId ?? null, spec);
+        }
+        const fromCache = openHistoryResultFromCache(chatId);
+        if (fromCache != null) {
+          pokeChatHistoryCacheListeners(chatId);
+          return fromCache;
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+      }
+      logPageDisplay("messages_history_ios_chat_wait_gesture_timeout", {
+        chatId,
+        ...prefetchQueueSnapshot(),
+      });
+      return {
+        messages: [],
+        chatKind: null,
+        error: "ios_chat_path_deferred",
+        hasMoreOlder: false,
+        nextBeforeMessageId: null,
+        lastReadOutboxMessageId: null,
+        lastReadInboxMessageId: null,
+        memberCount: null,
+        selfUserId: null,
+      };
+    }
+    const result = await startSharedLoad(chatId, peerUserId ?? null, spec);
+    if (result.error != null || result.messages.length === 0) {
+      const fromCache = openHistoryResultFromCache(chatId);
+      if (fromCache != null) {
+        pokeChatHistoryCacheListeners(chatId);
+        return fromCache;
+      }
+    }
+    return result;
   } finally {
     if (holdGate && openChatLoadingStaleTimer != null) {
       clearTimeout(openChatLoadingStaleTimer);
@@ -594,6 +700,19 @@ export function isOpenChatHistoryForegroundInFlight(chatId: number): boolean {
   if (!Number.isFinite(chatId)) return false;
   const id = Math.trunc(chatId);
   return sharedLoads.has(id) && sharedLoadLane.get(id) === "foreground";
+}
+
+/** Detach chat UI from a hung list-gesture body without aborting its HTTP read. */
+export function abandonIosPrimedHistoryJoin(chatId: number): void {
+  if (!Number.isFinite(chatId)) return;
+  const id = Math.trunc(chatId);
+  sharedLoads.delete(id);
+  sharedLoadLane.delete(id);
+  abandonForegroundHistoryFlightsForChat(id);
+  logPageDisplay("messages_history_compact_join_prime_timeout", {
+    chatId: id,
+    ...prefetchQueueSnapshot(),
+  });
 }
 
 /** Drop a stuck coalesced load so compact open can start a fresh foreground fetch. */
@@ -733,7 +852,7 @@ export function prefetchVisibleChatNeighbors(
 
   // Visible-first preview batch: walk visual top → bottom.
   const visualTopAtEnd = options?.visualTopAtEnd === true;
-  let previewBudget = VISIBLE_PREVIEW_BATCH;
+  let previewBudget = effectiveVisiblePreviewBatch();
   if (visualTopAtEnd) {
     for (let i = chats.length - 1; i >= 0 && previewBudget > 0; i--) {
       const chat = chats[i]!;
@@ -775,20 +894,24 @@ export function prefetchVisibleChatNeighbors(
  * UI sits on `messages_history_load_start` with nothing sent to the gateway.
  */
 export function primeOpenChatHistoryFromGesture(
-  chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id" | "unread_count">,
+  chat: Pick<MessageChatRowData, "telegram_chat_id" | "peer_user_id" | "unread_count"> &
+    Partial<
+      Pick<MessageChatRowData, "last_message_telegram_id" | "last_read_inbox_message_id">
+    >,
 ): void {
   const chatId = chat.telegram_chat_id;
   if (!Number.isFinite(chatId)) return;
-  // A reset drops the shared promise but the HTTP call keeps running. Joining
-  // the foreground load avoids a second around/tail request for the same open.
-  if (sharedLoads.has(chatId) && sharedLoadLane.get(chatId) === "foreground") {
+  const spec = {
+    ...resolveOpenLoadSpec(chat as MessageChatRowData),
+    iosGesturePrime: true,
+  };
+  if (sharedLoads.has(chatId)) {
     logPageDisplay("messages_history_gesture_prime_join", { chatId });
-    void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);
-    return;
+  } else {
+    logPageDisplay("messages_history_gesture_prime", { chatId });
   }
-  resetSharedOpenChatHistoryLoad(chatId);
-  logPageDisplay("messages_history_gesture_prime", { chatId });
-  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat);
+  // Register shared in-flight sync on the list route — chat screen only joins.
+  void startSharedLoad(chatId, chat.peer_user_id ?? null, spec);
 }
 
 /** Warm the open chat — shares the same in-flight load as {@link loadOpenChatHistoryFirstPage}. */
@@ -862,7 +985,7 @@ export function prefetchChatHistoryForList(
   const skipId = options?.skipChatId ?? null;
   for (const chat of chats) {
     if (skipId != null && chat.telegram_chat_id === skipId) continue;
-    if (queued.length + inFlightBackground.size >= PREFETCH_VISIBLE_MAX) break;
+    if (queued.length + inFlightBackground.size >= effectivePrefetchVisibleMax()) break;
     prefetchChatHistory(chat);
   }
 }

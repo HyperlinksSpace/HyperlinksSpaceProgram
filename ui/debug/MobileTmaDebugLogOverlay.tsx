@@ -9,13 +9,19 @@ import {
 } from "./appLogRingBuffer";
 
 const PANEL_WIDTH_RATIO = 0.92;
-const PANEL_HEIGHT_RATIO = 0.28;
+const PANEL_HEIGHT_RATIO = 0.32;
 const PANEL_Z_INDEX = 1_000_000;
 const PANEL_EXTRA_TOP_PX = 50;
-const MAX_FILTERED_ROWS = 48;
+const SCROLL_MAX_ROWS = 28;
+const TAIL_MAX_ROWS = 10;
 
-const DEBUG_LINE_KEEP_RE =
-  /messages_chat_row_press|messages_chat_row_web_click|messages_chat_open|messages_compact_chat|root_shell pathname=|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh|messages_history_open_supersede|messages_history_open_shared_reset|messages_history_load_start|messages_history_load_ok|messages_history_priority_prefetch_skip|messages_history_load_stale_latch|messages_history_compact_stall_kick|messages_history_compact_route_prefetch|messages_history_compact_inflight_stale|messages_history_cache_hit|messages_history_compact_route_cache_poke|messages_history_compact_route_prefetch_join|messages_history_open_load_begin|messages_history_compact_cache_replay|messages_history_compact_join_stale|messages_history_compact_stream_reload|messages_history_load_watchdog_skipped_inflight|messages_history_load_error|messages_history_fetch_dispatch|messages_history_fetch_response|messages_history_fetch_body|messages_history_gesture_prime|messages_history_network_begin|messages_history_open_effect_cancel|messages_history_ios_abandon_gesture_prime|messages_history_fetch_await|messages_history_text_hit|messages_history_ios_await_before_route|messages_history_ios_await_before_route_done|messages_history_ios_await_before_route_error/;
+/** High-signal history / open / transport — shown pinned at the bottom of the panel. */
+const CRITICAL_TAIL_RE =
+  /messages_history_(gesture_prime|join_await|fetch_|network_begin|text_hit|load_start|load_ok|load_error|web_fetch_error|prefetch_skip|ios_|compact_cache|open_xhr_retry|fetch_ios_chat_blocked)|messages_chat_open|messages_compact_chat_route/;
+
+const SCROLL_LINE_KEEP_RE =
+  /messages_chat_row_press|messages_chat_row_web_click|messages_chat_open|messages_compact_chat|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh|messages_chat_row_press_in/;
+
 const DEBUG_LINE_FALLBACK_RE = /\[page-display\] messages_/;
 
 function useDebugLogOverlayEnabled(): boolean {
@@ -36,7 +42,37 @@ function formatRowClock(at: number): string {
 }
 
 function formatLogLine(row: AppLogRingEntry): string {
-  return `${formatRowClock(row.at)} ${row.text}`;
+  const text = row.text.replace(/\s+root_shell\s+/g, " root_shell ");
+  return `${formatRowClock(row.at)} ${text}`;
+}
+
+function pickCriticalTail(entries: readonly AppLogRingEntry[]): AppLogRingEntry[] {
+  const matches: AppLogRingEntry[] = [];
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const row = entries[i]!;
+    if (!CRITICAL_TAIL_RE.test(row.text)) continue;
+    matches.push(row);
+    if (matches.length >= TAIL_MAX_ROWS) break;
+  }
+  matches.reverse();
+  return matches;
+}
+
+function pickScrollRows(entries: readonly AppLogRingEntry[]): AppLogRingEntry[] {
+  let kept = entries.filter((row) => SCROLL_LINE_KEEP_RE.test(row.text));
+  if (kept.length === 0) {
+    kept = entries.filter((row) => DEBUG_LINE_FALLBACK_RE.test(row.text));
+  }
+  if (kept.length === 0) {
+    kept = entries.slice(-20);
+  }
+  const shells = kept.filter((row) => /root_shell/.test(row.text));
+  const nonShell = kept.filter((row) => !/root_shell/.test(row.text));
+  const lastShell = shells.length > 0 ? shells[shells.length - 1]! : null;
+  const merged = lastShell != null ? [...nonShell, lastShell] : nonShell;
+  return merged.length > SCROLL_MAX_ROWS
+    ? merged.slice(merged.length - SCROLL_MAX_ROWS)
+    : merged;
 }
 
 /** Temporary TMA debug strip — remove when mobile chat navigation is fixed. */
@@ -50,8 +86,7 @@ export function MobileTmaDebugLogOverlay() {
       8,
       Math.ceil(contentSafeAreaInsetTop || 0),
       Math.ceil(safeAreaInsetTop || 0),
-    ) +
-    PANEL_EXTRA_TOP_PX;
+    ) + PANEL_EXTRA_TOP_PX;
   const logScrollRef = useRef<HTMLDivElement | null>(null);
   const [pinBottom, setPinBottom] = useState(true);
   const logStore = useSyncExternalStore(
@@ -60,21 +95,15 @@ export function MobileTmaDebugLogOverlay() {
     () => ({ revision: 0, entries: [] as const }),
   );
 
-  const filteredLogs = useMemo(() => {
-    let kept = logStore.entries.filter((row) => DEBUG_LINE_KEEP_RE.test(row.text));
-    if (kept.length === 0) {
-      kept = logStore.entries.filter((row) => DEBUG_LINE_FALLBACK_RE.test(row.text));
-    }
-    if (kept.length === 0) {
-      kept = logStore.entries.slice(-24);
-    }
-    return kept.length > MAX_FILTERED_ROWS
-      ? kept.slice(kept.length - MAX_FILTERED_ROWS)
-      : kept;
-  }, [logStore.entries]);
+  const criticalTail = useMemo(
+    () => pickCriticalTail(logStore.entries),
+    [logStore.entries],
+  );
+
+  const scrollLogs = useMemo(() => pickScrollRows(logStore.entries), [logStore.entries]);
 
   const panelWidth = Math.max(0, windowWidth * PANEL_WIDTH_RATIO);
-  const panelHeight = Math.max(120, windowHeight * PANEL_HEIGHT_RATIO);
+  const panelHeight = Math.max(140, windowHeight * PANEL_HEIGHT_RATIO);
   const panelLeft = Math.max(0, (windowWidth - panelWidth) / 2);
   const panelTop = topInsetPx;
 
@@ -83,9 +112,18 @@ export function MobileTmaDebugLogOverlay() {
     const el = logScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [logStore.revision, pinBottom]);
+  }, [logStore.revision, pinBottom, scrollLogs.length]);
 
   if (!enabled) return null;
+
+  const monoStyle = {
+    color: colors.primary,
+    fontSize: 9,
+    lineHeight: "12px",
+    fontFamily: "ui-monospace, monospace",
+    whiteSpace: "pre-wrap" as const,
+    wordBreak: "break-word" as const,
+  };
 
   const logBody =
     Platform.OS === "web"
@@ -101,22 +139,49 @@ export function MobileTmaDebugLogOverlay() {
             },
             style: {
               flex: 1,
-              minHeight: 0,
+              minHeight: 48,
               overflow: "auto",
               overflowX: "hidden",
               WebkitOverflowScrolling: "touch",
               touchAction: "pan-y",
               overscrollBehavior: "contain",
               pointerEvents: "auto",
-              color: colors.primary,
-              fontSize: 9,
-              lineHeight: "12px",
-              fontFamily: "ui-monospace, monospace",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              ...monoStyle,
+              opacity: 0.85,
             },
           },
-          filteredLogs.map((row) => createElement("div", { key: row.id }, formatLogLine(row))),
+          scrollLogs.map((row) => createElement("div", { key: `s-${row.id}` }, formatLogLine(row))),
+        )
+      : null;
+
+  const tailBody =
+    Platform.OS === "web"
+      ? createElement(
+          "div",
+          {
+            style: {
+              flexShrink: 0,
+              maxHeight: 132,
+              overflow: "hidden",
+              borderTopWidth: 1,
+              borderTopStyle: "solid",
+              borderTopColor: colors.accent,
+              paddingTop: 4,
+              marginTop: 4,
+              ...monoStyle,
+              fontWeight: 600,
+              color: colors.accent,
+            },
+          },
+          criticalTail.length === 0
+            ? createElement(
+                "div",
+                { key: "tail-empty" },
+                "— tail: waiting for history / fetch / load events —",
+              )
+            : criticalTail.map((row) =>
+                createElement("div", { key: `t-${row.id}` }, formatLogLine(row)),
+              ),
         )
       : null;
 
@@ -143,6 +208,8 @@ export function MobileTmaDebugLogOverlay() {
           paddingTop: 4,
           paddingHorizontal: 8,
           paddingBottom: 4,
+          display: "flex",
+          flexDirection: "column",
         }}
       >
         <Text
@@ -154,9 +221,13 @@ export function MobileTmaDebugLogOverlay() {
           }}
           numberOfLines={1}
         >
-          Chat debug {filteredLogs.length}/{logStore.entries.length} #{logStore.revision}
+          Chat debug scroll {scrollLogs.length} · tail {criticalTail.length} · #
+          {logStore.revision}
         </Text>
-        {logBody}
+        <View style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+          {logBody}
+          {tailBody}
+        </View>
       </View>
     </View>
   );

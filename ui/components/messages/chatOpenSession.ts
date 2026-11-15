@@ -9,12 +9,14 @@ import {
   MESSAGE_CHAT_HISTORY_OPEN_OLDER_BUFFER,
   MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
   MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
+  MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT,
   MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
   MESSAGE_CHAT_HISTORY_PAGE_SIZE,
 } from "./messageChatLayout";
 import { CHAT_HISTORY_WINDOW_N } from "./chatHistoryWindowBudget";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "../../authenticatedHomeLayoutWidth";
+import { isIosTelegramMiniAppSync } from "../telegramWebApp";
 
 /** Full bidirectional open window (2N) when one side of history is exhausted. */
 const OPEN_WINDOW_2N = CHAT_HISTORY_WINDOW_N * 2;
@@ -191,14 +193,20 @@ function compactTailOpenSession(chat: MessageChatRowData): ChatOpenSession {
 }
 
 function tailFetchFallback(): ChatOpenFetchSpec {
+  const iosMicro =
+    isIosTelegramMiniAppSync() &&
+    readAuthenticatedHomeCompactChatLayoutSync();
+  const openLimit = iosMicro
+    ? MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT
+    : MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL;
   return {
     kind: "tail",
     anchorMessageId: null,
-    olderBudgetRows: OPEN_WINDOW_2N,
+    olderBudgetRows: iosMicro ? openLimit : OPEN_WINDOW_2N,
     newerBudgetRows: 0,
-    limit: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
+    limit: openLimit,
     aroundUnread: false,
-    olderAbove: MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
+    olderAbove: openLimit,
     newerBelow: 0,
   };
 }

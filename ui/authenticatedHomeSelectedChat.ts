@@ -9,6 +9,8 @@ import {
   maybePushAuthenticatedHomeCompactChatRoute,
 } from "./navigateAuthenticatedHomeCompactChat";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
+import { isIosTelegramMiniAppSync } from "./components/telegramWebApp";
+import { primeOpenChatHistoryFromGesture } from "./messageChatHistoryPrefetch";
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_selected_chat_v1";
 
@@ -259,6 +261,9 @@ export function openAuthenticatedHomeChatHistory(
   writeStoredChat(chat);
   if (sameChatAlreadyOpen && !options?.forceReload) {
     syncHistoryLoadSnapshot();
+    if (readAuthenticatedHomeCompactChatLayoutSync() && isIosTelegramMiniAppSync()) {
+      primeOpenChatHistoryFromGesture(chat);
+    }
     emit();
     maybePushAuthenticatedHomeCompactChatRoute();
     return;
@@ -266,6 +271,9 @@ export function openAuthenticatedHomeChatHistory(
   historyLoadChatId = chat.telegram_chat_id;
   historyLoadGeneration += 1;
   syncHistoryLoadSnapshot();
+  if (readAuthenticatedHomeCompactChatLayoutSync() && isIosTelegramMiniAppSync()) {
+    primeOpenChatHistoryFromGesture(chat);
+  }
   emit();
   maybePushAuthenticatedHomeCompactChatRoute();
 }
