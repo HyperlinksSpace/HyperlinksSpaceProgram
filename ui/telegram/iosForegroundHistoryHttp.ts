@@ -1,4 +1,28 @@
 const IOS_OPEN_BODY_RACE_MS = 25_000;
+const IOS_SCRIPT_BODY_MS = 8_000;
+const IOS_GESTURE_XHR_MS = 22_000;
+
+function promiseWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  code: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(code));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 declare global {
   interface Window {
@@ -48,9 +72,11 @@ function iosOpenHistoryScriptBody(
       script.removeEventListener("error", onScriptError);
       script.remove();
     };
+    let scriptTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (fn: () => void) => {
       if (settled) return;
       settled = true;
+      if (scriptTimer != null) clearTimeout(scriptTimer);
       cleanup();
       fn();
     };
@@ -82,36 +108,68 @@ function iosOpenHistoryScriptBody(
     signal.addEventListener("abort", onAbort, { once: true });
     window.__hspHistoryDeliver = onDeliver;
     script.addEventListener("error", onScriptError, { once: true });
+    scriptTimer = setTimeout(() => {
+      finish(() => reject(new Error("ios_history_script_timeout")));
+    }, IOS_SCRIPT_BODY_MS);
     document.head.appendChild(script);
   });
 }
 
 /**
- * Single iOS gesture body: script deliver, then XHR — never parallel fetch races.
- * One gateway body at a time (WebKit + TDLib queue).
+ * iOS gesture body: XHR first (list path), then script deliver — one at a time, bounded time.
  */
 export async function iosGestureHistoryBodySingle(
   url: string,
   signal: AbortSignal,
 ): Promise<{ status: number; text: string; transport: string }> {
-  try {
-    const body = await iosOpenHistoryScriptBody(url, signal);
-    return {
-      status: body.status,
-      text: body.text,
-      transport: body.transport,
-    };
-  } catch (err) {
-    const aborted =
-      (err instanceof DOMException && err.name === "AbortError") || signal.aborted;
-    if (aborted) throw err;
+  const attempts: Array<{
+    label: string;
+    run: () => Promise<{ status: number; text: string; transport: string }>;
+  }> = [
+    {
+      label: "xhr",
+      run: async () => {
+        const xhr = await promiseWithTimeout(
+          xhrGetWithCredentials(url, signal),
+          IOS_GESTURE_XHR_MS,
+          "ios_gesture_xhr_timeout",
+        );
+        return {
+          status: xhr.status,
+          text: xhr.text,
+          transport: xhr.transport,
+        };
+      },
+    },
+    {
+      label: "script",
+      run: async () => {
+        const body = await iosOpenHistoryScriptBody(url, signal);
+        return {
+          status: body.status,
+          text: body.text,
+          transport: body.transport,
+        };
+      },
+    },
+  ];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    if (signal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    try {
+      return await attempt.run();
+    } catch (err) {
+      lastErr = err;
+      const aborted =
+        (err instanceof DOMException && err.name === "AbortError") || signal.aborted;
+      if (aborted) throw err;
+    }
   }
-  const xhr = await xhrGetWithCredentials(url, signal);
-  return {
-    status: xhr.status,
-    text: xhr.text,
-    transport: xhr.transport,
-  };
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("ios_gesture_body_exhausted");
 }
 
 /** @deprecated Parallel race — kept for experiments; prefer {@link iosGestureHistoryBodySingle}. */

@@ -5200,7 +5200,9 @@ export function MessageChatMessageList({
             (result.error === "gateway_timeout_retry" ||
               result.error === "ios_chat_path_deferred" ||
               result.error === "network_error" ||
-              result.error === "ios_gesture_body_timeout")
+              result.error === "ios_gesture_body_timeout" ||
+              result.error === "ios_gesture_xhr_timeout" ||
+              result.error === "ios_history_script_timeout")
           ) {
             resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
             logPageDisplay("messages_history_ios_open_xhr_retry", {

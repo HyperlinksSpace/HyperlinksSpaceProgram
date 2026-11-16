@@ -565,7 +565,17 @@ async function fetchTelegramChatHistoryPageOnce(
         message: aborted ? "aborted" : message,
       });
     }
-    return emptyHistoryError(aborted ? "gateway_timeout_retry" : "network_error");
+    const knownIos =
+      message === "ios_gesture_xhr_timeout" ||
+      message === "ios_history_script_timeout" ||
+      message === "ios_gesture_body_timeout";
+    return emptyHistoryError(
+      aborted
+        ? "gateway_timeout_retry"
+        : knownIos
+          ? message
+          : "network_error",
+    );
   } finally {
     if (timer != null) clearTimeout(timer);
     competing.finish();
