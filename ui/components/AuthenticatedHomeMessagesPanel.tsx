@@ -1237,7 +1237,12 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         // would still omit them and used to confirm empty.
         return;
       }
+      const archiveRevealActive =
+        archiveRevealPendingRef.current ||
+        archiveRevealRequested ||
+        getMessagesArchiveOpen();
       if (
+        !archiveRevealActive &&
         chatListScrollCatalogPartial(
           chatsCountRef.current,
           chatListTotalCountRef.current,
@@ -1249,7 +1254,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     } catch {
       /* poll / SSE will pick up archive rows */
     }
-  }, [applyChatListSync]);
+  }, [applyChatListSync, archiveRevealRequested]);
 
   const gatewayResyncInflightRef = useRef<Promise<boolean> | null>(null);
   const triggerGatewayResync = useCallback(async (reason: string) => {

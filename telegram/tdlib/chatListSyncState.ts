@@ -126,19 +126,30 @@ export function isArchiveListReady(telegramUsername: string): boolean {
 }
 
 const archiveSyncInflight = new Set<string>();
+const archiveSyncStartedAt = new Map<string, number>();
+const ARCHIVE_SYNC_STALE_MS = 180_000;
 
 export function isArchiveChatSyncInProgress(telegramUsername: string): boolean {
   return archiveSyncInflight.has(telegramUsername);
 }
 
 export function markArchiveChatSyncStart(telegramUsername: string): boolean {
-  if (archiveSyncInflight.has(telegramUsername)) return false;
+  if (archiveSyncInflight.has(telegramUsername)) {
+    const startedAt = archiveSyncStartedAt.get(telegramUsername);
+    if (startedAt != null && Date.now() - startedAt < ARCHIVE_SYNC_STALE_MS) {
+      return false;
+    }
+    archiveSyncInflight.delete(telegramUsername);
+    archiveSyncStartedAt.delete(telegramUsername);
+  }
   archiveSyncInflight.add(telegramUsername);
+  archiveSyncStartedAt.set(telegramUsername, Date.now());
   return true;
 }
 
 export function markArchiveChatSyncEnd(telegramUsername: string): void {
   archiveSyncInflight.delete(telegramUsername);
+  archiveSyncStartedAt.delete(telegramUsername);
 }
 
 export function setTier3Available(telegramUsername: string, available: boolean): void {

@@ -2135,6 +2135,17 @@ export function requestArchiveChatSync(telegramUsername: string): {
     // Stale ready from a prior empty/error pass — live cache has no archive rows.
     setArchiveListReady(telegramUsername, false);
   }
+  // TDLib position updates can merge archived dialogs before the explicit
+  // chatListArchive walk finishes (or while it is stuck). Reveal them.
+  if (archiveCount > 0) {
+    setArchiveListReady(telegramUsername, true);
+    return {
+      started: false,
+      inProgress: isArchiveChatSyncInProgress(telegramUsername),
+      ready: true,
+      archiveCount,
+    };
+  }
   const record = getActiveRecord(telegramUsername);
   const already = isArchiveChatSyncInProgress(telegramUsername);
   if (!record?.client || record.authState !== "ready") {
