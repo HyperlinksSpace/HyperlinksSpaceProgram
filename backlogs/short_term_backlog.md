@@ -1,3 +1,7 @@
+The archive of the chats is not loading
+Not all chats loading in the chats list
+Chat page on iOS
+
 Avatars on Windows Desktop
 phone telegram connect
 AI responce formatting on responce generation.
