@@ -1235,6 +1235,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         setArchiveEmptyConfirmed(false);
       }
       if (isVoiceDialogUiOpen()) return;
+      if (!archiveReady && archiveCount != null && archiveCount > 0) {
+        archiveRevealPendingRef.current = true;
+        void loadChatsRef.current({ silent: true, forceFull: true, priority: true });
+        return;
+      }
       if (!archiveReady && json.started === true) {
         // Sync just started — wait for archive rows; a main-list forceFull
         // would still omit them and used to confirm empty.
@@ -1619,6 +1624,22 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         if (scrollPageOffsetReserved && rows.length > 0) {
           scrollPageOffsetCommitted = true;
         }
+        if (
+          fromScroll &&
+          pageOffset > 0 &&
+          rows.length === 0 &&
+          syncedTotal > chatsCountRef.current
+        ) {
+          logPageDisplay("messages_chats_page_empty_grow_cache", {
+            offset: pageOffset,
+            loaded: chatsCountRef.current,
+            total: syncedTotal,
+            cached: json.chatListSync?.cachedCount ?? null,
+          });
+          queueMicrotask(() => {
+            void requestLoadMoreChats("positioned");
+          });
+        }
         if (fromScroll && rows.length > 0) {
           scheduleRankingAfterScroll = true;
         }
@@ -1997,6 +2018,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     isAuthenticated,
     isTelegramMessagesConnected,
     recoverTelegramMessagesSession,
+    requestLoadMoreChats,
     sessionTelegramMessagesConnected,
     userDisconnectedTelegramMessages,
   ]);
@@ -3548,6 +3570,13 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const tryLoadChatListCatalogFromScroll = useCallback(() => {
     if (!shouldLoadChatListCatalogFromScroll()) return;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    const behindLiveCache =
+      chatsCountRef.current < cachedChatCount &&
+      chatsCountRef.current < serverTotal;
+    if (behindLiveCache) {
+      void requestLoadMoreChats("positioned");
+      return;
+    }
     const partialCatalog = chatListScrollCatalogPartial(
       chatsCountRef.current,
       serverTotal,

@@ -7,6 +7,8 @@ let hasMore = true;
 /** Highest page index successfully applied (1-based). */
 let loadedPages = 0;
 let scrollFetchInFlight = false;
+/** Rows confirmed from the live server slice (offset + page length), not fixed 25-row pages. */
+let catalogLoadedRowCount = 0;
 let generation = 0;
 /**
  * First GET at offset 0 establishes page 1. Silent polls repeat offset 0 with new
@@ -25,6 +27,7 @@ export function resetChatListScrollPagination(): void {
   loadedPages = 0;
   scrollFetchInFlight = false;
   offset0CatalogPageCommitted = false;
+  catalogLoadedRowCount = 0;
 }
 
 export function chatListScrollPaginationGeneration(): number {
@@ -51,7 +54,7 @@ export function resolveChatListFetchOffset(options?: {
 
 /**
  * Reserve the next scroll page offset and advance the cursor immediately so
- * queued scroll loads request offset 50, 75, … instead of repeating offset 25.
+ * queued scroll loads continue after the last confirmed row (16 → 16, not 25).
  */
 export function takeChatListScrollFetchOffset(): number {
   if (loadedPages >= 1 && nextPage <= loadedPages) {
@@ -59,7 +62,7 @@ export function takeChatListScrollFetchOffset(): number {
   }
   const pageToFetch = nextPage;
   nextPage = pageToFetch + 1;
-  return Math.max(0, (pageToFetch - 1) * CHAT_LIST_API_PAGE_SIZE);
+  return Math.max(0, catalogLoadedRowCount);
 }
 
 /** Undo {@link takeChatListScrollFetchOffset} when the scroll fetch did not succeed. */
@@ -79,15 +82,15 @@ export function repairChatListPaginationFromClient(
     loadedPages = 1;
     nextPage = 2;
   }
+  catalogLoadedRowCount = Math.max(catalogLoadedRowCount, loadedChatCount);
   if (loadedPages >= 1 && nextPage <= loadedPages) {
     nextPage = loadedPages + 1;
   }
-  const loadedThrough = loadedPages * CHAT_LIST_API_PAGE_SIZE;
+  const loadedThrough = Math.max(catalogLoadedRowCount, loadedPages * CHAT_LIST_API_PAGE_SIZE);
   hasMore =
     totalCount > 0
       ? loadedThrough < totalCount
-      : loadedPages * CHAT_LIST_API_PAGE_SIZE <= loadedChatCount &&
-        loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
+      : loadedChatCount < totalCount && loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
 }
 
 /** True while scroll catalog still has unfetched pages (jettons-style paging). */
@@ -96,12 +99,12 @@ export function chatListScrollCatalogPartial(
   totalCount: number,
 ): boolean {
   if (totalCount <= 0) return hasMore && loadedPages >= 1;
-  return (
-    loadedPages >= 1 &&
-    hasMore &&
-    loadedChatCount < totalCount &&
-    loadedPages * CHAT_LIST_API_PAGE_SIZE < totalCount
+  const loadedThrough = Math.max(
+    catalogLoadedRowCount,
+    loadedPages * CHAT_LIST_API_PAGE_SIZE,
+    loadedChatCount,
   );
+  return loadedPages >= 1 && hasMore && loadedChatCount < totalCount && loadedThrough < totalCount;
 }
 
 export function chatListPaginationFullyLoaded(
@@ -147,7 +150,7 @@ export function noteChatListPageLoaded(
   // Ignore duplicate offset-0 catalog responses (metronome / SSE flush / poll).
   if (pageOffset === 0 && offset0CatalogPageCommitted) {
     if (totalCount > 0 && loadedPages >= 1) {
-      hasMore = loadedPages * CHAT_LIST_API_PAGE_SIZE < totalCount;
+      hasMore = catalogLoadedRowCount < totalCount;
     }
     return;
   }
@@ -158,6 +161,7 @@ export function noteChatListPageLoaded(
   loadedPages = Math.max(loadedPages, pageIndex);
   nextPage = Math.max(nextPage, loadedPages + 1);
   const loadedThrough = pageOffset + rowCount;
+  catalogLoadedRowCount = Math.max(catalogLoadedRowCount, loadedThrough);
   hasMore =
     totalCount <= 0
       ? rowCount >= CHAT_LIST_API_PAGE_SIZE
@@ -176,6 +180,7 @@ export function syncChatListPaginationAfterFullLoad(
   }
   loadedPages = Math.max(1, Math.ceil(rowCount / CHAT_LIST_API_PAGE_SIZE));
   nextPage = loadedPages + 1;
+  catalogLoadedRowCount = Math.max(catalogLoadedRowCount, rowCount);
   hasMore = totalCount > 0 ? rowCount < totalCount : rowCount >= CHAT_LIST_API_PAGE_SIZE;
 }
 

@@ -79,4 +79,12 @@ assert.equal(
   assert.ok(window.bottomSpacerPx >= 0);
 }
 
+resetChatListScrollPagination();
+noteChatListPageLoaded(0, 16, 80);
+assert.equal(
+  takeChatListScrollFetchOffset(),
+  16,
+  "short first paint must scroll-fetch from row 16, not page boundary 25",
+);
+
 console.log("chatListCatalogScrollLoad.test.ts ok");
