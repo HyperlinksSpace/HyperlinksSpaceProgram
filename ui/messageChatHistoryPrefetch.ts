@@ -123,6 +123,14 @@ let historyPrefetchEpoch = 0;
 let openChatLoadingId: number | null = null;
 let openChatLoadingStaleTimer: ReturnType<typeof setTimeout> | null = null;
 const OPEN_CHAT_LOADING_STALE_MS = 22_000;
+const OPEN_CHAT_LOADING_STALE_IOS_MS = 50_000;
+
+function openChatLoadingStaleMs(): number {
+  if (isIosTelegramMiniAppSync() || readAuthenticatedHomeCompactChatLayoutSync()) {
+    return OPEN_CHAT_LOADING_STALE_IOS_MS;
+  }
+  return OPEN_CHAT_LOADING_STALE_MS;
+}
 /** Selected chat — background drain stays paused for {@link OPEN_CHAT_FOCUS_HOLD_MS}. */
 let openChatFocusId: number | null = null;
 let openChatFocusUntilMs = 0;
@@ -589,11 +597,11 @@ export async function loadOpenChatHistoryFirstPage(
     openChatLoadingId = null;
     logPageDisplay("messages_history_open_loading_stale", {
       chatId,
-      staleMs: OPEN_CHAT_LOADING_STALE_MS,
+      staleMs: openChatLoadingStaleMs(),
       ...prefetchQueueSnapshot(),
     });
     scheduleBackgroundDrain();
-  }, OPEN_CHAT_LOADING_STALE_MS);
+  }, openChatLoadingStaleMs());
   try {
     const cached = getCachedChatHistory(chatId);
     if (

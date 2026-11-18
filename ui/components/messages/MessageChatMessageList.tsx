@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   ActivityIndicator,
   Platform,
@@ -46,6 +47,9 @@ import {
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
+  removeIosHistoryDomOverlay,
+  setWebHistoryPaint,
+  type ChatHistoryPageResult,
 } from "../../telegram/fetchTelegramChatHistoryPage";
 import {
   fetchChatHistoryAroundCharBudget,
@@ -3218,6 +3222,40 @@ export function MessageChatMessageList({
     [applyOlderPaginationCursor, bumpViewportSliceTick, chat.telegram_chat_id, applyLastReadInboxMessageId, historyMessageContext, mergeHistoryWithWindow, chat, pinScrollToEnd],
   );
 
+  const applyCachedHistoryPageRef = useRef(applyCachedHistoryPage);
+  applyCachedHistoryPageRef.current = applyCachedHistoryPage;
+  const webHistoryPaintChatIdRef = useRef(chat.telegram_chat_id);
+  webHistoryPaintChatIdRef.current = chat.telegram_chat_id;
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const onWebHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => {
+      if (chatId !== webHistoryPaintChatIdRef.current) return;
+      if (page.messages.length === 0) return;
+      setCachedChatHistory(chatId, page, { previewOnly: false });
+      const cached = getCachedChatHistory(chatId);
+      if (cached == null) return;
+      removeIosHistoryDomOverlay();
+      let applied = false;
+      flushSync(() => {
+        applied = applyCachedHistoryPageRef.current(cached, { replace: true }) === true;
+      });
+      if (applied) {
+        messagesCountRef.current = Math.max(messagesCountRef.current, page.messages.length);
+        logPageDisplay("messages_history_web_open_paint", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          count: page.messages.length,
+        });
+      }
+    };
+    setWebHistoryPaint(onWebHistoryPaint);
+    return () => setWebHistoryPaint(null);
+  }, [chat.peer_user_id, chat.title]);
+
   useLayoutEffect(() => {
     if (!shouldLoadHistory || Platform.OS !== "web" || messagesCountRef.current > 0) return;
     const cached = getCachedChatHistory(chat.telegram_chat_id);
@@ -5176,8 +5214,12 @@ export function MessageChatMessageList({
         try {
           const joinPrime = isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id);
           const chatId = chat.telegram_chat_id;
-          const iosCompactJoin =
-            compactPage && isIosTelegramMiniAppSync() && joinPrime;
+          const iosMobileWeb =
+            Platform.OS === "web" &&
+            typeof navigator !== "undefined" &&
+            /iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const iosCompactGesture =
+            compactPage && (isIosTelegramMiniAppSync() || iosMobileWeb);
           logPageDisplay("messages_history_network_begin", {
             ...chatLogFields({
               chatId: chat.telegram_chat_id,
@@ -5192,7 +5234,7 @@ export function MessageChatMessageList({
           const fetchAnchor = session.displayAnchorMessageId ?? 0;
           let result = await loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id, chat, {
             holdGate: !(compactPage && isIosTelegramMiniAppSync()),
-            iosGesturePrime: iosCompactJoin,
+            iosGesturePrime: iosCompactGesture || joinPrime,
           });
           if (
             compactPage &&

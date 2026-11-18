@@ -283,7 +283,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
 }
 
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
-const HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS = 26_000;
+const HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS = 45_000;
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
   return {
@@ -327,6 +327,81 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
 /** @deprecated Use {@link setWebHistoryPaint} */
 export function setIosHistoryPaint(listener: WebHistoryPaintListener | null): void {
   setWebHistoryPaint(listener);
+}
+
+function isMobileSafariWebClient(): boolean {
+  if (!isWebHistoryPlatform() || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/i.test(ua) && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+}
+
+function webOpenForegroundHistory(
+  background: boolean | undefined,
+): boolean {
+  return (
+    isWebHistoryPlatform() &&
+    optionsBackgroundFalse(background) &&
+    (isIosTelegramMiniAppSync() || isMobileSafariWebClient())
+  );
+}
+
+function optionsBackgroundFalse(background: boolean | undefined): boolean {
+  return background !== true;
+}
+
+function wireMessageLine(raw: unknown): string {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "";
+  const row = raw as Record<string, unknown>;
+  const text = typeof row.text === "string" ? row.text.trim() : "";
+  if (text) return text;
+  if (row.has_media === true || (row as { hasMedia?: boolean }).hasMedia === true) return "Media";
+  return "";
+}
+
+/** iOS WK fallback: paint rows before React resumes the fetch continuation. */
+function paintIosHistoryDomOverlay(json: HistoryWireJson): void {
+  if (typeof document === "undefined" || !document.body) return;
+  const rows = Array.isArray(json.messages) ? json.messages : [];
+  if (rows.length === 0) return;
+  let el = document.getElementById("hsp-ios-history-paint");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "hsp-ios-history-paint";
+    el.style.cssText =
+      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch;pointer-events:none";
+    document.body.appendChild(el);
+  }
+  el.replaceChildren();
+  for (const raw of rows) {
+    const lineText = wireMessageLine(raw);
+    if (!lineText) continue;
+    const line = document.createElement("div");
+    line.style.cssText =
+      "margin:6px 0;padding:8px 10px;border-radius:12px;background:#1c1c1e;white-space:pre-wrap;word-break:break-word";
+    line.textContent = lineText;
+    el.appendChild(line);
+  }
+}
+
+export function removeIosHistoryDomOverlay(): void {
+  if (typeof document === "undefined") return;
+  document.getElementById("hsp-ios-history-paint")?.remove();
+}
+
+function emitWebHistoryOpenPaint(
+  chatId: number,
+  page: ChatHistoryPageResult,
+  options?: { background?: boolean },
+): void {
+  if (options?.background === true || page.messages.length === 0) return;
+  try {
+    webHistoryPaintListener?.(chatId, page);
+  } catch {
+    /* listener owns paint errors */
+  }
+  if (page.messages.length > 0) {
+    removeIosHistoryDomOverlay();
+  }
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -387,10 +462,7 @@ async function fetchTelegramChatHistoryPageOnce(
     params.set("newer_below", String(Math.trunc(newerBelow)));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
-  const iosOpenForeground =
-    isWebHistoryPlatform() &&
-    isIosTelegramMiniAppSync() &&
-    options?.background !== true;
+  const iosOpenForeground = webOpenForegroundHistory(options?.background);
   const iosGesturePrime = options?.iosGesturePrime === true;
   const onChatPath = isOnMessagesChatPath();
   /** WKWebView on `/messages/chat` may never finish any transport; list-path fetch works. */
@@ -463,6 +535,11 @@ async function fetchTelegramChatHistoryPageOnce(
       } catch {
         json = {};
       }
+      if (json.ok === true && Array.isArray(json.messages) && json.messages.length > 0) {
+        if (isIosTelegramMiniAppSync()) {
+          paintIosHistoryDomOverlay(json);
+        }
+      }
     } else {
       const response = await fetch(url, {
         method: "GET",
@@ -494,6 +571,14 @@ async function fetchTelegramChatHistoryPageOnce(
         } catch {
           json = {};
         }
+        if (json.ok === true && Array.isArray(json.messages) && json.messages.length > 0) {
+          if (isIosTelegramMiniAppSync()) {
+            paintIosHistoryDomOverlay(json);
+          }
+        }
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
       } else {
         json = (await response.json().catch(() => ({}))) as HistoryWireJson;
       }
@@ -553,6 +638,13 @@ async function fetchTelegramChatHistoryPageOnce(
         Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
       selfUserId,
     };
+    emitWebHistoryOpenPaint(chatId, page, options);
+    logPageDisplay("messages_history_web_open_paint_emit", {
+      chatId,
+      count: page.messages.length,
+      background: options?.background === true,
+      iosGesturePrime: options?.iosGesturePrime === true,
+    });
     return page;
   } catch (err) {
     const aborted =
