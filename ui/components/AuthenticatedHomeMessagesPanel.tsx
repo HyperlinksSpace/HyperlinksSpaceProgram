@@ -1113,6 +1113,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   const applyChatListSync = useCallback((status: ChatListSyncStatus | null | undefined) => {
     if (!status) return;
+    if (status.inProgress === true) {
+      setGatewayWarming(true);
+    }
     setChatListSync((prev) => {
       const merged: ChatListSyncStatus = prev ? { ...prev, ...status } : status;
       const holdingOrderedReseed =
@@ -1340,6 +1343,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     fromScroll?: boolean;
     rankingRefreshPage?: number;
   }) => {
+    const sessionLinkedForFetch =
+      sessionTelegramMessagesConnected === true && !userDisconnectedTelegramMessages;
     if (!isAuthenticated || !isTelegramMessagesConnected) {
       if (!isAuthenticated) {
         setChats([]);
@@ -1352,22 +1357,31 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         setChats([]);
         setEmptyListConfirmed(false);
         setListBootstrapPending(false);
-      } else {
+      } else if (sessionLinkedForFetch) {
         setListBootstrapPending(true);
-        if (sessionTelegramMessagesConnected === true && !recoverChatsInFlightRef.current) {
+        setGatewayWarming(true);
+        if (!recoverChatsInFlightRef.current) {
           recoverChatsInFlightRef.current = true;
           void recoverTelegramMessagesSession()
             .then((ok) => {
-              if (ok) void loadChatsRef.current({ silent: false, forceFull: true });
+              if (ok) {
+                void loadChatsRef.current({
+                  silent: options?.silent ?? true,
+                  forceFull: options?.forceFull,
+                  priority: options?.priority ?? true,
+                  allowAvatarResync: options?.allowAvatarResync,
+                });
+              }
             })
             .finally(() => {
               recoverChatsInFlightRef.current = false;
             });
         }
+      } else {
+        setListBootstrapPending(false);
       }
       setError(null);
       setLoading(false);
-      setGatewayWarming(false);
       return;
     }
     if (shouldPauseChatListUpdatesInCompactChat()) {
@@ -2293,37 +2307,43 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const triggerGatewayResyncRef = useRef(triggerGatewayResync);
   triggerGatewayResyncRef.current = triggerGatewayResync;
   const initialBootstrapEpochRef = useRef(0);
+  const mtprotoConnectedForBootstrapRef = useRef(false);
+  const sessionLinkedForChatList =
+    sessionTelegramMessagesConnected === true && !userDisconnectedTelegramMessages;
+  const chatListBootstrapEligible =
+    authReady && (isTelegramMessagesConnected || sessionLinkedForChatList);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!chatListBootstrapEligible) return;
     lastGatewayResyncRef.current = 0;
     pollCountRef.current = 0;
-    if (isTelegramMessagesConnected) {
-      setGatewayWarming(true);
-      setListBootstrapPending(true);
-      setInitialChatListRevealed(false);
-      awaitingOrderedReseedRef.current = false;
-      setChatListTotalCount(0);
-      chatListTotalCountRef.current = 0;
-      setChatListFetchingMore(false);
-      resetChatListScrollPagination();
-    } else {
-      setListBootstrapPending(false);
-      setGatewayWarming(false);
-      setInitialChatListRevealed(false);
-      awaitingOrderedReseedRef.current = false;
+    const mtprotoJustConnected =
+      isTelegramMessagesConnected && !mtprotoConnectedForBootstrapRef.current;
+    mtprotoConnectedForBootstrapRef.current = isTelegramMessagesConnected;
+    setListBootstrapPending(true);
+    setGatewayWarming(true);
+    if (mtprotoJustConnected || !initialChatListRevealedRef.current) {
+      if (mtprotoJustConnected) {
+        setInitialChatListRevealed(false);
+        awaitingOrderedReseedRef.current = false;
+        setChatListTotalCount(0);
+        chatListTotalCountRef.current = 0;
+        setChatListFetchingMore(false);
+        resetChatListScrollPagination();
+      }
     }
     let cancelled = false;
     let paintPollTimer: ReturnType<typeof setTimeout> | null = null;
     const bootstrapEpoch = ++initialBootstrapEpochRef.current;
 
     const paintPoll = async () => {
-      if (cancelled || !isTelegramMessagesConnected) return;
+      if (cancelled) return;
+      if (!isTelegramMessagesConnected && !sessionLinkedForChatList) return;
       if (isVoiceDialogUiOpen()) {
         deferredSilentChatLoadRef.current = true;
         return;
       }
-      await loadChatsRef.current({ silent: true });
+      await loadChatsRef.current({ silent: true, priority: true });
       if (cancelled) return;
       if (initialChatListRevealedRef.current) {
         setListBootstrapPending(false);
@@ -2336,10 +2356,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       }, initialChatListRevealedRef.current ? 250 : 150);
     };
 
+    // Poll and paint in parallel with swap/chart — do not serially await the
+    // first fetch before starting the fast paint loop or an optional resync.
+    void paintPoll();
+
     void (async () => {
       // Poll once before resync — server restore may already have stableTopReady.
       // Eager resync wipes that cache and forces another ~30s TDLib walk in TMA.
-      await loadChatsRef.current({ silent: true });
+      await loadChatsRef.current({ silent: true, priority: true });
       if (cancelled) return;
       if (initialChatListRevealedRef.current) {
         setListBootstrapPending(false);
@@ -2348,24 +2372,35 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const syncAfterPoll = getChatListSyncStatus();
       const alreadySeeded =
         syncAfterPoll?.stableTopReady === true && chatsCountRef.current > 0;
-      if (!alreadySeeded && bootstrapEpoch === initialBootstrapEpochRef.current) {
+      const orderedTopSyncing =
+        syncAfterPoll?.inProgress === true ||
+        (syncAfterPoll?.stableTopReady !== true &&
+          (syncAfterPoll?.cachedCount ?? 0) > 0);
+      if (
+        !alreadySeeded &&
+        !orderedTopSyncing &&
+        bootstrapEpoch === initialBootstrapEpochRef.current
+      ) {
         void triggerGatewayResyncRef.current("initial_mount");
       }
       if (initialChatListRevealedRef.current) {
         setListBootstrapPending(false);
-        return;
       }
-      void paintPoll();
     })();
 
     return () => {
       cancelled = true;
       if (paintPollTimer != null) clearTimeout(paintPollTimer);
     };
-  }, [authReady, isTelegramMessagesConnected]);
+  }, [
+    authReady,
+    chatListBootstrapEligible,
+    isTelegramMessagesConnected,
+    sessionLinkedForChatList,
+  ]);
 
   useEffect(() => {
-    if (!authReady || !isTelegramMessagesConnected) return;
+    if (!chatListBootstrapEligible || !isTelegramMessagesConnected) return;
 
     let cancelled = false;
 
@@ -2441,7 +2476,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         document.removeEventListener("visibilitychange", onVisibilityChange);
       }
     };
-  }, [authReady, isTelegramMessagesConnected, loadChats]);
+  }, [chatListBootstrapEligible, isTelegramMessagesConnected, loadChats]);
 
   const handleChatPress = useCallback(
     (
