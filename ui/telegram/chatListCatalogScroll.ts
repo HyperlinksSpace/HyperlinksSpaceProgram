@@ -1,8 +1,7 @@
-import { CHAT_LIST_API_PAGE_SIZE } from "../hooks/useChatListViewport";
 import {
   chatListScrollCatalogPartial,
   chatListScrollHasMore,
-  getChatListLoadedPages,
+  getCatalogLoadedRowCount,
   repairChatListPaginationFromClient,
 } from "./chatListScrollPagination";
 
@@ -28,7 +27,10 @@ export function requestChatListCatalogNextPage(
   options?: { allowAvatarResync?: boolean },
 ): boolean {
   repairChatListPaginationFromClient(loadedChatCount, serverTotal);
-  const loadedThrough = getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE;
+  const loadedThrough = Math.max(
+    getCatalogLoadedRowCount(),
+    loadedChatCount,
+  );
   if (serverTotal > 0 && loadedThrough >= serverTotal) return false;
   if (!chatListScrollHasMore()) return false;
   if (!scrollPageLoader) return false;

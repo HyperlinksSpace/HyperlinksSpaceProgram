@@ -88,6 +88,7 @@ import {
   rollbackChatListScrollFetchReservation,
   chatListScrollHasMore,
   endChatListScrollPageFetch,
+  getCatalogLoadedRowCount,
   getChatListLoadedPages,
   isChatListScrollPageFetchInFlight,
   noteChatListPageLoaded,
@@ -1156,34 +1157,31 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const cached = json.chatListSync?.cachedCount ?? 0;
       const grew = cached > chatsCountRef.current;
       const stillPaging = json.chatListSync?.inProgress === true || json.started === true;
+      const serverTotal = Math.max(chatListTotalCountRef.current, cached);
       if (json.chatListSync?.cachedCount != null) {
-        const nextTotal = Math.max(
-          chatListTotalCountRef.current,
-          json.chatListSync.cachedCount,
-        );
-        chatListTotalCountRef.current = nextTotal;
-        setChatListTotalCount(nextTotal);
+        chatListTotalCountRef.current = serverTotal;
+        setChatListTotalCount(serverTotal);
       }
-      if ((grew || stillPaging) && !isVoiceDialogUiOpen()) {
+      const catalogPartial = chatListScrollCatalogPartial(
+        chatsCountRef.current,
+        serverTotal,
+      );
+      const shouldPullScrollSlice =
+        !isVoiceDialogUiOpen() &&
+        catalogPartial &&
+        chatListScrollHasMore();
+      if ((grew || stillPaging || shouldPullScrollSlice) && !isVoiceDialogUiOpen()) {
         logPageDisplay("messages_chats_gateway_page_ready", {
           tier,
           cached: json.chatListSync?.cachedCount ?? null,
           loaded: chatsCountRef.current,
           grew,
           stillPaging,
+          catalogPartial,
         });
-        repairChatListPaginationFromClient(
-          chatsCountRef.current,
-          Math.max(chatListTotalCountRef.current, cached),
-        );
-        if (
-          chatListScrollHasMore() &&
-          chatListScrollCatalogPartial(
-            chatsCountRef.current,
-            Math.max(chatListTotalCountRef.current, cached),
-          )
-        ) {
-          requestChatListCatalogNextPage(chatsCountRef.current, Math.max(chatListTotalCountRef.current, cached), {
+        repairChatListPaginationFromClient(chatsCountRef.current, serverTotal);
+        if (shouldPullScrollSlice) {
+          requestChatListCatalogNextPage(chatsCountRef.current, serverTotal, {
             allowAvatarResync: true,
           });
         } else if (grew) {
@@ -1636,8 +1634,11 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
             total: syncedTotal,
             cached: json.chatListSync?.cachedCount ?? null,
           });
-          queueMicrotask(() => {
-            void requestLoadMoreChats("positioned");
+          queueMicrotask(async () => {
+            await requestLoadMoreChats("positioned");
+            requestChatListCatalogNextPage(chatsCountRef.current, syncedTotal, {
+              allowAvatarResync: true,
+            });
           });
         }
         if (fromScroll && rows.length > 0) {
@@ -3025,7 +3026,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       const catalogScrollHasMore =
         catalogPartial ||
         (serverTotal > 0 &&
-          getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE < serverTotal &&
+          getCatalogLoadedRowCount() < serverTotal &&
           chatListScrollHasMore());
       if (
         catalogScrollHasMore &&
@@ -3212,7 +3213,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     const scrollHasMore =
       partial ||
       (serverTotal > 0 &&
-        getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE < serverTotal &&
+        getCatalogLoadedRowCount() < serverTotal &&
         chatListScrollHasMore());
     const tailLoading =
       scrollHasMore && (chatListFetchingMore || isChatListScrollPageFetchInFlight());
@@ -3383,7 +3384,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const listBehindCache = chats.length < cachedChatCount;
   const hasMoreChatPages =
     chatListTotalCount > 0 &&
-    getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE < chatListTotalCount &&
+    getCatalogLoadedRowCount() < chatListTotalCount &&
     chatListScrollHasMore();
   const needsPositionedPage = !positionedComplete || (listBehindCache && syncInProgress);
   const needsTier3Page = positionedComplete && !listBehindCache && tier3Available;
@@ -3574,7 +3575,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
       chatsCountRef.current < cachedChatCount &&
       chatsCountRef.current < serverTotal;
     if (behindLiveCache) {
-      void requestLoadMoreChats("positioned");
+      requestChatListNextPage();
       return;
     }
     const partialCatalog = chatListScrollCatalogPartial(

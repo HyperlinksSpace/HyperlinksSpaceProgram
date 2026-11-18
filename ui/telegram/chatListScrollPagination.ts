@@ -38,6 +38,11 @@ export function getChatListLoadedPages(): number {
   return loadedPages;
 }
 
+/** Confirmed rows from the server slice cursor (not fixed 25-row page math). */
+export function getCatalogLoadedRowCount(): number {
+  return catalogLoadedRowCount;
+}
+
 export function chatListScrollHasMore(): boolean {
   return hasMore;
 }
@@ -143,6 +148,8 @@ export function noteChatListPageLoaded(
 ): void {
   if (rowCount <= 0) {
     if (pageOffset === 0) {
+      hasMore = false;
+    } else if (totalCount > 0 && pageOffset >= totalCount) {
       hasMore = false;
     }
     return;
