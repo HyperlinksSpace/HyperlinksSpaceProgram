@@ -51,7 +51,6 @@ import {
 import { useResolvedPathname } from "../useResolvedPathname";
 import { shouldPauseChatListUpdatesInCompactChat } from "../compactChatRouteGate";
 import {
-  isOpenChatFocusHoldActive,
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
@@ -3497,7 +3496,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   const requestChatListNextPage = useCallback(() => {
     if (listSearchActive) return;
     if (isVoiceDialogUiOpen()) return;
-    if (isOpenChatFocusHoldActive() && !compactChatLayout) return;
     if (archiveRevealPendingRef.current) return;
     if (chatListFetchBusyRef.current || chatListFetchingMore) {
       queueChatListScrollPageFetch();
@@ -3524,7 +3522,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (listSearchActive || searchListReplacesMain) return false;
     if (!initialChatListRevealed) return false;
     if (isVoiceDialogUiOpen() || archiveRevealPendingRef.current) return false;
-    if (isOpenChatFocusHoldActive() && !compactChatLayout) return false;
     const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
     if (serverTotal <= 0 && !chatListScrollHasMore()) return false;
     const partialCatalog = chatListScrollCatalogPartial(
@@ -3611,8 +3608,23 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (canExpandChatListReveal) {
       expandChatListReveal();
     }
+    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
+    const partialCatalog = chatListScrollCatalogPartial(
+      chatsCountRef.current,
+      serverTotal,
+    );
+    if (partialCatalog || chatListScrollHasMore()) {
+      requestChatListNextPage();
+    }
     tryLoadChatListCatalogFromScroll();
-  }, [canExpandChatListReveal, expandChatListReveal, tryLoadChatListCatalogFromScroll]);
+  }, [
+    cachedChatCount,
+    canExpandChatListReveal,
+    chatListTotalCount,
+    expandChatListReveal,
+    requestChatListNextPage,
+    tryLoadChatListCatalogFromScroll,
+  ]);
 
   useEffect(() => {
     tryLoadChatListCatalogFromScroll();

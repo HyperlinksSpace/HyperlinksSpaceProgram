@@ -67,7 +67,11 @@ export function takeChatListScrollFetchOffset(): number {
   }
   const pageToFetch = nextPage;
   nextPage = pageToFetch + 1;
-  return Math.max(0, catalogLoadedRowCount);
+  const offset = Math.max(0, catalogLoadedRowCount);
+  if (loadedPages >= 1 && offset <= 0) {
+    return Math.max(0, (loadedPages - 1) * CHAT_LIST_API_PAGE_SIZE);
+  }
+  return offset;
 }
 
 /** Undo {@link takeChatListScrollFetchOffset} when the scroll fetch did not succeed. */
@@ -91,11 +95,15 @@ export function repairChatListPaginationFromClient(
   if (loadedPages >= 1 && nextPage <= loadedPages) {
     nextPage = loadedPages + 1;
   }
-  const loadedThrough = Math.max(catalogLoadedRowCount, loadedPages * CHAT_LIST_API_PAGE_SIZE);
+  const loadedThrough = Math.max(
+    catalogLoadedRowCount,
+    loadedPages * CHAT_LIST_API_PAGE_SIZE,
+    loadedChatCount,
+  );
   hasMore =
     totalCount > 0
       ? loadedThrough < totalCount
-      : loadedChatCount < totalCount && loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
+      : loadedChatCount >= CHAT_LIST_API_PAGE_SIZE;
 }
 
 /** True while scroll catalog still has unfetched pages (jettons-style paging). */
@@ -117,10 +125,12 @@ export function chatListPaginationFullyLoaded(
   totalCount: number,
 ): boolean {
   if (totalCount <= 0) return !hasMore;
-  return (
-    loadedChatCount >= totalCount ||
-    getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE >= totalCount
+  const loadedThrough = Math.max(
+    catalogLoadedRowCount,
+    loadedChatCount,
+    getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE,
   );
+  return loadedThrough >= totalCount;
 }
 
 export function beginChatListScrollPageFetch(): boolean {
