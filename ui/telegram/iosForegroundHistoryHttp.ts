@@ -116,8 +116,72 @@ function iosOpenHistoryScriptBody(
 }
 
 /**
- * iOS gesture body: XHR first (list path), then script deliver — one at a time, bounded time.
+ * Foreground open on iOS — one transport at a time (no parallel `fetch`, which can wedge WK).
+ * Chat route: script deliver first; list/gesture tap: XHR then script.
  */
+export async function iosOpenHistoryBody(
+  url: string,
+  signal: AbortSignal,
+  options?: { preferScriptFirst?: boolean },
+): Promise<{ status: number; text: string; transport: string }> {
+  const xhrMs =
+    options?.preferScriptFirst === true ? 12_000 : IOS_GESTURE_XHR_MS;
+  const xhrAttempt: {
+    label: string;
+    run: () => Promise<{ status: number; text: string; transport: string }>;
+  } = {
+    label: "xhr",
+    run: async () => {
+      const xhr = await promiseWithTimeout(
+        xhrGetWithCredentials(url, signal),
+        xhrMs,
+        "ios_gesture_xhr_timeout",
+      );
+      return {
+        status: xhr.status,
+        text: xhr.text,
+        transport: xhr.transport,
+      };
+    },
+  };
+  const scriptAttempt: {
+    label: string;
+    run: () => Promise<{ status: number; text: string; transport: string }>;
+  } = {
+    label: "script",
+    run: async () => {
+      const body = await iosOpenHistoryScriptBody(url, signal);
+      return {
+        status: body.status,
+        text: body.text,
+        transport: body.transport,
+      };
+    },
+  };
+  const attempts =
+    options?.preferScriptFirst === true
+      ? [scriptAttempt, xhrAttempt]
+      : [xhrAttempt, scriptAttempt];
+  let lastErr: unknown;
+  for (const attempt of attempts) {
+    if (signal.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
+    try {
+      return await attempt.run();
+    } catch (err) {
+      lastErr = err;
+      const aborted =
+        (err instanceof DOMException && err.name === "AbortError") || signal.aborted;
+      if (aborted) throw err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("ios_gesture_body_exhausted");
+}
+
+/** @deprecated Use {@link iosOpenHistoryBody}. */
 export async function iosGestureHistoryBodySingle(
   url: string,
   signal: AbortSignal,
@@ -307,6 +371,23 @@ export function raceIosOpenHistoryBody(
       finish(() => reject(new Error("ios_open_body_timeout")));
     }, IOS_OPEN_BODY_RACE_MS);
   });
+}
+
+const IOS_OPEN_HISTORY_HARD_CAP_MS = 15_000;
+
+/**
+ * Never let open-history await hang past UI watchdog — cap the sequential body read.
+ */
+export function iosOpenHistoryBodyWithHardCap(
+  url: string,
+  signal: AbortSignal,
+  options?: { preferScriptFirst?: boolean },
+): Promise<{ status: number; text: string; transport: string }> {
+  return promiseWithTimeout(
+    iosOpenHistoryBody(url, signal, options),
+    IOS_OPEN_HISTORY_HARD_CAP_MS,
+    "ios_open_body_timeout",
+  );
 }
 
 /** iOS TMA: WKWebView often never resolves `fetch` on `/messages/chat`; XHR does. */

@@ -19,10 +19,13 @@ import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageCh
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { logPageDisplay } from "../pageDisplayLog";
-import { isOnMessagesChatPath } from "../compactChatRouteGate";
+import {
+  isCompactChatRouteActive,
+  isOnMessagesChatPath,
+} from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { openIosCompetingRead, openIosHistoryOpenRead } from "./iosCompetingRead";
-import { raceIosOpenHistoryBody } from "./iosForegroundHistoryHttp";
+import { iosOpenHistoryBodyWithHardCap } from "./iosForegroundHistoryHttp";
 
 function isWebHistoryPlatform(): boolean {
   return Platform.OS === "web";
@@ -278,6 +281,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
     error === "ios_history_script_timeout" ||
     error === "ios_gesture_body_timeout" ||
     error === "ios_open_body_timeout" ||
+    error === "ios_gesture_body_exhausted" ||
     error === "not_found" ||
     /chat not found/i.test(error)
   ) {
@@ -498,7 +502,7 @@ async function fetchTelegramChatHistoryPageOnce(
     iosGesturePrime,
     iosOpenRace: iosUseRaceBody,
     iosScriptLane: iosUseRaceBody,
-    iosBodySingle: false,
+    iosBodySingle: iosUseRaceBody,
     openLimit: iosUseRaceBody ? limit : undefined,
   });
   try {
@@ -512,7 +516,9 @@ async function fetchTelegramChatHistoryPageOnce(
     let httpStatus = 0;
     let json: HistoryWireJson;
     if (iosUseRaceBody) {
-      const body = await raceIosOpenHistoryBody(url, competing.signal);
+      const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
+        preferScriptFirst: onChatPath || isCompactChatRouteActive(),
+      });
       httpStatus = body.status;
       logPageDisplay("messages_history_fetch_response", {
         chatId,
@@ -649,7 +655,8 @@ async function fetchTelegramChatHistoryPageOnce(
   } catch (err) {
     const aborted =
       (err instanceof DOMException && err.name === "AbortError") ||
-      (competing.signal.aborted && options?.background === true);
+      (competing.signal.aborted &&
+        (options?.background === true || iosUseRaceBody));
     const message = err instanceof Error ? err.message : String(err);
     if (isWebHistoryPlatform()) {
       logPageDisplay("messages_history_web_fetch_error", {
@@ -660,7 +667,9 @@ async function fetchTelegramChatHistoryPageOnce(
     const knownIos =
       message === "ios_gesture_xhr_timeout" ||
       message === "ios_history_script_timeout" ||
-      message === "ios_gesture_body_timeout";
+      message === "ios_gesture_body_timeout" ||
+      message === "ios_open_body_timeout" ||
+      message === "ios_gesture_body_exhausted";
     return emptyHistoryError(
       aborted
         ? "gateway_timeout_retry"

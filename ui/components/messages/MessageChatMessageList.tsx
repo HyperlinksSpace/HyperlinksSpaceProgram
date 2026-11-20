@@ -45,6 +45,7 @@ import { isIosTelegramMiniAppSync } from "../telegramWebApp";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
 import {
+  abandonForegroundHistoryFlightsForChat,
   fetchTelegramChatHistoryPage,
   fetchTelegramChatHistorySince,
   isTransientHistoryFetchError,
@@ -52,6 +53,7 @@ import {
   setWebHistoryPaint,
   type ChatHistoryPageResult,
 } from "../../telegram/fetchTelegramChatHistoryPage";
+import { abortIosHistoryOpenReads } from "../../telegram/iosCompetingRead";
 import {
   fetchChatHistoryAroundCharBudget,
   fetchChatHistoryAroundUnreadCharBudget,
@@ -5724,6 +5726,17 @@ export function MessageChatMessageList({
         watchdogKey,
         inFlightAgeMs,
       });
+      if (
+        compactPage &&
+        Platform.OS === "web" &&
+        (isIosTelegramMiniAppSync() ||
+          (typeof navigator !== "undefined" &&
+            /iPhone|iPad|iPod/i.test(navigator.userAgent)))
+      ) {
+        abortIosHistoryOpenReads("open_watchdog");
+        abandonForegroundHistoryFlightsForChat(chatId);
+        resetSharedOpenChatHistoryLoad(chatId);
+      }
       setError("gateway_timeout_retry");
       setLoadingInitial(false);
     }, timeoutMs);
