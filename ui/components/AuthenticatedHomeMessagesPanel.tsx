@@ -3191,6 +3191,14 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
 
   useEffect(() => {
     return subscribeChatListScrollMetrics(() => {
+      const metrics = getChatListScrollMetrics();
+      if (metrics.layoutH > 0 && metrics.contentH > 0) {
+        const nearBottom =
+          metrics.scrollY + metrics.layoutH >= metrics.contentH - 240;
+        if (!nearBottom) {
+          chatListAtBottomRef.current = false;
+        }
+      }
       if (chatListScrollRafRef.current != null) return;
       chatListScrollRafRef.current = requestAnimationFrame(() => {
         chatListScrollRafRef.current = null;
@@ -3608,23 +3616,8 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     if (canExpandChatListReveal) {
       expandChatListReveal();
     }
-    const serverTotal = Math.max(chatListTotalCount, cachedChatCount);
-    const partialCatalog = chatListScrollCatalogPartial(
-      chatsCountRef.current,
-      serverTotal,
-    );
-    if (partialCatalog || chatListScrollHasMore()) {
-      requestChatListNextPage();
-    }
     tryLoadChatListCatalogFromScroll();
-  }, [
-    cachedChatCount,
-    canExpandChatListReveal,
-    chatListTotalCount,
-    expandChatListReveal,
-    requestChatListNextPage,
-    tryLoadChatListCatalogFromScroll,
-  ]);
+  }, [canExpandChatListReveal, expandChatListReveal, tryLoadChatListCatalogFromScroll]);
 
   useEffect(() => {
     tryLoadChatListCatalogFromScroll();

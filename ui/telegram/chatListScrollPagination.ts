@@ -67,11 +67,7 @@ export function takeChatListScrollFetchOffset(): number {
   }
   const pageToFetch = nextPage;
   nextPage = pageToFetch + 1;
-  const offset = Math.max(0, catalogLoadedRowCount);
-  if (loadedPages >= 1 && offset <= 0) {
-    return Math.max(0, (loadedPages - 1) * CHAT_LIST_API_PAGE_SIZE);
-  }
-  return offset;
+  return Math.max(0, catalogLoadedRowCount);
 }
 
 /** Undo {@link takeChatListScrollFetchOffset} when the scroll fetch did not succeed. */
@@ -95,11 +91,7 @@ export function repairChatListPaginationFromClient(
   if (loadedPages >= 1 && nextPage <= loadedPages) {
     nextPage = loadedPages + 1;
   }
-  const loadedThrough = Math.max(
-    catalogLoadedRowCount,
-    loadedPages * CHAT_LIST_API_PAGE_SIZE,
-    loadedChatCount,
-  );
+  const loadedThrough = Math.max(catalogLoadedRowCount, loadedChatCount);
   hasMore =
     totalCount > 0
       ? loadedThrough < totalCount
@@ -112,11 +104,7 @@ export function chatListScrollCatalogPartial(
   totalCount: number,
 ): boolean {
   if (totalCount <= 0) return hasMore && loadedPages >= 1;
-  const loadedThrough = Math.max(
-    catalogLoadedRowCount,
-    loadedPages * CHAT_LIST_API_PAGE_SIZE,
-    loadedChatCount,
-  );
+  const loadedThrough = Math.max(catalogLoadedRowCount, loadedChatCount);
   return loadedPages >= 1 && hasMore && loadedChatCount < totalCount && loadedThrough < totalCount;
 }
 
@@ -125,11 +113,7 @@ export function chatListPaginationFullyLoaded(
   totalCount: number,
 ): boolean {
   if (totalCount <= 0) return !hasMore;
-  const loadedThrough = Math.max(
-    catalogLoadedRowCount,
-    loadedChatCount,
-    getChatListLoadedPages() * CHAT_LIST_API_PAGE_SIZE,
-  );
+  const loadedThrough = Math.max(catalogLoadedRowCount, loadedChatCount);
   return loadedThrough >= totalCount;
 }
 
