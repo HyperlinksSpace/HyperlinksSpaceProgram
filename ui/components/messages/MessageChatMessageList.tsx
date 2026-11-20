@@ -40,6 +40,7 @@ import {
 } from "../../messageChatScrollCache";
 import { subscribeOutgoingChatMessages, subscribeOutgoingChatMessageRemovals, removeOutgoingChatMessage } from "../../messageChatOutgoing";
 import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
+import { isOnMessagesChatPath } from "../../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../telegramWebApp";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -5219,7 +5220,8 @@ export function MessageChatMessageList({
             typeof navigator !== "undefined" &&
             /iPhone|iPad|iPod/i.test(navigator.userAgent);
           const iosCompactGesture =
-            compactPage && (isIosTelegramMiniAppSync() || iosMobileWeb);
+            (compactPage || isOnMessagesChatPath()) &&
+            (isIosTelegramMiniAppSync() || iosMobileWeb);
           logPageDisplay("messages_history_network_begin", {
             ...chatLogFields({
               chatId: chat.telegram_chat_id,
@@ -5279,6 +5281,9 @@ export function MessageChatMessageList({
               chat.telegram_chat_id,
               chat.peer_user_id,
               chat,
+              iosCompactGesture
+                ? { holdGate: false, iosGesturePrime: true }
+                : undefined,
             );
           }
           if (cancelled) {

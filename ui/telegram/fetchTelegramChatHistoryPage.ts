@@ -470,25 +470,17 @@ async function fetchTelegramChatHistoryPageOnce(
   const iosOpenForeground = webOpenForegroundHistory(options?.background);
   const iosGesturePrime = options?.iosGesturePrime === true;
   const onChatPath = isOnMessagesChatPath();
-  /** WKWebView on `/messages/chat` may never finish any transport; list-path fetch works. */
-  const iosOpenRace =
-    iosOpenForeground && onChatPath && !iosGesturePrime;
-  if (iosOpenRace) {
-    logPageDisplay("messages_history_fetch_ios_chat_blocked", {
-      chatId,
-      onChatPath,
-    });
-    return emptyHistoryError("ios_chat_path_deferred");
-  }
+  /** WKWebView on `/messages/chat` often never completes plain `fetch`; race body always. */
+  const iosUseRaceBody = iosOpenForeground && (iosGesturePrime || onChatPath);
   const competing = iosOpenForeground
     ? openIosHistoryOpenRead()
     : openIosCompetingRead();
   const timer =
     options?.background === true
       ? setTimeout(() => competing.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
-      : iosGesturePrime && iosOpenForeground
+      : iosUseRaceBody && iosOpenForeground
         ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS)
-        : iosOpenForeground && !iosGesturePrime
+        : iosOpenForeground && !iosUseRaceBody
           ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS)
           : null;
   const sentAt = Date.now();
@@ -504,21 +496,22 @@ async function fetchTelegramChatHistoryPageOnce(
     iosOpenForeground,
     onChatPath,
     iosGesturePrime,
-    iosOpenRace: iosGesturePrime,
-    iosScriptLane: iosGesturePrime,
+    iosOpenRace: iosUseRaceBody,
+    iosScriptLane: iosUseRaceBody,
     iosBodySingle: false,
-    openLimit: iosGesturePrime ? limit : undefined,
+    openLimit: iosUseRaceBody ? limit : undefined,
   });
   try {
     logPageDisplay("messages_history_fetch_await", {
       chatId,
       background: options?.background === true,
       iosGesturePrime,
-      iosOpenRace: false,
+      iosOpenRace: iosUseRaceBody,
+      onChatPath,
     });
     let httpStatus = 0;
     let json: HistoryWireJson;
-    if (iosGesturePrime) {
+    if (iosUseRaceBody) {
       const body = await raceIosOpenHistoryBody(url, competing.signal);
       httpStatus = body.status;
       logPageDisplay("messages_history_fetch_response", {

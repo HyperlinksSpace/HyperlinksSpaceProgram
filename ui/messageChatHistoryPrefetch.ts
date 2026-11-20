@@ -663,42 +663,28 @@ export async function loadOpenChatHistoryFirstPage(
       // participants (TDLib FullInfo). Keep falling through to the shared load.
     }
     if (
-      isIosTelegramMiniAppSync() &&
+      iosOpenHistoryJoinNeedsGuard() &&
       isOnMessagesChatPath() &&
-      options?.iosGesturePrime !== true &&
-      !isOpenChatHistoryForegroundInFlight(chatId)
+      options?.iosGesturePrime !== true
     ) {
       if (isOpenChatHistoryForegroundInFlight(chatId)) {
+        if (iosOpenHistoryJoinNeedsGuard()) {
+          const existing = sharedLoads.get(chatId);
+          if (existing) {
+            return awaitIosJoinForegroundLoad(chatId, existing, peerUserId ?? null, spec);
+          }
+        }
         return startSharedLoad(chatId, peerUserId ?? null, spec);
       }
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        if (isOpenChatHistoryForegroundInFlight(chatId)) {
-          return startSharedLoad(chatId, peerUserId ?? null, spec);
-        }
-        const fromCache = openHistoryResultFromCache(chatId);
-        if (fromCache != null) {
-          pokeChatHistoryCacheListeners(chatId);
-          return fromCache;
-        }
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 50);
-        });
+      const fromCache = openHistoryResultFromCache(chatId);
+      if (fromCache != null) {
+        pokeChatHistoryCacheListeners(chatId);
+        return fromCache;
       }
-      logPageDisplay("messages_history_ios_chat_wait_gesture_timeout", {
-        chatId,
-        ...prefetchQueueSnapshot(),
+      return startSharedLoad(chatId, peerUserId ?? null, {
+        ...spec,
+        iosGesturePrime: true,
       });
-      return {
-        messages: [],
-        chatKind: null,
-        error: "ios_chat_path_deferred",
-        hasMoreOlder: false,
-        nextBeforeMessageId: null,
-        lastReadOutboxMessageId: null,
-        lastReadInboxMessageId: null,
-        memberCount: null,
-        selfUserId: null,
-      };
     }
     const result = await startSharedLoad(chatId, peerUserId ?? null, spec);
     if (result.error != null || result.messages.length === 0) {
@@ -1016,7 +1002,12 @@ export function prefetchChatHistoryPriority(
     });
   }
   logPageDisplay("messages_history_open_load_begin", { chatId });
-  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat).then(
+  const iosOnChatRoute =
+    isCompactChatRouteActive() && iosOpenHistoryJoinNeedsGuard();
+  void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat, {
+    holdGate: false,
+    ...(iosOnChatRoute ? { iosGesturePrime: true } : {}),
+  }).then(
     (page) => {
       if (!page.error && page.messages.length > 0) {
         pokeChatHistoryCacheListeners(chatId);
