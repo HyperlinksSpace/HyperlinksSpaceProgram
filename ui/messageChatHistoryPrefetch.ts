@@ -366,6 +366,44 @@ async function runHistoryLoad(
   return result;
 }
 
+const IOS_JOIN_PRIME_WAIT_MS = 12_000;
+
+function iosOpenHistoryJoinNeedsGuard(): boolean {
+  if (typeof navigator === "undefined") return isIosTelegramMiniAppSync();
+  const ua = navigator.userAgent;
+  return isIosTelegramMiniAppSync() || /iPhone|iPad|iPod/i.test(ua);
+}
+
+async function awaitIosJoinForegroundLoad(
+  chatId: number,
+  existing: Promise<ChatHistoryPageResult>,
+  peerUserId: number | null,
+  spec: LoadSpec,
+): Promise<ChatHistoryPageResult> {
+  let existingSettled = false;
+  const raced = await Promise.race([
+    existing.then((result) => {
+      existingSettled = true;
+      return result;
+    }),
+    new Promise<"timeout">((resolve) => {
+      setTimeout(() => {
+        if (!existingSettled) resolve("timeout");
+      }, IOS_JOIN_PRIME_WAIT_MS);
+    }),
+  ]);
+  if (raced !== "timeout") {
+    return raced;
+  }
+  resetSharedOpenChatHistoryLoad(chatId);
+  logPageDisplay("messages_history_ios_join_prime_timeout", {
+    chatId,
+    waitMs: IOS_JOIN_PRIME_WAIT_MS,
+    ...prefetchQueueSnapshot(),
+  });
+  return startSharedLoad(chatId, peerUserId, { ...spec, iosGesturePrime: true });
+}
+
 function startSharedLoad(
   chatId: number,
   peerUserId: number | null,
@@ -398,6 +436,9 @@ function startSharedLoad(
         chatId,
         ...prefetchQueueSnapshot(),
       });
+      if (iosOpenHistoryJoinNeedsGuard()) {
+        return awaitIosJoinForegroundLoad(chatId, existing, peerUserId, spec);
+      }
       return existing;
     }
     if (isFullPageSpec(spec)) {

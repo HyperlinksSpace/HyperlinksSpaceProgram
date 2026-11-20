@@ -229,7 +229,7 @@ const OLDER_EMPTY_SOFT_FAIL_BUDGET = 3;
 const OLDER_EMPTY_SOFT_FAIL_COOLDOWN_MS = 1200;
 /** Absolute cap: never leave the open-chat spinner forever if a fetch chain stalls. */
 const HISTORY_OPEN_LOAD_WATCHDOG_MS = 45_000;
-const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 45_000;
+const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 20_000;
 /** telegram-tt FAB_THRESHOLD — hide scroll-down when within this distance of bottom (read chats). */
 const FAB_VISIBILITY_THRESHOLD_PX = 50;
 /** telegram-tt NOTCH_THRESHOLD — unread chats hide FAB only at exact bottom. */
@@ -5238,13 +5238,14 @@ export function MessageChatMessageList({
           });
           if (
             compactPage &&
-            isIosTelegramMiniAppSync() &&
+            (isIosTelegramMiniAppSync() || iosMobileWeb) &&
             (result.error === "gateway_timeout_retry" ||
               result.error === "ios_chat_path_deferred" ||
               result.error === "network_error" ||
               result.error === "ios_gesture_body_timeout" ||
               result.error === "ios_gesture_xhr_timeout" ||
-              result.error === "ios_history_script_timeout")
+              result.error === "ios_history_script_timeout" ||
+              result.error === "ios_open_body_timeout")
           ) {
             resetSharedOpenChatHistoryLoad(chat.telegram_chat_id);
             logPageDisplay("messages_history_ios_open_xhr_retry", {
