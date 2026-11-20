@@ -39,6 +39,7 @@ import {
   isIosTelegramMiniAppSync,
 } from "./components/telegramWebApp";
 import { isCompactChatRouteActive, isOnMessagesChatPath } from "./compactChatRouteGate";
+import { abortIosHistoryOpenReads } from "./telegram/iosCompetingRead";
 
 /** Defer preview warming while the list or an opening chat needs the gateway. */
 function shouldPauseListBackgroundPrefetch(): boolean {
@@ -366,7 +367,7 @@ async function runHistoryLoad(
   return result;
 }
 
-const IOS_JOIN_PRIME_WAIT_MS = 12_000;
+const IOS_JOIN_PRIME_WAIT_MS = 5_000;
 
 function iosOpenHistoryJoinNeedsGuard(): boolean {
   if (typeof navigator === "undefined") return isIosTelegramMiniAppSync();
@@ -396,6 +397,7 @@ async function awaitIosJoinForegroundLoad(
     return raced;
   }
   resetSharedOpenChatHistoryLoad(chatId);
+  abortIosHistoryOpenReads("ios_join_prime_timeout");
   logPageDisplay("messages_history_ios_join_prime_timeout", {
     chatId,
     waitMs: IOS_JOIN_PRIME_WAIT_MS,
@@ -744,6 +746,7 @@ export function abandonIosPrimedHistoryJoin(chatId: number): void {
   sharedLoads.delete(id);
   sharedLoadLane.delete(id);
   abandonForegroundHistoryFlightsForChat(id);
+  abortIosHistoryOpenReads("detach_gesture_join");
   logPageDisplay("messages_history_compact_join_prime_timeout", {
     chatId: id,
     ...prefetchQueueSnapshot(),
@@ -757,6 +760,7 @@ export function resetSharedOpenChatHistoryLoad(chatId: number): void {
   sharedLoads.delete(id);
   sharedLoadLane.delete(id);
   abandonForegroundHistoryFlightsForChat(id);
+  abortIosHistoryOpenReads("shared_open_reset");
   if (openChatLoadingId === id) {
     openChatLoadingId = null;
     if (openChatLoadingStaleTimer != null) {

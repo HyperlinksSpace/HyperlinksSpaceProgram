@@ -373,7 +373,7 @@ export function raceIosOpenHistoryBody(
   });
 }
 
-const IOS_OPEN_HISTORY_HARD_CAP_MS = 15_000;
+const IOS_OPEN_HISTORY_HARD_CAP_MS = 12_000;
 
 /**
  * Never let open-history await hang past UI watchdog — cap the sequential body read.
