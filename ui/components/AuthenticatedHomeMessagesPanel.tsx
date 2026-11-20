@@ -131,7 +131,6 @@ import {
 } from "./messages/chatListScrollMetrics";
 import {
   CHAT_LIST_VIRTUALIZE_MIN_ROWS,
-  chatListCatalogPhantomRowCount,
   chatListCatalogTailWithinPrefetch,
   resolveChatListTier,
   resolveChatListVirtualWindow,
@@ -1064,8 +1063,6 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
   } | null>(null);
   const chatListAppendRestoreAnchorRef = useRef<HspScrollAnchor | null>(null);
   const chatListVirtualWindowRef = useRef<ReturnType<typeof resolveChatListVirtualWindow> | null>(null);
-  /** While parked on the catalog tail, never shrink virtual row count — phantom/tail toggles were flipping endIndex ±1. */
-  const chatListVirtualTotalBottomPinRef = useRef<number | null>(null);
   const loadChatsRef = useRef<
     (options?: {
       allowAvatarResync?: boolean;
@@ -3027,9 +3024,31 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         (serverTotal > 0 &&
           getCatalogLoadedRowCount() < serverTotal &&
           chatListScrollHasMore());
+      const metrics = getChatListScrollMetrics();
+      const layoutH =
+        metrics.layoutH > 0 ? metrics.layoutH : Math.max(480, metrics.layoutH);
+      const listShellTop =
+        chatListShellTopInsetPx(wideListChrome) + (metrics.contentTopInsetPx ?? 0);
+      const rowStride = chatListRowStridePx(wideListChrome);
+      const nearCatalogTail =
+        catalogScrollHasMore &&
+        mainSortedChats.length > 0 &&
+        layoutH > 0 &&
+        chatListCatalogTailWithinPrefetch(
+          items.length,
+          mainSortedChats.length,
+          { scrollY: metrics.scrollY, layoutH },
+          {
+            rowStridePx: rowStride,
+            contentTopInsetPx: listShellTop,
+            tailLeadRows: 0,
+          },
+        );
       if (
         catalogScrollHasMore &&
-        (chatListFetchingMore || isChatListScrollPageFetchInFlight())
+        (chatListFetchingMore ||
+          isChatListScrollPageFetchInFlight() ||
+          nearCatalogTail)
       ) {
         items.push({ kind: "catalogLoading", key: "catalog-loading-tail" });
       }
@@ -3138,6 +3157,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     archiveSortedChats,
     cachedChatCount,
     chatListFetchingMore,
+    chatListScrollTick,
     chatListTotalCount,
     chatListSync?.archiveListReady,
     collapsedSearchSections,
@@ -3224,16 +3244,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         chatListScrollHasMore());
     const tailLoading =
       scrollHasMore && (chatListFetchingMore || isChatListScrollPageFetchInFlight());
-    const basePhantomRows =
-      scrollHasMore
-        ? chatListCatalogPhantomRowCount(loadedChatCount, serverTotal)
-        : 0;
-    // While a page is in flight, ensure at least one virtual row past the loaded tail
-    // (loader). Never *replace* the prefetch runway with that single row — collapsing
-    // totalCount during fetch destabilizes maxScrollY, the virtual window (start/end flip),
-    // and remounts visible rows (avatar flashes in logs).
-    const phantomRows = Math.max(basePhantomRows, tailLoading ? 1 : 0);
-    return { phantomRows, tailLoading, scrollHasMore };
+    return { phantomRows: 0, tailLoading, scrollHasMore };
   }, [
     archiveOpen,
     cachedChatCount,
@@ -3243,50 +3254,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     mainSortedChats.length,
     searchListReplacesMain,
   ]);
-  const chatListVirtualTotalCountRaw =
-    revealedDisplayListItems.length + catalogScrollExtent.phantomRows;
-  const chatListVirtualTotalCount = useMemo(() => {
-    if (searchListReplacesMain || listSearchActive || archiveOpen) {
-      chatListVirtualTotalBottomPinRef.current = null;
-      return chatListVirtualTotalCountRaw;
-    }
-    const layoutH = chatListEffectiveLayoutH;
-    if (layoutH <= 0 || chatListVirtualTotalCountRaw <= 0) {
-      chatListVirtualTotalBottomPinRef.current = null;
-      return chatListVirtualTotalCountRaw;
-    }
-    const contentTopInsetPx =
-      chatListShellTopInset + (chatListScrollMetrics.contentTopInsetPx ?? 0);
-    const totalHeight =
-      contentTopInsetPx + chatListVirtualTotalCountRaw * chatListRowStride;
-    const maxScrollY = Math.max(0, totalHeight - layoutH);
-    const tailSlackPx = chatListRowStride + 4;
-    const atCatalogTail =
-      maxScrollY <= 0
-        ? chatListScrollMetrics.scrollY <= tailSlackPx
-        : chatListScrollMetrics.scrollY >= maxScrollY - tailSlackPx;
-    if (!atCatalogTail) {
-      chatListVirtualTotalBottomPinRef.current = null;
-      return chatListVirtualTotalCountRaw;
-    }
-    const pinned = chatListVirtualTotalBottomPinRef.current;
-    const next =
-      pinned == null
-        ? chatListVirtualTotalCountRaw
-        : Math.max(chatListVirtualTotalCountRaw, pinned);
-    chatListVirtualTotalBottomPinRef.current = next;
-    return next;
-  }, [
-    archiveOpen,
-    chatListEffectiveLayoutH,
-    chatListRowStride,
-    chatListScrollMetrics.contentTopInsetPx,
-    chatListScrollMetrics.scrollY,
-    chatListShellTopInset,
-    chatListVirtualTotalCountRaw,
-    listSearchActive,
-    searchListReplacesMain,
-  ]);
+  const chatListVirtualTotalCount = displayListItems.length;
   const chatListVirtualWindow = useMemo(() => {
     if (searchListReplacesMain) {
       return {
@@ -3544,7 +3512,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     const listShellTop =
       chatListShellTopInset + (metrics.contentTopInsetPx ?? 0);
     const tailWithinPrefetch = chatListCatalogTailWithinPrefetch(
-      chatListVirtualTotalCount,
+      displayListItems.length,
       mainSortedChats.length,
       { scrollY: metrics.scrollY, layoutH },
       {
@@ -3565,9 +3533,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
     chatListEffectiveLayoutH,
     chatListRowStride,
     chatListShellTopInset,
+    displayListItems.length,
     mainSortedChats.length,
     chatListTotalCount,
-    chatListVirtualTotalCount,
     initialChatListRevealed,
     listSearchActive,
     searchListReplacesMain,

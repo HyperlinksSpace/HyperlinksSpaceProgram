@@ -37,8 +37,11 @@ assert.equal(
 );
 
 {
-  const phantom = chatListCatalogPhantomRowCount(88, 485);
-  assert.ok(phantom >= 25, "partial catalog should reserve phantom tail rows for prefetch");
+  assert.equal(
+    chatListCatalogPhantomRowCount(88, 485),
+    0,
+    "catalog tail is one loader row in the list, not phantom runway spacers",
+  );
   assert.equal(chatListCatalogPhantomRowCount(485, 485), 0);
 }
 

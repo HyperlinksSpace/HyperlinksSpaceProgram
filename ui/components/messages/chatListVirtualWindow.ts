@@ -1,8 +1,4 @@
-import {
-  LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS,
-  LIST_SCROLL_PAGE_SIZE,
-  LIST_SCROLL_PREFETCH_LEAD_ROWS,
-} from "../../listScrollPageSize";
+import { LIST_SCROLL_CATALOG_TAIL_LEAD_ROWS } from "../../listScrollPageSize";
 import type { MessageChatRowData } from "./MessageChatRow";
 import { MESSAGE_ROW_HEIGHT_PX } from "./messageListLayout";
 
@@ -83,15 +79,12 @@ export function isChatListVirtualizationActive(count: number): boolean {
  * TDLib `loadChats` / Desktop `preloadRowsData`: prefetch when the viewport bottom
  * approaches the catalog tail in scroll space (not only when a DOM sentinel intersects).
  */
-/** Extra virtual rows below the loaded tail so prefetch fires before the last chat row. */
+/** Catalog tail uses a real loader row in the list — not spacer-only phantom runway rows. */
 export function chatListCatalogPhantomRowCount(
-  loadedChatCount: number,
-  serverTotalCount: number,
+  _loadedChatCount: number,
+  _serverTotalCount: number,
 ): number {
-  if (serverTotalCount <= 0 || loadedChatCount >= serverTotalCount) return 0;
-  const remaining = serverTotalCount - loadedChatCount;
-  const lead = Math.max(LIST_SCROLL_PREFETCH_LEAD_ROWS, LIST_SCROLL_PAGE_SIZE);
-  return Math.min(remaining, lead);
+  return 0;
 }
 
 /**
