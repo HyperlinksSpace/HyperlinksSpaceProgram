@@ -41,10 +41,7 @@ import {
 } from "../../messageChatScrollCache";
 import { subscribeOutgoingChatMessages, subscribeOutgoingChatMessageRemovals, removeOutgoingChatMessage } from "../../messageChatOutgoing";
 import { readAuthenticatedHomeLayoutWidthPx } from "../../authenticatedHomeLayoutWidth";
-import {
-  isCompactChatRouteActive,
-  isOnMessagesChatPath,
-} from "../../compactChatRouteGate";
+import { isOnMessagesChatPath } from "../../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../telegramWebApp";
 import { layout, type ThemeColors } from "../../theme";
 import { useTelegramMessagesConnection } from "../../telegram/TelegramMessagesConnectionContext";
@@ -5219,7 +5216,7 @@ export function MessageChatMessageList({
         }
         let networkFailed = false;
         try {
-          let joinPrime = isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id);
+          const joinPrime = isOpenChatHistoryForegroundInFlight(chat.telegram_chat_id);
           const chatId = chat.telegram_chat_id;
           const iosMobileWeb =
             Platform.OS === "web" &&
@@ -5228,23 +5225,6 @@ export function MessageChatMessageList({
           const iosCompactGesture =
             (compactPage || isOnMessagesChatPath()) &&
             (isIosTelegramMiniAppSync() || iosMobileWeb);
-          if (
-            iosCompactGesture &&
-            joinPrime &&
-            (compactPage ||
-              isOnMessagesChatPath() ||
-              isCompactChatRouteActive())
-          ) {
-            abandonIosPrimedHistoryJoin(chat.telegram_chat_id);
-            logPageDisplay("messages_history_ios_detach_gesture_join", {
-              ...chatLogFields({
-                chatId,
-                peerUserId: chat.peer_user_id,
-                title: chat.title,
-              }),
-            });
-            joinPrime = false;
-          }
           logPageDisplay("messages_history_network_begin", {
             ...chatLogFields({
               chatId: chat.telegram_chat_id,

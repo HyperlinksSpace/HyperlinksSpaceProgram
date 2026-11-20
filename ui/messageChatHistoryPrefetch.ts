@@ -337,6 +337,10 @@ async function runHistoryLoad(
       ...prefetchQueueSnapshot(),
     });
   } else if (result.error) {
+  const logErrorEvent =
+      isForegroundOpenSpec(spec) && !spec.previewOnly && spec.background !== true
+        ? "messages_history_open_load_error"
+        : "messages_history_prefetch_skip";
     const shouldFallbackFromAroundUnread =
       spec.aroundUnread &&
       !spec.previewOnly &&
@@ -353,7 +357,7 @@ async function runHistoryLoad(
       };
       return runHistoryLoad(chatId, peerUserId, fallback);
     }
-    logPageDisplay("messages_history_prefetch_skip", {
+    logPageDisplay(logErrorEvent, {
       chatId,
       error: result.error,
       elapsedMs: Date.now() - started,

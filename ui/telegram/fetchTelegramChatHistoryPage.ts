@@ -22,6 +22,7 @@ import { logPageDisplay } from "../pageDisplayLog";
 import {
   isCompactChatRouteActive,
   isOnMessagesChatPath,
+  waitForIosCompactHistoryFetchReady,
 } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { openIosCompetingRead, openIosHistoryOpenRead } from "./iosCompetingRead";
@@ -513,11 +514,25 @@ async function fetchTelegramChatHistoryPageOnce(
       iosOpenRace: iosUseRaceBody,
       onChatPath,
     });
+    if (
+      iosUseRaceBody &&
+      isIosTelegramMiniAppSync() &&
+      !onChatPath &&
+      !isCompactChatRouteActive()
+    ) {
+      await waitForIosCompactHistoryFetchReady();
+      logPageDisplay("messages_history_ios_compact_route_ready", {
+        chatId,
+        onChatPath: isOnMessagesChatPath(),
+        uiOpen: isCompactChatRouteActive(),
+      });
+    }
     let httpStatus = 0;
     let json: HistoryWireJson;
     if (iosUseRaceBody) {
       const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
-        preferScriptFirst: onChatPath || isCompactChatRouteActive(),
+        preferScriptFirst:
+          isOnMessagesChatPath() || isCompactChatRouteActive(),
       });
       httpStatus = body.status;
       logPageDisplay("messages_history_fetch_response", {
