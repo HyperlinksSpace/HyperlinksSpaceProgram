@@ -3245,6 +3245,8 @@ export function MessageChatMessageList({
       });
       if (applied) {
         messagesCountRef.current = Math.max(messagesCountRef.current, page.messages.length);
+        setLoadingInitial(false);
+        setError(null);
         logPageDisplay("messages_history_web_open_paint", {
           ...chatLogFields({
             chatId,

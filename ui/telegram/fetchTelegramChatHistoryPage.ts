@@ -16,6 +16,7 @@ import {
   resolveHistoryMessageIsOutgoing,
 } from "../components/messages/messageChatHistoryTypes";
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
+import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -25,7 +26,11 @@ import {
   waitForIosCompactHistoryFetchReady,
 } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
-import { openIosCompetingRead, openIosHistoryOpenRead } from "./iosCompetingRead";
+import {
+  abortIosCompetingReads,
+  openIosCompetingRead,
+  openIosHistoryOpenRead,
+} from "./iosCompetingRead";
 import { iosOpenHistoryBodyWithHardCap } from "./iosForegroundHistoryHttp";
 
 function isWebHistoryPlatform(): boolean {
@@ -398,6 +403,82 @@ export function removeIosHistoryDomOverlay(): void {
   document.getElementById("hsp-ios-history-paint")?.remove();
 }
 
+function historyPageFromWire(
+  json: HistoryWireJson,
+  peerUserId: number | null | undefined,
+): ChatHistoryPageResult {
+  const rows: MessageChatHistoryItem[] = [];
+  const selfUserRaw = Number(json.self_user_id);
+  const selfUserId =
+    Number.isFinite(selfUserRaw) && selfUserRaw > 0
+      ? safeTelegramUserIdForLog(selfUserRaw) ?? null
+      : null;
+  if (Array.isArray(json.messages)) {
+    for (const raw of json.messages) {
+      const row = normalizeHistoryMessage(raw, peerUserId, selfUserId);
+      if (row) rows.push(row);
+    }
+  }
+  const lastReadRaw = Number(json.last_read_outbox_message_id);
+  const lastReadInboxRaw = Number(json.last_read_inbox_message_id);
+  const memberRaw = Number(json.member_count);
+  return {
+    messages: rows,
+    chatKind: normalizeChatKind(json.chat_kind),
+    error: null,
+    hasMoreOlder: Boolean(json.has_more_older),
+    nextBeforeMessageId:
+      typeof json.next_before_message_id === "number" &&
+      Number.isFinite(json.next_before_message_id) &&
+      json.next_before_message_id > 0
+        ? json.next_before_message_id
+        : null,
+    lastReadOutboxMessageId:
+      Number.isFinite(lastReadRaw) && lastReadRaw > 0 ? lastReadRaw : null,
+    lastReadInboxMessageId:
+      Number.isFinite(lastReadInboxRaw) && lastReadInboxRaw > 0
+        ? lastReadInboxRaw
+        : null,
+    memberCount:
+      Number.isFinite(memberRaw) && memberRaw > 0 ? Math.trunc(memberRaw) : null,
+    selfUserId,
+  };
+}
+
+/**
+ * iOS TMA (697e66c): read `response.text()` on this turn, paint DOM + React listener
+ * before WKWebView resumes the async continuation (otherwise stuck at fetch_await).
+ */
+async function loadHistoryViaText(
+  url: string,
+  chatId: number,
+): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
+  abortIosCompetingReads("history_open_text");
+  const response = await fetch(url, { method: "GET", credentials: "include" });
+  const text = await response.text();
+  let json: HistoryWireJson = {};
+  try {
+    json = text ? (JSON.parse(text) as HistoryWireJson) : {};
+  } catch {
+    json = {};
+  }
+  const count = Array.isArray(json.messages) ? json.messages.length : 0;
+  if (json.ok === true && count > 0) {
+    paintIosHistoryDomOverlay(json);
+  }
+  logPageDisplay("messages_history_text_hit", {
+    chatId,
+    status: response.status,
+    bytes: text.length,
+    count,
+    transport: "fetch_text",
+  });
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  return { status: response.status, bytes: text.length, json };
+}
+
 function emitWebHistoryOpenPaint(
   chatId: number,
   page: ChatHistoryPageResult,
@@ -472,21 +553,55 @@ async function fetchTelegramChatHistoryPageOnce(
     params.set("newer_below", String(Math.trunc(newerBelow)));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
+  return runQueuedNetworkFetch(
+    () => executeFetchTelegramChatHistoryPageOnce(url, chatId, limit, peerUserId, options, {
+      beforeMessageId,
+      sinceMessageId,
+      aroundUnread,
+      aroundMessageId,
+    }),
+    { priority: options?.background === true ? "normal" : "critical" },
+  );
+}
+
+type FetchOnceCtx = {
+  beforeMessageId?: number | null;
+  sinceMessageId?: number | null;
+  aroundUnread: boolean;
+  aroundMessageId?: number | null;
+};
+
+async function executeFetchTelegramChatHistoryPageOnce(
+  url: string,
+  chatId: number,
+  limit: number,
+  peerUserId: number | null | undefined,
+  options: { background?: boolean; iosGesturePrime?: boolean } | undefined,
+  ctx: FetchOnceCtx,
+): Promise<ChatHistoryPageResult> {
+  const { beforeMessageId, sinceMessageId, aroundUnread, aroundMessageId } = ctx;
+  const iosTmaOpenForeground =
+    isIosTelegramMiniAppSync() && options?.background !== true;
   const iosOpenForeground = webOpenForegroundHistory(options?.background);
   const iosGesturePrime = options?.iosGesturePrime === true;
   const onChatPath = isOnMessagesChatPath();
-  /** WKWebView on `/messages/chat` often never completes plain `fetch`; race body always. */
-  const iosUseRaceBody = iosOpenForeground && (iosGesturePrime || onChatPath);
-  const competing = iosOpenForeground
-    ? openIosHistoryOpenRead()
-    : openIosCompetingRead();
+  /** Mobile Safari only — TMA uses {@link loadHistoryViaText} (697e66c). */
+  const iosUseRaceBody =
+    !iosTmaOpenForeground &&
+    iosOpenForeground &&
+    (iosGesturePrime || onChatPath);
+  const competing = iosTmaOpenForeground
+    ? null
+    : iosOpenForeground
+      ? openIosHistoryOpenRead()
+      : openIosCompetingRead();
   const timer =
     options?.background === true
-      ? setTimeout(() => competing.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
+      ? setTimeout(() => competing?.abort(), HISTORY_FETCH_BACKGROUND_TIMEOUT_MS)
       : iosUseRaceBody && iosOpenForeground
-        ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS)
+        ? setTimeout(() => competing?.abort(), HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS)
         : iosOpenForeground && !iosUseRaceBody
-          ? setTimeout(() => competing.abort(), HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS)
+          ? setTimeout(() => competing?.abort(), HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS)
           : null;
   const sentAt = Date.now();
   logPageDisplay("messages_history_fetch_dispatch", {
@@ -501,6 +616,7 @@ async function fetchTelegramChatHistoryPageOnce(
     iosOpenForeground,
     onChatPath,
     iosGesturePrime,
+    iosTmaSync: iosTmaOpenForeground,
     iosOpenRace: iosUseRaceBody,
     iosScriptLane: iosUseRaceBody,
     iosBodySingle: iosUseRaceBody,
@@ -511,12 +627,12 @@ async function fetchTelegramChatHistoryPageOnce(
       chatId,
       background: options?.background === true,
       iosGesturePrime,
-      iosOpenRace: iosUseRaceBody,
+      iosOpenRace: iosUseRaceBody || iosTmaOpenForeground,
       onChatPath,
+      iosTmaSync: iosTmaOpenForeground,
     });
     if (
       iosUseRaceBody &&
-      isIosTelegramMiniAppSync() &&
       !onChatPath &&
       !isCompactChatRouteActive()
     ) {
@@ -529,8 +645,35 @@ async function fetchTelegramChatHistoryPageOnce(
     }
     let httpStatus = 0;
     let json: HistoryWireJson;
-    if (iosUseRaceBody) {
-      const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
+    if (iosTmaOpenForeground) {
+      logPageDisplay("messages_history_fetch_text", { chatId, limit });
+      const delivered = await loadHistoryViaText(url, chatId);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      json = delivered.json;
+      httpStatus = delivered.status;
+      if (
+        json.ok === true &&
+        Array.isArray(json.messages) &&
+        json.messages.length > 0
+      ) {
+        emitWebHistoryOpenPaint(
+          chatId,
+          historyPageFromWire(json, peerUserId),
+          options,
+        );
+      }
+      logPageDisplay("messages_history_fetch_response", {
+        chatId,
+        status: httpStatus,
+        elapsedMs: Date.now() - sentAt,
+        background: false,
+        transport: "fetch_text",
+        sync: true,
+      });
+    } else if (iosUseRaceBody) {
+      const body = await iosOpenHistoryBodyWithHardCap(url, competing!.signal, {
         preferScriptFirst:
           isOnMessagesChatPath() || isCompactChatRouteActive(),
       });
@@ -565,7 +708,7 @@ async function fetchTelegramChatHistoryPageOnce(
       const response = await fetch(url, {
         method: "GET",
         credentials: "include",
-        signal: competing.signal,
+        signal: competing?.signal,
       });
       httpStatus = response.status;
       const contentLengthRaw = response.headers.get("content-length");
@@ -604,7 +747,7 @@ async function fetchTelegramChatHistoryPageOnce(
         json = (await response.json().catch(() => ({}))) as HistoryWireJson;
       }
     }
-    if (options?.background === true && competing.signal.aborted) {
+    if (options?.background === true && competing?.signal.aborted) {
       return emptyHistoryError("gateway_timeout_retry");
     }
     if (httpStatus < 200 || httpStatus >= 300 || !json.ok) {
@@ -670,7 +813,7 @@ async function fetchTelegramChatHistoryPageOnce(
   } catch (err) {
     const aborted =
       (err instanceof DOMException && err.name === "AbortError") ||
-      (competing.signal.aborted &&
+      (competing?.signal.aborted === true &&
         (options?.background === true || iosUseRaceBody));
     const message = err instanceof Error ? err.message : String(err);
     if (isWebHistoryPlatform()) {
@@ -694,7 +837,7 @@ async function fetchTelegramChatHistoryPageOnce(
     );
   } finally {
     if (timer != null) clearTimeout(timer);
-    competing.finish();
+    competing?.finish();
   }
 }
 
