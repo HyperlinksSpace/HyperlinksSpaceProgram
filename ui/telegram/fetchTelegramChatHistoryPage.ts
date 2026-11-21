@@ -16,7 +16,6 @@ import {
   resolveHistoryMessageIsOutgoing,
 } from "../components/messages/messageChatHistoryTypes";
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
-import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import {
   pokeChatHistoryCacheListeners,
@@ -354,7 +353,9 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
     } catch {
       /* listener owns paint errors */
     }
-    removeIosHistoryDomOverlay();
+    if (!isIosTelegramMiniAppSync()) {
+      removeIosHistoryDomOverlay();
+    }
     pokeChatHistoryCacheListeners(pending.chatId);
     logPageDisplay("messages_history_web_open_paint_flush", {
       chatId: pending.chatId,
@@ -400,10 +401,7 @@ function wireMessageLine(raw: unknown): string {
   return "";
 }
 
-/**
- * iOS WK scaffolding (697e66c): touch the DOM on the text turn so the WebView
- * does not freeze — never shown; {@link emitWebHistoryOpenPaint} owns 1-column UI.
- */
+/** Visible list — paints when WK never resumes React (697e66c); hide in a later pass. */
 function paintIosHistoryDomOverlay(json: HistoryWireJson): void {
   if (typeof document === "undefined" || !document.body) return;
   const rows = Array.isArray(json.messages) ? json.messages : [];
@@ -412,13 +410,9 @@ function paintIosHistoryDomOverlay(json: HistoryWireJson): void {
   if (!el) {
     el = document.createElement("div");
     el.id = "hsp-ios-history-paint";
-    el.setAttribute("aria-hidden", "true");
     el.style.cssText =
-      "display:none;position:fixed;left:0;right:0;top:0;bottom:0;overflow:hidden;pointer-events:none;visibility:hidden";
+      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch";
     document.body.appendChild(el);
-  } else {
-    el.style.display = "none";
-    el.style.visibility = "hidden";
   }
   el.replaceChildren();
   for (const raw of rows) {
@@ -506,7 +500,6 @@ async function loadHistoryViaText(
     bytes: text.length,
     count,
     transport: "fetch_text",
-    overlayHidden: true,
   });
   // Visible UI is React — yield so WK can finish this turn (697e66c).
   await new Promise<void>((resolve) => {
@@ -528,7 +521,9 @@ function emitWebHistoryOpenPaint(
     } catch {
       /* listener owns paint errors */
     }
-    removeIosHistoryDomOverlay();
+    if (!isIosTelegramMiniAppSync()) {
+      removeIosHistoryDomOverlay();
+    }
     pokeChatHistoryCacheListeners(chatId);
     return;
   }
@@ -691,11 +686,22 @@ async function executeFetchTelegramChatHistoryPageOnce(
     let httpStatus = 0;
     let json: HistoryWireJson;
     if (iosTmaOpenForeground) {
-      if (readAuthenticatedHomeCompactChatLayoutSync()) {
-        await waitForIosCompactHistoryFetchReady();
-      }
       logPageDisplay("messages_history_fetch_text", { chatId, limit });
       const delivered = await loadHistoryViaText(url, chatId);
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      if (
+        delivered.json.ok === true &&
+        Array.isArray(delivered.json.messages) &&
+        delivered.json.messages.length > 0
+      ) {
+        emitWebHistoryOpenPaint(
+          chatId,
+          historyPageFromWire(delivered.json, peerUserId),
+          options,
+        );
+      }
       json = delivered.json;
       httpStatus = delivered.status;
       if (httpStatus < 200 || httpStatus >= 300 || json.ok !== true) {
@@ -703,19 +709,6 @@ async function executeFetchTelegramChatHistoryPageOnce(
       }
       const wireCount = Array.isArray(json.messages) ? json.messages.length : 0;
       const tmaPage = historyPageFromWire(json, peerUserId);
-      if (tmaPage.messages.length > 0) {
-        emitWebHistoryOpenPaint(chatId, tmaPage, options);
-      } else if (wireCount > 0) {
-        logPageDisplay("messages_history_wire_normalize_empty", {
-          chatId,
-          wireCount,
-        });
-      }
-      logPageDisplay("messages_history_ios_wire_to_column", {
-        chatId,
-        wireCount,
-        columnCount: tmaPage.messages.length,
-      });
       logPageDisplay("messages_history_fetch_response", {
         chatId,
         status: httpStatus,

@@ -3235,10 +3235,29 @@ export function MessageChatMessageList({
     const onWebHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => {
       if (chatId !== webHistoryPaintChatIdRef.current) return;
       if (page.messages.length === 0) return;
-      removeIosHistoryDomOverlay();
+      if (compactPage && isIosTelegramMiniAppSync()) {
+        setCachedChatHistory(chatId, page, { previewOnly: false });
+        flushSync(() => {
+          messagesCountRef.current = page.messages.length;
+          setMessages(page.messages);
+          setChatKind(page.chatKind);
+          setError(null);
+          setLoadingInitial(false);
+        });
+        logPageDisplay("messages_history_ios_paint", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          count: page.messages.length,
+        });
+        return;
+      }
       setCachedChatHistory(chatId, page, { previewOnly: false });
       const cached = getCachedChatHistory(chatId);
       if (cached == null) return;
+      removeIosHistoryDomOverlay();
       let applied = false;
       flushSync(() => {
         applied = applyCachedHistoryPageRef.current(cached, { replace: true }) === true;
@@ -3247,30 +3266,19 @@ export function MessageChatMessageList({
         messagesCountRef.current = Math.max(messagesCountRef.current, page.messages.length);
         setLoadingInitial(false);
         setError(null);
-        logPageDisplay(
-          compactPage && isIosTelegramMiniAppSync()
-            ? "messages_history_ios_paint"
-            : "messages_history_web_open_paint",
-          {
-            ...chatLogFields({
-              chatId,
-              peerUserId: chat.peer_user_id,
-              title: chat.title,
-            }),
-            count: page.messages.length,
-          },
-        );
+        logPageDisplay("messages_history_web_open_paint", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          count: page.messages.length,
+        });
       }
     };
     setWebHistoryPaint(onWebHistoryPaint);
     return () => setWebHistoryPaint(null);
-  }, [
-    applyLastReadInboxMessageId,
-    chat.peer_user_id,
-    chat.telegram_chat_id,
-    chat.title,
-    compactPage,
-  ]);
+  }, [chat.peer_user_id, chat.telegram_chat_id, chat.title, compactPage]);
 
   useEffect(() => {
     if (!compactPage || !isIosTelegramMiniAppSync()) return;
@@ -5230,23 +5238,6 @@ export function MessageChatMessageList({
       const runNetworkLoad = async () => {
         if (cancelled) {
           paintLateCacheIfReady();
-          return;
-        }
-        if (
-          compactPage &&
-          isIosTelegramMiniAppSync() &&
-          messagesCountRef.current > 0
-        ) {
-          setLoadingInitial(false);
-          setError(null);
-          logPageDisplay("messages_history_ios_open_paint_skip_revalidate", {
-            ...chatLogFields({
-              chatId: chat.telegram_chat_id,
-              peerUserId: chat.peer_user_id,
-              title: chat.title,
-            }),
-            count: messagesCountRef.current,
-          });
           return;
         }
         let networkFailed = false;

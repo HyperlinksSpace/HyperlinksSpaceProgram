@@ -280,12 +280,6 @@ Placeholder refactor<br>
 Logo bar visibility<br>
 Overlay on screen expansion from mobile<br>
 
-
-
-
-
-
-
 User arrives through Telegram or web.
 Creates or connects a wallet safely.
 Sees understandable portfolio information.
