@@ -18,6 +18,10 @@ import {
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
+import {
+  pokeChatHistoryCacheListeners,
+  setCachedChatHistory,
+} from "../messageChatHistoryCache";
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
 import { logPageDisplay } from "../pageDisplayLog";
@@ -351,6 +355,7 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
       /* listener owns paint errors */
     }
     removeIosHistoryDomOverlay();
+    pokeChatHistoryCacheListeners(pending.chatId);
     logPageDisplay("messages_history_web_open_paint_flush", {
       chatId: pending.chatId,
       count: pending.page.messages.length,
@@ -516,6 +521,7 @@ function emitWebHistoryOpenPaint(
   options?: { background?: boolean },
 ): void {
   if (options?.background === true || page.messages.length === 0) return;
+  setCachedChatHistory(chatId, page, { previewOnly: false });
   if (webHistoryPaintListener) {
     try {
       webHistoryPaintListener(chatId, page);
@@ -523,9 +529,11 @@ function emitWebHistoryOpenPaint(
       /* listener owns paint errors */
     }
     removeIosHistoryDomOverlay();
+    pokeChatHistoryCacheListeners(chatId);
     return;
   }
   pendingWebHistoryPaint = { chatId, page };
+  pokeChatHistoryCacheListeners(chatId);
   logPageDisplay("messages_history_web_open_paint_pending", {
     chatId,
     count: page.messages.length,
@@ -688,23 +696,26 @@ async function executeFetchTelegramChatHistoryPageOnce(
       }
       logPageDisplay("messages_history_fetch_text", { chatId, limit });
       const delivered = await loadHistoryViaText(url, chatId);
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
       json = delivered.json;
       httpStatus = delivered.status;
       if (httpStatus < 200 || httpStatus >= 300 || json.ok !== true) {
         return emptyHistoryError(json.error || `HTTP_${httpStatus}`);
       }
+      const wireCount = Array.isArray(json.messages) ? json.messages.length : 0;
       const tmaPage = historyPageFromWire(json, peerUserId);
       if (tmaPage.messages.length > 0) {
         emitWebHistoryOpenPaint(chatId, tmaPage, options);
-        logPageDisplay("messages_history_ios_wire_to_column", {
+      } else if (wireCount > 0) {
+        logPageDisplay("messages_history_wire_normalize_empty", {
           chatId,
-          wireCount: Array.isArray(json.messages) ? json.messages.length : 0,
-          columnCount: tmaPage.messages.length,
+          wireCount,
         });
       }
+      logPageDisplay("messages_history_ios_wire_to_column", {
+        chatId,
+        wireCount,
+        columnCount: tmaPage.messages.length,
+      });
       logPageDisplay("messages_history_fetch_response", {
         chatId,
         status: httpStatus,
