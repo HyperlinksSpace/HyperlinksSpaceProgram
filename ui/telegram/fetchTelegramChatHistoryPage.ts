@@ -395,7 +395,10 @@ function wireMessageLine(raw: unknown): string {
   return "";
 }
 
-/** iOS WK fallback: paint rows before React resumes the fetch continuation. */
+/**
+ * iOS WK scaffolding (697e66c): touch the DOM on the text turn so the WebView
+ * does not freeze — never shown; {@link emitWebHistoryOpenPaint} owns 1-column UI.
+ */
 function paintIosHistoryDomOverlay(json: HistoryWireJson): void {
   if (typeof document === "undefined" || !document.body) return;
   const rows = Array.isArray(json.messages) ? json.messages : [];
@@ -404,9 +407,13 @@ function paintIosHistoryDomOverlay(json: HistoryWireJson): void {
   if (!el) {
     el = document.createElement("div");
     el.id = "hsp-ios-history-paint";
+    el.setAttribute("aria-hidden", "true");
     el.style.cssText =
-      "position:fixed;left:0;right:0;top:38%;bottom:148px;z-index:999999;overflow:auto;background:#000;color:#fff;font:15px/20px -apple-system,BlinkMacSystemFont,sans-serif;padding:8px 12px;-webkit-overflow-scrolling:touch;pointer-events:none";
+      "display:none;position:fixed;left:0;right:0;top:0;bottom:0;overflow:hidden;pointer-events:none;visibility:hidden";
     document.body.appendChild(el);
+  } else {
+    el.style.display = "none";
+    el.style.visibility = "hidden";
   }
   el.replaceChildren();
   for (const raw of rows) {
@@ -485,13 +492,18 @@ async function loadHistoryViaText(
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
+  if (json.ok === true && count > 0) {
+    paintIosHistoryDomOverlay(json);
+  }
   logPageDisplay("messages_history_text_hit", {
     chatId,
     status: response.status,
     bytes: text.length,
     count,
     transport: "fetch_text",
+    overlayHidden: true,
   });
+  // Visible UI is React — yield so WK can finish this turn (697e66c).
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
@@ -687,6 +699,11 @@ async function executeFetchTelegramChatHistoryPageOnce(
       const tmaPage = historyPageFromWire(json, peerUserId);
       if (tmaPage.messages.length > 0) {
         emitWebHistoryOpenPaint(chatId, tmaPage, options);
+        logPageDisplay("messages_history_ios_wire_to_column", {
+          chatId,
+          wireCount: Array.isArray(json.messages) ? json.messages.length : 0,
+          columnCount: tmaPage.messages.length,
+        });
       }
       logPageDisplay("messages_history_fetch_response", {
         chatId,
