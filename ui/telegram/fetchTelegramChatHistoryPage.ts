@@ -16,6 +16,7 @@ import {
   resolveHistoryMessageIsOutgoing,
 } from "../components/messages/messageChatHistoryTypes";
 import { MESSAGE_CHAT_HISTORY_PAGE_SIZE } from "../components/messages/messageChatLayout";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 import { runQueuedNetworkFetch } from "../components/messages/networkFetchQueue";
 import { isVoiceDialogUiOpen } from "../components/messages/voiceDialogUiGate";
 import { warmupTelegramChatSession } from "./warmupTelegramChatSession";
@@ -333,10 +334,31 @@ type HistoryWireJson = {
 
 type WebHistoryPaintListener = (chatId: number, page: ChatHistoryPageResult) => void;
 let webHistoryPaintListener: WebHistoryPaintListener | null = null;
+let pendingWebHistoryPaint: {
+  chatId: number;
+  page: ChatHistoryPageResult;
+} | null = null;
 
 /** Web: commit an open history page from the worker message turn into the list. */
 export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): void {
   webHistoryPaintListener = listener;
+  if (listener && pendingWebHistoryPaint) {
+    const pending = pendingWebHistoryPaint;
+    pendingWebHistoryPaint = null;
+    try {
+      listener(pending.chatId, pending.page);
+    } catch {
+      /* listener owns paint errors */
+    }
+    removeIosHistoryDomOverlay();
+    logPageDisplay("messages_history_web_open_paint_flush", {
+      chatId: pending.chatId,
+      count: pending.page.messages.length,
+    });
+  }
+  if (listener == null) {
+    pendingWebHistoryPaint = null;
+  }
 }
 
 /** @deprecated Use {@link setWebHistoryPaint} */
@@ -463,9 +485,6 @@ async function loadHistoryViaText(
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
-  if (json.ok === true && count > 0 && webHistoryPaintListener == null) {
-    paintIosHistoryDomOverlay(json);
-  }
   logPageDisplay("messages_history_text_hit", {
     chatId,
     status: response.status,
@@ -485,14 +504,20 @@ function emitWebHistoryOpenPaint(
   options?: { background?: boolean },
 ): void {
   if (options?.background === true || page.messages.length === 0) return;
-  try {
-    webHistoryPaintListener?.(chatId, page);
-  } catch {
-    /* listener owns paint errors */
-  }
-  if (page.messages.length > 0) {
+  if (webHistoryPaintListener) {
+    try {
+      webHistoryPaintListener(chatId, page);
+    } catch {
+      /* listener owns paint errors */
+    }
     removeIosHistoryDomOverlay();
+    return;
   }
+  pendingWebHistoryPaint = { chatId, page };
+  logPageDisplay("messages_history_web_open_paint_pending", {
+    chatId,
+    count: page.messages.length,
+  });
 }
 
 async function fetchTelegramChatHistoryPageOnce(
@@ -646,6 +671,9 @@ async function executeFetchTelegramChatHistoryPageOnce(
     let httpStatus = 0;
     let json: HistoryWireJson;
     if (iosTmaOpenForeground) {
+      if (readAuthenticatedHomeCompactChatLayoutSync()) {
+        await waitForIosCompactHistoryFetchReady();
+      }
       logPageDisplay("messages_history_fetch_text", { chatId, limit });
       const delivered = await loadHistoryViaText(url, chatId);
       await new Promise<void>((resolve) => {
