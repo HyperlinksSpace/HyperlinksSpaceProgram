@@ -3230,15 +3230,48 @@ export function MessageChatMessageList({
   const webHistoryPaintChatIdRef = useRef(chat.telegram_chat_id);
   webHistoryPaintChatIdRef.current = chat.telegram_chat_id;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (Platform.OS !== "web") return;
     const onWebHistoryPaint = (chatId: number, page: ChatHistoryPageResult) => {
       if (chatId !== webHistoryPaintChatIdRef.current) return;
       if (page.messages.length === 0) return;
+      removeIosHistoryDomOverlay();
+      if (compactPage && isIosTelegramMiniAppSync()) {
+        setCachedChatHistory(chatId, page, { previewOnly: false });
+        flushSync(() => {
+          messagesCountRef.current = page.messages.length;
+          setMessages(page.messages);
+          setChatKind(page.chatKind);
+          setError(null);
+          setLoadingInitial(false);
+          setHasMoreOlder(page.hasMoreOlder);
+          setNextBeforeMessageId(page.nextBeforeMessageId);
+          if (page.selfUserId != null) {
+            setSelfUserId(page.selfUserId);
+          }
+          setLastReadOutboxFromHistory(page.lastReadOutboxMessageId);
+        });
+        if (page.lastReadInboxMessageId != null) {
+          applyLastReadInboxMessageId(page.lastReadInboxMessageId);
+        }
+        applyHistoryMetaToSelectedChat(
+          chatId,
+          page.chatKind,
+          page.memberCount,
+        );
+        logPageDisplay("messages_history_ios_paint", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          count: page.messages.length,
+        });
+        return;
+      }
       setCachedChatHistory(chatId, page, { previewOnly: false });
       const cached = getCachedChatHistory(chatId);
       if (cached == null) return;
-      removeIosHistoryDomOverlay();
       let applied = false;
       flushSync(() => {
         applied = applyCachedHistoryPageRef.current(cached, { replace: true }) === true;
@@ -3259,7 +3292,19 @@ export function MessageChatMessageList({
     };
     setWebHistoryPaint(onWebHistoryPaint);
     return () => setWebHistoryPaint(null);
-  }, [chat.peer_user_id, chat.title]);
+  }, [
+    applyLastReadInboxMessageId,
+    chat.peer_user_id,
+    chat.telegram_chat_id,
+    chat.title,
+    compactPage,
+  ]);
+
+  useEffect(() => {
+    if (!compactPage || !isIosTelegramMiniAppSync()) return;
+    if (messages.length === 0) return;
+    removeIosHistoryDomOverlay();
+  }, [compactPage, messages.length]);
 
   useLayoutEffect(() => {
     if (!shouldLoadHistory || Platform.OS !== "web" || messagesCountRef.current > 0) return;

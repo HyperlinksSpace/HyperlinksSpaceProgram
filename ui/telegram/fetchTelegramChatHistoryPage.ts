@@ -463,7 +463,7 @@ async function loadHistoryViaText(
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
-  if (json.ok === true && count > 0) {
+  if (json.ok === true && count > 0 && webHistoryPaintListener == null) {
     paintIosHistoryDomOverlay(json);
   }
   logPageDisplay("messages_history_text_hit", {
@@ -653,16 +653,12 @@ async function executeFetchTelegramChatHistoryPageOnce(
       });
       json = delivered.json;
       httpStatus = delivered.status;
-      if (
-        json.ok === true &&
-        Array.isArray(json.messages) &&
-        json.messages.length > 0
-      ) {
-        emitWebHistoryOpenPaint(
-          chatId,
-          historyPageFromWire(json, peerUserId),
-          options,
-        );
+      if (httpStatus < 200 || httpStatus >= 300 || json.ok !== true) {
+        return emptyHistoryError(json.error || `HTTP_${httpStatus}`);
+      }
+      const tmaPage = historyPageFromWire(json, peerUserId);
+      if (tmaPage.messages.length > 0) {
+        emitWebHistoryOpenPaint(chatId, tmaPage, options);
       }
       logPageDisplay("messages_history_fetch_response", {
         chatId,
@@ -672,6 +668,21 @@ async function executeFetchTelegramChatHistoryPageOnce(
         transport: "fetch_text",
         sync: true,
       });
+      logPageDisplay("messages_history_fetch_body", {
+        chatId,
+        count: tmaPage.messages.length,
+        wireCount: Array.isArray(json.messages) ? json.messages.length : 0,
+        ok: true,
+        elapsedMs: Date.now() - sentAt,
+        background: false,
+      });
+      logPageDisplay("messages_history_web_open_paint_emit", {
+        chatId,
+        count: tmaPage.messages.length,
+        background: false,
+        iosGesturePrime: options?.iosGesturePrime === true,
+      });
+      return tmaPage;
     } else if (iosUseRaceBody) {
       const body = await iosOpenHistoryBodyWithHardCap(url, competing!.signal, {
         preferScriptFirst:
