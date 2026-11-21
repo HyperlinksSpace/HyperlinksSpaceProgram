@@ -25,7 +25,6 @@ import {
 } from "../../messageChatHistoryCache";
 import {
   getOpenChatHistoryCacheAnchorSpec,
-  abandonIosPrimedHistoryJoin,
   isOpenChatHistoryForegroundInFlight,
   loadOpenChatHistoryFirstPage,
   openHistoryResultFromCache,
@@ -5497,7 +5496,7 @@ export function MessageChatMessageList({
             paintLateCacheIfReady();
             if (messagesCountRef.current > 0) {
               setLoadingInitial(false);
-            } else if (networkFailed || cancelled) {
+            } else if (networkFailed) {
               setLoadingInitial(false);
             }
           }
@@ -5569,7 +5568,9 @@ export function MessageChatMessageList({
         if (previewFresh || cachePaintable || cacheHit) {
           scheduleDeferred(() => {
             void runNetworkLoad().finally(() => {
-              if (!cancelled) setLoadingInitial(false);
+              if (!cancelled && messagesCountRef.current > 0) {
+                setLoadingInitial(false);
+              }
             });
           }, previewFresh ? 1_200 : cachePaintable ? 450 : 700);
           return;
@@ -5582,7 +5583,9 @@ export function MessageChatMessageList({
         ) {
           scheduleDeferred(() => {
             void runNetworkLoad().finally(() => {
-              if (!cancelled) setLoadingInitial(false);
+              if (!cancelled && messagesCountRef.current > 0) {
+                setLoadingInitial(false);
+              }
             });
           }, 2_500);
           return;
@@ -5595,9 +5598,6 @@ export function MessageChatMessageList({
         /* runNetworkLoad handles errors */
       } finally {
         if (!cancelled && cacheHit && messagesCountRef.current > 0) {
-          setLoadingInitial(false);
-        }
-        if (cancelled && messagesCountRef.current === 0) {
           setLoadingInitial(false);
         }
       }
@@ -5643,14 +5643,7 @@ export function MessageChatMessageList({
       const cachedNow = getCachedChatHistory(chat.telegram_chat_id);
       if (cachedNow != null && cachedNow.messages.length > 0) return;
       if (historyOpenFetchInFlightRef.current) {
-        const inFlightAgeMs = Date.now() - historyOpenInFlightSinceRef.current;
-        const stallMs = 2_500;
-        if (inFlightAgeMs >= stallMs && messagesCountRef.current === 0) {
-          abandonIosPrimedHistoryJoin(chat.telegram_chat_id);
-          historyOpenFetchInFlightRef.current = false;
-        } else {
-          return;
-        }
+        return;
       }
       if (historyNetworkKeyRef.current !== historyKey) return;
       if (compactStallKickKeyRef.current === historyKey) return;
@@ -5665,7 +5658,7 @@ export function MessageChatMessageList({
       });
       historyNetworkKeyRef.current = "";
       setHistoryLoadKick((n) => n + 1);
-    }, 3_000);
+    }, 20_000);
     return () => clearTimeout(timer);
   }, [
     chat.peer_user_id,

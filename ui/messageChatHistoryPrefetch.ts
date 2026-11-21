@@ -619,7 +619,10 @@ export async function loadOpenChatHistoryFirstPage(
 
   const spec = {
     ...resolveOpenLoadSpec(chat ?? { telegram_chat_id: chatId, unread_count: 0 }),
-    iosGesturePrime: options?.iosGesturePrime === true,
+    iosGesturePrime:
+      options?.iosGesturePrime === true ||
+      (iosOpenHistoryJoinNeedsGuard() &&
+        (isOnMessagesChatPath() || isCompactChatRouteActive())),
   };
   const anchorSpec = toCacheAnchorSpec(spec);
   const holdGate = options?.holdGate !== false;
