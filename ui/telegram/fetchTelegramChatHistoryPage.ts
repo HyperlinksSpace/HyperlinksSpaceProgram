@@ -35,7 +35,10 @@ import {
   openIosCompetingRead,
   openIosHistoryOpenRead,
 } from "./iosCompetingRead";
-import { iosOpenHistoryBodyWithHardCap } from "./iosForegroundHistoryHttp";
+import {
+  iosOpenHistoryBodyWithHardCap,
+} from "./iosForegroundHistoryHttp";
+import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 
 function isWebHistoryPlatform(): boolean {
   return Platform.OS === "web";
@@ -292,6 +295,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
     error === "ios_gesture_body_timeout" ||
     error === "ios_open_body_timeout" ||
     error === "ios_gesture_body_exhausted" ||
+    error === "ios_tma_text_timeout" ||
     error === "not_found" ||
     /chat not found/i.test(error)
   ) {
@@ -303,6 +307,29 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
 const HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS = 45_000;
 const HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS = 16_000;
+const HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS = 22_000;
+/** WKWebView on compact/TMA chat often never resolves `fetch`; fall back before spinner hangs. */
+const HISTORY_FETCH_IOS_TMA_FETCH_LANE_MS = 3_500;
+
+function promiseWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  code: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(code)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 function emptyHistoryError(error: string): ChatHistoryPageResult {
   return {
@@ -353,9 +380,7 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
     } catch {
       /* listener owns paint errors */
     }
-    if (!isIosTelegramMiniAppSync()) {
-      removeIosHistoryDomOverlay();
-    }
+    removeIosHistoryDomOverlay();
     pokeChatHistoryCacheListeners(pending.chatId);
     logPageDisplay("messages_history_web_open_paint_flush", {
       chatId: pending.chatId,
@@ -482,8 +507,74 @@ async function loadHistoryViaText(
   chatId: number,
 ): Promise<{ status: number; bytes: number; json: HistoryWireJson }> {
   abortIosCompetingReads("history_open_text");
-  const response = await fetch(url, { method: "GET", credentials: "include" });
-  const text = await response.text();
+  const competing = openIosHistoryOpenRead();
+  const compactLayout = readAuthenticatedHomeCompactChatLayoutSync();
+  const onChatPath = isOnMessagesChatPath();
+  const compactChatOpen = isCompactChatRouteActive();
+  const preferScript = onChatPath || compactChatOpen;
+  const skipFetchLane = compactLayout || compactChatOpen;
+
+  let httpStatus = 0;
+  let text = "";
+  let transport = "fetch_text";
+
+  try {
+    if (skipFetchLane) {
+      logPageDisplay("messages_history_fetch_tma_alt", {
+        chatId,
+        compactLayout,
+        onChatPath,
+        compactChatOpen,
+        preferScript,
+      });
+      const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
+        preferScriptFirst: preferScript,
+      });
+      httpStatus = body.status;
+      text = body.text;
+      transport = body.transport;
+    } else {
+      try {
+        const lane = await promiseWithTimeout(
+          (async () => {
+            const response = await fetch(url, {
+              method: "GET",
+              credentials: "include",
+              signal: competing.signal,
+            });
+            const body = await response.text();
+            return {
+              status: response.status,
+              text: body,
+              transport: "fetch_text" as const,
+            };
+          })(),
+          HISTORY_FETCH_IOS_TMA_FETCH_LANE_MS,
+          "ios_tma_fetch_lane_timeout",
+        );
+        httpStatus = lane.status;
+        text = lane.text;
+        transport = lane.transport;
+      } catch (laneErr) {
+        const reason =
+          laneErr instanceof Error ? laneErr.message : String(laneErr);
+        logPageDisplay("messages_history_fetch_tma_fallback", {
+          chatId,
+          reason,
+          preferScript,
+        });
+        const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
+          preferScriptFirst: preferScript,
+        });
+        httpStatus = body.status;
+        text = body.text;
+        transport = body.transport;
+      }
+    }
+  } finally {
+    competing.finish();
+  }
+
   let json: HistoryWireJson = {};
   try {
     json = text ? (JSON.parse(text) as HistoryWireJson) : {};
@@ -496,16 +587,16 @@ async function loadHistoryViaText(
   }
   logPageDisplay("messages_history_text_hit", {
     chatId,
-    status: response.status,
+    status: httpStatus,
     bytes: text.length,
     count,
-    transport: "fetch_text",
+    transport,
   });
   // Visible UI is React — yield so WK can finish this turn (697e66c).
   await new Promise<void>((resolve) => {
     setTimeout(resolve, 0);
   });
-  return { status: response.status, bytes: text.length, json };
+  return { status: httpStatus, bytes: text.length, json };
 }
 
 function emitWebHistoryOpenPaint(
@@ -521,9 +612,7 @@ function emitWebHistoryOpenPaint(
     } catch {
       /* listener owns paint errors */
     }
-    if (!isIosTelegramMiniAppSync()) {
-      removeIosHistoryDomOverlay();
-    }
+    removeIosHistoryDomOverlay();
     pokeChatHistoryCacheListeners(chatId);
     return;
   }
@@ -887,7 +976,8 @@ async function executeFetchTelegramChatHistoryPageOnce(
       message === "ios_history_script_timeout" ||
       message === "ios_gesture_body_timeout" ||
       message === "ios_open_body_timeout" ||
-      message === "ios_gesture_body_exhausted";
+      message === "ios_gesture_body_exhausted" ||
+      message === "ios_tma_text_timeout";
     return emptyHistoryError(
       aborted
         ? "gateway_timeout_retry"
