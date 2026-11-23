@@ -4,6 +4,8 @@ import {
   compactNavStickAfterPx,
   fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
+  headerChosenNameWidthPx,
+  measureHeaderIdentityClusterPx,
   pickHeaderDisplayName,
   shouldStickCompactFirstHeaderRow,
   shouldUseHeaderIdentityOverflow,
@@ -130,6 +132,67 @@ describe("fitHeaderActionIconSize", () => {
     assert.equal(tight.sizePx < 22, true);
     assert.equal(tight.sizePx >= 12, true);
     assert.equal(5 * tight.sizePx + 4 * tight.gapPx <= 90, true);
+  });
+});
+
+describe("headerChosenNameWidthPx", () => {
+  it("maps the chosen label to the matching measured width", () => {
+    assert.equal(
+      headerChosenNameWidthPx({
+        chosen: "Ada Lovelace",
+        fullName: "Ada Lovelace",
+        firstName: "Ada",
+        fullNameWidthPx: 120,
+        firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
+      }),
+      120,
+    );
+    assert.equal(
+      headerChosenNameWidthPx({
+        chosen: "Ada",
+        fullName: "Ada Lovelace",
+        firstName: "Ada",
+        fullNameWidthPx: 120,
+        firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
+      }),
+      40,
+    );
+    assert.equal(
+      headerChosenNameWidthPx({
+        chosen: "A",
+        fullName: "Ada Lovelace",
+        firstName: "Ada",
+        fullNameWidthPx: 120,
+        firstNameWidthPx: 40,
+        firstLetterWidthPx: 12,
+      }),
+      12,
+    );
+  });
+});
+
+describe("measureHeaderIdentityClusterPx", () => {
+  it("sums address, explorer, gap, and name widths", () => {
+    assert.equal(
+      measureHeaderIdentityClusterPx({
+        addressChromePx: 50,
+        explorerChromePx: 28,
+        nameWidthPx: 40,
+        nameGapPx: 8,
+      }),
+      126,
+    );
+    assert.equal(
+      measureHeaderIdentityClusterPx({
+        addressChromePx: 50,
+        explorerChromePx: 28,
+        nameWidthPx: 0,
+        nameGapPx: 8,
+      }),
+      78,
+    );
   });
 });
 

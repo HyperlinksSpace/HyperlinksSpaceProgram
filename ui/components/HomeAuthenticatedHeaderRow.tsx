@@ -47,6 +47,7 @@ import {
 import {
   fitHeaderActionIconSize,
   fitHeaderAmountFontSize,
+  headerChosenNameWidthPx,
   HEADER_ACTION_ICON_COUNT,
   HEADER_ACTION_ICON_GAP_MAX_PX,
   HEADER_ACTION_ICON_MAX_PX,
@@ -56,6 +57,7 @@ import {
   HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
   HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX,
   HEADER_IDENTITY_ROW_SAFE_GAP_PX,
+  measureHeaderIdentityClusterPx,
   pickHeaderDisplayName,
   shouldUseHeaderIdentityOverflow,
 } from "../wallet/headerRowFit";
@@ -563,6 +565,7 @@ export function HomeAuthenticatedHeaderRow({
   const [identityMenuOpen, setIdentityMenuOpen] = useState(false);
   const [identityMenuAnchor, setIdentityMenuAnchor] = useState<LayoutRectangle | null>(null);
   const [leftSlotWidthPx, setLeftSlotWidthPx] = useState(0);
+  const [rightSlotWidthPx, setRightSlotWidthPx] = useState(0);
   const [chipClusterWidthPx, setChipClusterWidthPx] = useState(0);
   const [naturalAmountWidthPx, setNaturalAmountWidthPx] = useState(0);
   const [fullNameWidthPx, setFullNameWidthPx] = useState(0);
@@ -698,10 +701,11 @@ export function HomeAuthenticatedHeaderRow({
         firstNameWidthPx > 0 ? firstNameWidthPx + HEADER_IDENTITY_GAP_PX : 0,
       )
     : 0;
-  /** Name + address + Tonviewer — used for amount budget and ⋮ overflow gate. */
-  const identityOverflowClusterPx =
-    minIdentityClusterPx + nameChromeForFitPx + HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX;
-  const identityReservePx = identityOverflowClusterPx;
+  /** Pessimistic reserve for compact amount budgeting before ⋮ is resolved. */
+  const identityReservePx =
+    minIdentityClusterPx +
+    nameChromeForFitPx +
+    (atOrAboveFirstBreakpoint ? 0 : HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX);
   const compactAmountBudgetPx = Math.max(
     0,
     innerContentW -
@@ -728,18 +732,25 @@ export function HomeAuthenticatedHeaderRow({
       leftBandOccupancyPx -
       HEADER_IDENTITY_ROW_SAFE_GAP_PX,
   );
-  let nameSlotPx = atOrAboveFirstBreakpoint
-    ? Math.min(wideSideBudgetPx, nameSlotFromBalancePx)
-    : nameSlotFromBalancePx;
-  if (leftSlotWidthPx > 0) {
-    const nameSlotFromMeasuredLeftPx = Math.max(
-      0,
-      innerContentW -
-        (atOrAboveFirstBreakpoint ? wideMenuStripWidth : 0) -
-        leftSlotWidthPx -
-        HEADER_IDENTITY_ROW_SAFE_GAP_PX,
-    );
-    nameSlotPx = Math.min(nameSlotPx, nameSlotFromMeasuredLeftPx);
+  let nameSlotPx: number;
+  if (atOrAboveFirstBreakpoint) {
+    // Wide: balance and identity sit in separate flex columns — do not shrink the
+    // right slot because the left balance string is long.
+    nameSlotPx =
+      rightSlotWidthPx > 0
+        ? rightSlotWidthPx
+        : wideSideBudgetPx > 0
+          ? wideSideBudgetPx
+          : Math.max(0, nameSlotFromBalancePx);
+  } else {
+    nameSlotPx = nameSlotFromBalancePx;
+    if (leftSlotWidthPx > 0) {
+      const nameSlotFromMeasuredLeftPx = Math.max(
+        0,
+        innerContentW - leftSlotWidthPx - HEADER_IDENTITY_ROW_SAFE_GAP_PX,
+      );
+      nameSlotPx = Math.min(nameSlotPx, nameSlotFromMeasuredLeftPx);
+    }
   }
   // Prefer `..` + 5 address chars; step down to 2 so one name letter still fits.
   const addressTailLength = trimmed
@@ -751,18 +762,9 @@ export function HomeAuthenticatedHeaderRow({
       })
     : 5;
   const displaySnippet = walletAddressHeaderSnippet(trimmed, addressTailLength);
-  const identityOverflow =
-    Boolean(trimmed || headerIdentity.fullName) &&
-    shouldUseHeaderIdentityOverflow({
-      identitySlotPx: nameSlotPx,
-      minClusterPx: identityOverflowClusterPx,
-      overflowChipPx: HEADER_CONTROL_ROW_PX,
-      collapseSlackPx: HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
-    });
-  const identityChromePx = identityOverflow
-    ? HEADER_CONTROL_ROW_PX
-    : (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * monoCharWidthPx) +
-      explorerChromePx;
+  const identityAddressChromePx =
+    (snippetWidthPx > 0 ? snippetWidthPx : displaySnippet.length * monoCharWidthPx) +
+    explorerChromePx;
   const slotReady =
     (headerIdentity.fullName ? fullNameWidthPx > 0 : true) &&
     (atOrAboveFirstBreakpoint
@@ -771,9 +773,9 @@ export function HomeAuthenticatedHeaderRow({
   const availableNamePx = headerIdentity.fullName
     ? Math.max(
         nameFloorPx,
-        nameSlotPx - identityChromePx - HEADER_IDENTITY_GAP_PX,
+        nameSlotPx - identityAddressChromePx - HEADER_IDENTITY_GAP_PX,
       )
-    : Math.max(0, nameSlotPx - identityChromePx);
+    : Math.max(0, nameSlotPx - identityAddressChromePx);
   const walletNameLabel = pickHeaderDisplayName({
     fullName: headerIdentity.fullName,
     firstName: headerIdentity.firstName,
@@ -787,6 +789,32 @@ export function HomeAuthenticatedHeaderRow({
   useLayoutEffect(() => {
     headerNameChoiceRef.current = walletNameLabel;
   }, [walletNameLabel]);
+  const chosenNameWidthPx = headerChosenNameWidthPx({
+    chosen: walletNameLabel,
+    fullName: headerIdentity.fullName,
+    firstName: headerIdentity.firstName,
+    fullNameWidthPx,
+    firstNameWidthPx,
+    firstLetterWidthPx,
+  });
+  const identityClusterPx = measureHeaderIdentityClusterPx({
+    addressChromePx:
+      snippetWidthPx > 0
+        ? snippetWidthPx
+        : displaySnippet.length * monoCharWidthPx,
+    explorerChromePx,
+    nameWidthPx: chosenNameWidthPx,
+    nameGapPx: HEADER_IDENTITY_GAP_PX,
+  });
+  const identityOverflow =
+    Boolean(trimmed || headerIdentity.fullName) &&
+    shouldUseHeaderIdentityOverflow({
+      identitySlotPx: nameSlotPx,
+      minClusterPx: identityClusterPx,
+      overflowChipPx: HEADER_CONTROL_ROW_PX,
+      collapseSlackPx: HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX,
+    });
+  const identityChromePx = identityOverflow ? HEADER_CONTROL_ROW_PX : identityAddressChromePx;
   const amountAvailablePx = atOrAboveFirstBreakpoint
     ? Math.max(0, leftSlotWidthPx - chipClusterWidthPx)
     : Math.max(
@@ -802,12 +830,14 @@ export function HomeAuthenticatedHeaderRow({
               HEADER_IDENTITY_ROW_SAFE_GAP_PX,
       );
   amountFontSizePx = fitHeaderAmountFontSize(naturalAmountWidthPx, amountAvailablePx);
+  const actionIconSlotPx = atOrAboveFirstBreakpoint
+    ? rightSlotWidthPx > 0
+      ? rightSlotWidthPx
+      : wideSideBudgetPx
+    : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap);
   const actionIconsAvailablePx = Math.max(
     0,
-    (atOrAboveFirstBreakpoint
-      ? wideSideBudgetPx
-      : Math.max(0, innerContentW - switchWalletWidthPx - AH.addressRowGap)) -
-      HEADER_ACTION_MENU_CLEARANCE_PX,
+    actionIconSlotPx - HEADER_ACTION_MENU_CLEARANCE_PX,
   );
   // Smaller than menu glyphs (30); leave clearance so copy/edit/… do not hug Get/Swap/….
   const { sizePx: actionIconSizePx, gapPx: actionIconGapPx } = fitHeaderActionIconSize(
@@ -1350,12 +1380,14 @@ export function HomeAuthenticatedHeaderRow({
               centerReservePx={wideMenuStripWidth}
               leftGrows
               onLeftWidth={(w) => setLeftSlotWidthPx((prev) => (prev === w ? prev : w))}
+              onRightWidth={(w) => setRightSlotWidthPx((prev) => (prev === w ? prev : w))}
               left={balanceButton}
               right={walletAddressRow}
             />
             <HeaderBandSlots
               centerReservePx={wideMenuStripWidth}
               leftGrows
+              onRightWidth={(w) => setRightSlotWidthPx((prev) => (w > prev ? w : prev))}
               left={switchWalletRow}
               right={headerActionIconsRow}
             />

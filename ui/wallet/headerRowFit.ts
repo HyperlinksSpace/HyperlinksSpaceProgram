@@ -121,6 +121,39 @@ export const HEADER_IDENTITY_OVERFLOW_COLLAPSE_SLACK_PX = 0;
 /** Collapse to ⋮ slightly before the row would visually touch the balance. */
 export const HEADER_IDENTITY_OVERFLOW_EARLY_BUFFER_PX = 16;
 
+/** Measured width of the display name currently chosen for the header row. */
+export function headerChosenNameWidthPx(options: {
+  chosen: string | null;
+  fullName: string | null;
+  firstName: string | null;
+  fullNameWidthPx: number;
+  firstNameWidthPx: number;
+  firstLetterWidthPx: number;
+}): number {
+  const chosen = options.chosen?.trim() || null;
+  if (!chosen) return 0;
+  const full = options.fullName?.trim() || null;
+  const first = options.firstName?.trim() || null;
+  if (full && chosen === full) return Math.max(0, options.fullNameWidthPx);
+  if (first && chosen === first) return Math.max(0, options.firstNameWidthPx);
+  if (first && chosen === first.slice(0, 1)) return Math.max(0, options.firstLetterWidthPx);
+  return Math.max(0, options.firstNameWidthPx, options.firstLetterWidthPx);
+}
+
+/** Address (+ explorer) + optional name — used for real-time ⋮ overflow. */
+export function measureHeaderIdentityClusterPx(options: {
+  addressChromePx: number;
+  explorerChromePx: number;
+  nameWidthPx: number;
+  nameGapPx: number;
+}): number {
+  const address = Math.max(0, options.addressChromePx);
+  const explorer = Math.max(0, options.explorerChromePx);
+  const nameW = Math.max(0, options.nameWidthPx);
+  const gap = nameW > 0 ? Math.max(0, options.nameGapPx) : 0;
+  return address + explorer + gap + nameW;
+}
+
 /** Shrink copy/edit/key/language/exit together so they track width instead of clipping. */
 export function fitHeaderActionIconSize(
   availableWidthPx: number,
