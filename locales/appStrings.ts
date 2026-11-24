@@ -956,7 +956,7 @@ const en = {
   "home.nav.feed": "Feed",
   "home.nav.items": "Items",
   "home.nav.messages": "Messages",
-  "home.nav.tasks": "Tasks",
+  "home.nav.tasks": "Work",
 
   "home.wallet.backupKmsNote":
     "Wallet backup is stored encrypted on the server (wrapped key in Google Cloud KMS).",
@@ -1991,7 +1991,7 @@ const ru = {
   "home.nav.feed": "Лента",
   "home.nav.items": "Предметы",
   "home.nav.messages": "Сообщения",
-  "home.nav.tasks": "Задачи",
+  "home.nav.tasks": "Работа",
 
   "home.wallet.backupKmsNote":
     "Резервная копия кошелька хранится на сервере в зашифрованном виде (ключ в обёртке Google Cloud KMS).",
@@ -2967,7 +2967,7 @@ const zh = {
   "home.nav.feed": "动态",
   "home.nav.items": "物品",
   "home.nav.messages": "消息",
-  "home.nav.tasks": "任务",
+  "home.nav.tasks": "工作",
   "home.wallet.backupKmsNote": "钱包备份以加密形式存储在服务器上（密钥由 Google Cloud KMS 封装）。",
   "home.wallet.errorMissingInitData": "缺少 Telegram initData。",
   "home.wallet.errorRegistrationFailed": "钱包注册失败",

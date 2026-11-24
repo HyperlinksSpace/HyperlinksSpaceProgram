@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-/** Left nav tab on authenticated home: Feed, Messages, Tasks, Items, Coins. */
+/** Left nav tab on authenticated home: Feed, Messages, Work, Items, Coins. */
 export const AUTHENTICATED_HOME_LEFT_NAV_ITEM_COUNT = 5;
 
 const STORAGE_KEY = "hyperlinks_authenticated_home_left_nav_v1";
