@@ -5,6 +5,8 @@ import { useAuth } from "../auth/AuthContext";
 import { WelcomeContent } from "../ui/components/WelcomeContent";
 import { getBuildDisplaySnapshot, logPageDisplay } from "../ui/pageDisplayLog";
 import { HomeAuthenticatedScreen } from "../ui/screens/HomeAuthenticatedScreen";
+import { useAuthenticatedHomeCompactChatLayout } from "../ui/authenticatedHomeLayoutWidth";
+import { isOnMessagesChatPath } from "../ui/compactChatRouteGate";
 import { dark } from "../ui/theme";
 
 /** react-native-web forwards this to the DOM; RN `View` typings omit it. */
@@ -21,6 +23,7 @@ const INDEX_WEB_HYDRATE_BG = "#000000";
 
 export default function Index() {
   const { isAuthenticated, authReady, authHydrated } = useAuth();
+  const compactChatLayout = useAuthenticatedHomeCompactChatLayout();
   const lastLoggedVariantRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -63,6 +66,9 @@ export default function Index() {
   }
 
   if (isAuthenticated) {
+    if (compactChatLayout && isOnMessagesChatPath()) {
+      return null;
+    }
     return (
       <ShellView suppressHydrationWarning style={{ flex: 1, minHeight: 0 }}>
         <HomeAuthenticatedScreen />

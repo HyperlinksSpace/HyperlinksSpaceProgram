@@ -1,16 +1,13 @@
 import { router } from "expo-router";
 import { logPageDisplay } from "./pageDisplayLog";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "./authenticatedHomeLayoutWidth";
+import { setCompactChatRouteUiOpen } from "./compactChatRouteGate";
 
 const COMPACT_CHAT_PATH = "/messages/chat";
 
 /** Set by {@link openAuthenticatedHomeChatHistory} — blocks restore-driven route pushes. */
 let compactChatRouteUserIntent = false;
-/**
- * `router.navigate` does not update `location.pathname` until the next frame.
- * A second push in that gap stacks another `/messages/chat` card on the home
- * screen. iOS Telegram WebView fails when those cards stay mounted together.
- */
+/** Guards duplicate replace while the route is settling. */
 let compactChatRoutePushPending = false;
 
 export function allowAuthenticatedHomeCompactChatRoutePush(): void {
@@ -49,27 +46,17 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
     logPageDisplay("messages_compact_chat_route_skip", { reason: "push_pending" });
     return;
   }
-  const go = (source: "sync" | "replace") => {
+  const go = (source: "sync" | "retry") => {
     if (isOnCompactChatPath()) {
       compactChatRoutePushPending = false;
       return;
     }
     try {
-      const navigate =
-        "navigate" in router && typeof router.navigate === "function"
-          ? (path: string) => router.navigate(path)
-          : null;
-      if (source === "replace") {
-        if (navigate) navigate(COMPACT_CHAT_PATH);
-        else router.replace(COMPACT_CHAT_PATH);
-        logPageDisplay("messages_compact_chat_route_replace", { path: COMPACT_CHAT_PATH, source });
-      } else if (navigate) {
-        navigate(COMPACT_CHAT_PATH);
-        logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
-      } else {
-        router.push(COMPACT_CHAT_PATH);
-        logPageDisplay("messages_compact_chat_route_push", { path: COMPACT_CHAT_PATH, source });
-      }
+      // Always replace: keep a single screen card so home panels/network do not
+      // stay mounted under compact chat (iOS Telegram WebView stalls otherwise).
+      router.replace(COMPACT_CHAT_PATH);
+      setCompactChatRouteUiOpen(true);
+      logPageDisplay("messages_compact_chat_route_replace", { path: COMPACT_CHAT_PATH, source });
     } catch (error) {
       compactChatRoutePushPending = false;
       logPageDisplay("messages_compact_chat_route_push_error", {
@@ -88,7 +75,7 @@ export function maybePushAuthenticatedHomeCompactChatRoute(): void {
         return;
       }
       compactChatRoutePushPending = true;
-      go("replace");
-    }, 400);
+      go("retry");
+    }, 120);
   }
 }

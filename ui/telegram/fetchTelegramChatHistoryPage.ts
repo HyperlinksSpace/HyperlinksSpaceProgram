@@ -582,6 +582,12 @@ async function loadHistoryViaText(
     json = {};
   }
   const count = Array.isArray(json.messages) ? json.messages.length : 0;
+  logPageDisplay("messages_history_json_ready", {
+    chatId,
+    ok: json.ok === true,
+    count,
+    transport,
+  });
   if (json.ok === true && count > 0) {
     paintIosHistoryDomOverlay(json);
   }
@@ -785,11 +791,13 @@ async function executeFetchTelegramChatHistoryPageOnce(
         Array.isArray(delivered.json.messages) &&
         delivered.json.messages.length > 0
       ) {
-        emitWebHistoryOpenPaint(
+        const painted = historyPageFromWire(delivered.json, peerUserId);
+        emitWebHistoryOpenPaint(chatId, painted, options);
+        logPageDisplay("messages_history_json_ready_paint", {
           chatId,
-          historyPageFromWire(delivered.json, peerUserId),
-          options,
-        );
+          count: painted.messages.length,
+          wireCount: delivered.json.messages?.length ?? 0,
+        });
       }
       json = delivered.json;
       httpStatus = delivered.status;

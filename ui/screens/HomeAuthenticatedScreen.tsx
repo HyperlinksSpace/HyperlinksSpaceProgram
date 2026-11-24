@@ -81,7 +81,9 @@ import {
   isAuthenticatedHomeTripleColumnLayoutWidthPx,
   isAuthenticatedHomeWideLayoutWidthPx,
   readAuthenticatedHomeLayoutWidthPx,
+  useAuthenticatedHomeCompactChatLayout,
 } from "../authenticatedHomeLayoutWidth";
+import { isCompactChatRouteActive } from "../compactChatRouteGate";
 import { AuthenticatedHomePersistedPanelSlot } from "../components/AuthenticatedHomePersistedPanelSlot";
 import { HspScrollColumn, type HspScrollColumnHandle } from "../components/HspScrollColumn";
 import { Address } from "@ton/core";
@@ -629,6 +631,10 @@ function markWalletSecretStoredOnServer(
 }
 
 export function HomeAuthenticatedScreen() {
+  const compactLayout = useAuthenticatedHomeCompactChatLayout();
+  if (compactLayout && isCompactChatRouteActive()) {
+    return null;
+  }
   return <HomeAuthenticatedScreenMain />;
 }
 
@@ -2396,9 +2402,9 @@ function HomeAuthenticatedScreenMain() {
         <AuthenticatedHomeSplitBody
           onSplitLayoutMetricsChange={onSplitLayoutMetricsChange}
           leftColumnFooter={isWideHome ? mainColumnFooter : null}
-          farRight={aiSearchColumnContent}
+          farRight={isWideHome ? aiSearchColumnContent : null}
           left={homeLeftColumn}
-          right={homeWideRightColumn}
+          right={isWideHome ? homeWideRightColumn : null}
           middleColumnFooter={
             wideMessagesChatOpen
               ? isTripleColumn && selectedMessageChat?.chat_kind !== "channel"

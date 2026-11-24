@@ -35,15 +35,27 @@ export function shouldPauseChatListUpdatesInCompactChat(): boolean {
  * has mounted and the pathname is `/messages/chat` (same stable host as the
  * chat list GET on home).
  */
+async function settleCompactChatRoutePaint(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
+  if (isOnMessagesChatPath()) {
+    await settleCompactChatRoutePaint();
+    return;
+  }
+  if (compactChatRouteUiOpen) {
+    await settleCompactChatRoutePaint();
+    return;
+  }
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    if (compactChatRouteUiOpen && isOnMessagesChatPath()) {
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => resolve());
-        });
-      });
+    if (isOnMessagesChatPath() || compactChatRouteUiOpen) {
+      await settleCompactChatRoutePaint();
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 32));

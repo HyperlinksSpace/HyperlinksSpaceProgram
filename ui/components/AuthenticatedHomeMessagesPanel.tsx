@@ -54,6 +54,7 @@ import {
   prefetchChatHistory,
   prefetchChatHistoryPriority,
   prefetchVisibleChatNeighbors,
+  primeOpenChatHistoryFromGesture,
   releaseOpenChatLoadingGateForCompactList,
   setOpenChatFocusHold,
 } from "../messageChatHistoryPrefetch";
@@ -2582,6 +2583,9 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         clearQueuedNormalNetworkFetches();
         releaseOpenChatLoadingGateForCompactList();
         abortIosCompetingReads("compact_open_tap");
+        if (isIosTelegramMiniAppSync()) {
+          primeOpenChatHistoryFromGesture(resolvedItem);
+        }
       }
       openChat();
     },

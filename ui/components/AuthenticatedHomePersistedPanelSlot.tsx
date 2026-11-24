@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { View, type ViewStyle } from "react-native";
+import { View } from "react-native";
 
 type Props = {
   active: boolean;
@@ -8,34 +8,28 @@ type Props = {
   fillActive?: boolean;
 };
 
-const hiddenStyle = { display: "none" } as ViewStyle;
-
 /**
- * Keeps children mounted while hidden so images, scroll position, and form state
- * survive header menu / tab switches on authenticated home.
- *
- * `fillActive` (default true): active slot uses flex:1. Set false for scroll-hosted
- * panels that must size to content (e.g. one-column chat search — avoids a tall empty gap).
+ * Renders one authenticated-home panel at a time. Inactive slots unmount their
+ * children (no `display: none` hidden trees) so compact / iOS TMA does not keep
+ * feed, swap, or list fetchers alive off-screen.
  */
 export function AuthenticatedHomePersistedPanelSlot({
   active,
   children,
   fillActive = true,
 }: Props) {
+  if (!active) {
+    return null;
+  }
   return (
     <View
-      style={
-        active
-          ? {
-              ...(fillActive ? { flex: 1, minHeight: 0 } : null),
-              width: "100%",
-              alignSelf: "stretch",
-            }
-          : hiddenStyle
-      }
-      pointerEvents={active ? "auto" : "none"}
-      accessibilityElementsHidden={!active}
-      importantForAccessibility={active ? "auto" : "no-hide-descendants"}
+      style={{
+        ...(fillActive ? { flex: 1, minHeight: 0 } : null),
+        width: "100%",
+        alignSelf: "stretch",
+      }}
+      accessibilityElementsHidden={false}
+      importantForAccessibility="auto"
     >
       {children}
     </View>

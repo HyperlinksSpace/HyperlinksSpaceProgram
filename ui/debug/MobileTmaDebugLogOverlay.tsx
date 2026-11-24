@@ -17,7 +17,7 @@ const TAIL_MAX_ROWS = 10;
 
 /** High-signal history / open / transport — shown pinned at the bottom of the panel. */
 const CRITICAL_TAIL_RE =
-  /messages_history_(gesture_prime|join_await|fetch_|network_begin|text_hit|load_start|load_ok|load_error|web_fetch_error|prefetch_skip|ios_|compact_cache|open_xhr_retry|fetch_ios_chat_blocked|ios_bubble_paint|fetch_tma_alt|fetch_tma_fallback)|messages_chat_open|messages_compact_chat_route/;
+  /messages_history_(gesture_prime|join_await|fetch_|network_begin|text_hit|load_start|load_ok|load_error|web_fetch_error|prefetch_skip|ios_|compact_cache|open_xhr_retry|fetch_ios_chat_blocked|ios_bubble_paint|fetch_tma_alt|fetch_tma_fallback|ios_route_wait|json_ready|open_shared_reset|open_rejoin_after_supersede|web_open_paint)|messages_chat_open|messages_compact_chat_route/;
 
 const SCROLL_LINE_KEEP_RE =
   /messages_chat_row_press|messages_chat_row_web_click|messages_chat_open|messages_compact_chat|messages_history_|messages_compact_chat_route|telegram_messages_status|auth_session_refresh|messages_chat_row_press_in/;

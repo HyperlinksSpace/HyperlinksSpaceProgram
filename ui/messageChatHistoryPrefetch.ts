@@ -371,45 +371,6 @@ async function runHistoryLoad(
   return result;
 }
 
-const IOS_JOIN_PRIME_WAIT_MS = 5_000;
-
-function iosOpenHistoryJoinNeedsGuard(): boolean {
-  if (typeof navigator === "undefined") return isIosTelegramMiniAppSync();
-  const ua = navigator.userAgent;
-  return isIosTelegramMiniAppSync() || /iPhone|iPad|iPod/i.test(ua);
-}
-
-async function awaitIosJoinForegroundLoad(
-  chatId: number,
-  existing: Promise<ChatHistoryPageResult>,
-  peerUserId: number | null,
-  spec: LoadSpec,
-): Promise<ChatHistoryPageResult> {
-  let existingSettled = false;
-  const raced = await Promise.race([
-    existing.then((result) => {
-      existingSettled = true;
-      return result;
-    }),
-    new Promise<"timeout">((resolve) => {
-      setTimeout(() => {
-        if (!existingSettled) resolve("timeout");
-      }, IOS_JOIN_PRIME_WAIT_MS);
-    }),
-  ]);
-  if (raced !== "timeout") {
-    return raced;
-  }
-  resetSharedOpenChatHistoryLoad(chatId);
-  abortIosHistoryOpenReads("ios_join_prime_timeout");
-  logPageDisplay("messages_history_ios_join_prime_timeout", {
-    chatId,
-    waitMs: IOS_JOIN_PRIME_WAIT_MS,
-    ...prefetchQueueSnapshot(),
-  });
-  return startSharedLoad(chatId, peerUserId, { ...spec, iosGesturePrime: true });
-}
-
 function startSharedLoad(
   chatId: number,
   peerUserId: number | null,
@@ -442,9 +403,6 @@ function startSharedLoad(
         chatId,
         ...prefetchQueueSnapshot(),
       });
-      if (iosOpenHistoryJoinNeedsGuard()) {
-        return awaitIosJoinForegroundLoad(chatId, existing, peerUserId, spec);
-      }
       return existing;
     }
     if (isFullPageSpec(spec)) {
@@ -619,10 +577,7 @@ export async function loadOpenChatHistoryFirstPage(
 
   const spec = {
     ...resolveOpenLoadSpec(chat ?? { telegram_chat_id: chatId, unread_count: 0 }),
-    iosGesturePrime:
-      options?.iosGesturePrime === true ||
-      (iosOpenHistoryJoinNeedsGuard() &&
-        (isOnMessagesChatPath() || isCompactChatRouteActive())),
+    iosGesturePrime: options?.iosGesturePrime === true,
   };
   const anchorSpec = toCacheAnchorSpec(spec);
   const holdGate = options?.holdGate !== false;
@@ -671,29 +626,11 @@ export async function loadOpenChatHistoryFirstPage(
       // Group/channel cache without member_count — refetch so the header can show
       // participants (TDLib FullInfo). Keep falling through to the shared load.
     }
-    if (
-      iosOpenHistoryJoinNeedsGuard() &&
-      isOnMessagesChatPath() &&
-      options?.iosGesturePrime !== true
-    ) {
-      if (isOpenChatHistoryForegroundInFlight(chatId)) {
-        if (iosOpenHistoryJoinNeedsGuard()) {
-          const existing = sharedLoads.get(chatId);
-          if (existing) {
-            return awaitIosJoinForegroundLoad(chatId, existing, peerUserId ?? null, spec);
-          }
-        }
-        return startSharedLoad(chatId, peerUserId ?? null, spec);
+    if (isOpenChatHistoryForegroundInFlight(chatId)) {
+      const existing = sharedLoads.get(chatId);
+      if (existing) {
+        return existing;
       }
-      const fromCache = openHistoryResultFromCache(chatId);
-      if (fromCache != null) {
-        pokeChatHistoryCacheListeners(chatId);
-        return fromCache;
-      }
-      return startSharedLoad(chatId, peerUserId ?? null, {
-        ...spec,
-        iosGesturePrime: true,
-      });
     }
     const result = await startSharedLoad(chatId, peerUserId ?? null, spec);
     if (result.error != null || result.messages.length === 0) {
@@ -744,6 +681,13 @@ export function isOpenChatHistoryForegroundInFlight(chatId: number): boolean {
   if (!Number.isFinite(chatId)) return false;
   const id = Math.trunc(chatId);
   return sharedLoads.has(id) && sharedLoadLane.get(id) === "foreground";
+}
+
+export function getSharedOpenChatHistoryLoad(
+  chatId: number,
+): Promise<ChatHistoryPageResult> | undefined {
+  if (!Number.isFinite(chatId)) return undefined;
+  return sharedLoads.get(Math.trunc(chatId));
 }
 
 /** Detach chat UI from a hung list-gesture body without aborting its HTTP read. */
@@ -951,11 +895,20 @@ export function primeOpenChatHistoryFromGesture(
     ...resolveOpenLoadSpec(chat as MessageChatRowData),
     iosGesturePrime: true,
   };
-  if (sharedLoads.has(chatId)) {
+  const lane = sharedLoadLane.get(chatId);
+  if (sharedLoads.has(chatId) && lane === "foreground") {
     logPageDisplay("messages_history_gesture_prime_join", { chatId });
-  } else {
-    logPageDisplay("messages_history_gesture_prime", { chatId });
+    return;
   }
+  if (sharedLoads.has(chatId) && lane === "background") {
+    sharedLoads.delete(chatId);
+    sharedLoadLane.delete(chatId);
+    logPageDisplay("messages_history_gesture_prime_supersede_background", {
+      chatId,
+      ...prefetchQueueSnapshot(),
+    });
+  }
+  logPageDisplay("messages_history_gesture_prime", { chatId });
   // Register shared in-flight sync on the list route — chat screen only joins.
   void startSharedLoad(chatId, chat.peer_user_id ?? null, spec);
 }
@@ -1013,11 +966,8 @@ export function prefetchChatHistoryPriority(
     });
   }
   logPageDisplay("messages_history_open_load_begin", { chatId });
-  const iosOnChatRoute =
-    isCompactChatRouteActive() && iosOpenHistoryJoinNeedsGuard();
   void loadOpenChatHistoryFirstPage(chatId, chat.peer_user_id ?? null, chat, {
     holdGate: false,
-    ...(iosOnChatRoute ? { iosGesturePrime: true } : {}),
   }).then(
     (page) => {
       if (!page.error && page.messages.length > 0) {

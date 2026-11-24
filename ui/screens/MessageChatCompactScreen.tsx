@@ -10,7 +10,6 @@ import { useCompactChatOverlayGate } from "../components/CompactChatOverlayConte
 import { GlobalBottomBar } from "../components/GlobalBottomBar";
 import { MessageChatPanel } from "../components/messages/MessageChatPanel";
 import { useAppStrings } from "../../locales/AppStringsContext";
-import { navigateBackOrHome } from "../navigateBackOrHome";
 import { setCompactChatRouteUiOpen } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import { layout, useColors } from "../theme";
@@ -27,23 +26,15 @@ export function MessageChatCompactScreen() {
     if (chat == null) return;
     setCompactChatRouteUiOpen(true);
     ensureAuthenticatedHomeHistoryLoadArmed(chat);
-    if (isIosTelegramMiniAppSync()) {
+    // iOS TMA: list tap primes gesture fetch; route prefetch joins it. Elsewhere
+    // MessageChatMessageList owns the foreground open fetch (avoids duplicate
+    // sharedLoads + effect cancel/join on a stuck promise).
+    if (!isIosTelegramMiniAppSync()) {
       return () => {
         setCompactChatRouteUiOpen(false);
       };
     }
-    const runPrefetch = () => {
-      void import("../messageChatHistoryPrefetch").then(
-        ({ prefetchChatHistoryPriority }) => {
-          prefetchChatHistoryPriority(chat);
-        },
-      );
-    };
-    runPrefetch();
-    const retry =
-      typeof window !== "undefined" ? window.setTimeout(runPrefetch, 200) : null;
     return () => {
-      if (retry != null) window.clearTimeout(retry);
       setCompactChatRouteUiOpen(false);
     };
   }, [chat?.telegram_chat_id]);
@@ -55,7 +46,7 @@ export function MessageChatCompactScreen() {
 
   const onBack = useCallback(() => {
     clearAuthenticatedHomeSelectedChat();
-    navigateBackOrHome(router);
+    router.replace("/");
   }, [router]);
 
   if (chat == null) {
