@@ -274,17 +274,17 @@ export function openAuthenticatedHomeChatHistory(
   writeStoredChat(chat);
   if (sameChatAlreadyOpen && !options?.forceReload) {
     syncHistoryLoadSnapshot();
-    maybePrimeCompactIosOpenHistoryFromGesture(chat);
     emit();
     maybePushAuthenticatedHomeCompactChatRoute();
+    maybePrimeCompactIosOpenHistoryFromGesture(chat);
     return;
   }
   historyLoadChatId = chat.telegram_chat_id;
   historyLoadGeneration += 1;
   syncHistoryLoadSnapshot();
-  maybePrimeCompactIosOpenHistoryFromGesture(chat);
   emit();
   maybePushAuthenticatedHomeCompactChatRoute();
+  maybePrimeCompactIosOpenHistoryFromGesture(chat);
 }
 
 /**

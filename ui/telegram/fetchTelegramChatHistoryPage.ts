@@ -28,6 +28,7 @@ import {
   isCompactChatRouteActive,
   isOnMessagesChatPath,
   waitForIosCompactHistoryFetchReady,
+  yieldIosWkHistoryContinuation,
 } from "../compactChatRouteGate";
 import { isIosTelegramMiniAppSync } from "../components/telegramWebApp";
 import {
@@ -36,7 +37,9 @@ import {
   openIosHistoryOpenRead,
 } from "./iosCompetingRead";
 import {
+  iosOpenHistoryBody,
   iosOpenHistoryBodyWithHardCap,
+  raceIosGestureHistoryBody,
 } from "./iosForegroundHistoryHttp";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 
@@ -307,7 +310,7 @@ export function isTransientHistoryFetchError(error: string | null | undefined): 
 const HISTORY_FETCH_BACKGROUND_TIMEOUT_MS = 8_000;
 const HISTORY_FETCH_IOS_OPEN_TIMEOUT_MS = 45_000;
 const HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS = 16_000;
-const HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS = 22_000;
+const HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS = 45_000;
 /** WKWebView on compact/TMA chat often never resolves `fetch`; fall back before spinner hangs. */
 const HISTORY_FETCH_IOS_TMA_FETCH_LANE_MS = 3_500;
 
@@ -386,9 +389,6 @@ export function setWebHistoryPaint(listener: WebHistoryPaintListener | null): vo
       chatId: pending.chatId,
       count: pending.page.messages.length,
     });
-  }
-  if (listener == null) {
-    pendingWebHistoryPaint = null;
   }
 }
 
@@ -511,7 +511,8 @@ async function loadHistoryViaText(
   const compactLayout = readAuthenticatedHomeCompactChatLayoutSync();
   const onChatPath = isOnMessagesChatPath();
   const compactChatOpen = isCompactChatRouteActive();
-  const preferScript = onChatPath || compactChatOpen;
+  // Compact one-column: XHR → script (script-first often exceeds the old 12s cap).
+  const preferScriptFirst = compactChatOpen || compactLayout ? false : onChatPath;
   const skipFetchLane = compactLayout || compactChatOpen;
 
   let httpStatus = 0;
@@ -520,16 +521,25 @@ async function loadHistoryViaText(
 
   try {
     if (skipFetchLane) {
-      logPageDisplay("messages_history_fetch_tma_alt", {
-        chatId,
-        compactLayout,
-        onChatPath,
-        compactChatOpen,
-        preferScript,
-      });
-      const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
-        preferScriptFirst: preferScript,
-      });
+      const stableChatHost = onChatPath && compactChatOpen;
+      logPageDisplay(
+        stableChatHost
+          ? "messages_history_fetch_tma_both"
+          : "messages_history_fetch_tma_race",
+        {
+          chatId,
+          compactLayout,
+          onChatPath,
+          compactChatOpen,
+          parallelScriptXhr: true,
+          timeoutMs: HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS,
+        },
+      );
+      const body = await promiseWithTimeout(
+        raceIosGestureHistoryBody(url, competing.signal),
+        HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS,
+        "ios_tma_text_timeout",
+      );
       httpStatus = body.status;
       text = body.text;
       transport = body.transport;
@@ -561,11 +571,15 @@ async function loadHistoryViaText(
         logPageDisplay("messages_history_fetch_tma_fallback", {
           chatId,
           reason,
-          preferScript,
+          preferScript: preferScriptFirst,
         });
-        const body = await iosOpenHistoryBodyWithHardCap(url, competing.signal, {
-          preferScriptFirst: preferScript,
-        });
+        const body = await promiseWithTimeout(
+          iosOpenHistoryBody(url, competing.signal, {
+            preferScriptFirst: preferScriptFirst,
+          }),
+          HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS,
+          "ios_tma_text_timeout",
+        );
         httpStatus = body.status;
         text = body.text;
         transport = body.transport;
@@ -589,7 +603,10 @@ async function loadHistoryViaText(
     transport,
   });
   if (json.ok === true && count > 0) {
-    paintIosHistoryDomOverlay(json);
+  // Prefer React bubbles on compact chat; DOM overlay is a list-route fallback only.
+    if (!webHistoryPaintListener && !isCompactChatRouteActive()) {
+      paintIosHistoryDomOverlay(json);
+    }
   }
   logPageDisplay("messages_history_text_hit", {
     chatId,
@@ -688,13 +705,26 @@ async function fetchTelegramChatHistoryPageOnce(
     params.set("newer_below", String(Math.trunc(newerBelow)));
   }
   const url = buildApiUrl(`/api/telegram-messages-history?${params.toString()}`);
+  const ctx: FetchOnceCtx = {
+    beforeMessageId,
+    sinceMessageId,
+    aroundUnread,
+    aroundMessageId,
+  };
+  const iosTmaForeground =
+    isIosTelegramMiniAppSync() && options?.background !== true;
+  if (iosTmaForeground) {
+    return executeFetchTelegramChatHistoryPageOnce(
+      url,
+      chatId,
+      limit,
+      peerUserId,
+      options,
+      ctx,
+    );
+  }
   return runQueuedNetworkFetch(
-    () => executeFetchTelegramChatHistoryPageOnce(url, chatId, limit, peerUserId, options, {
-      beforeMessageId,
-      sinceMessageId,
-      aroundUnread,
-      aroundMessageId,
-    }),
+    () => executeFetchTelegramChatHistoryPageOnce(url, chatId, limit, peerUserId, options, ctx),
     { priority: options?.background === true ? "normal" : "critical" },
   );
 }
@@ -768,6 +798,7 @@ async function executeFetchTelegramChatHistoryPageOnce(
     });
     if (
       iosUseRaceBody &&
+      !iosTmaOpenForeground &&
       !onChatPath &&
       !isCompactChatRouteActive()
     ) {
@@ -781,8 +812,19 @@ async function executeFetchTelegramChatHistoryPageOnce(
     let httpStatus = 0;
     let json: HistoryWireJson;
     if (iosTmaOpenForeground) {
+      if (!isCompactChatRouteActive()) {
+        await waitForIosCompactHistoryFetchReady();
+        logPageDisplay("messages_history_tma_compact_route_ready", {
+          chatId,
+          onChatPath: isOnMessagesChatPath(),
+          uiOpen: isCompactChatRouteActive(),
+          gesturePrime: iosGesturePrime,
+        });
+      }
+      await yieldIosWkHistoryContinuation();
       logPageDisplay("messages_history_fetch_text", { chatId, limit });
-      const delivered = await loadHistoryViaText(url, chatId);
+      const textLoad = loadHistoryViaText(url, chatId);
+      const delivered = await textLoad;
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 0);
       });

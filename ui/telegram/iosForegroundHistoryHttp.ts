@@ -1,6 +1,10 @@
-const IOS_OPEN_BODY_RACE_MS = 25_000;
+import { logPageDisplay } from "../pageDisplayLog";
+
+const IOS_OPEN_BODY_RACE_MS = 45_000;
 const IOS_SCRIPT_BODY_MS = 8_000;
-const IOS_GESTURE_XHR_MS = 22_000;
+/** Open chat on `/messages/chat` — TDLib body often lands after the 8s preview cap. */
+const IOS_OPEN_SCRIPT_BODY_MS = 30_000;
+const IOS_GESTURE_XHR_MS = 28_000;
 
 function promiseWithTimeout<T>(
   promise: Promise<T>,
@@ -51,7 +55,12 @@ function withIosScriptHistoryUrl(url: string): string {
 function iosOpenHistoryScriptBody(
   url: string,
   signal: AbortSignal,
+  options?: { timeoutMs?: number },
 ): Promise<{ status: number; text: string; transport: "script" }> {
+  const scriptWaitMs =
+    typeof options?.timeoutMs === "number" && options.timeoutMs > 0
+      ? Math.trunc(options.timeoutMs)
+      : IOS_SCRIPT_BODY_MS;
   return new Promise((resolve, reject) => {
     if (typeof document === "undefined") {
       reject(new Error("script_requires_document"));
@@ -93,6 +102,12 @@ function iosOpenHistoryScriptBody(
           : null;
       const ok = row?.ok === true;
       const text = JSON.stringify(body ?? {});
+      const count = Array.isArray(row?.messages) ? row.messages.length : 0;
+      logPageDisplay("messages_history_ios_script_deliver", {
+        ok,
+        count,
+        bytes: text.length,
+      });
       finish(() =>
         resolve({
           status: ok ? 200 : 502,
@@ -110,7 +125,10 @@ function iosOpenHistoryScriptBody(
     script.addEventListener("error", onScriptError, { once: true });
     scriptTimer = setTimeout(() => {
       finish(() => reject(new Error("ios_history_script_timeout")));
-    }, IOS_SCRIPT_BODY_MS);
+    }, scriptWaitMs);
+    logPageDisplay("messages_history_ios_script_arm", {
+      timeoutMs: scriptWaitMs,
+    });
     document.head.appendChild(script);
   });
 }
@@ -122,8 +140,12 @@ function iosOpenHistoryScriptBody(
 export async function iosOpenHistoryBody(
   url: string,
   signal: AbortSignal,
-  options?: { preferScriptFirst?: boolean },
+  options?: { preferScriptFirst?: boolean; scriptTimeoutMs?: number },
 ): Promise<{ status: number; text: string; transport: string }> {
+  const scriptTimeoutMs =
+    typeof options?.scriptTimeoutMs === "number" && options.scriptTimeoutMs > 0
+      ? Math.trunc(options.scriptTimeoutMs)
+      : IOS_OPEN_SCRIPT_BODY_MS;
   const xhrMs =
     options?.preferScriptFirst === true ? 12_000 : IOS_GESTURE_XHR_MS;
   const xhrAttempt: {
@@ -150,7 +172,9 @@ export async function iosOpenHistoryBody(
   } = {
     label: "script",
     run: async () => {
-      const body = await iosOpenHistoryScriptBody(url, signal);
+      const body = await iosOpenHistoryScriptBody(url, signal, {
+        timeoutMs: scriptTimeoutMs,
+      });
       return {
         status: body.status,
         text: body.text,
@@ -237,7 +261,7 @@ export async function iosGestureHistoryBodySingle(
 }
 
 /** @deprecated Parallel race — kept for experiments; prefer {@link iosGestureHistoryBodySingle}. */
-const IOS_GESTURE_BODY_RACE_MS = 22_000;
+const IOS_GESTURE_BODY_RACE_MS = 45_000;
 
 export function raceIosGestureHistoryBody(
   url: string,
@@ -262,7 +286,9 @@ export function raceIosGestureHistoryBody(
     signal.addEventListener("abort", onAbort, { once: true });
     void (async () => {
       try {
-        const body = await iosOpenHistoryScriptBody(url, signal);
+        const body = await iosOpenHistoryScriptBody(url, signal, {
+          timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
+        });
         finish(() =>
           resolve({
             status: body.status,
@@ -276,7 +302,15 @@ export function raceIosGestureHistoryBody(
     })();
     void (async () => {
       try {
-        const body = await xhrGetWithCredentials(url, signal);
+        const body = await promiseWithTimeout(
+          xhrGetWithCredentials(url, signal),
+          IOS_GESTURE_XHR_MS,
+          "ios_gesture_xhr_timeout",
+        );
+        logPageDisplay("messages_history_ios_xhr_hit", {
+          status: body.status,
+          bytes: body.text.length,
+        });
         finish(() =>
           resolve({
             status: body.status,
@@ -351,29 +385,13 @@ export function raceIosOpenHistoryBody(
       }
     })();
 
-    void (async () => {
-      try {
-        const response = await fetch(url, {
-          method: "GET",
-          credentials: "include",
-          signal,
-        });
-        const text = await response.text();
-        finish(() =>
-          resolve({ status: response.status, text, transport: "fetch_open" }),
-        );
-      } catch {
-        /* other lane may win */
-      }
-    })();
-
     timer = setTimeout(() => {
       finish(() => reject(new Error("ios_open_body_timeout")));
     }, IOS_OPEN_BODY_RACE_MS);
   });
 }
 
-const IOS_OPEN_HISTORY_HARD_CAP_MS = 12_000;
+const IOS_OPEN_HISTORY_HARD_CAP_MS = 45_000;
 
 /**
  * Never let open-history await hang past UI watchdog — cap the sequential body read.
@@ -422,6 +440,7 @@ function xhrGetWithCredentials(
     xhr.open("GET", url, true);
     xhr.withCredentials = true;
     xhr.responseType = "text";
+    xhr.timeout = IOS_GESTURE_XHR_MS;
     let settled = false;
     const finish = (fn: () => void) => {
       if (settled) return;

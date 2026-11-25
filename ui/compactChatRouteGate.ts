@@ -43,6 +43,21 @@ async function settleCompactChatRoutePaint(): Promise<void> {
   });
 }
 
+/** Let WKWebView finish route paint before open-history `await` resumes (697e66c). */
+export async function yieldIosWkHistoryContinuation(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(resolve, 0);
+        });
+      });
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
+}
+
 export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
   if (isOnMessagesChatPath()) {
     await settleCompactChatRoutePaint();
