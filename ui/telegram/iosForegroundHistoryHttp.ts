@@ -1,4 +1,5 @@
 import { logPageDisplay } from "../pageDisplayLog";
+import { isOnMessagesChatPath } from "../compactChatRouteGate";
 
 const IOS_OPEN_BODY_RACE_MS = 45_000;
 const IOS_SCRIPT_BODY_MS = 8_000;
@@ -303,6 +304,7 @@ export function openIosTmaHistoryRace(
     let xhrDone = false;
     let scriptDone = false;
     let lastBody: { status: number; text: string; transport: string } | null = null;
+    let armed = false;
     const countOf = (text: string) => {
       try {
         const parsed = JSON.parse(text) as { messages?: unknown[] };
@@ -330,26 +332,57 @@ export function openIosTmaHistoryRace(
       }
     };
 
-    logPageDisplay("messages_history_ios_xhr_arm", { timeoutMs: IOS_GESTURE_XHR_MS });
-    void xhrGetWithCredentials(url, signal).then(
-      (body) => {
-        logPageDisplay("messages_history_ios_xhr_hit", {
-          status: body.status,
-          bytes: body.text.length,
-        });
-        consider("xhr", body);
-      },
-      () => consider("xhr", null),
-    );
+    const arm = () => {
+      if (armed || settled) return;
+      armed = true;
+      if (waitTimer != null) {
+        clearInterval(waitTimer);
+        waitTimer = undefined;
+      }
+      logPageDisplay("messages_history_ios_xhr_arm", {
+        timeoutMs: IOS_GESTURE_XHR_MS,
+        onChatPath: isOnMessagesChatPath(),
+      });
+      void xhrGetWithCredentials(url, signal).then(
+        (body) => {
+          logPageDisplay("messages_history_ios_xhr_hit", {
+            status: body.status,
+            bytes: body.text.length,
+          });
+          consider("xhr", body);
+        },
+        () => consider("xhr", null),
+      );
+      void iosOpenHistoryScriptBody(url, signal, {
+        timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
+      }).then(
+        (body) => consider("script", body),
+        () => consider("script", null),
+      );
+    };
 
-    void iosOpenHistoryScriptBody(url, signal, {
-      timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
-    }).then(
-      (body) => consider("script", body),
-      () => consider("script", null),
-    );
+    let waitTimer: ReturnType<typeof setInterval> | undefined;
+    if (isOnMessagesChatPath()) {
+      arm();
+    } else {
+      const started = Date.now();
+      logPageDisplay("messages_history_ios_route_wait", { onChatPath: false });
+      waitTimer = setInterval(() => {
+        if (settled) {
+          if (waitTimer != null) clearInterval(waitTimer);
+          return;
+        }
+        if (!isOnMessagesChatPath()) return;
+        logPageDisplay("messages_history_ios_path_ready", {
+          waitedMs: Date.now() - started,
+          uiOpen: true,
+        });
+        arm();
+      }, 32);
+    }
 
     timer = setTimeout(() => {
+      if (waitTimer != null) clearInterval(waitTimer);
       if (lastBody) finish(lastBody);
       else finish(null, new Error("ios_tma_text_timeout"));
     }, IOS_GESTURE_BODY_RACE_MS);
