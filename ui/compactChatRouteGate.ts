@@ -58,19 +58,21 @@ export async function yieldIosWkHistoryContinuation(): Promise<void> {
   });
 }
 
+/** Body reads must run on `/messages/chat`, not when only the UI latch is set. */
 export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
   if (isOnMessagesChatPath()) {
     await settleCompactChatRoutePaint();
     return;
   }
-  if (compactChatRouteUiOpen) {
-    await settleCompactChatRoutePaint();
-    return;
-  }
-  const deadline = Date.now() + 5_000;
+  const started = Date.now();
+  const deadline = started + 6_000;
   while (Date.now() < deadline) {
-    if (isOnMessagesChatPath() || compactChatRouteUiOpen) {
+    if (isOnMessagesChatPath()) {
       await settleCompactChatRoutePaint();
+      logPageDisplay("messages_history_ios_path_ready", {
+        waitedMs: Date.now() - started,
+        uiOpen: compactChatRouteUiOpen,
+      });
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 32));
@@ -78,5 +80,6 @@ export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
   logPageDisplay("messages_history_ios_route_wait_timeout", {
     uiOpen: compactChatRouteUiOpen,
     onPath: isOnMessagesChatPath(),
+    waitedMs: Date.now() - started,
   });
 }

@@ -2556,9 +2556,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
         if (!compactChatLayout && !compactOpenNow) {
           prefetchChatHistoryPriority(resolvedItem);
         }
-        if (!isIosTelegramMiniAppSync()) {
-          void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
-        }
+        void warmupTelegramChatSession(resolvedItem.telegram_chat_id);
         void import("./messages/messageChatAvatarPrefetch").then(
           ({ prefetchOpenChatListAvatar, prefetchOpenChatAvatars }) => {
             prefetchOpenChatListAvatar(resolvedItem);
@@ -4067,6 +4065,7 @@ export function AuthenticatedHomeMessagesPanel({ colors, scrollable = true }: Pr
                           chatId: item.row.telegram_chat_id,
                           at: Date.now(),
                         };
+                        void warmupTelegramChatSession(item.row.telegram_chat_id);
                         return;
                       }
                       setOpenChatFocusHold(item.row.telegram_chat_id);

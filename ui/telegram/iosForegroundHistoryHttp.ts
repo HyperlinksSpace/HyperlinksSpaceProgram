@@ -154,6 +154,7 @@ export async function iosOpenHistoryBody(
   } = {
     label: "xhr",
     run: async () => {
+      logPageDisplay("messages_history_ios_xhr_arm", { timeoutMs: xhrMs });
       const xhr = await promiseWithTimeout(
         xhrGetWithCredentials(url, signal),
         xhrMs,
@@ -260,6 +261,101 @@ export async function iosGestureHistoryBodySingle(
     : new Error("ios_gesture_body_exhausted");
 }
 
+/**
+ * Telegram Web HTTP transport is XMLHttpRequest, and the chat draws from the
+ * callback — not from an `async` continuation. WKWebView often never resumes
+ * `await` after `fetch`/`script`. Deliver the body from `onload` / script
+ * execution, and let the caller paint before this promise resolves.
+ */
+export function openIosTmaHistoryRace(
+  url: string,
+  signal: AbortSignal,
+  onBody: (body: { status: number; text: string; transport: string }) => void,
+): Promise<{ status: number; text: string; transport: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (
+      body: { status: number; text: string; transport: string } | null,
+      err?: unknown,
+    ) => {
+      if (settled) return;
+      settled = true;
+      if (timer != null) clearTimeout(timer);
+      if (body) {
+        try {
+          onBody(body);
+        } catch {
+          /* paint errors must not drop the body */
+        }
+        resolve(body);
+        return;
+      }
+      reject(err instanceof Error ? err : new Error("ios_tma_history_race_failed"));
+    };
+    if (signal.aborted) {
+      finish(null, new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => finish(null, new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+
+    let xhrDone = false;
+    let scriptDone = false;
+    let lastBody: { status: number; text: string; transport: string } | null = null;
+    const countOf = (text: string) => {
+      try {
+        const parsed = JSON.parse(text) as { messages?: unknown[] };
+        return Array.isArray(parsed.messages) ? parsed.messages.length : 0;
+      } catch {
+        return 0;
+      }
+    };
+    const consider = (
+      lane: "xhr" | "script",
+      body: { status: number; text: string; transport: string } | null,
+    ) => {
+      if (settled) return;
+      if (lane === "xhr") xhrDone = true;
+      else scriptDone = true;
+      if (body) lastBody = body;
+      const count = body ? countOf(body.text) : 0;
+      if (count > 0 && body) {
+        finish(body);
+        return;
+      }
+      if (xhrDone && scriptDone) {
+        if (lastBody) finish(lastBody);
+        else finish(null, new Error("ios_tma_history_race_failed"));
+      }
+    };
+
+    logPageDisplay("messages_history_ios_xhr_arm", { timeoutMs: IOS_GESTURE_XHR_MS });
+    void xhrGetWithCredentials(url, signal).then(
+      (body) => {
+        logPageDisplay("messages_history_ios_xhr_hit", {
+          status: body.status,
+          bytes: body.text.length,
+        });
+        consider("xhr", body);
+      },
+      () => consider("xhr", null),
+    );
+
+    void iosOpenHistoryScriptBody(url, signal, {
+      timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
+    }).then(
+      (body) => consider("script", body),
+      () => consider("script", null),
+    );
+
+    timer = setTimeout(() => {
+      if (lastBody) finish(lastBody);
+      else finish(null, new Error("ios_tma_text_timeout"));
+    }, IOS_GESTURE_BODY_RACE_MS);
+  });
+}
+
 /** @deprecated Parallel race — kept for experiments; prefer {@link iosGestureHistoryBodySingle}. */
 const IOS_GESTURE_BODY_RACE_MS = 45_000;
 
@@ -302,6 +398,9 @@ export function raceIosGestureHistoryBody(
     })();
     void (async () => {
       try {
+        logPageDisplay("messages_history_ios_xhr_arm", {
+          timeoutMs: IOS_GESTURE_XHR_MS,
+        });
         const body = await promiseWithTimeout(
           xhrGetWithCredentials(url, signal),
           IOS_GESTURE_XHR_MS,
@@ -326,6 +425,19 @@ export function raceIosGestureHistoryBody(
       finish(() => reject(new Error("ios_gesture_body_timeout")));
     }, IOS_GESTURE_BODY_RACE_MS);
   });
+}
+
+/**
+ * Stable `/messages/chat`: XHR + script only — parallel `fetch` wedges WK and stalls XHR.
+ */
+export function raceIosStableChatPathHistoryBody(
+  url: string,
+  signal: AbortSignal,
+): Promise<{ status: number; text: string; transport: string }> {
+  logPageDisplay("messages_history_fetch_tma_path_xhr_script", {
+    parallelFetch: false,
+  });
+  return raceIosGestureHistoryBody(url, signal);
 }
 
 /**

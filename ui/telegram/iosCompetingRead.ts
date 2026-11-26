@@ -29,6 +29,13 @@ export function openIosHistoryOpenRead(): {
   finish: () => void;
   abort: () => void;
 } {
+  if (historyOpenReads.size > 0) {
+    logPageDisplay("messages_history_open_read_supersede", {
+      count: historyOpenReads.size,
+    });
+    for (const prior of historyOpenReads) prior.abort();
+    historyOpenReads.clear();
+  }
   const controller = new AbortController();
   historyOpenReads.add(controller);
   return {

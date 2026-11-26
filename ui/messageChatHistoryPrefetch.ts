@@ -38,7 +38,9 @@ import {
   computeTelegramLayoutStartupSnapshot,
   isIosTelegramMiniAppSync,
 } from "./components/telegramWebApp";
-import { isCompactChatRouteActive, isOnMessagesChatPath } from "./compactChatRouteGate";
+import {
+  isCompactChatRouteActive,
+} from "./compactChatRouteGate";
 import { abortIosHistoryOpenReads } from "./telegram/iosCompetingRead";
 
 /** Defer preview warming while the list or an opening chat needs the gateway. */
@@ -214,10 +216,8 @@ function resolveOpenLoadSpec(
     Partial<Pick<MessageChatRowData, "last_message_telegram_id" | "last_read_inbox_message_id">>,
 ): LoadSpec {
   const session = resolveChatOpenSession(chat as MessageChatRowData);
-  const iosCompact =
-    isIosTelegramMiniAppSync() && readAuthenticatedHomeCompactChatLayoutSync();
   return {
-    warmup: !iosCompact,
+    warmup: true,
     limit: session.fetch.limit,
     previewOnly: false,
     aroundUnread: session.fetch.aroundUnread,
@@ -909,7 +909,6 @@ export function primeOpenChatHistoryFromGesture(
     });
   }
   logPageDisplay("messages_history_gesture_prime", { chatId });
-  // Register shared in-flight sync on the list route — chat screen only joins.
   void startSharedLoad(chatId, chat.peer_user_id ?? null, spec);
 }
 
