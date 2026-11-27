@@ -4,8 +4,34 @@ import { isOnMessagesChatPath } from "../compactChatRouteGate";
 const IOS_OPEN_BODY_RACE_MS = 45_000;
 const IOS_SCRIPT_BODY_MS = 8_000;
 /** Open chat on `/messages/chat` — TDLib body often lands after the 8s preview cap. */
-const IOS_OPEN_SCRIPT_BODY_MS = 30_000;
+const IOS_OPEN_SCRIPT_BODY_MS = 45_000;
 const IOS_GESTURE_XHR_MS = 28_000;
+/** If XHR never fires onload/onerror (WK wedge), start script without waiting 28s. */
+const IOS_TMA_OPEN_XHR_STALL_MS = 8_000;
+
+type IosTmaHistoryBody = { status: number; text: string; transport: string };
+
+type TmaBodyFlightSlot = {
+  promise: Promise<IosTmaHistoryBody>;
+  forceReject: (err: Error) => void;
+};
+
+const tmaHistoryBodyFlights = new Map<string, TmaBodyFlightSlot>();
+
+/** Drop wedged in-flight bodies so the next open does not join a dead promise. */
+export function abandonTmaHistoryBodyFlights(reason: string): void {
+  const count = tmaHistoryBodyFlights.size;
+  if (count === 0) return;
+  logPageDisplay("messages_history_ios_body_abandon", { count, reason });
+  for (const [, slot] of tmaHistoryBodyFlights) {
+    try {
+      slot.forceReject(new DOMException(reason, "AbortError"));
+    } catch {
+      /* ignore double-reject */
+    }
+  }
+  tmaHistoryBodyFlights.clear();
+}
 
 function promiseWithTimeout<T>(
   promise: Promise<T>,
@@ -284,7 +310,13 @@ export function openIosTmaHistoryRace(
   signal: AbortSignal,
   onBody: (body: { status: number; text: string; transport: string }) => void,
 ): Promise<{ status: number; text: string; transport: string }> {
-  return new Promise((resolve, reject) => {
+  const existing = tmaHistoryBodyFlights.get(url);
+  if (existing) {
+    logPageDisplay("messages_history_ios_body_join", { urlLen: url.length });
+    return existing.promise;
+  }
+  let forceReject: (err: Error) => void = () => {};
+  const flight = new Promise<IosTmaHistoryBody>((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (
@@ -305,6 +337,7 @@ export function openIosTmaHistoryRace(
       }
       reject(err instanceof Error ? err : new Error("ios_tma_history_race_failed"));
     };
+    forceReject = (err) => finish(null, err);
     if (signal.aborted) {
       finish(null, new DOMException("Aborted", "AbortError"));
       return;
@@ -313,6 +346,7 @@ export function openIosTmaHistoryRace(
     signal.addEventListener("abort", onAbort, { once: true });
 
     let armed = false;
+    let scriptArmed = false;
     const countOf = (text: string) => {
       try {
         const parsed = JSON.parse(text) as { messages?: unknown[] };
@@ -324,7 +358,8 @@ export function openIosTmaHistoryRace(
     let lastBody: { status: number; text: string; transport: string } | null = null;
 
     const startScriptLane = () => {
-      if (settled) return;
+      if (settled || scriptArmed) return;
+      scriptArmed = true;
       logPageDisplay("messages_history_ios_script_arm", {
         timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
         onChatPath: isOnMessagesChatPath(),
@@ -358,10 +393,11 @@ export function openIosTmaHistoryRace(
 
     const startXhrLane = () => {
       if (settled) return;
+      const onChatPath = isOnMessagesChatPath();
       logPageDisplay("messages_history_ios_xhr_arm", {
         timeoutMs: IOS_GESTURE_XHR_MS,
-        onChatPath: isOnMessagesChatPath(),
-        sequentialScript: true,
+        onChatPath,
+        sequentialScript: !onChatPath,
       });
       if (typeof XMLHttpRequest === "undefined") {
         startScriptLane();
@@ -373,9 +409,11 @@ export function openIosTmaHistoryRace(
       xhr.responseType = "text";
       xhr.timeout = IOS_GESTURE_XHR_MS;
       let xhrSettled = false;
+      let xhrStallTimer: ReturnType<typeof setTimeout> | undefined;
       const xhrFinish = (fn: () => void) => {
         if (xhrSettled) return;
         xhrSettled = true;
+        if (xhrStallTimer != null) clearTimeout(xhrStallTimer);
         signal.removeEventListener("abort", xhrAbort);
         fn();
       };
@@ -431,6 +469,17 @@ export function openIosTmaHistoryRace(
       };
       try {
         xhr.send();
+        logPageDisplay("messages_history_ios_xhr_send", {
+          onChatPath: isOnMessagesChatPath(),
+        });
+        xhrStallTimer = setTimeout(() => {
+          if (!xhrSettled && !settled) {
+            logPageDisplay("messages_history_ios_xhr_stall", {
+              stallMs: IOS_TMA_OPEN_XHR_STALL_MS,
+            });
+            goScript();
+          }
+        }, IOS_TMA_OPEN_XHR_STALL_MS);
       } catch (err) {
         xhrFinish(() => {
           if (!settled) {
@@ -450,7 +499,23 @@ export function openIosTmaHistoryRace(
         clearInterval(waitTimer);
         waitTimer = undefined;
       }
-      startXhrLane();
+      const kick = () => {
+        if (isOnMessagesChatPath()) {
+          logPageDisplay("messages_history_ios_path_dual_arm", {
+            scriptMs: IOS_OPEN_SCRIPT_BODY_MS,
+            xhrStallMs: IOS_TMA_OPEN_XHR_STALL_MS,
+          });
+          startScriptLane();
+          startXhrLane();
+          return;
+        }
+        startXhrLane();
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => requestAnimationFrame(kick));
+      } else {
+        kick();
+      }
     };
 
     let waitTimer: ReturnType<typeof setInterval> | undefined;
@@ -479,6 +544,14 @@ export function openIosTmaHistoryRace(
       else finish(null, new Error("ios_tma_text_timeout"));
     }, IOS_GESTURE_BODY_RACE_MS);
   });
+  const slot: TmaBodyFlightSlot = { promise: flight, forceReject };
+  tmaHistoryBodyFlights.set(url, slot);
+  flight.finally(() => {
+    if (tmaHistoryBodyFlights.get(url) === slot) {
+      tmaHistoryBodyFlights.delete(url);
+    }
+  });
+  return flight;
 }
 
 /** @deprecated Parallel race — kept for experiments; prefer {@link iosGestureHistoryBodySingle}. */

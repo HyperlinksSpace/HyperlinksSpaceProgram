@@ -316,6 +316,8 @@ const HISTORY_FETCH_IOS_GESTURE_PRIME_ABORT_MS = 16_000;
 const HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS = 45_000;
 /** WKWebView on compact/TMA chat often never resolves `fetch`; fall back before spinner hangs. */
 const HISTORY_FETCH_IOS_TMA_FETCH_LANE_MS = 3_500;
+/** Same `fetch()` transport as compact home row preview — gateway often 10–15s. */
+const HISTORY_FETCH_IOS_TMA_HOME_LANE_MS = 16_000;
 /** On `/messages/chat`, `fetch` + `text()` often works when parallel XHR/script wedge. */
 
 function promiseWithTimeout<T>(
@@ -524,8 +526,91 @@ async function loadHistoryViaText(
   let text = "";
   let transport = "fetch_text";
 
+  const runSyncPaint = (
+    raw: { status: number; text: string; transport: string },
+  ): HistoryWireJson => {
+    let parsed: HistoryWireJson = {};
+    try {
+      parsed = raw.text ? (JSON.parse(raw.text) as HistoryWireJson) : {};
+    } catch {
+      parsed = {};
+    }
+    const wireCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
+    logPageDisplay("messages_history_json_ready", {
+      chatId,
+      ok: parsed.ok === true,
+      count: wireCount,
+      transport: raw.transport,
+    });
+    if (parsed.ok === true && wireCount > 0) {
+      const page = historyPageFromWire(parsed, peerUserId);
+      emitWebHistoryOpenPaint(chatId, page, paintOptions);
+      logPageDisplay("messages_history_tma_sync_paint", {
+        chatId,
+        count: page.messages.length,
+        wireCount,
+        transport: raw.transport,
+      });
+    }
+    logPageDisplay("messages_history_text_hit", {
+      chatId,
+      status: raw.status,
+      bytes: raw.text.length,
+      count: wireCount,
+      transport: raw.transport,
+    });
+    return parsed;
+  };
+
   try {
     if (skipFetchLane) {
+      logPageDisplay("messages_history_fetch_url", {
+        chatId,
+        path: "/api/telegram-messages-history",
+        query: url.includes("?") ? url.slice(url.indexOf("?") + 1) : "",
+        compactLayout,
+        onChatPath,
+      });
+      try {
+        const homeLane = await promiseWithTimeout(
+          (async () => {
+            const response = await fetch(url, {
+              method: "GET",
+              credentials: "include",
+              signal: competing.signal,
+            });
+            const bodyText = await response.text();
+            return {
+              status: response.status,
+              text: bodyText,
+              transport: "fetch_text" as const,
+            };
+          })(),
+          HISTORY_FETCH_IOS_TMA_HOME_LANE_MS,
+          "ios_tma_home_fetch_timeout",
+        );
+        logPageDisplay("messages_history_fetch_tma_home_lane", {
+          chatId,
+          status: homeLane.status,
+          bytes: homeLane.text.length,
+          onChatPath,
+        });
+        httpStatus = homeLane.status;
+        text = homeLane.text;
+        transport = homeLane.transport;
+        const jsonFromHome = runSyncPaint(homeLane);
+        if (homeLane.status >= 200 && homeLane.status < 300 && jsonFromHome.ok === true) {
+          return { status: httpStatus, bytes: text.length, json: jsonFromHome };
+        }
+      } catch (homeErr) {
+        const reason =
+          homeErr instanceof Error ? homeErr.message : String(homeErr);
+        logPageDisplay("messages_history_fetch_tma_home_fallback", {
+          chatId,
+          reason,
+          onChatPath,
+        });
+      }
       logPageDisplay("messages_history_fetch_tma_alt", {
         chatId,
         compactLayout,
@@ -534,36 +619,7 @@ async function loadHistoryViaText(
         xhrAndScript: true,
       });
       const body = await openIosTmaHistoryRace(url, competing.signal, (raw) => {
-        let parsed: HistoryWireJson = {};
-        try {
-          parsed = raw.text ? (JSON.parse(raw.text) as HistoryWireJson) : {};
-        } catch {
-          parsed = {};
-        }
-        const wireCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
-        logPageDisplay("messages_history_json_ready", {
-          chatId,
-          ok: parsed.ok === true,
-          count: wireCount,
-          transport: raw.transport,
-        });
-        if (parsed.ok === true && wireCount > 0) {
-          const page = historyPageFromWire(parsed, peerUserId);
-          emitWebHistoryOpenPaint(chatId, page, paintOptions);
-          logPageDisplay("messages_history_tma_sync_paint", {
-            chatId,
-            count: page.messages.length,
-            wireCount,
-            transport: raw.transport,
-          });
-        }
-        logPageDisplay("messages_history_text_hit", {
-          chatId,
-          status: raw.status,
-          bytes: raw.text.length,
-          count: wireCount,
-          transport: raw.transport,
-        });
+        runSyncPaint(raw);
       });
       httpStatus = body.status;
       text = body.text;
@@ -1092,9 +1148,13 @@ const foregroundHistoryFlights = new Map<string, Promise<ChatHistoryPageResult>>
 
 /** Drop a foreground history promise the WebView never delivered, so the next open can fetch. */
 export function abandonForegroundHistoryFlightsForChat(chatId: number): void {
-  const prefix = `${Math.trunc(chatId)}:`;
+  const id = Math.trunc(chatId);
+  const prefix = `${id}:`;
+  const tmaOpenKey = `ios_tma_open:${id}`;
   for (const key of foregroundHistoryFlights.keys()) {
-    if (key.startsWith(prefix)) foregroundHistoryFlights.delete(key);
+    if (key === tmaOpenKey || key.startsWith(prefix)) {
+      foregroundHistoryFlights.delete(key);
+    }
   }
 }
 
@@ -1105,7 +1165,18 @@ function foregroundHistoryFlightKey(
   sinceMessageId?: number | null,
   aroundUnread = false,
   aroundMessageId?: number | null,
+  options?: { background?: boolean },
 ): string {
+  const iosTmaOpen =
+    isIosTelegramMiniAppSync() &&
+    options?.background !== true &&
+    (beforeMessageId == null || beforeMessageId <= 0) &&
+    (sinceMessageId == null || sinceMessageId <= 0) &&
+    !aroundUnread &&
+    (aroundMessageId == null || aroundMessageId <= 0);
+  if (iosTmaOpen) {
+    return `ios_tma_open:${Math.trunc(chatId)}`;
+  }
   return [
     chatId,
     limit,
@@ -1137,6 +1208,7 @@ export async function fetchTelegramChatHistoryPage(
       sinceMessageId,
       aroundUnread,
       aroundMessageId,
+      options,
     );
     const existing = foregroundHistoryFlights.get(flightKey);
     if (existing) return existing;

@@ -233,8 +233,8 @@ const OLDER_EMPTY_SOFT_FAIL_COOLDOWN_MS = 1200;
 /** Absolute cap: never leave the open-chat spinner forever if a fetch chain stalls. */
 const HISTORY_OPEN_LOAD_WATCHDOG_MS = 45_000;
 /** Must outlast iOS script (30s) + XHR fallback inside the 45s body cap. */
-const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 50_000;
-const HISTORY_OPEN_IOS_BODY_CAP_MS = 45_000;
+const HISTORY_OPEN_LOAD_WATCHDOG_COMPACT_MS = 58_000;
+const HISTORY_OPEN_IOS_BODY_CAP_MS = 55_000;
 /** telegram-tt FAB_THRESHOLD — hide scroll-down when within this distance of bottom (read chats). */
 const FAB_VISIBILITY_THRESHOLD_PX = 50;
 /** telegram-tt NOTCH_THRESHOLD — unread chats hide FAB only at exact bottom. */
@@ -6021,9 +6021,29 @@ export function MessageChatMessageList({
       if (
         compactPage &&
         Platform.OS === "web" &&
-        (isIosTelegramMiniAppSync() ||
-          (typeof navigator !== "undefined" &&
-            /iPhone|iPad|iPod/i.test(navigator.userAgent)))
+        isIosTelegramMiniAppSync()
+      ) {
+        abandonForegroundHistoryFlightsForChat(chatId);
+        resetSharedOpenChatHistoryLoad(chatId);
+        historyNetworkKeyRef.current = "";
+        setHistoryLoadKick((n) => n + 1);
+        logPageDisplay("messages_history_load_watchdog_kick", {
+          ...chatLogFields({
+            chatId,
+            peerUserId: chat.peer_user_id,
+            title: chat.title,
+          }),
+          timeoutMs,
+          watchdogKey,
+          inFlightAgeMs,
+        });
+        return;
+      }
+      if (
+        compactPage &&
+        Platform.OS === "web" &&
+        typeof navigator !== "undefined" &&
+        /iPhone|iPad|iPod/i.test(navigator.userAgent)
       ) {
         abortIosHistoryOpenReads("open_watchdog");
         abandonForegroundHistoryFlightsForChat(chatId);

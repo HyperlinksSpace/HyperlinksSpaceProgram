@@ -10,6 +10,7 @@ import {
   MESSAGE_CHAT_HISTORY_OPEN_UNREAD_LIMIT_MAX,
   MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_SIDE,
   MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT,
+  MESSAGE_CHAT_HISTORY_PREVIEW_SIZE,
   MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL,
   MESSAGE_CHAT_HISTORY_PAGE_SIZE,
 } from "./messageChatLayout";
@@ -196,18 +197,22 @@ function tailFetchFallback(): ChatOpenFetchSpec {
   const iosMicro =
     isIosTelegramMiniAppSync() &&
     readAuthenticatedHomeCompactChatLayoutSync();
+  // Match home list row preview (`limit=7`, plain tail) — gateway ignores
+  // older_above for tail loads but extra params cluttered open tracing.
   const openLimit = iosMicro
-    ? MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT
+    ? MESSAGE_CHAT_HISTORY_PREVIEW_SIZE
     : MESSAGE_CHAT_HISTORY_OPEN_VISIBLE_TAIL;
   return {
     kind: "tail",
     anchorMessageId: null,
-    olderBudgetRows: iosMicro ? openLimit : OPEN_WINDOW_2N,
+    olderBudgetRows: iosMicro
+      ? MESSAGE_CHAT_HISTORY_IOS_COMPACT_OPEN_LIMIT
+      : OPEN_WINDOW_2N,
     newerBudgetRows: 0,
     limit: openLimit,
     aroundUnread: false,
-    olderAbove: openLimit,
-    newerBelow: 0,
+    olderAbove: iosMicro ? null : openLimit,
+    newerBelow: iosMicro ? null : 0,
   };
 }
 

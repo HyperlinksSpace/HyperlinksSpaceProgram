@@ -1,4 +1,5 @@
 import { logPageDisplay } from "../pageDisplayLog";
+import { abandonTmaHistoryBodyFlights } from "./iosForegroundHistoryHttp";
 
 /** Chat-list GETs, warmup, neighbor preview — safe to drop on compact open tap. */
 const listCompetingReads = new Set<AbortController>();
@@ -30,11 +31,9 @@ export function openIosHistoryOpenRead(): {
   abort: () => void;
 } {
   if (historyOpenReads.size > 0) {
-    logPageDisplay("messages_history_open_read_supersede", {
+    logPageDisplay("messages_history_open_read_join", {
       count: historyOpenReads.size,
     });
-    for (const prior of historyOpenReads) prior.abort();
-    historyOpenReads.clear();
   }
   const controller = new AbortController();
   historyOpenReads.add(controller);
@@ -62,6 +61,7 @@ export function abortIosCompetingReads(reason?: string): void {
 }
 
 export function abortIosHistoryOpenReads(reason?: string): void {
+  abandonTmaHistoryBodyFlights(reason ?? "history_open_abort");
   const count = historyOpenReads.size;
   if (count > 0) {
     logPageDisplay("messages_ios_competing_abort", {
