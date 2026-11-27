@@ -56,7 +56,14 @@ function withIosScriptHistoryUrl(url: string): string {
 function iosOpenHistoryScriptBody(
   url: string,
   signal: AbortSignal,
-  options?: { timeoutMs?: number },
+  options?: {
+    timeoutMs?: number;
+    onDeliverSync?: (body: {
+      status: number;
+      text: string;
+      transport: "script";
+    }) => void;
+  },
 ): Promise<{ status: number; text: string; transport: "script" }> {
   const scriptWaitMs =
     typeof options?.timeoutMs === "number" && options.timeoutMs > 0
@@ -109,13 +116,17 @@ function iosOpenHistoryScriptBody(
         count,
         bytes: text.length,
       });
-      finish(() =>
-        resolve({
-          status: ok ? 200 : 502,
-          text,
-          transport: "script",
-        }),
-      );
+      const payload = {
+        status: ok ? 200 : 502,
+        text,
+        transport: "script" as const,
+      };
+      try {
+        options?.onDeliverSync?.(payload);
+      } catch {
+        /* sync paint must not block delivery */
+      }
+      finish(() => resolve(payload));
     };
     if (signal.aborted) {
       onAbort();
@@ -301,9 +312,6 @@ export function openIosTmaHistoryRace(
     const onAbort = () => finish(null, new DOMException("Aborted", "AbortError"));
     signal.addEventListener("abort", onAbort, { once: true });
 
-    let xhrDone = false;
-    let scriptDone = false;
-    let lastBody: { status: number; text: string; transport: string } | null = null;
     let armed = false;
     const countOf = (text: string) => {
       try {
@@ -313,22 +321,125 @@ export function openIosTmaHistoryRace(
         return 0;
       }
     };
-    const consider = (
-      lane: "xhr" | "script",
-      body: { status: number; text: string; transport: string } | null,
-    ) => {
+    let lastBody: { status: number; text: string; transport: string } | null = null;
+
+    const startScriptLane = () => {
       if (settled) return;
-      if (lane === "xhr") xhrDone = true;
-      else scriptDone = true;
-      if (body) lastBody = body;
-      const count = body ? countOf(body.text) : 0;
-      if (count > 0 && body) {
-        finish(body);
+      logPageDisplay("messages_history_ios_script_arm", {
+        timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
+        onChatPath: isOnMessagesChatPath(),
+      });
+      const onDeliverSync = (body: {
+        status: number;
+        text: string;
+        transport: "script";
+      }) => {
+        lastBody = body;
+        if (countOf(body.text) > 0) {
+          finish(body);
+        }
+      };
+      void iosOpenHistoryScriptBody(url, signal, {
+        timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
+        onDeliverSync,
+      }).then(
+        (body) => {
+          lastBody = body;
+          if (!settled) finish(body);
+        },
+        (err) => {
+          if (!settled) {
+            if (lastBody) finish(lastBody);
+            else finish(null, err);
+          }
+        },
+      );
+    };
+
+    const startXhrLane = () => {
+      if (settled) return;
+      logPageDisplay("messages_history_ios_xhr_arm", {
+        timeoutMs: IOS_GESTURE_XHR_MS,
+        onChatPath: isOnMessagesChatPath(),
+        sequentialScript: true,
+      });
+      if (typeof XMLHttpRequest === "undefined") {
+        startScriptLane();
         return;
       }
-      if (xhrDone && scriptDone) {
-        if (lastBody) finish(lastBody);
-        else finish(null, new Error("ios_tma_history_race_failed"));
+      const xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.withCredentials = true;
+      xhr.responseType = "text";
+      xhr.timeout = IOS_GESTURE_XHR_MS;
+      let xhrSettled = false;
+      const xhrFinish = (fn: () => void) => {
+        if (xhrSettled) return;
+        xhrSettled = true;
+        signal.removeEventListener("abort", xhrAbort);
+        fn();
+      };
+      const xhrAbort = () => {
+        xhrFinish(() => {
+          try {
+            xhr.abort();
+          } catch {
+            /* ignore */
+          }
+          if (!settled) finish(null, new DOMException("Aborted", "AbortError"));
+        });
+      };
+      signal.addEventListener("abort", xhrAbort);
+      const goScript = (xhrBody?: { status: number; text: string; transport: string }) => {
+        if (xhrBody) lastBody = xhrBody;
+        startScriptLane();
+      };
+      xhr.onload = () => {
+        const body = {
+          status: xhr.status,
+          text: typeof xhr.responseText === "string" ? xhr.responseText : "",
+          transport: "xhr",
+        };
+        xhrFinish(() => {
+          logPageDisplay("messages_history_ios_xhr_hit", {
+            status: body.status,
+            bytes: body.text.length,
+          });
+          if (settled) return;
+          if (countOf(body.text) > 0) {
+            finish(body);
+            return;
+          }
+          goScript(body);
+        });
+      };
+      xhr.onerror = () => {
+        xhrFinish(() => {
+          if (!settled) {
+            logPageDisplay("messages_history_ios_xhr_miss", { reason: "network_error" });
+            goScript();
+          }
+        });
+      };
+      xhr.ontimeout = () => {
+        xhrFinish(() => {
+          if (!settled) {
+            logPageDisplay("messages_history_ios_xhr_miss", { reason: "timeout" });
+            goScript();
+          }
+        });
+      };
+      try {
+        xhr.send();
+      } catch (err) {
+        xhrFinish(() => {
+          if (!settled) {
+            logPageDisplay("messages_history_ios_xhr_miss", {
+              reason: err instanceof Error ? err.message : "send_failed",
+            });
+            goScript();
+          }
+        });
       }
     };
 
@@ -339,26 +450,7 @@ export function openIosTmaHistoryRace(
         clearInterval(waitTimer);
         waitTimer = undefined;
       }
-      logPageDisplay("messages_history_ios_xhr_arm", {
-        timeoutMs: IOS_GESTURE_XHR_MS,
-        onChatPath: isOnMessagesChatPath(),
-      });
-      void xhrGetWithCredentials(url, signal).then(
-        (body) => {
-          logPageDisplay("messages_history_ios_xhr_hit", {
-            status: body.status,
-            bytes: body.text.length,
-          });
-          consider("xhr", body);
-        },
-        () => consider("xhr", null),
-      );
-      void iosOpenHistoryScriptBody(url, signal, {
-        timeoutMs: IOS_OPEN_SCRIPT_BODY_MS,
-      }).then(
-        (body) => consider("script", body),
-        () => consider("script", null),
-      );
+      startXhrLane();
     };
 
     let waitTimer: ReturnType<typeof setInterval> | undefined;
