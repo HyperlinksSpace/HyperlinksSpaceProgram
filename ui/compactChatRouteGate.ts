@@ -65,7 +65,7 @@ export async function waitForIosCompactHistoryFetchReady(): Promise<void> {
     return;
   }
   const started = Date.now();
-  const deadline = started + 6_000;
+  const deadline = started + 12_000;
   while (Date.now() < deadline) {
     if (isOnMessagesChatPath()) {
       await settleCompactChatRoutePaint();

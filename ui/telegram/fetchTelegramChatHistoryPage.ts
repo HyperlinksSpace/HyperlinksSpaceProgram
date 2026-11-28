@@ -40,7 +40,7 @@ import {
 } from "./iosCompetingRead";
 import {
   iosOpenHistoryBodyWithHardCap,
-  openIosTmaHistoryRace,
+  raceIosGestureHistoryBody,
 } from "./iosForegroundHistoryHttp";
 import { readAuthenticatedHomeCompactChatLayoutSync } from "../authenticatedHomeLayoutWidth";
 
@@ -526,101 +526,22 @@ async function loadHistoryViaText(
   let text = "";
   let transport = "fetch_text";
 
-  const runSyncPaint = (
-    raw: { status: number; text: string; transport: string },
-  ): HistoryWireJson => {
-    let parsed: HistoryWireJson = {};
-    try {
-      parsed = raw.text ? (JSON.parse(raw.text) as HistoryWireJson) : {};
-    } catch {
-      parsed = {};
-    }
-    const wireCount = Array.isArray(parsed.messages) ? parsed.messages.length : 0;
-    logPageDisplay("messages_history_json_ready", {
-      chatId,
-      ok: parsed.ok === true,
-      count: wireCount,
-      transport: raw.transport,
-    });
-    if (parsed.ok === true && wireCount > 0) {
-      const page = historyPageFromWire(parsed, peerUserId);
-      emitWebHistoryOpenPaint(chatId, page, paintOptions);
-      logPageDisplay("messages_history_tma_sync_paint", {
-        chatId,
-        count: page.messages.length,
-        wireCount,
-        transport: raw.transport,
-      });
-    }
-    logPageDisplay("messages_history_text_hit", {
-      chatId,
-      status: raw.status,
-      bytes: raw.text.length,
-      count: wireCount,
-      transport: raw.transport,
-    });
-    return parsed;
-  };
-
   try {
     if (skipFetchLane) {
-      logPageDisplay("messages_history_fetch_url", {
-        chatId,
-        path: "/api/telegram-messages-history",
-        query: url.includes("?") ? url.slice(url.indexOf("?") + 1) : "",
-        compactLayout,
-        onChatPath,
-      });
-      try {
-        const homeLane = await promiseWithTimeout(
-          (async () => {
-            const response = await fetch(url, {
-              method: "GET",
-              credentials: "include",
-              signal: competing.signal,
-            });
-            const bodyText = await response.text();
-            return {
-              status: response.status,
-              text: bodyText,
-              transport: "fetch_text" as const,
-            };
-          })(),
-          HISTORY_FETCH_IOS_TMA_HOME_LANE_MS,
-          "ios_tma_home_fetch_timeout",
-        );
-        logPageDisplay("messages_history_fetch_tma_home_lane", {
-          chatId,
-          status: homeLane.status,
-          bytes: homeLane.text.length,
-          onChatPath,
-        });
-        httpStatus = homeLane.status;
-        text = homeLane.text;
-        transport = homeLane.transport;
-        const jsonFromHome = runSyncPaint(homeLane);
-        if (homeLane.status >= 200 && homeLane.status < 300 && jsonFromHome.ok === true) {
-          return { status: httpStatus, bytes: text.length, json: jsonFromHome };
-        }
-      } catch (homeErr) {
-        const reason =
-          homeErr instanceof Error ? homeErr.message : String(homeErr);
-        logPageDisplay("messages_history_fetch_tma_home_fallback", {
-          chatId,
-          reason,
-          onChatPath,
-        });
-      }
-      logPageDisplay("messages_history_fetch_tma_alt", {
+      // e6cc47: parallel script + XHR. That race is what paints on iOS TMA.
+      logPageDisplay("messages_history_fetch_tma_race", {
         chatId,
         compactLayout,
         onChatPath,
         compactChatOpen,
-        xhrAndScript: true,
+        parallelScriptXhr: true,
+        timeoutMs: HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS,
       });
-      const body = await openIosTmaHistoryRace(url, competing.signal, (raw) => {
-        runSyncPaint(raw);
-      });
+      const body = await promiseWithTimeout(
+        raceIosGestureHistoryBody(url, competing.signal),
+        HISTORY_FETCH_IOS_TMA_TEXT_TIMEOUT_MS,
+        "ios_tma_text_timeout",
+      );
       httpStatus = body.status;
       text = body.text;
       transport = body.transport;
@@ -680,10 +601,10 @@ async function loadHistoryViaText(
     transport,
   });
   if (json.ok === true && count > 0) {
-    const compactOneColumn = compactLayout || compactChatOpen;
-    if (!compactOneColumn) {
-      paintIosHistoryDomOverlay(json);
-    }
+    // e6cc47 paints this overlay as soon as the race body lands. Keep it on
+    // compact even when a React listener is registered — bubbles replace it
+    // only after MessageChatMessageList has real rows.
+    paintIosHistoryDomOverlay(json);
     const page = historyPageFromWire(json, peerUserId);
     emitWebHistoryOpenPaint(chatId, page, paintOptions);
     logPageDisplay("messages_history_tma_sync_paint", {
@@ -717,7 +638,9 @@ function emitWebHistoryOpenPaint(
     } catch {
       /* listener owns paint errors */
     }
-    removeIosHistoryDomOverlay();
+    if (!readAuthenticatedHomeCompactChatLayoutSync() && !isCompactChatRouteActive()) {
+      removeIosHistoryDomOverlay();
+    }
     return;
   }
   pendingWebHistoryPaint = { chatId, page };
